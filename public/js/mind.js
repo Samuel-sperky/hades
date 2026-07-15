@@ -86,11 +86,12 @@ function nodeColor(n) {
 }
 
 // Gradient plexus pozadia: fialova (vlavo) -> smaragdova (vpravo), ako referencny vizual
+// Tlmena technicka paleta: bridlicova indigo (vlavo) -> teal (vpravo)
 function plexusColor(x) {
     const t = Math.max(0, Math.min(1, (x + 1300) / 2600));
-    const r = Math.round(124 + (52 - 124) * t);
-    const g = Math.round(58 + (211 - 58) * t);
-    const b = Math.round(237 + (153 - 237) * t);
+    const r = Math.round(99 + (45 - 99) * t);
+    const g = Math.round(116 + (178 - 116) * t);
+    const b = Math.round(178 + (170 - 178) * t);
     return r + ',' + g + ',' + b;
 }
 
@@ -299,17 +300,22 @@ function resize() {
     canvas.style.height = S.h + 'px';
 }
 
+// Cistice pozadia: technicke gulicky s hlbkou (parallax) a jemnym driftom
 function makeStars() {
     S.stars = [];
-    const count = Math.round(340 * (S.opts ? S.opts.density : 1));
+    const count = Math.round(300 * (S.opts ? S.opts.density : 1));
     for (let i = 0; i < count; i++) {
+        const z = 0.35 + Math.random() * 0.65;
         S.stars.push({
             x: (Math.random() - 0.5) * 2600,
             y: (Math.random() - 0.5) * 2600,
-            vx: REDUCED_MOTION ? 0 : (Math.random() - 0.5) * 8,
-            vy: REDUCED_MOTION ? 0 : (Math.random() - 0.5) * 8,
-            r: Math.random() * 1.4 + 0.4,
-            a: Math.random() * 0.45 + 0.2,
+            z,
+            dir: Math.random() * Math.PI * 2,
+            speed: (1.6 + Math.random() * 3) * z,
+            curve: (Math.random() - 0.5) * 0.16,
+            phase: Math.random() * Math.PI * 2,
+            twinkle: 0.5 + Math.random() * 0.9,
+            r: 1.05 + z * 1.35,
         });
     }
 }
@@ -333,8 +339,11 @@ function draw() {
 
     const bgLevel = S.opts.bg;
     if (bgLevel > 0.01) {
-        const plexusDist = 195;
-        ctx.lineWidth = 0.8 / S.cam.k;
+        const plexusDist = 190;
+        const invK = 1 / S.cam.k;
+
+        // linky: tenke, technicky ciste, tlmene podla hlbky a vzdialenosti
+        ctx.lineWidth = 0.55 * invK;
         for (let i = 0; i < S.stars.length; i++) {
             const a = S.stars[i];
             for (let j = i + 1; j < S.stars.length; j++) {
@@ -342,17 +351,34 @@ function draw() {
                 const dx = a.x - b.x, dy = a.y - b.y;
                 const d2 = dx * dx + dy * dy;
                 if (d2 > plexusDist * plexusDist) continue;
-                const alpha = Math.min(0.6, (1 - Math.sqrt(d2) / plexusDist) * 0.3 * S.dim * bgLevel);
+                const depth = Math.min(a.z, b.z);
+                const alpha = Math.min(0.45,
+                    (1 - Math.sqrt(d2) / plexusDist) * 0.24 * depth * S.dim * bgLevel);
                 ctx.strokeStyle = 'rgba(' + plexusColor((a.x + b.x) / 2) + ',' + alpha + ')';
                 ctx.beginPath();
                 ctx.moveTo(a.x, a.y);
                 ctx.lineTo(b.x, b.y);
                 ctx.stroke();
             }
-            ctx.globalAlpha = Math.min(1, a.a * S.dim * bgLevel);
-            ctx.fillStyle = 'rgba(' + plexusColor(a.x) + ',1)';
+        }
+
+        // gulicky: jednotny tvar, jemne jadro pre technicky "ball" look
+        for (const s of S.stars) {
+            const col = plexusColor(s.x);
+            const rr = s.r * s.z * invK;
+            const tw = 0.72 + 0.28 * Math.sin(s.phase);
+            const base = Math.min(1, s.z * 0.85 * tw * S.dim * bgLevel);
+
+            ctx.globalAlpha = base * 0.4;
+            ctx.fillStyle = 'rgba(' + col + ',1)';
             ctx.beginPath();
-            ctx.arc(a.x, a.y, a.r / Math.sqrt(S.cam.k), 0, 7);
+            ctx.arc(s.x, s.y, rr * 1.7, 0, 7);
+            ctx.fill();
+
+            ctx.globalAlpha = base;
+            ctx.fillStyle = 'rgba(' + col + ',1)';
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, rr, 0, 7);
             ctx.fill();
         }
         ctx.globalAlpha = 1;
@@ -526,11 +552,13 @@ function frame() {
     const dt = Math.min((now() - lastFrame) / 1000, 0.1);
     lastFrame = now();
 
-    for (const st of S.stars) {
-        st.x += st.vx * dt;
-        st.y += st.vy * dt;
-        if (st.x > 1300) st.x = -1300; else if (st.x < -1300) st.x = 1300;
-        if (st.y > 1300) st.y = -1300; else if (st.y < -1300) st.y = 1300;
+    if (!REDUCED_MOTION) for (const st of S.stars) {
+        st.dir += st.curve * dt;
+        st.x += Math.cos(st.dir) * st.speed * dt;
+        st.y += Math.sin(st.dir) * st.speed * dt;
+        st.phase += st.twinkle * dt;
+        if (st.x > 1300) st.x -= 2600; else if (st.x < -1300) st.x += 2600;
+        if (st.y > 1300) st.y -= 2600; else if (st.y < -1300) st.y += 2600;
     }
 
     for (const p of S.pulses) p.t += dt * p.speed;
