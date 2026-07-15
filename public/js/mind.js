@@ -1437,11 +1437,14 @@ function showToast(text, nodeId) {
 }
 
 const SHORTCUTS = [
+    ['⌘K / Ctrl+K', 'Príkazová paleta'],
     ['1 / 2 / 3', 'Náhľad: Mapa / Sieť / Vrstvy'],
     ['F', 'Vyhľadávanie'],
+    ['G', 'Filtre'],
     ['S', 'Štatistiky'],
     ['L', 'Legenda'],
-    ['T', 'Časová os'],
+    ['T', 'Heatmapa aktivity'],
+    ['D', 'Svetlá / tmavá téma'],
     ['C', 'Chat s Hadesom'],
     ['+ / −', 'Zoom'],
     ['0', 'Vycentrovať'],

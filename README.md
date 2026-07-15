@@ -10,7 +10,8 @@ docker compose up -d
 ```
 
 - **Vizualizácia:** http://localhost:8080 — glow sieť, klik na uzol = detail/editácia,
-  časová os s replayom rastu, ambient režim (⛶), chat s Hadesom (💬)
+  heatmapa aktivity, filtre, príkazová paleta (⌘K), svetlá/tmavá téma (D),
+  ambient režim (⛶), chat s Hadesom (💬)
 - **MCP endpoint:** http://localhost:8080/mcp (Streamable HTTP)
 - **WebSocket (Reverb):** ws://localhost:8081
 
