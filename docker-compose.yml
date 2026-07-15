@@ -1,0 +1,57 @@
+name: hades
+
+x-app: &app
+  build: docker/php
+  restart: always
+  working_dir: /var/www/html
+  volumes:
+    - .:/var/www/html
+  depends_on:
+    - mariadb
+    - redis
+
+services:
+  app:
+    <<: *app
+    ports:
+      - "8080:8080"
+    environment:
+      PHP_CLI_SERVER_WORKERS: 8
+    command: php artisan serve --host=0.0.0.0 --port=8080
+
+  queue:
+    <<: *app
+    command: php artisan queue:work redis --sleep=1 --tries=3
+
+  scheduler:
+    <<: *app
+    command: php artisan schedule:work
+
+  reverb:
+    <<: *app
+    ports:
+      - "8081:8081"
+    command: php artisan reverb:start --host=0.0.0.0 --port=8081
+
+  mariadb:
+    image: mariadb:11.4
+    restart: always
+    environment:
+      MARIADB_DATABASE: hades
+      MARIADB_USER: hades
+      MARIADB_PASSWORD: hades
+      MARIADB_ROOT_PASSWORD: hades_root
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redisdata:/data
+
+volumes:
+  dbdata:
+  redisdata:
