@@ -2,8 +2,16 @@
 (() => {
 'use strict';
 
-const CORE_COLOR = '#a78bfa';
+const CORE_COLOR = '#8b7cf6';
 const AREA_RADIUS = 460;
+
+// Farby uzlov (identita) — zladene s CSS --node-* tokenmi
+const NODE_COLORS = {
+    core: '#8b7cf6',
+    skill: '#34d399',
+    memory: '#60a5fa',
+    project: '#f0a35e',
+};
 const DEPT_RADIUS = 140;
 
 const canvas = document.getElementById('mind');
@@ -34,10 +42,10 @@ const S = {
 };
 
 const VIEW_LAYER_COLORS = {
-    memory: '#4ade80',
-    skill: '#60a5fa',
-    core: '#a78bfa',
-    project: '#f87171',
+    memory: '#60a5fa',
+    skill: '#34d399',
+    core: '#8b7cf6',
+    project: '#f0a35e',
 };
 
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -62,11 +70,20 @@ function setOpt(key, value) {
     applyOpts();
 }
 
+function syncSlider(inp) {
+    const min = parseFloat(inp.min || 0);
+    const max = parseFloat(inp.max || 100);
+    const val = parseFloat(inp.value);
+    const pct = max > min ? ((val - min) / (max - min)) * 100 : 100;
+    inp.style.setProperty('--pct', pct + '%');
+}
+
 function applyOpts() {
     document.documentElement.style.setProperty('--panel-alpha', S.opts.panelAlpha);
     document.querySelectorAll('input[data-opt]').forEach((inp) => {
         const v = S.opts[inp.dataset.opt];
         if (v !== undefined && parseFloat(inp.value) !== v) inp.value = v;
+        syncSlider(inp);
     });
 }
 
@@ -644,7 +661,9 @@ function frame() {
 
     if (S.replay.playing) {
         S.replay.t = Math.min(1, S.replay.t + dt / 22);
-        document.getElementById('tl-range').value = Math.round(S.replay.t * 1000);
+        const tlr = document.getElementById('tl-range');
+        tlr.value = Math.round(S.replay.t * 1000);
+        syncSlider(tlr);
         updateTimelineLabel();
         if (S.replay.t >= 1) stopReplay();
     }
@@ -742,7 +761,7 @@ function updateHoverCard(e) {
     const n = S.hover;
 
     if (!n) {
-        card.classList.add('hidden');
+        card.classList.remove('show');
         return;
     }
 
@@ -756,6 +775,7 @@ function updateHoverCard(e) {
 
     card.innerHTML = '<div class="t">' + esc(n.label) + '</div><div class="m">' + meta + '</div>';
     card.classList.remove('hidden');
+    card.classList.add('show');
 
     const pad = 14;
     const r = card.getBoundingClientRect();
@@ -776,7 +796,10 @@ async function selectNode(n) {
     $('node-panel').classList.remove('hidden');
     $('node-form').classList.add('hidden');
     $('node-view').classList.remove('hidden');
-    $('node-type').textContent = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' }[n.type] || n.type;
+    $('node-type-label').textContent = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' }[n.type] || n.type;
+    const nc = NODE_COLORS[n.type] || '#60a5fa';
+    $('node-swatch').style.background = nc;
+    $('node-panel').style.setProperty('--node-c', nc);
     $('node-label').textContent = n.label;
     $('node-desc').textContent = n.description || '';
     $('node-meta').textContent = 'sila ' + (n.strength || 1).toFixed(0);
@@ -793,7 +816,7 @@ async function selectNode(n) {
         $('node-meta').textContent = meta.join(' · ');
 
         $('node-neighbors').innerHTML = data.neighbors.map(
-            (m) => '<span class="chip" data-id="' + m.id + '">' + esc(m.label) + '</span>'
+            (m) => '<button type="button" class="chip" data-id="' + m.id + '">' + esc(m.label) + '</button>'
         ).join('') || '<span class="hist">žiadne</span>';
 
         $('node-neighbors').querySelectorAll('.chip').forEach((chip) => {
@@ -820,10 +843,10 @@ function zoomBy(factor) {
 }
 
 const TYPE_GLYPHS = {
-    core: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 0l1.6 4.2L13 3l-2.6 3.5L13 11l-4.4-1.2L7 14l-1.6-4.2L1 11l2.6-4.5L1 3l4.4 1.2z" fill="#a78bfa"/></svg>',
-    skill: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#8ea2ff"/></svg>',
-    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1l6 6-6 6-6-6z" fill="#8ea2ff"/></svg>',
-    project: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M10.5 1l3 6-3 6h-7l-3-6 3-6z" fill="#8ea2ff" transform="rotate(90 7 7)"/></svg>',
+    core: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 0l1.6 4.2L13 3l-2.6 3.5L13 11l-4.4-1.2L7 14l-1.6-4.2L1 11l2.6-4.5L1 3l4.4 1.2z" fill="#8b7cf6"/></svg>',
+    skill: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#34d399"/></svg>',
+    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1l6 6-6 6-6-6z" fill="#60a5fa"/></svg>',
+    project: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M10.5 1l3 6-3 6h-7l-3-6 3-6z" fill="#f0a35e" transform="rotate(90 7 7)"/></svg>',
 };
 
 function buildLegend() {
@@ -865,16 +888,21 @@ async function refreshStats() {
     ).join('') || '<div class="hist">zatiaľ nič</div>';
 
     const gc = $('growth-chart');
+    const dpr = window.devicePixelRatio || 1;
+    if (gc.clientWidth > 0) {
+        gc.width = gc.clientWidth * dpr;
+        gc.height = 60 * dpr;
+    }
     const gctx = gc.getContext('2d');
     gctx.clearRect(0, 0, gc.width, gc.height);
     if (st.growth.length) {
         const max = Math.max(...st.growth.map((g) => g.count));
         const bw = gc.width / Math.max(st.growth.length, 10);
         st.growth.forEach((g, i) => {
-            const h = (g.count / max) * (gc.height - 6);
-            gctx.fillStyle = '#a78bfa';
-            gctx.globalAlpha = 0.85;
-            gctx.fillRect(i * bw + 1, gc.height - h, Math.max(bw - 2, 2), h);
+            const h = (g.count / max) * (gc.height - 6 * dpr);
+            gctx.fillStyle = '#3b82f6';
+            gctx.globalAlpha = 0.9;
+            gctx.fillRect(i * bw + dpr, gc.height - h, Math.max(bw - 2 * dpr, 2), h);
         });
     }
 
@@ -900,6 +928,7 @@ function stopReplay() {
     S.replay.on = false;
     S.replay.t = 1;
     $('tl-range').value = 1000;
+    syncSlider($('tl-range'));
     $('tl-play').textContent = 'play_arrow';
     updateTimelineLabel();
 }
@@ -907,7 +936,9 @@ function stopReplay() {
 function setupTimeline() {
     const range = $('tl-range');
 
+    syncSlider(range);
     range.addEventListener('input', () => {
+        syncSlider(range);
         S.replay.t = +range.value / 1000;
         S.replay.on = S.replay.t < 1;
         S.replay.playing = false;
@@ -1045,7 +1076,11 @@ function addMsg(cls, text) {
     log.classList.remove('hidden');
     const div = document.createElement('div');
     div.className = 'msg ' + cls;
-    div.textContent = text;
+    if (cls.indexOf('thinking') !== -1) {
+        div.innerHTML = '<span class="dot">·</span><span class="dot">·</span><span class="dot">·</span>';
+    } else {
+        div.textContent = text;
+    }
     log.appendChild(div);
     log.scrollTop = 1e9;
     return div;
@@ -1060,6 +1095,11 @@ function collapsePrompt() {
 function setupPrompt() {
     const bar = $('prompt');
     const input = $('prompt-input');
+    const form = $('prompt-form');
+
+    const syncSend = () => form.classList.toggle('has-text', input.value.trim().length > 0);
+    input.addEventListener('input', syncSend);
+    syncSend();
 
     const open = () => {
         bar.classList.add('open');
@@ -1068,11 +1108,12 @@ function setupPrompt() {
 
     input.addEventListener('focus', open);
 
-    $('prompt-form').addEventListener('submit', async (e) => {
+    form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const text = input.value.trim();
         if (!text) return;
         input.value = '';
+        syncSend();
         open();
 
         if (text.startsWith('/')) {
@@ -1097,7 +1138,7 @@ function setupPrompt() {
             chatHistory.push({ role: 'assistant', content: reply });
         } catch (err) {
             thinking.remove();
-            addMsg('sys', 'Spojenie s vedomím zlyhalo.');
+            addMsg('sys sys--error', 'Spojenie s vedomím zlyhalo.');
         }
     });
 }
@@ -1143,7 +1184,17 @@ function showToast(text, nodeId) {
     const wrap = $('toasts');
     const el = document.createElement('div');
     el.className = 'toast';
-    el.innerHTML = '<span class="ms" aria-hidden="true">auto_awesome</span><span>' + esc(text) + '</span>';
+    const parts = String(text).split(/:\s(.+)/);
+    el.innerHTML = parts.length > 1
+        ? '<span class="ms" aria-hidden="true">auto_awesome</span><span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
+        : '<span class="ms" aria-hidden="true">auto_awesome</span><span>' + esc(text) + '</span>';
+
+    const leave = (node) => {
+        node.classList.add('leaving');
+        setTimeout(() => node.remove(), REDUCED_MOTION ? 0 : 200);
+    };
+    const arm = () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 5200); };
+
     el.onclick = () => {
         const n = nodeId ? S.byId.get(nodeId) : null;
         if (n) {
@@ -1151,14 +1202,14 @@ function showToast(text, nodeId) {
             focusNode(n);
             selectNode(n);
         }
-        el.remove();
+        leave(el);
     };
+    el.addEventListener('mouseenter', () => clearTimeout(el._t));
+    el.addEventListener('mouseleave', () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 2500); });
+
     wrap.appendChild(el);
     while (wrap.children.length > 3) wrap.firstChild.remove();
-    setTimeout(() => {
-        el.classList.add('leaving');
-        setTimeout(() => el.remove(), 450);
-    }, 5200);
+    arm();
 }
 
 const SHORTCUTS = [
@@ -1174,13 +1225,24 @@ const SHORTCUTS = [
     ['Esc', 'Zavrieť panely'],
 ];
 
+let helpReturnFocus = null;
+
 function toggleHelp(show) {
     const el = $('help-overlay');
     const target = show === undefined ? el.classList.contains('hidden') : show;
     el.classList.toggle('hidden', !target);
     if (target && !$('help-body').children.length) {
-        $('help-body').innerHTML = SHORTCUTS.map(([k, d]) =>
-            '<div class="key-row"><span>' + d + '</span><kbd>' + k + '</kbd></div>').join('');
+        $('help-body').innerHTML = SHORTCUTS.map(([k, d]) => {
+            const caps = k.split(/\s*\/\s*/).map((x) => '<kbd>' + x + '</kbd>').join('<span class="sep">/</span>');
+            return '<div class="key-row"><span class="label">' + d + '</span><span>' + caps + '</span></div>';
+        }).join('');
+    }
+    if (target) {
+        helpReturnFocus = document.activeElement;
+        $('help-close').focus();
+    } else if (helpReturnFocus) {
+        helpReturnFocus.focus();
+        helpReturnFocus = null;
     }
 }
 
@@ -1235,14 +1297,17 @@ function setupHints() {
     const el = $('hint');
     let i = 0;
 
+    const finish = () => {
+        el.classList.add('hidden');
+        localStorage.setItem('hades.hints', 'done');
+    };
+
     const show = () => {
-        if (i >= HINTS.length) {
-            el.classList.add('hidden');
-            localStorage.setItem('hades.hints', 'done');
-            return;
-        }
+        if (i >= HINTS.length) { finish(); return; }
         const h = HINTS[i];
         $('hint-text').textContent = h.text;
+        const step = $('hint-step');
+        if (step) step.textContent = (i + 1) + ' / ' + HINTS.length;
         $('hint-next').textContent = i === HINTS.length - 1 ? 'Hotovo' : 'Ďalej';
         el.style.left = ''; el.style.top = ''; el.style.bottom = ''; el.style.transform = '';
         Object.assign(el.style, h.pos);
@@ -1250,6 +1315,8 @@ function setupHints() {
     };
 
     $('hint-next').onclick = () => { i++; show(); };
+    const skip = $('hint-skip');
+    if (skip) skip.onclick = finish;
     show();
 }
 
@@ -1300,8 +1367,8 @@ function renderSearch(q) {
         .slice(0, 8);
 
     $('search-results').innerHTML = matches.map((n) =>
-        '<div class="search-item" data-id="' + n.id + '"><span>' + esc(n.label)
-        + '</span><span class="sub">' + typeNames[n.type] + '</span></div>'
+        '<button type="button" class="search-item" data-id="' + n.id + '"><span>' + esc(n.label)
+        + '</span><span class="sub">' + typeNames[n.type] + '</span></button>'
     ).join('') || (query ? '<div class="hist">Žiadny uzol nezodpovedá hľadaniu.</div>' : '');
 
     $('search-results').querySelectorAll('.search-item').forEach((el) => {
@@ -1337,9 +1404,10 @@ function setupControls() {
     $('zoom-in').onclick = () => zoomBy(1.3);
     $('zoom-out').onclick = () => zoomBy(1 / 1.3);
     $('zoom-reset').onclick = () => { S.cam = { x: 0, y: 0, k: 0.85 }; };
+    $('brand-core').onclick = () => { S.cam = { x: 0, y: 0, k: 0.85 }; };
 
     document.querySelectorAll('input[data-opt]').forEach((inp) => {
-        inp.oninput = () => setOpt(inp.dataset.opt, parseFloat(inp.value));
+        inp.oninput = () => { syncSlider(inp); setOpt(inp.dataset.opt, parseFloat(inp.value)); };
     });
 
     $('opts-reset').onclick = () => {

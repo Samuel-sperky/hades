@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hades — AI mind</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%23a78bfa'/><circle cx='50' cy='50' r='45' fill='none' stroke='%23a78bfa' stroke-opacity='.4' stroke-width='4'/></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%233b82f6'/><circle cx='50' cy='50' r='45' fill='none' stroke='%233b82f6' stroke-opacity='.4' stroke-width='4'/></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=swap">
     <link rel="stylesheet" href="/css/mind.css">
@@ -13,11 +13,11 @@
     <canvas id="mind"></canvas>
 
     <nav id="rail" aria-label="Hlavná navigácia">
-        <div id="brand-core" title="Hades">
+        <button id="brand-core" type="button" title="Hades" aria-label="Hades — vycentrovať">
             <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
                 <path d="M12 2l2.2 5.8L20 6.4l-3.6 4.9L20 17.6l-6-1.7L12 22l-2-6.1-6 1.7 3.6-6.3L4 6.4l5.8 1.4z" fill="currentColor"/>
             </svg>
-        </div>
+        </button>
 
         <div class="rail-group" role="group" aria-label="Sekcie">
             <button id="btn-search" class="ms" title="Vyhľadať uzol (F)" aria-label="Vyhľadať uzol">search</button>
@@ -106,30 +106,30 @@
             <button class="close ms" id="node-close" aria-label="Zavrieť">close</button>
         </div>
         <div id="node-view">
-            <span id="node-type" class="badge"></span>
+            <span id="node-type" class="badge"><span id="node-swatch" class="swatch" aria-hidden="true"></span><span id="node-type-label"></span></span>
             <p id="node-meta"></p>
             <p id="node-desc"></p>
             <h3>Spojenia</h3>
             <div id="node-neighbors"></div>
             <h3>História</h3>
             <div id="node-history"></div>
-            <div class="row">
-                <button id="node-edit">Upraviť</button>
-                <button id="node-delete" class="danger">Zmazať</button>
+            <div class="row node-actions">
+                <button id="node-edit" class="primary">Upraviť</button>
+                <button id="node-delete" class="danger ms" aria-label="Zmazať">delete</button>
             </div>
         </div>
         <div id="node-form" class="hidden">
             <label>Názov<input id="edit-label" maxlength="255"></label>
             <label>Popis<textarea id="edit-desc" rows="5"></textarea></label>
             <div class="row">
-                <button id="edit-save">Uložiť</button>
+                <button id="edit-save" class="primary">Uložiť</button>
                 <button id="edit-cancel">Zrušiť</button>
             </div>
         </div>
     </aside>
 
     <div id="timeline" class="hidden">
-        <button id="tl-play" class="ms" title="Prehrať rast vedomia" aria-label="Prehrať rast vedomia">play_arrow</button>
+        <button id="tl-play" class="ms primary" title="Prehrať rast vedomia" aria-label="Prehrať rast vedomia">play_arrow</button>
         <input type="range" id="tl-range" min="0" max="1000" value="1000" aria-label="Časová os">
         <span id="tl-label">teraz</span>
     </div>
@@ -145,14 +145,14 @@
         <form id="prompt-form">
             <span class="ms spark" aria-hidden="true">auto_awesome</span>
             <input id="prompt-input" placeholder="Opýtaj sa Hadesa…  ( / pre príkazy )" autocomplete="off" aria-label="Správa pre Hadesa">
-            <button type="submit" class="ms" aria-label="Odoslať">send</button>
+            <button type="submit" class="ms send-btn" aria-label="Odoslať">send</button>
         </form>
     </div>
 
     <div id="toasts" aria-live="polite"></div>
     <div id="hover-card" class="hidden" role="tooltip"></div>
 
-    <div id="help-overlay" class="hidden" role="dialog" aria-label="Klávesové skratky">
+    <div id="help-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Klávesové skratky">
         <div id="help-card">
             <div class="dock-head">
                 <h2>Klávesové skratky</h2>
@@ -162,9 +162,13 @@
         </div>
     </div>
 
-    <div id="hint" class="hidden">
+    <div id="hint" class="hidden" role="dialog" aria-label="Nápoveda">
         <p id="hint-text"></p>
-        <button id="hint-next">Ďalej</button>
+        <div class="hint-foot">
+            <button id="hint-skip" class="ghost" type="button">Preskočiť</button>
+            <span id="hint-step" class="step"></span>
+            <button id="hint-next" class="primary" type="button">Ďalej</button>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
