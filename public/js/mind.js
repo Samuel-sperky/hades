@@ -2,7 +2,6 @@
 (() => {
 'use strict';
 
-const CORE_COLOR = '#b88a3a';
 const AREA_RADIUS = 460;
 
 // Farby uzlov (identita) — zladene s CSS --node-* tokenmi (Aura paleta)
@@ -36,10 +35,52 @@ const S = {
     dim: 1,
     activations: [],
     replay: { on: false, t: 1, playing: false, tMin: 0, tMax: 0 },
-    sound: localStorage.getItem('hades.sound') !== 'off',
-    audio: null,
     view: localStorage.getItem('hades.view') || 'map',
 };
+
+/* ---------- téma (svetlá / tmavá) ---------- */
+
+// Canvas farby čítané z CSS tokenov, aby sa plátno prefarbilo spolu s chrome.
+const THEME = {};
+
+function loadTheme() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name, fb) => (cs.getPropertyValue(name).trim() || fb);
+
+    THEME.bg = v('--canvas-bg', '#f8f4f7');
+    THEME.edgeRgb = v('--canvas-edge-rgb', '3,121,126').replace(/\s+/g, '');
+    THEME.strokeRgb = v('--canvas-node-stroke', '16,29,27').replace(/\s+/g, '');
+    THEME.strokeAlpha = v('--canvas-node-stroke-alpha', '0.22');
+    THEME.haloRgb = v('--canvas-label-halo', '248,244,247').replace(/\s+/g, '');
+    THEME.text = v('--text', '#101d1b');
+    THEME.muted = v('--muted', '#566964');
+    THEME.plexusA = v('--canvas-plexus-a', '120,170,168').split(',').map(Number);
+    THEME.plexusB = v('--canvas-plexus-b', '3,121,126').split(',').map(Number);
+
+    NODE_COLORS.core = v('--node-core', '#b88a3a');
+    NODE_COLORS.skill = v('--node-skill', '#03797e');
+    NODE_COLORS.memory = v('--node-memory', '#2f6d8f');
+    NODE_COLORS.project = v('--node-project', '#c2761c');
+    Object.assign(VIEW_LAYER_COLORS, NODE_COLORS);
+}
+
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('hades.theme', theme);
+    const btn = document.getElementById('btn-theme');
+    if (btn) btn.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
+    loadTheme();
+}
+
+function toggleTheme() {
+    applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+}
+
+function initTheme() {
+    const stored = localStorage.getItem('hades.theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(stored || (prefersDark ? 'dark' : 'light'));
+}
 
 const VIEW_LAYER_COLORS = {
     memory: '#2f6d8f',
@@ -97,19 +138,21 @@ function nodeColor(n) {
     if (S.view === 'layers') {
         return VIEW_LAYER_COLORS[n.type] || '#566964';
     }
-    if (n.type === 'core') return CORE_COLOR;
+    if (n.type === 'core') return NODE_COLORS.core;
     const area = S.areas.get(n.area_id);
-    return area ? area.color : '#566964';
+    return area ? area.color : (THEME.muted || '#566964');
 }
 
 // Gradient plexus pozadia: fialova (vlavo) -> smaragdova (vpravo), ako referencny vizual
 // Tlmena technicka paleta: bridlicova indigo (vlavo) -> teal (vpravo)
 function plexusColor(x) {
     const t = Math.max(0, Math.min(1, (x + 1300) / 2600));
-    const r = Math.round(120 + (3 - 120) * t);
-    const g = Math.round(170 + (121 - 170) * t);
-    const b = Math.round(168 + (126 - 168) * t);
-    return r + ',' + g + ',' + b;
+    const a = THEME.plexusA || [120, 170, 168];
+    const b = THEME.plexusB || [3, 121, 126];
+    const r = Math.round(a[0] + (b[0] - a[0]) * t);
+    const g = Math.round(a[1] + (b[1] - a[1]) * t);
+    const bl = Math.round(a[2] + (b[2] - a[2]) * t);
+    return r + ',' + g + ',' + bl;
 }
 
 const LAYER_X = [-560, -280, 0, 280, 560];
@@ -205,33 +248,6 @@ function markAwake() {
 
 function isAwake() {
     return now() < S.awakeUntil;
-}
-
-/* ---------- zvuk ---------- */
-
-function audioCtx() {
-    if (!S.audio) {
-        S.audio = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (S.audio.state === 'suspended') S.audio.resume();
-    return S.audio;
-}
-
-function blip(freq, dur = 0.35, vol = 0.05) {
-    if (!S.sound) return;
-    try {
-        const ac = audioCtx();
-        const osc = ac.createOscillator();
-        const gain = ac.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, ac.currentTime);
-        gain.gain.linearRampToValueAtTime(vol, ac.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
-        osc.connect(gain).connect(ac.destination);
-        osc.start();
-        osc.stop(ac.currentTime + dur + 0.05);
-    } catch (e) { /* zvuk nie je kritický */ }
 }
 
 /* ---------- pulzy ---------- */
@@ -380,7 +396,7 @@ function draw() {
     S.dim += (targetDim - S.dim) * 0.02;
 
     ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
-    ctx.fillStyle = '#f8f4f7';
+    ctx.fillStyle = THEME.bg || '#f8f4f7';
     ctx.fillRect(0, 0, S.w, S.h);
 
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
@@ -395,7 +411,7 @@ function draw() {
         // jemna technicka mriezka (world-space, hyba sa so sietou)
         const _step = 240, _ext = 1400;
         ctx.lineWidth = 0.5 * invK;
-        ctx.strokeStyle = 'rgba(3,121,126,' + (0.035 * S.dim * bgLevel) + ')';
+        ctx.strokeStyle = 'rgba(' + THEME.edgeRgb + ',' + (0.035 * S.dim * bgLevel) + ')';
         ctx.beginPath();
         for (let gx = -_ext; gx <= _ext; gx += _step) { ctx.moveTo(gx, -_ext); ctx.lineTo(gx, _ext); }
         for (let gy = -_ext; gy <= _ext; gy += _step) { ctx.moveTo(-_ext, gy); ctx.lineTo(_ext, gy); }
@@ -435,7 +451,7 @@ function draw() {
 
             ctx.globalAlpha = base * 0.5;
             ctx.lineWidth = 0.5 * invK;
-            ctx.strokeStyle = 'rgba(3,121,126,1)';
+            ctx.strokeStyle = 'rgba(' + THEME.edgeRgb + ',1)';
             ctx.beginPath();
             ctx.arc(s.x, s.y, rr * 2.2, 0, 7);
             ctx.stroke();
@@ -454,7 +470,7 @@ function draw() {
         ctx.arc(a.x, a.y, 260, 0, 7);
         ctx.fill();
         ctx.globalAlpha = 0.28 * S.dim;
-        ctx.fillStyle = '#566964';
+        ctx.fillStyle = THEME.muted || '#566964';
         ctx.font = '600 13px "Geist Mono", ui-monospace, monospace';
         ctx.textAlign = 'center';
         ctx.fillText(area.name.toUpperCase(), a.x, a.y - 230);
@@ -471,7 +487,7 @@ function draw() {
                 if (!visibleInReplay(a)) continue;
                 for (const b of layers[li + 1]) {
                     if (!visibleInReplay(b)) continue;
-                    ctx.strokeStyle = 'rgba(3,121,126,' + (0.12 * S.dim * S.opts.edgeAlpha) + ')';
+                    ctx.strokeStyle = 'rgba(' + THEME.edgeRgb + ',' + (0.12 * S.dim * S.opts.edgeAlpha) + ')';
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
@@ -485,7 +501,7 @@ function draw() {
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
             const alpha = Math.min(0.30,
                 Math.min(0.24, 0.12 + 0.06 * Math.log2(1 + (e.weight || 1))) * S.dim * S.opts.edgeAlpha);
-            ctx.strokeStyle = 'rgba(3,121,126,' + alpha + ')';
+            ctx.strokeStyle = 'rgba(' + THEME.edgeRgb + ',' + alpha + ')';
             ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
             ctx.beginPath();
             ctx.moveTo(e.source.x, e.source.y);
@@ -570,7 +586,7 @@ function draw() {
         // ink hairline obrys pre cistu "gem" definiciu na papieri
         ctx.globalAlpha = Math.min(0.9, (0.5 + flash) * S.dim);
         ctx.lineWidth = Math.max(1, 0.8 / S.cam.k);
-        ctx.strokeStyle = 'rgba(16,29,27,0.22)';
+        ctx.strokeStyle = 'rgba(' + THEME.strokeRgb + ',' + THEME.strokeAlpha + ')';
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, 7);
         ctx.stroke();
@@ -580,7 +596,8 @@ function draw() {
 
     ctx.globalCompositeOperation = 'source-over';
 
-    const showLabels = S.cam.k > 0.55 && S.opts.labelAlpha > 0.02;
+    // Popisky sa zobrazujú len pri hover/označení uzla — najčistejšie plátno.
+    const showLabels = false;
     const candidates = [];
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
@@ -609,9 +626,9 @@ function draw() {
             (isHover ? 0.98 : Math.min(0.72, (S.cam.k - 0.5) * 1.6)) * S.dim * S.opts.labelAlpha);
         ctx.lineWidth = Math.max(2.5, fontSize * 0.28);
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(248, 244, 247, 0.9)';
+        ctx.strokeStyle = 'rgba(' + THEME.haloRgb + ', 0.9)';
         ctx.strokeText(n.label, n.x, y);
-        ctx.fillStyle = '#101d1b';
+        ctx.fillStyle = THEME.text || '#101d1b';
         ctx.fillText(n.label, n.x, y);
     }
     ctx.globalAlpha = 1;
@@ -826,6 +843,19 @@ async function selectNode(n) {
         meta.push('sila ' + data.node.strength.toFixed(0));
         $('node-meta').textContent = meta.join(' · ');
 
+        const fileBtn = $('node-file');
+        const path = data.node.file_path;
+        if (path) {
+            $('node-file-path').textContent = path;
+            fileBtn.classList.remove('hidden');
+            fileBtn.onclick = () => {
+                navigator.clipboard?.writeText(path);
+                showToast('Cesta skopírovaná: ' + path);
+            };
+        } else {
+            fileBtn.classList.add('hidden');
+        }
+
         $('node-neighbors').innerHTML = data.neighbors.map(
             (m) => '<button type="button" class="chip" data-id="' + m.id + '">' + esc(m.label) + '</button>'
         ).join('') || '<span class="hist">žiadne</span>';
@@ -1006,7 +1036,6 @@ function handlePulse(type, data) {
         buildSim();
         kickSim(0.5);
         spawnPulse(hadesNode(), n, { speed: 1.4 });
-        blip(520);
         showToast('Naučil som sa: ' + n.label, n.id);
     }
 
@@ -1018,7 +1047,6 @@ function handlePulse(type, data) {
         const from = neighborsOf(n)[0] || hadesNode();
         spawnPulse(from, n, { speed: 1.6 });
         kickSim(0.12);
-        blip(440);
     }
 
     if (type === 'node.updated' && data.node) {
@@ -1045,7 +1073,6 @@ function handlePulse(type, data) {
         buildSim();
         kickSim(0.2);
         spawnPulse(src, tgt, { speed: 1.2 });
-        blip(660, 0.25, 0.035);
     }
 
     if (type === 'edge.strengthened') {
@@ -1066,8 +1093,6 @@ function handlePulse(type, data) {
             const n = S.byId.get(id);
             if (n) setTimeout(() => { spawnPulse(hadesNode(), n, { speed: 1.8, dim: 0.8 }); }, i * 120);
         });
-        blip(392, 0.5, 0.03);
-        setTimeout(() => blip(523, 0.5, 0.03), 150);
     }
 
     if (type === 'chat') {
@@ -1284,6 +1309,7 @@ function setupShortcuts() {
             case 's': case 'S': openDock('stats'); break;
             case 'l': case 'L': openDock('legend'); break;
             case 't': case 'T': $('btn-timeline').click(); break;
+            case 'd': case 'D': toggleTheme(); break;
             case 'c': case 'C':
                 e.preventDefault();
                 $('prompt').classList.add('open');
@@ -1428,14 +1454,8 @@ function setupControls() {
         applyOpts();
     };
 
-    const soundBtn = $('btn-sound');
-    soundBtn.textContent = S.sound ? 'volume_up' : 'volume_off';
-    soundBtn.onclick = () => {
-        S.sound = !S.sound;
-        localStorage.setItem('hades.sound', S.sound ? 'on' : 'off');
-        soundBtn.textContent = S.sound ? 'volume_up' : 'volume_off';
-        if (S.sound) blip(523);
-    };
+    const themeBtn = $('btn-theme');
+    if (themeBtn) themeBtn.onclick = toggleTheme;
 
     $('btn-ambient').onclick = () => {
         document.body.classList.add('ambient');
@@ -1494,6 +1514,7 @@ function setupControls() {
 /* ---------- štart ---------- */
 
 async function init() {
+    initTheme();
     resize();
     makeStars();
     window.addEventListener('resize', resize);

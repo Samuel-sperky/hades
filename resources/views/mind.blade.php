@@ -28,7 +28,7 @@
         </div>
 
         <div class="rail-group bottom" role="group" aria-label="Systém">
-            <button id="btn-sound" class="ms" title="Zvuk" aria-label="Zvuk">volume_up</button>
+            <button id="btn-theme" class="ms" title="Svetlá / tmavá téma (D)" aria-label="Prepnúť tému">dark_mode</button>
             <button id="btn-ambient" class="ms" title="Ambient režim" aria-label="Ambient režim">fullscreen</button>
             <button id="btn-settings" class="ms" title="Nastavenia zobrazenia" aria-label="Nastavenia zobrazenia">tune</button>
         </div>
@@ -110,6 +110,9 @@
             <span id="node-type" class="badge"><span id="node-swatch" class="swatch" aria-hidden="true"></span><span id="node-type-label"></span></span>
             <p id="node-meta"></p>
             <p id="node-desc"></p>
+            <button id="node-file" type="button" class="node-file hidden" title="Skopírovať cestu k .md súboru">
+                <span class="ms" aria-hidden="true">description</span><code id="node-file-path"></code>
+            </button>
             <h3>Spojenia</h3>
             <div id="node-neighbors"></div>
             <h3>História</h3>

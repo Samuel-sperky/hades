@@ -76,6 +76,15 @@
     --node-project: #c2761c;              /* warm amber, darker than --warn for fill legibility */
     --node-relation: #05bcc4;             /* accent2 cyan */
 
+    /* ---- canvas literals (JS #mind only; theme-aware, read via getComputedStyle) ---- */
+    --canvas-bg: #f8f4f7;                  /* plátno = paper */
+    --canvas-edge-rgb: 3, 121, 126;        /* hrany / mriežka / prstence (teal) */
+    --canvas-node-stroke: 16, 29, 27;      /* ink hairline obrys uzla */
+    --canvas-node-stroke-alpha: 0.22;
+    --canvas-label-halo: 248, 244, 247;    /* halo za popiskom = bg */
+    --canvas-plexus-a: 120, 170, 168;      /* plexus gradient vľavo */
+    --canvas-plexus-b: 3, 121, 126;        /* plexus gradient vpravo */
+
     /* ---- radius set (Aura 8/10/14 ladder) ---- */
     --r-sm: 8px;
     --r-md: 10px;
@@ -147,21 +156,86 @@
     --z-overlay: 50;
 }
 
-/* Future dark toggle — tokens are the only switch point, no selector renames.
-   Ships disabled; enable by stamping data-theme="dark" on :root.
-   :root[data-theme="dark"] {
-     --bg-rgb: 5, 6, 15; --panel-rgb: 8, 10, 20; --panel-alpha: .80;
-     --border: rgba(255,255,255,.10); --border-strong: rgba(255,255,255,.16);
-     --top-rim: rgba(255,255,255,.07); --hover-fill: rgba(255,255,255,.06);
-     --surface-subtle: rgba(255,255,255,.09); --scroll-thumb: rgba(255,255,255,.16);
-     --field-bg: rgba(5,6,15,.55); --surface-2: #0b0d18; --scrim: rgba(5,6,15,.55);
-     --text: #e6eaf6; --text-secondary: #c3c8de; --muted: #9aa3c7; --muted-strong: #b6bfe0;
-     --accent: #05bcc4; --accent-600: #03797e; --accent-rgb: 5, 188, 196;
-     --accent-soft: rgba(5,188,196,.16); --accent-softer: rgba(5,188,196,.10);
-     --accent-press: rgba(5,188,196,.24); --border-accent: rgba(5,188,196,.5);
-     --elev-1: 0 2px 8px rgba(0,0,0,.32), inset 0 1px 0 var(--top-rim);
-     --node-core: #d8b878; ... reuse original dark values.
-   } */
+/* ---------------------------------------------------------------------------
+   DARK THEME — stamped as data-theme="dark" on :root (toggle v raile).
+   Prepisuje len token HODNOTY; žiadne premenované selektory. „Obsidian" noc.
+   --------------------------------------------------------------------------- */
+:root[data-theme="dark"] {
+    /* background & surface */
+    --bg-rgb: 6, 8, 16;                    /* obsidian #060810 */
+    --panel-rgb: 14, 17, 28;              /* raised night surface */
+    --panel-alpha: 0.82;
+    --panel-solid: rgb(var(--panel-rgb));
+    --surface-2: #0e1220;
+    --field-bg: #0e1220;
+    --scrim: rgba(3, 5, 12, .55);
+
+    /* borders & neutral interactive surfaces */
+    --border: rgba(255, 255, 255, .10);
+    --border-strong: rgba(255, 255, 255, .17);
+    --line-soft: rgba(255, 255, 255, .06);
+    --top-rim: rgba(255, 255, 255, .06);
+    --hover-fill: rgba(255, 255, 255, .06);
+    --surface-subtle: rgba(5, 188, 196, .12);
+    --scroll-thumb: rgba(255, 255, 255, .16);
+
+    /* text roles */
+    --text: #e7ecf7;
+    --text-secondary: #c2c9de;
+    --muted: #8b95b4;
+    --muted-strong: #b4bcd6;
+    --on-accent: #04262a;
+
+    /* teal accent ramp — brighter on dark */
+    --accent-300: #4fe3e8;
+    --accent-400: #22cfd6;
+    --accent: #12c2c9;
+    --accent-600: #0a9aa0;
+    --accent-rgb: 18, 194, 201;
+    --accent-soft: rgba(18, 194, 201, .16);
+    --accent-softer: rgba(18, 194, 201, .10);
+    --accent-press: rgba(18, 194, 201, .26);
+    --border-accent: rgba(18, 194, 201, .5);
+    --focus-ring: 0 0 0 3px rgba(18, 194, 201, .34);
+    --glow-accent: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 20px -8px rgba(18, 194, 201, .5);
+    --glow-accent-lg: 0 10px 30px -10px rgba(18, 194, 201, .45);
+
+    /* reserved gold (brand/core) — luminous on night */
+    --gold: #e6c179;
+    --brand-gold: #f0d59a;
+    --gold-text: #e6c179;
+    --gold-soft: rgba(230, 193, 121, .16);
+    --glow-gold: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px -10px rgba(230, 193, 121, .55);
+
+    /* semantic */
+    --success: #34d399; --success-soft: rgba(52, 211, 153, .16);
+    --danger: #f87171; --danger-rgb: 248, 113, 113;
+    --danger-soft: rgba(248, 113, 113, .16);
+    --danger-border: rgba(248, 113, 113, .40); --danger-border-hover: rgba(248, 113, 113, .66);
+    --warn: #fbbf24;
+
+    /* canvas identity — brighter fills for legibility on obsidian */
+    --node-core: #e6c179;
+    --node-skill: #12c2c9;
+    --node-memory: #5aa9d6;
+    --node-project: #e0912f;
+    --node-relation: #4fe3e8;
+
+    /* canvas literals */
+    --canvas-bg: #060810;
+    --canvas-edge-rgb: 18, 194, 201;
+    --canvas-node-stroke: 220, 232, 255;
+    --canvas-node-stroke-alpha: 0.18;
+    --canvas-label-halo: 6, 8, 16;
+    --canvas-plexus-a: 92, 96, 168;
+    --canvas-plexus-b: 18, 194, 201;
+
+    /* elevation — deeper shadows on night */
+    --elev-1: 0 2px 8px rgba(0, 0, 0, .38), inset 0 1px 0 var(--top-rim);
+    --elev-2: 0 2px 8px rgba(0, 0, 0, .34), 0 12px 30px -16px rgba(0, 0, 0, .6), inset 0 1px 0 var(--top-rim);
+    --elev-3: 0 4px 10px rgba(0, 0, 0, .4), 0 30px 64px -24px rgba(0, 0, 0, .7), inset 0 1px 0 var(--top-rim);
+    --elev-tooltip: 0 4px 10px rgba(0, 0, 0, .4), 0 16px 34px -18px rgba(0, 0, 0, .6), inset 0 1px 0 var(--top-rim);
+}
 
 /* ---------------------------------------------------------------------------
    RESET & BASE
@@ -1188,4 +1262,33 @@ body.ambient #toasts {
         transition-duration: .01ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+/* ---------------------------------------------------------------------------
+   NODE FILE PATH — odkaz na .md zrkadlo uzla (Časť 1)
+   --------------------------------------------------------------------------- */
+.node-file {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    width: 100%;
+    margin-top: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--muted-strong);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+}
+.node-file:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent); }
+.node-file .ms { font-size: var(--icon-sm); flex: none; }
+.node-file code {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
