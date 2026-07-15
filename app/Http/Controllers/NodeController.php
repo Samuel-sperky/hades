@@ -31,6 +31,14 @@ class NodeController extends Controller
             ->limit(20)
             ->get(['kind', 'session_key', 'created_at']);
 
+        // Aktivita uzla v čase (30 dní) pre sparkline v paneli
+        $activity = $node->activations()
+            ->where('created_at', '>=', now()->subDays(30))
+            ->selectRaw('DATE(created_at) as day, COUNT(*) as count')
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get();
+
         return response()->json([
             'node' => $node->toApi() + [
                 'area_name' => $node->area?->name,
@@ -39,6 +47,7 @@ class NodeController extends Controller
             ],
             'neighbors' => $neighbors,
             'activations' => $activations,
+            'activity' => $activity,
         ]);
     }
 

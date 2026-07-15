@@ -72,6 +72,49 @@ class MindController extends Controller
         ]);
     }
 
+    /**
+     * Denný súhrn — čo sa Hades naučil/aktivoval dnes a za týždeň.
+     */
+    public function summary(): JsonResponse
+    {
+        $today = now()->startOfDay();
+        $week = now()->subDays(7);
+
+        $recent = Node::where('type', '!=', 'core')
+            ->where('created_at', '>=', $week)
+            ->with('area')
+            ->latest('created_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (Node $n) => [
+                'id' => $n->id,
+                'label' => $n->label,
+                'type' => $n->type,
+                'area' => $n->area?->name,
+                'created_at' => $n->created_at?->toIso8601String(),
+            ]);
+
+        $weekByArea = Node::select('area_id', DB::raw('COUNT(*) as count'))
+            ->where('created_at', '>=', $week)
+            ->whereNotNull('area_id')
+            ->groupBy('area_id')
+            ->pluck('count', 'area_id');
+
+        return response()->json([
+            'today' => [
+                'learned' => Node::where('created_at', '>=', $today)->count(),
+                'activations' => Activation::where('created_at', '>=', $today)->count(),
+                'active_nodes' => Activation::where('created_at', '>=', $today)->distinct('node_id')->count('node_id'),
+            ],
+            'week' => [
+                'learned' => Node::where('created_at', '>=', $week)->count(),
+                'activations' => Activation::where('created_at', '>=', $week)->count(),
+            ],
+            'recent' => $recent,
+            'week_by_area' => $weekByArea,
+        ]);
+    }
+
     protected function state(): array
     {
         $lastActivation = Activation::latest('created_at')->first();

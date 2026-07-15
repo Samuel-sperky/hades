@@ -878,6 +878,8 @@ async function selectNode(n) {
             fileBtn.classList.add('hidden');
         }
 
+        renderNodeDashboard(data);
+
         $('node-neighbors').innerHTML = data.neighbors.map(
             (m) => '<button type="button" class="chip" data-id="' + m.id + '">' + esc(m.label) + '</button>'
         ).join('') || '<span class="hist">žiadne</span>';
@@ -934,7 +936,89 @@ function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function renderNodeDashboard(data) {
+    const n = data.node;
+    const act = data.activity || [];
+    const sumAct = act.reduce((a, s) => a + (s.count || 0), 0);
+    const created = n.created_at
+        ? new Date(n.created_at).toLocaleDateString('sk', { day: 'numeric', month: 'short', year: 'numeric' })
+        : '—';
+
+    const cell = (val, label) => '<div class="nstat"><span class="nstat-v">' + val
+        + '</span><span class="nstat-k">' + label + '</span></div>';
+
+    $('node-stats').innerHTML =
+        cell((n.strength || 1).toFixed(0), 'sila')
+        + cell(data.neighbors.length, 'spojenia')
+        + cell(sumAct, 'akt./30d')
+        + cell(created, 'vzniklo');
+
+    const wrap = $('node-activity-wrap');
+    if (act.length) {
+        wrap.classList.remove('hidden');
+        drawBars($('node-activity'), act.map((s) => s.count), 40);
+    } else {
+        wrap.classList.add('hidden');
+    }
+}
+
+function drawBars(cv, values, hCss) {
+    const dpr = window.devicePixelRatio || 1;
+    if (cv.clientWidth > 0) { cv.width = cv.clientWidth * dpr; cv.height = hCss * dpr; }
+    const c = cv.getContext('2d');
+    c.clearRect(0, 0, cv.width, cv.height);
+    if (!values.length) return;
+    const max = Math.max(...values, 1);
+    const bw = cv.width / Math.max(values.length, 10);
+    const col = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#03797e';
+    c.fillStyle = col;
+    c.globalAlpha = 0.85;
+    values.forEach((v, i) => {
+        const h = (v / max) * (cv.height - 6 * dpr);
+        c.fillRect(i * bw + dpr, cv.height - h, Math.max(bw - 2 * dpr, 2), h);
+    });
+}
+
+async function refreshSummary() {
+    try {
+        const st = await (await fetch('/api/mind/summary')).json();
+        const cell = (val, label) => '<div class="nstat"><span class="nstat-v">' + val
+            + '</span><span class="nstat-k">' + label + '</span></div>';
+
+        let html = '<div class="node-stats">'
+            + cell(st.today.learned, 'dnes nové')
+            + cell(st.today.activations, 'dnes akcie')
+            + cell(st.week.learned, 'týždeň nové')
+            + '</div>';
+
+        if (st.recent.length) {
+            html += '<div class="summary-recent">' + st.recent.map((n) =>
+                '<button type="button" class="summary-item" data-id="' + n.id + '">'
+                + '<span class="swatch" style="background:' + (colorForArea(n.area) || 'var(--muted)') + '"></span>'
+                + esc(n.label) + '</button>'
+            ).join('') + '</div>';
+        } else {
+            html += '<div class="hist">tento týždeň zatiaľ nič nové</div>';
+        }
+
+        $('stats-summary').innerHTML = html;
+        $('stats-summary').querySelectorAll('.summary-item').forEach((b) => {
+            b.onclick = () => {
+                const t = S.byId.get(+b.dataset.id);
+                if (t) { selectNode(t); focusNode(t); }
+            };
+        });
+    } catch (e) { /* súhrn nie je kritický */ }
+}
+
+function colorForArea(name) {
+    for (const a of S.areas.values()) if (a.name === name) return a.color;
+    return null;
+}
+
 async function refreshStats() {
+    refreshSummary();
+
     const res = await fetch('/api/mind/stats');
     const st = await res.json();
 

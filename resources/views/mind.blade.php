@@ -52,6 +52,9 @@
         </section>
 
         <section id="sec-stats" class="hidden">
+            <h3>Denný súhrn</h3>
+            <div id="stats-summary"></div>
+            <h3>Spolu</h3>
             <div id="stats-totals"></div>
             <h3>Oblasti</h3>
             <div id="stats-areas"></div>
@@ -113,6 +116,11 @@
             <button id="node-file" type="button" class="node-file hidden" title="Skopírovať cestu k .md súboru">
                 <span class="ms" aria-hidden="true">description</span><code id="node-file-path"></code>
             </button>
+            <div id="node-stats" class="node-stats"></div>
+            <div id="node-activity-wrap" class="node-activity-wrap hidden">
+                <span class="node-activity-label">Aktivita (30 dní)</span>
+                <canvas id="node-activity" width="248" height="40"></canvas>
+            </div>
             <h3>Spojenia</h3>
             <div id="node-neighbors"></div>
             <h3>História</h3>
