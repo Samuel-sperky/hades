@@ -1292,3 +1292,51 @@ body.ambient #toasts {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------
+   RESPONSIVE — tablet zúženie panelov, mobil = spodné hárky (Q16)
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+    #dock, #node-panel { width: 264px; }
+}
+
+@media (max-width: 640px) {
+    :root { --edge: 8px; }
+
+    /* dock aj detail uzla ako spodné hárky, mimo ľavého railu */
+    #dock, #node-panel {
+        top: auto;
+        bottom: 78px;
+        left: 72px;
+        right: 8px;
+        width: auto;
+        max-height: 62vh;
+        border-radius: var(--r-lg);
+    }
+    #node-panel {
+        border-left: 1px solid var(--border);
+        border-top: 2px solid var(--node-c, var(--border));
+    }
+
+    /* prompt a časová os na plnú šírku */
+    #prompt {
+        left: 8px; right: 8px;
+        transform: none;
+        width: auto;
+    }
+    #prompt.open { width: auto; }
+    #timeline {
+        left: 72px; right: 8px;
+        bottom: 78px;
+    }
+
+    #zoomctl { bottom: 78px; }
+    #view-switch { top: 8px; }
+}
+
+/* jemné sklo aj pri nízkom paneli — istota čitateľnosti na plátne */
+@supports not (backdrop-filter: blur(1px)) {
+    #rail, #dock, #node-panel, #view-switch, #zoomctl, #timeline, #prompt-form {
+        background: var(--panel-solid);
+    }
+}

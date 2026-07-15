@@ -92,7 +92,7 @@ const VIEW_LAYER_COLORS = {
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const OPT_DEFAULTS = {
-    panelAlpha: 0.92,
+    panelAlpha: 0.86,
     bg: 1,
     edgeAlpha: 1,
     glow: 1,
