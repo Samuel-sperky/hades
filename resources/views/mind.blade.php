@@ -5,85 +5,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hades — AI mind</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%23a78bfa'/><circle cx='50' cy='50' r='45' fill='none' stroke='%23a78bfa' stroke-opacity='.4' stroke-width='4'/></svg>">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=swap">
     <link rel="stylesheet" href="/css/mind.css">
 </head>
 <body>
     <canvas id="mind"></canvas>
 
-    <header id="topbar">
-        <div id="brand">
-            <span id="state-dot" title="Stav vedomia"></span>
-            <h1>Hades</h1>
-            <span id="state-label">…</span>
+    <nav id="rail" aria-label="Hlavná navigácia">
+        <div id="brand-core" title="Hades">
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                <path d="M12 2l2.2 5.8L20 6.4l-3.6 4.9L20 17.6l-6-1.7L12 22l-2-6.1-6 1.7 3.6-6.3L4 6.4l5.8 1.4z" fill="currentColor"/>
+            </svg>
         </div>
-        <div id="controls">
-            <div id="views" role="group" aria-label="Náhľad siete">
-                <button data-view="map" title="Mapa oblastí">Mapa</button>
-                <button data-view="net" title="Voľná sieť">Sieť</button>
-                <button data-view="layers" title="Neurónové vrstvy">Vrstvy</button>
-            </div>
-            <div id="quick-bg-wrap" title="Intenzita pozadia">
-                <span class="ms" aria-hidden="true">blur_on</span>
-                <input type="range" id="quick-bg" data-opt="bg" min="0" max="1.5" step="0.05" aria-label="Intenzita pozadia">
-            </div>
-            <button id="btn-legend" class="ms" title="Legenda" aria-label="Legenda">category</button>
-            <button id="btn-stats" class="ms" title="Štatistiky" aria-label="Štatistiky">monitoring</button>
-            <button id="btn-settings" class="ms" title="Nastavenia zobrazenia" aria-label="Nastavenia zobrazenia">tune</button>
+
+        <div class="rail-group" role="group" aria-label="Sekcie">
+            <button id="btn-search" class="ms" title="Vyhľadať uzol (F)" aria-label="Vyhľadať uzol">search</button>
+            <button id="btn-stats" class="ms" title="Štatistiky (S)" aria-label="Štatistiky">monitoring</button>
+            <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
+            <button id="btn-timeline" class="ms" title="Časová os (T)" aria-label="Časová os">history</button>
+        </div>
+
+        <div class="rail-group bottom" role="group" aria-label="Systém">
             <button id="btn-sound" class="ms" title="Zvuk" aria-label="Zvuk">volume_up</button>
             <button id="btn-ambient" class="ms" title="Ambient režim" aria-label="Ambient režim">fullscreen</button>
+            <button id="btn-settings" class="ms" title="Nastavenia zobrazenia" aria-label="Nastavenia zobrazenia">tune</button>
         </div>
-    </header>
+    </nav>
 
-    <aside id="stats-panel" class="panel hidden" aria-label="Štatistiky vedomia">
-        <h2>Vedomie</h2>
-        <div id="stats-totals"></div>
-        <h3>Oblasti</h3>
-        <div id="stats-areas"></div>
-        <h3>Najsilnejšie uzly</h3>
-        <div id="stats-top"></div>
-        <h3>Aktivita (30 dní)</h3>
-        <canvas id="growth-chart" width="260" height="60"></canvas>
+    <div id="view-switch" role="group" aria-label="Náhľad siete">
+        <button data-view="map">Mapa</button>
+        <button data-view="net">Sieť</button>
+        <button data-view="layers">Vrstvy</button>
+    </div>
+
+    <aside id="dock" class="hidden" aria-label="Bočný panel">
+        <div class="dock-head">
+            <h2 id="dock-title"></h2>
+            <button class="close ms" id="dock-close" aria-label="Zavrieť panel">close</button>
+        </div>
+
+        <section id="sec-search" class="hidden">
+            <input id="search-input" placeholder="Hľadať uzol…" autocomplete="off">
+            <div id="search-results"></div>
+        </section>
+
+        <section id="sec-stats" class="hidden">
+            <div id="stats-totals"></div>
+            <h3>Oblasti</h3>
+            <div id="stats-areas"></div>
+            <h3>Najsilnejšie uzly</h3>
+            <div id="stats-top"></div>
+            <h3>Aktivita (30 dní)</h3>
+            <canvas id="growth-chart" width="248" height="60"></canvas>
+        </section>
+
+        <section id="sec-legend" class="hidden">
+            <h3>Typy uzlov</h3>
+            <div id="legend-types"></div>
+            <h3>Oblasti</h3>
+            <div id="legend-areas"></div>
+        </section>
+
+        <section id="sec-settings" class="hidden">
+            <h3>Priehľadnosť</h3>
+            <label class="slider">Panely
+                <input type="range" data-opt="panelAlpha" min="0.3" max="1" step="0.01">
+            </label>
+            <label class="slider">Pozadie
+                <input type="range" data-opt="bg" min="0" max="1.5" step="0.05">
+            </label>
+            <label class="slider">Spojenia
+                <input type="range" data-opt="edgeAlpha" min="0.1" max="1.5" step="0.05">
+            </label>
+            <label class="slider">Žiara uzlov
+                <input type="range" data-opt="glow" min="0.2" max="1.5" step="0.05">
+            </label>
+            <label class="slider">Popisky
+                <input type="range" data-opt="labelAlpha" min="0" max="1.5" step="0.05">
+            </label>
+            <h3>Veľkosti</h3>
+            <label class="slider">Uzly
+                <input type="range" data-opt="nodeScale" min="0.6" max="1.6" step="0.05">
+            </label>
+            <label class="slider">Písmo popiskov
+                <input type="range" data-opt="labelSize" min="0.7" max="1.5" step="0.05">
+            </label>
+            <label class="slider">Hustota častíc
+                <input type="range" data-opt="density" min="0" max="2" step="0.1">
+            </label>
+            <div class="row">
+                <button id="opts-reset">Obnoviť predvolené</button>
+            </div>
+        </section>
     </aside>
 
-    <aside id="settings-panel" class="panel hidden" aria-label="Nastavenia zobrazenia">
-        <h2>Zobrazenie</h2>
-        <h3>Priehľadnosť</h3>
-        <label class="slider">Panely
-            <input type="range" data-opt="panelAlpha" min="0.3" max="1" step="0.01">
-        </label>
-        <label class="slider">Pozadie (plexus)
-            <input type="range" data-opt="bg" min="0" max="1.5" step="0.05">
-        </label>
-        <label class="slider">Spojenia
-            <input type="range" data-opt="edgeAlpha" min="0.1" max="1.5" step="0.05">
-        </label>
-        <label class="slider">Žiara uzlov
-            <input type="range" data-opt="glow" min="0.2" max="1.5" step="0.05">
-        </label>
-        <label class="slider">Popisky
-            <input type="range" data-opt="labelAlpha" min="0" max="1.5" step="0.05">
-        </label>
-        <h3>Veľkosti</h3>
-        <label class="slider">Uzly
-            <input type="range" data-opt="nodeScale" min="0.6" max="1.6" step="0.05">
-        </label>
-        <label class="slider">Písmo popiskov
-            <input type="range" data-opt="labelSize" min="0.7" max="1.5" step="0.05">
-        </label>
-        <label class="slider">Hustota častíc
-            <input type="range" data-opt="density" min="0" max="2" step="0.1">
-        </label>
-        <div class="row">
-            <button id="opts-reset">Obnoviť predvolené</button>
+    <aside id="node-panel" class="hidden" aria-label="Detail uzla">
+        <div class="dock-head">
+            <h2 id="node-label"></h2>
+            <button class="close ms" id="node-close" aria-label="Zavrieť">close</button>
         </div>
-    </aside>
-
-    <aside id="node-panel" class="panel hidden" aria-label="Detail uzla">
-        <button class="close ms" id="node-close" aria-label="Zavrieť">close</button>
         <div id="node-view">
             <span id="node-type" class="badge"></span>
-            <h2 id="node-label"></h2>
             <p id="node-meta"></p>
             <p id="node-desc"></p>
             <h3>Spojenia</h3>
@@ -105,35 +128,43 @@
         </div>
     </aside>
 
-    <aside id="legend" class="hidden" aria-label="Legenda">
-        <h3>Typy uzlov</h3>
-        <div id="legend-types"></div>
-        <h3>Oblasti</h3>
-        <div id="legend-areas"></div>
-    </aside>
-
-    <div id="timeline">
+    <div id="timeline" class="hidden">
         <button id="tl-play" class="ms" title="Prehrať rast vedomia" aria-label="Prehrať rast vedomia">play_arrow</button>
         <input type="range" id="tl-range" min="0" max="1000" value="1000" aria-label="Časová os">
         <span id="tl-label">teraz</span>
     </div>
 
     <div id="zoomctl" role="group" aria-label="Ovládanie kamery">
-        <button id="zoom-in" class="ms" title="Priblížiť" aria-label="Priblížiť">add</button>
-        <button id="zoom-out" class="ms" title="Oddialiť" aria-label="Oddialiť">remove</button>
-        <button id="zoom-reset" class="ms" title="Vycentrovať" aria-label="Vycentrovať">center_focus_strong</button>
+        <button id="zoom-in" class="ms" title="Priblížiť (+)" aria-label="Priblížiť">add</button>
+        <button id="zoom-out" class="ms" title="Oddialiť (−)" aria-label="Oddialiť">remove</button>
+        <button id="zoom-reset" class="ms" title="Vycentrovať (0)" aria-label="Vycentrovať">center_focus_strong</button>
     </div>
 
-    <div id="chat">
-        <button id="chat-toggle" class="ms" title="Opýtaj sa Hadesa" aria-label="Opýtaj sa Hadesa">forum</button>
-        <div id="chat-window" class="hidden">
-            <div id="chat-head">Hades <button class="close ms" id="chat-close" aria-label="Zavrieť chat">close</button></div>
-            <div id="chat-messages"></div>
-            <form id="chat-form">
-                <input id="chat-input" placeholder="Opýtaj sa, čo viem…" autocomplete="off">
-                <button type="submit" class="ms" aria-label="Odoslať">send</button>
-            </form>
+    <div id="prompt">
+        <div id="chat-log" class="hidden" aria-live="polite"></div>
+        <form id="prompt-form">
+            <span class="ms spark" aria-hidden="true">auto_awesome</span>
+            <input id="prompt-input" placeholder="Opýtaj sa Hadesa…  ( / pre príkazy )" autocomplete="off" aria-label="Správa pre Hadesa">
+            <button type="submit" class="ms" aria-label="Odoslať">send</button>
+        </form>
+    </div>
+
+    <div id="toasts" aria-live="polite"></div>
+    <div id="hover-card" class="hidden" role="tooltip"></div>
+
+    <div id="help-overlay" class="hidden" role="dialog" aria-label="Klávesové skratky">
+        <div id="help-card">
+            <div class="dock-head">
+                <h2>Klávesové skratky</h2>
+                <button class="close ms" id="help-close" aria-label="Zavrieť">close</button>
+            </div>
+            <div id="help-body"></div>
         </div>
+    </div>
+
+    <div id="hint" class="hidden">
+        <p id="hint-text"></p>
+        <button id="hint-next">Ďalej</button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>

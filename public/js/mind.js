@@ -276,7 +276,7 @@ function buildSim() {
 function setView(view) {
     S.view = view;
     localStorage.setItem('hades.view', view);
-    document.querySelectorAll('#views button').forEach((b) => {
+    document.querySelectorAll('#view-switch button').forEach((b) => {
         b.classList.toggle('active', b.dataset.view === view);
     });
     buildSim();
@@ -567,8 +567,10 @@ function updateStateUi() {
     const key = awake ? 'awake' : 'asleep';
     if (key === lastStateUi) return;
     lastStateUi = key;
-    document.getElementById('state-dot').classList.toggle('asleep', !awake);
-    document.getElementById('state-label').textContent = awake ? 'bdie' : 'spí — sníva';
+    const brand = document.getElementById('brand-core');
+    brand.classList.toggle('awake', awake);
+    brand.classList.toggle('asleep', !awake);
+    brand.title = awake ? 'Hades — bdie' : 'Hades — spí';
 }
 
 /* ---------- interakcia ---------- */
@@ -608,6 +610,7 @@ function setupInput() {
         } else {
             S.hover = pick(e.clientX, e.clientY);
             canvas.style.cursor = S.hover ? 'pointer' : 'grab';
+            updateHoverCard(e);
         }
     });
 
@@ -631,12 +634,36 @@ function setupInput() {
         S.cam.y += (after.y - before.y) * S.cam.k;
     }, { passive: false });
 
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            document.body.classList.remove('ambient');
-            closeNodePanel();
-        }
-    });
+}
+
+function updateHoverCard(e) {
+    const card = $('hover-card');
+    const n = S.hover;
+
+    if (!n) {
+        card.classList.add('hidden');
+        return;
+    }
+
+    const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+    const area = S.areas.get(n.area_id);
+    const dept = S.departments.get(n.department_id);
+    const meta = [typeNames[n.type], area && area.name, dept && dept.name, 'sila ' + Math.round(n.strength || 1)]
+        .filter(Boolean)
+        .map((v) => esc(String(v)))
+        .join(' · ');
+
+    card.innerHTML = '<div class="t">' + esc(n.label) + '</div><div class="m">' + meta + '</div>';
+    card.classList.remove('hidden');
+
+    const pad = 14;
+    const r = card.getBoundingClientRect();
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    if (x + r.width > window.innerWidth - 8) x = e.clientX - r.width - pad;
+    if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - pad;
+    card.style.left = x + 'px';
+    card.style.top = y + 'px';
 }
 
 /* ---------- panely ---------- */
@@ -837,6 +864,7 @@ function handlePulse(type, data) {
         kickSim(0.5);
         spawnPulse(hadesNode(), n, { speed: 1.4 });
         blip(520);
+        showToast('Naučil som sa: ' + n.label, n.id);
     }
 
     if (type === 'node.activated') {
@@ -904,23 +932,52 @@ function handlePulse(type, data) {
         if (h) h.flash = 1;
     }
 
-    if (!$('stats-panel').classList.contains('hidden')) refreshStats();
+    if (dockOpen === 'stats') refreshStats();
 }
 
 /* ---------- chat ---------- */
 
 const chatHistory = [];
 
-function setupChat() {
-    $('chat-toggle').onclick = () => $('chat-window').classList.toggle('hidden');
-    $('chat-close').onclick = () => $('chat-window').classList.add('hidden');
+function addMsg(cls, text) {
+    const log = $('chat-log');
+    log.classList.remove('hidden');
+    const div = document.createElement('div');
+    div.className = 'msg ' + cls;
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = 1e9;
+    return div;
+}
 
-    $('chat-form').addEventListener('submit', async (e) => {
+function collapsePrompt() {
+    $('prompt').classList.remove('open');
+    $('chat-log').classList.add('hidden');
+    $('prompt-input').blur();
+}
+
+function setupPrompt() {
+    const bar = $('prompt');
+    const input = $('prompt-input');
+
+    const open = () => {
+        bar.classList.add('open');
+        if ($('chat-log').children.length) $('chat-log').classList.remove('hidden');
+    };
+
+    input.addEventListener('focus', open);
+
+    $('prompt-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const input = $('chat-input');
         const text = input.value.trim();
         if (!text) return;
         input.value = '';
+        open();
+
+        if (text.startsWith('/')) {
+            handleCommand(text);
+            return;
+        }
 
         addMsg('me', text);
         chatHistory.push({ role: 'user', content: text });
@@ -939,50 +996,241 @@ function setupChat() {
             chatHistory.push({ role: 'assistant', content: reply });
         } catch (err) {
             thinking.remove();
-            addMsg('hades', 'Spojenie s vedomím zlyhalo.');
+            addMsg('sys', 'Spojenie s vedomím zlyhalo.');
         }
     });
+}
 
-    function addMsg(cls, text) {
-        const div = document.createElement('div');
-        div.className = 'msg ' + cls;
-        div.textContent = text;
-        $('chat-messages').appendChild(div);
-        $('chat-messages').scrollTop = 1e9;
-        return div;
+function handleCommand(text) {
+    const parts = text.slice(1).split(/\s+/);
+    const cmd = (parts.shift() || '').toLowerCase();
+    const arg = parts.join(' ');
+    const sys = (m) => addMsg('sys', m);
+
+    switch (cmd) {
+        case 'nahlad': case 'view': {
+            const map = { mapa: 'map', siet: 'net', 'sieť': 'net', vrstvy: 'layers' };
+            const v = map[arg.toLowerCase()];
+            if (v) { setView(v); sys('Náhľad prepnutý: ' + arg); }
+            else sys('Použi: /nahlad mapa | siet | vrstvy');
+            break;
+        }
+        case 'najdi': case 'find':
+            openDock('search');
+            $('search-input').value = arg;
+            renderSearch(arg);
+            sys(arg ? 'Hľadám: ' + arg : 'Otvoril som vyhľadávanie.');
+            break;
+        case 'zoom':
+            if (arg === 'in') zoomBy(1.3);
+            else if (arg === 'out') zoomBy(1 / 1.3);
+            else S.cam = { x: 0, y: 0, k: 0.85 };
+            sys('Zoom upravený.');
+            break;
+        case 'legenda': openDock('legend'); sys('Legenda otvorená.'); break;
+        case 'statistiky': case 'stats': openDock('stats'); sys('Štatistiky otvorené.'); break;
+        case 'os': case 'replay': $('btn-timeline').click(); sys('Časová os prepnutá.'); break;
+        case 'pomoc': case 'help': toggleHelp(true); break;
+        default:
+            sys('Neznámy príkaz. Skús /nahlad, /najdi, /zoom, /legenda, /statistiky, /os, /pomoc');
     }
+}
+
+/* ---------- toasty, pomocnik, hinty ---------- */
+
+function showToast(text, nodeId) {
+    const wrap = $('toasts');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = '<span class="ms" aria-hidden="true">auto_awesome</span><span>' + esc(text) + '</span>';
+    el.onclick = () => {
+        const n = nodeId ? S.byId.get(nodeId) : null;
+        if (n) {
+            S.cam.k = Math.max(S.cam.k, 1);
+            focusNode(n);
+            selectNode(n);
+        }
+        el.remove();
+    };
+    wrap.appendChild(el);
+    while (wrap.children.length > 3) wrap.firstChild.remove();
+    setTimeout(() => {
+        el.classList.add('leaving');
+        setTimeout(() => el.remove(), 450);
+    }, 5200);
+}
+
+const SHORTCUTS = [
+    ['1 / 2 / 3', 'Náhľad: Mapa / Sieť / Vrstvy'],
+    ['F', 'Vyhľadávanie'],
+    ['S', 'Štatistiky'],
+    ['L', 'Legenda'],
+    ['T', 'Časová os'],
+    ['C', 'Chat s Hadesom'],
+    ['+ / −', 'Zoom'],
+    ['0', 'Vycentrovať'],
+    ['?', 'Tento pomocník'],
+    ['Esc', 'Zavrieť panely'],
+];
+
+function toggleHelp(show) {
+    const el = $('help-overlay');
+    const target = show === undefined ? el.classList.contains('hidden') : show;
+    el.classList.toggle('hidden', !target);
+    if (target && !$('help-body').children.length) {
+        $('help-body').innerHTML = SHORTCUTS.map(([k, d]) =>
+            '<div class="key-row"><span>' + d + '</span><kbd>' + k + '</kbd></div>').join('');
+    }
+}
+
+function setupShortcuts() {
+    $('help-close').onclick = () => toggleHelp(false);
+    $('help-overlay').addEventListener('click', (e) => {
+        if (e.target === $('help-overlay')) toggleHelp(false);
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.body.classList.remove('ambient');
+            toggleHelp(false);
+            closeDock();
+            closeNodePanel();
+            collapsePrompt();
+            return;
+        }
+
+        const tag = (document.activeElement && document.activeElement.tagName) || '';
+        if (/INPUT|TEXTAREA/.test(tag)) return;
+
+        switch (e.key) {
+            case '1': setView('map'); break;
+            case '2': setView('net'); break;
+            case '3': setView('layers'); break;
+            case 'f': case 'F': e.preventDefault(); openDock('search'); break;
+            case 's': case 'S': openDock('stats'); break;
+            case 'l': case 'L': openDock('legend'); break;
+            case 't': case 'T': $('btn-timeline').click(); break;
+            case 'c': case 'C':
+                e.preventDefault();
+                $('prompt').classList.add('open');
+                $('prompt-input').focus();
+                break;
+            case '+': case '=': zoomBy(1.3); break;
+            case '-': zoomBy(1 / 1.3); break;
+            case '0': S.cam = { x: 0, y: 0, k: 0.85 }; break;
+            case '?': toggleHelp(); break;
+        }
+    });
+}
+
+const HINTS = [
+    { pos: { left: '88px', top: '120px' }, text: 'V ľavom paneli je vyhľadávanie, štatistiky, legenda a časová os. Úplne dole nájdeš nastavenia zobrazenia.' },
+    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Tu prepínaš náhľady siete — Mapa, Sieť a Vrstvy. Fungujú aj klávesy 1, 2, 3.' },
+    { pos: { left: '50%', bottom: '84px', transform: 'translateX(-50%)' }, text: 'Sem napíš otázku pre Hadesa. Príkazy začínajú lomkou — skús /pomoc.' },
+];
+
+function setupHints() {
+    if (localStorage.getItem('hades.hints') === 'done') return;
+    const el = $('hint');
+    let i = 0;
+
+    const show = () => {
+        if (i >= HINTS.length) {
+            el.classList.add('hidden');
+            localStorage.setItem('hades.hints', 'done');
+            return;
+        }
+        const h = HINTS[i];
+        $('hint-text').textContent = h.text;
+        $('hint-next').textContent = i === HINTS.length - 1 ? 'Hotovo' : 'Ďalej';
+        el.style.left = ''; el.style.top = ''; el.style.bottom = ''; el.style.transform = '';
+        Object.assign(el.style, h.pos);
+        el.classList.remove('hidden');
+    };
+
+    $('hint-next').onclick = () => { i++; show(); };
+    show();
 }
 
 /* ---------- ovládanie ---------- */
 
-function togglePanel(id) {
-    const el = $(id);
-    const other = $(id === 'stats-panel' ? 'settings-panel' : 'stats-panel');
-    const opening = el.classList.contains('hidden');
-    el.classList.toggle('hidden');
-    if (opening) other.classList.add('hidden');
-    $('btn-stats').classList.toggle('active', !$('stats-panel').classList.contains('hidden'));
-    $('btn-settings').classList.toggle('active', !$('settings-panel').classList.contains('hidden'));
-    if (id === 'stats-panel' && opening) refreshStats();
+const DOCK_SECTIONS = {
+    search: { title: 'Vyhľadávanie', btn: 'btn-search' },
+    stats: { title: 'Štatistiky', btn: 'btn-stats' },
+    legend: { title: 'Legenda', btn: 'btn-legend' },
+    settings: { title: 'Zobrazenie', btn: 'btn-settings' },
+};
+
+let dockOpen = null;
+
+function openDock(name) {
+    if (dockOpen === name) { closeDock(); return; }
+    dockOpen = name;
+    $('dock').classList.remove('hidden');
+    $('dock-title').textContent = DOCK_SECTIONS[name].title;
+
+    for (const key of Object.keys(DOCK_SECTIONS)) {
+        $('sec-' + key).classList.toggle('hidden', key !== name);
+        $(DOCK_SECTIONS[key].btn).classList.toggle('active', key === name);
+    }
+
+    if (name === 'stats') refreshStats();
+    if (name === 'search') {
+        renderSearch($('search-input').value);
+        setTimeout(() => $('search-input').focus(), 60);
+    }
+}
+
+function closeDock() {
+    dockOpen = null;
+    $('dock').classList.add('hidden');
+    for (const key of Object.keys(DOCK_SECTIONS)) {
+        $(DOCK_SECTIONS[key].btn).classList.remove('active');
+    }
+}
+
+function renderSearch(q) {
+    const query = (q || '').trim().toLowerCase();
+    const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+
+    const matches = !query ? [] : S.nodes
+        .filter((n) => (n.label + ' ' + (n.description || '')).toLowerCase().includes(query))
+        .sort((a, b) => (b.strength || 0) - (a.strength || 0))
+        .slice(0, 8);
+
+    $('search-results').innerHTML = matches.map((n) =>
+        '<div class="search-item" data-id="' + n.id + '"><span>' + esc(n.label)
+        + '</span><span class="sub">' + typeNames[n.type] + '</span></div>'
+    ).join('') || (query ? '<div class="hist">Žiadny uzol nezodpovedá hľadaniu.</div>' : '');
+
+    $('search-results').querySelectorAll('.search-item').forEach((el) => {
+        el.onclick = () => {
+            const n = S.byId.get(+el.dataset.id);
+            if (!n) return;
+            S.cam.k = Math.max(S.cam.k, 1.1);
+            focusNode(n);
+            selectNode(n);
+        };
+    });
 }
 
 function setupControls() {
-    document.querySelectorAll('#views button').forEach((b) => {
+    document.querySelectorAll('#view-switch button').forEach((b) => {
         b.onclick = () => setView(b.dataset.view);
     });
 
-    $('btn-stats').onclick = () => togglePanel('stats-panel');
-    $('btn-settings').onclick = () => togglePanel('settings-panel');
+    $('btn-search').onclick = () => openDock('search');
+    $('btn-stats').onclick = () => openDock('stats');
+    $('btn-legend').onclick = () => openDock('legend');
+    $('btn-settings').onclick = () => openDock('settings');
+    $('dock-close').onclick = closeDock;
 
-    const legendBtn = $('btn-legend');
-    if (localStorage.getItem('hades.legend') === 'on') {
-        $('legend').classList.remove('hidden');
-        legendBtn.classList.add('active');
-    }
-    legendBtn.onclick = () => {
-        const shown = !$('legend').classList.toggle('hidden');
-        legendBtn.classList.toggle('active', shown);
-        localStorage.setItem('hades.legend', shown ? 'on' : 'off');
+    $('search-input').oninput = () => renderSearch($('search-input').value);
+
+    $('btn-timeline').onclick = () => {
+        const shown = !$('timeline').classList.toggle('hidden');
+        $('btn-timeline').classList.toggle('active', shown);
+        if (!shown) stopReplay();
     };
 
     $('zoom-in').onclick = () => zoomBy(1.3);
@@ -1090,11 +1338,13 @@ async function init() {
     computeReplayBounds();
     setupInput();
     setupControls();
+    setupShortcuts();
     buildLegend();
     applyOpts();
     setView(S.view);
     setupTimeline();
-    setupChat();
+    setupPrompt();
+    setupHints();
     connectWs(data.ws);
 
     setInterval(dream, 9000 + Math.random() * 6000);
