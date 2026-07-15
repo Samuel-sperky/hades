@@ -17,6 +17,11 @@
             <span id="state-label">…</span>
         </div>
         <div id="controls">
+            <div id="views">
+                <button data-view="map" title="Mapa oblastí">Mapa</button>
+                <button data-view="net" title="Voľná sieť">Sieť</button>
+                <button data-view="layers" title="Neurónové vrstvy">Vrstvy</button>
+            </div>
             <button id="btn-stats" title="Štatistiky">📊</button>
             <button id="btn-sound" title="Zvuk">🔊</button>
             <button id="btn-ambient" title="Ambient režim">⛶</button>

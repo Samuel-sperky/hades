@@ -30,6 +30,14 @@ const S = {
     replay: { on: false, t: 1, playing: false, tMin: 0, tMax: 0 },
     sound: localStorage.getItem('hades.sound') !== 'off',
     audio: null,
+    view: localStorage.getItem('hades.view') || 'map',
+};
+
+const VIEW_LAYER_COLORS = {
+    memory: '#4ade80',
+    skill: '#60a5fa',
+    core: '#a78bfa',
+    project: '#f87171',
 };
 
 /* ---------- pomocníci ---------- */
@@ -39,9 +47,35 @@ const rad = (deg) => (deg * Math.PI) / 180;
 const ts = (iso) => (iso ? new Date(iso).getTime() : 0);
 
 function nodeColor(n) {
+    if (S.view === 'layers') {
+        return VIEW_LAYER_COLORS[n.type] || '#8ea2ff';
+    }
     if (n.type === 'core') return CORE_COLOR;
     const area = S.areas.get(n.area_id);
     return area ? area.color : '#8ea2ff';
+}
+
+// Gradient plexus pozadia: fialova (vlavo) -> smaragdova (vpravo), ako referencny vizual
+function plexusColor(x) {
+    const t = Math.max(0, Math.min(1, (x + 1300) / 2600));
+    const r = Math.round(124 + (52 - 124) * t);
+    const g = Math.round(58 + (211 - 58) * t);
+    const b = Math.round(237 + (153 - 237) * t);
+    return r + ',' + g + ',' + b;
+}
+
+function layerColumns() {
+    const mem = [], skillA = [], core = [], skillB = [], proj = [];
+    const skills = S.nodes
+        .filter((n) => n.type === 'skill')
+        .sort((a, b) => a.label.localeCompare(b.label));
+    skills.forEach((n, i) => (i % 2 === 0 ? skillA : skillB).push(n));
+    for (const n of S.nodes) {
+        if (n.type === 'memory') mem.push(n);
+        else if (n.type === 'core') core.push(n);
+        else if (n.type === 'project') proj.push(n);
+    }
+    return [mem, skillA, core, skillB, proj];
 }
 
 function nodeRadius(n) {
@@ -156,6 +190,24 @@ function dream() {
 
 /* ---------- simulácia ---------- */
 
+function applyViewPins() {
+    if (S.view === 'layers') {
+        const colX = [-560, -280, 0, 280, 560];
+        layerColumns().forEach((nodes, li) => {
+            const spacing = Math.max(48, Math.min(95, 1100 / Math.max(nodes.length, 1)));
+            nodes.forEach((n, i) => {
+                n.fx = colX[li];
+                n.fy = (i - (nodes.length - 1) / 2) * spacing;
+            });
+        });
+        return;
+    }
+
+    for (const n of S.nodes) { n.fx = null; n.fy = null; }
+    const h = S.nodes.find((n) => n.type === 'core' && n.label === S.name);
+    if (h) { h.fx = 0; h.fy = 0; }
+}
+
 function buildSim() {
     if (S.sim) S.sim.stop();
 
@@ -165,22 +217,37 @@ function buildSim() {
             n.x = a.x + (Math.random() - 0.5) * 60;
             n.y = a.y + (Math.random() - 0.5) * 60;
         }
-        if (n.type === 'core' && n.label === S.name) { n.fx = 0; n.fy = 0; }
     }
 
+    applyViewPins();
+
+    const net = S.view === 'net';
+
     S.sim = d3.forceSimulation(S.nodes)
-        .force('x', d3.forceX(d => anchorOf(d).x).strength(d => d.type === 'core' ? 0.25 : 0.055))
-        .force('y', d3.forceY(d => anchorOf(d).y).strength(d => d.type === 'core' ? 0.25 : 0.055))
-        .force('charge', d3.forceManyBody().strength(-42).distanceMax(320))
+        .force('x', d3.forceX(d => net ? 0 : anchorOf(d).x)
+            .strength(d => net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)))
+        .force('y', d3.forceY(d => net ? 0 : anchorOf(d).y)
+            .strength(d => net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)))
+        .force('charge', d3.forceManyBody().strength(net ? -120 : -42).distanceMax(net ? 520 : 320))
         .force('collide', d3.forceCollide(d => nodeRadius(d) + 7))
         .force('link', d3.forceLink(S.edges)
             .id(d => d.id)
-            .distance(72)
+            .distance(net ? 95 : 72)
             .strength(e => Math.min(0.09, 0.025 * (e.weight || 1))))
         .alpha(0.9)
         .alphaDecay(0.015)
         .alphaTarget(0.012)
         .alphaMin(0.001);
+}
+
+function setView(view) {
+    S.view = view;
+    localStorage.setItem('hades.view', view);
+    document.querySelectorAll('#views button').forEach((b) => {
+        b.classList.toggle('active', b.dataset.view === view);
+    });
+    buildSim();
+    kickSim(0.6);
 }
 
 function kickSim(alpha = 0.35) {
@@ -201,12 +268,14 @@ function resize() {
 
 function makeStars() {
     S.stars = [];
-    for (let i = 0; i < 130; i++) {
+    for (let i = 0; i < 340; i++) {
         S.stars.push({
             x: (Math.random() - 0.5) * 2600,
             y: (Math.random() - 0.5) * 2600,
-            r: Math.random() * 1.1 + 0.2,
-            a: Math.random() * 0.35 + 0.05,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8,
+            r: Math.random() * 1.4 + 0.4,
+            a: Math.random() * 0.45 + 0.2,
         });
     }
 }
@@ -228,16 +297,31 @@ function draw() {
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
     ctx.scale(S.cam.k, S.cam.k);
 
-    for (const st of S.stars) {
-        ctx.globalAlpha = st.a * S.dim * 0.8;
-        ctx.fillStyle = '#9fb0ff';
+    const plexusDist = 195;
+    ctx.lineWidth = 0.8 / S.cam.k;
+    for (let i = 0; i < S.stars.length; i++) {
+        const a = S.stars[i];
+        for (let j = i + 1; j < S.stars.length; j++) {
+            const b = S.stars[j];
+            const dx = a.x - b.x, dy = a.y - b.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 > plexusDist * plexusDist) continue;
+            const alpha = (1 - Math.sqrt(d2) / plexusDist) * 0.3 * S.dim;
+            ctx.strokeStyle = 'rgba(' + plexusColor((a.x + b.x) / 2) + ',' + alpha + ')';
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = a.a * S.dim;
+        ctx.fillStyle = 'rgba(' + plexusColor(a.x) + ',1)';
         ctx.beginPath();
-        ctx.arc(st.x, st.y, st.r / S.cam.k, 0, 7);
+        ctx.arc(a.x, a.y, a.r / Math.sqrt(S.cam.k), 0, 7);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
 
-    for (const area of S.areas.values()) {
+    if (S.view === 'map') for (const area of S.areas.values()) {
         const a = areaAnchor(area);
         ctx.globalAlpha = 0.05 * S.dim;
         const g = ctx.createRadialGradient(a.x, a.y, 20, a.x, a.y, 260);
@@ -255,11 +339,29 @@ function draw() {
         ctx.globalAlpha = 1;
     }
 
+    if (S.view === 'layers') {
+        const layers = layerColumns();
+        ctx.lineWidth = 0.4 / S.cam.k;
+        ctx.strokeStyle = 'rgba(148, 163, 255,' + 0.055 * S.dim + ')';
+        for (let li = 0; li < layers.length - 1; li++) {
+            for (const a of layers[li]) {
+                if (!visibleInReplay(a)) continue;
+                for (const b of layers[li + 1]) {
+                    if (!visibleInReplay(b)) continue;
+                    ctx.beginPath();
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(b.x, b.y);
+                    ctx.stroke();
+                }
+            }
+        }
+    }
+
     for (const e of S.edges) {
         if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
-        const alpha = Math.min(0.42, 0.1 + 0.05 * Math.log2(1 + (e.weight || 1))) * S.dim;
-        ctx.strokeStyle = 'rgba(142, 162, 255,' + alpha + ')';
-        ctx.lineWidth = Math.min(2.6, 0.6 + 0.35 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
+        const alpha = Math.min(0.55, 0.17 + 0.07 * Math.log2(1 + (e.weight || 1))) * S.dim;
+        ctx.strokeStyle = 'rgba(198, 206, 255,' + alpha + ')';
+        ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
         ctx.beginPath();
         ctx.moveTo(e.source.x, e.source.y);
         ctx.lineTo(e.target.x, e.target.y);
@@ -362,6 +464,13 @@ function frame() {
     framePending = false;
     const dt = Math.min((now() - lastFrame) / 1000, 0.1);
     lastFrame = now();
+
+    for (const st of S.stars) {
+        st.x += st.vx * dt;
+        st.y += st.vy * dt;
+        if (st.x > 1300) st.x = -1300; else if (st.x < -1300) st.x = 1300;
+        if (st.y > 1300) st.y = -1300; else if (st.y < -1300) st.y = 1300;
+    }
 
     for (const p of S.pulses) p.t += dt * p.speed;
     for (let i = S.pulses.length - 1; i >= 0; i--) {
@@ -762,6 +871,10 @@ function setupChat() {
 /* ---------- ovládanie ---------- */
 
 function setupControls() {
+    document.querySelectorAll('#views button').forEach((b) => {
+        b.onclick = () => setView(b.dataset.view);
+    });
+
     $('btn-stats').onclick = () => {
         const panel = $('stats-panel');
         panel.classList.toggle('hidden');
@@ -856,9 +969,9 @@ async function init() {
         .map((e) => ({ ...e, source: S.byId.get(e.source_id), target: S.byId.get(e.target_id) }));
 
     computeReplayBounds();
-    buildSim();
     setupInput();
     setupControls();
+    setView(S.view);
     setupTimeline();
     setupChat();
     connectWs(data.ws);

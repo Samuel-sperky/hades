@@ -47,6 +47,10 @@ body {
 
 #controls { display: flex; gap: 8px; pointer-events: auto; }
 
+#views { display: flex; gap: 4px; margin-right: 10px; }
+#views button { font-size: 12px; padding: 7px 10px; color: var(--muted); }
+#views button.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px rgba(167, 139, 250, .25); }
+
 button {
     background: var(--panel); color: var(--text);
     border: 1px solid var(--border); border-radius: 8px;
