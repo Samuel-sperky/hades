@@ -34,6 +34,7 @@ return new class extends Migration
             $table->string('label');
             $table->text('description')->nullable();
             $table->double('strength')->default(1);
+            $table->string('source')->nullable();  // povod poznatku (projekt/repo/cesta)
             $table->timestamp('last_activated_at')->nullable();
             $table->timestamps();
             $table->index('label');

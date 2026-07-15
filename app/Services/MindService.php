@@ -27,6 +27,7 @@ class MindService
         ?string $departmentName = null,
         array $connections = [],
         ?string $sessionKey = null,
+        ?string $source = null,
     ): array {
         // Lokalny bezpecnostny filter — Hades nikdy neuklada tajomstva/citlive udaje.
         if ($reason = $this->filter->scan($label, $description)) {
@@ -40,8 +41,12 @@ class MindService
 
         if ($existing) {
             $merged = $this->mergeInto($existing, $description, $sessionKey);
+            if ($source && blank($merged->source)) {
+                $merged->forceFill(['source' => $source])->save();
+            }
             $this->connectByLabels($existing, $connections, $sessionKey);
             $this->coActivate($existing, $sessionKey);
+            $this->connectByKeywords($existing);
 
             return ['action' => 'merged', 'node' => $merged->fresh()->toApi()];
         }
@@ -56,6 +61,7 @@ class MindService
             'label' => trim($label),
             'description' => $description,
             'strength' => 1,
+            'source' => $source,
             'last_activated_at' => now(),
         ]);
 
@@ -64,6 +70,7 @@ class MindService
 
         $this->connectByLabels($node, $connections, $sessionKey);
         $this->coActivate($node, $sessionKey);
+        $this->connectByKeywords($node);
 
         return ['action' => 'created', 'node' => $node->fresh()->toApi()];
     }
@@ -270,6 +277,55 @@ class MindService
         }
     }
 
+    /**
+     * Auto-prepojenie podla zdielanych vyraznych slov (bez LLM). Spoji uzol s
+     * najviac prekryvajucimi sa uzlami, ktore zdielaju aspon 2 vyrazne terminy.
+     */
+    protected function connectByKeywords(Node $node): void
+    {
+        $terms = $this->terms($node->label.' '.$node->description);
+        if ($terms->count() < 2) {
+            return;
+        }
+
+        $candidates = Node::query()
+            ->where('id', '!=', $node->id)
+            ->where(function ($q) use ($terms) {
+                foreach ($terms as $term) {
+                    $like = '%'.$term.'%';
+                    $q->orWhere('label', 'like', $like)->orWhere('description', 'like', $like);
+                }
+            })
+            ->limit(40)
+            ->get();
+
+        $scored = $candidates
+            ->map(function (Node $c) use ($terms) {
+                $hay = mb_strtolower($c->label.' '.$c->description);
+                $hits = $terms->filter(fn ($t) => str_contains($hay, $t))->count();
+
+                return ['node' => $c, 'hits' => $hits];
+            })
+            ->filter(fn ($x) => $x['hits'] >= 2)   // aspon 2 spolocne vyrazne slova
+            ->sortByDesc('hits')
+            ->take(3);
+
+        foreach ($scored as $x) {
+            $this->connect($node, $x['node']);
+        }
+    }
+
+    /** Vyrazne terminy z textu (>= 4 znaky), pre keyword linking a recall. */
+    protected function terms(string $text): Collection
+    {
+        return collect(preg_split('/[\s,;.:!?()\/\-]+/u', mb_strtolower($text)))
+            ->map(fn ($t) => trim($t))
+            ->filter(fn ($t) => mb_strlen($t) >= 4)
+            ->unique()
+            ->take(8)
+            ->values();
+    }
+
     public function connect(Node $a, Node $b): Edge
     {
         [$sourceId, $targetId] = $a->id < $b->id ? [$a->id, $b->id] : [$b->id, $a->id];
@@ -303,17 +359,54 @@ class MindService
         return $edge;
     }
 
+    /**
+     * Najde existujucu oblast, alebo ju EMERGENTNE vytvori (oblasti vznikaju
+     * z obsahu, ako oddelenia). Prazdny nazov padne na prvu oblast.
+     */
     protected function resolveArea(string $name): Area
     {
         $normalized = mb_strtolower(trim($name));
 
+        if ($normalized === '') {
+            return Area::orderBy('id')->firstOrFail();
+        }
+
         $area = Area::all()->first(function (Area $area) use ($normalized) {
-            return mb_strtolower($area->name) === $normalized
-                || str_contains(mb_strtolower($area->name), $normalized)
-                || str_contains($normalized, mb_strtolower($area->name));
+            $an = mb_strtolower($area->name);
+
+            return $an === $normalized
+                || str_contains($an, $normalized)
+                || str_contains($normalized, $an);
         });
 
-        return $area ?? Area::orderBy('id')->firstOrFail();
+        return $area ?? $this->createArea(trim($name));
+    }
+
+    protected function createArea(string $name): Area
+    {
+        $palette = ['#b88a3a', '#03797e', '#9d5c7a', '#2f6d8f', '#a86a4a', '#5a7d5a', '#7a5c9d', '#8f6d43'];
+        $count = Area::count();
+
+        $area = Area::firstOrCreate(
+            ['slug' => Str::slug($name) ?: 'oblast-'.($count + 1)],
+            [
+                'name' => $name,
+                'color' => $palette[$count % count($palette)],
+                'angle' => fmod($count * 66.0, 360.0),
+            ],
+        );
+
+        if ($area->wasRecentlyCreated) {
+            MindPulse::dispatch('area.created', ['area' => [
+                'id' => $area->id,
+                'name' => $area->name,
+                'slug' => $area->slug,
+                'color' => $area->color,
+                'angle' => $area->angle,
+            ]]);
+        }
+
+        return $area;
     }
 
     protected function resolveDepartment(Area $area, string $name): Department

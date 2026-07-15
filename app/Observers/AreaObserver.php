@@ -15,7 +15,8 @@ class AreaObserver
 
     public function saved(Area $area): void
     {
-        if ($area->wasChanged('slug')) {
+        // Nova (emergentna) oblast nema uzly na presun — rebuild len pri premenovani slugu.
+        if (! $area->wasRecentlyCreated && $area->wasChanged('slug')) {
             $this->mirror->rebuild();
         }
     }

@@ -135,7 +135,7 @@ class McpController extends Controller
                         'description' => ['type' => 'string', 'description' => 'One to three sentences of detail'],
                         'area' => [
                             'type' => 'string',
-                            'description' => 'Target area name — one of the areas returned by mind_overview',
+                            'description' => 'Target area name. Prefer one from mind_overview; a new area is created automatically if it clearly does not fit any existing one.',
                         ],
                         'department' => [
                             'type' => 'string',
@@ -145,6 +145,10 @@ class McpController extends Controller
                             'type' => 'array',
                             'items' => ['type' => 'string'],
                             'description' => 'Labels of related existing nodes to connect to',
+                        ],
+                        'source' => [
+                            'type' => 'string',
+                            'description' => 'Where this knowledge came from — project/repo name or path. Optional but useful for provenance.',
                         ],
                         'session_key' => $sessionKey,
                     ],
@@ -238,6 +242,7 @@ class McpController extends Controller
             departmentName: isset($args['department']) ? (string) $args['department'] : null,
             connections: array_values((array) ($args['connections'] ?? [])),
             sessionKey: isset($args['session_key']) ? (string) $args['session_key'] : null,
+            source: isset($args['source']) ? (string) $args['source'] : null,
         );
     }
 

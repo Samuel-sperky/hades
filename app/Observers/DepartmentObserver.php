@@ -15,7 +15,8 @@ class DepartmentObserver
 
     public function saved(Department $department): void
     {
-        if ($department->wasChanged('slug')) {
+        // Nove oddelenie nema uzly na presun — rebuild len pri premenovani slugu.
+        if (! $department->wasRecentlyCreated && $department->wasChanged('slug')) {
             $this->mirror->rebuild();
         }
     }

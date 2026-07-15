@@ -5,8 +5,9 @@ area: ""
 area_slug: ""
 department: ""
 strength: 5
-created_at: "2026-07-15T23:09:38+00:00"
-last_activated_at: "2026-07-15T23:09:38+00:00"
+source: ""
+created_at: "2026-07-15T23:13:46+00:00"
+last_activated_at: "2026-07-15T23:13:46+00:00"
 connections:
   - "Hodnoty"
   - "Vzťah k tvorcovi"

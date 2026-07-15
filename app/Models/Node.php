@@ -10,7 +10,7 @@ class Node extends Model
 {
     protected $fillable = [
         'type', 'area_id', 'department_id', 'label', 'description',
-        'strength', 'last_activated_at',
+        'strength', 'source', 'last_activated_at',
     ];
 
     protected $casts = [
@@ -43,6 +43,7 @@ class Node extends Model
             'label' => $this->label,
             'description' => $this->description,
             'strength' => (float) $this->strength,
+            'source' => $this->source,
             'last_activated_at' => $this->last_activated_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];

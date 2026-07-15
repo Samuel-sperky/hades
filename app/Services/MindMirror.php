@@ -193,6 +193,7 @@ class MindMirror
         $front[] = 'area_slug: '.$this->yaml($node->area?->slug);
         $front[] = 'department: '.$this->yaml($node->department?->name);
         $front[] = 'strength: '.$this->number($node->strength);
+        $front[] = 'source: '.$this->yaml($node->source);
         $front[] = 'created_at: '.$this->yaml($node->created_at?->toIso8601String());
         $front[] = 'last_activated_at: '.$this->yaml($node->last_activated_at?->toIso8601String());
         $front[] = 'connections:'.$this->yamlList($connections);
