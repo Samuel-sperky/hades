@@ -47,6 +47,14 @@ return [
             'report' => false,
         ],
 
+        // Priehladne zrkadlo vedomia ako .md subory (mind/ v koreni repozitara).
+        'mind' => [
+            'driver' => 'local',
+            'root' => config('hades.mind_path', base_path('mind')),
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

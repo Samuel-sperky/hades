@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Area;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Services\MindMirror;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -68,5 +69,9 @@ class DatabaseSeeder extends Seeder
                 ['weight' => 2, 'last_activated_at' => now()],
             );
         }
+
+        // Seeder potláča model eventy (WithoutModelEvents), preto zrkadlo
+        // vygenerujeme priamo, aby mind/_core/*.md existovali hneď po seedovaní.
+        app(MindMirror::class)->rebuild();
     }
 }

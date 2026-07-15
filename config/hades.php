@@ -16,4 +16,9 @@ return [
     // Po kolkych minutach bez aktivity vedomie "zaspi"
     'awake_minutes' => (int) env('HADES_AWAKE_MINUTES', 5),
 
+    // Zrkadlenie uzlov do citatelnych .md suborov (Oblast/Oddelenie/uzol.md).
+    // DB je zdroj pravdy; subory su odvodene a regenerovatelne cez `mind:export`.
+    'mirror_enabled' => (bool) env('HADES_MIRROR_ENABLED', true),
+    'mind_path' => env('HADES_MIND_PATH', base_path('mind')),
+
 ];

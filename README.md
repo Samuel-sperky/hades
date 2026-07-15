@@ -35,6 +35,22 @@ docker compose up -d
 Claude Code je napojený cez `mcpServers.hades` v `~/.claude.json` a pravidlá
 učenia sú v `~/.claude/CLAUDE.md`.
 
+## Priehľadné zrkadlo (`mind/`)
+
+Každý uzol vedomia sa okrem databázy automaticky zapisuje aj ako čitateľný
+`.md` súbor do priečinka `mind/` — štruktúrou **Oblasť → Oddelenie → uzol.md**
+(napr. `mind/marketing-seo/seo/konverzny-lievik-42.md`), s YAML frontmatterom a
+`[[wikilink]]` spojeniami (dá sa otvoriť ako Obsidian trezor). Zdroj pravdy zostáva
+databáza; súbory sú odvodené a kedykoľvek regenerovateľné:
+
+```sh
+php artisan mind:export
+```
+
+Synchronizácia je automatická (pri každom learn/activate/merge/edit/delete cez
+Eloquent observery). Vypnúť sa dá cez `HADES_MIRROR_ENABLED=false`, cesta sa mení
+cez `HADES_MIND_PATH`.
+
 ## Konfigurácia
 
 Chat s Hadesom vyžaduje `ANTHROPIC_API_KEY` v `.env` (model `HADES_CHAT_MODEL`,

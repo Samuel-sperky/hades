@@ -4,12 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Events\MindPulse;
 use App\Models\Node;
+use App\Services\MindMirror;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class NodeController extends Controller
 {
-    public function show(Node $node): JsonResponse
+    public function show(Node $node, MindMirror $mirror): JsonResponse
     {
         $node->load(['area', 'department']);
 
@@ -34,6 +35,7 @@ class NodeController extends Controller
             'node' => $node->toApi() + [
                 'area_name' => $node->area?->name,
                 'department_name' => $node->department?->name,
+                'file_path' => config('hades.mirror_enabled', true) ? $mirror->relativePathFor($node) : null,
             ],
             'neighbors' => $neighbors,
             'activations' => $activations,
