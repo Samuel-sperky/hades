@@ -387,7 +387,22 @@ function makeStars() {
     }
 }
 
+function passesFilter(n) {
+    const f = S.filter;
+    if (!f) return true;
+    if (f.types.size && !f.types.has(n.type)) return false;
+    if (n.type !== 'core' && f.areas && f.areas.size && n.area_id && !f.areas.has(n.area_id)) return false;
+    if ((n.strength || 0) < f.minStrength) return false;
+    if (f.days > 0) {
+        const cutoff = now() - f.days * 86400000;
+        const last = Math.max(ts(n.last_activated_at), ts(n.created_at));
+        if (last && last < cutoff) return false;
+    }
+    return true;
+}
+
 function visibleInReplay(n) {
+    if (!passesFilter(n)) return false;
     if (!S.replay.on) return true;
     const cutoff = S.replay.tMin + (S.replay.tMax - S.replay.tMin) * S.replay.t;
     return n.type === 'core' || ts(n.created_at) <= cutoff;
@@ -927,6 +942,70 @@ function buildLegend() {
     ).join('');
 }
 
+/* ---------- filtre ---------- */
+
+function buildFilterControls() {
+    const typeNames = { core: 'Jadro', skill: 'Skill', memory: 'Spomienka', project: 'Projekt' };
+
+    $('filter-types').innerHTML = Object.keys(typeNames).map((t) =>
+        '<button type="button" data-type="' + t + '">' + typeNames[t] + '</button>'
+    ).join('');
+
+    $('filter-areas').innerHTML = [...S.areas.values()].map((a) =>
+        '<button type="button" data-area="' + a.id + '"><span class="swatch" style="background:'
+        + a.color + '"></span>' + esc(a.name) + '</button>'
+    ).join('');
+
+    $('filter-types').querySelectorAll('button').forEach((b) => {
+        b.onclick = () => { toggleSet(S.filter.types, b.dataset.type); refreshFilterUi(); };
+    });
+    $('filter-areas').querySelectorAll('button').forEach((b) => {
+        b.onclick = () => { toggleSet(S.filter.areas, +b.dataset.area); refreshFilterUi(); };
+    });
+    $('filter-time').querySelectorAll('button').forEach((b) => {
+        b.onclick = () => { S.filter.days = +b.dataset.days; refreshFilterUi(); };
+    });
+
+    const strength = $('filter-strength');
+    syncSlider(strength);
+    strength.oninput = () => { syncSlider(strength); S.filter.minStrength = +strength.value; refreshFilterUi(); };
+
+    $('filter-reset').onclick = () => {
+        S.filter.types = new Set(['core', 'skill', 'memory', 'project']);
+        S.filter.areas = new Set([...S.areas.keys()]);
+        S.filter.minStrength = 0;
+        S.filter.days = 0;
+        strength.value = 0;
+        syncSlider(strength);
+        refreshFilterUi();
+    };
+
+    refreshFilterUi();
+}
+
+function toggleSet(set, value) {
+    if (set.has(value)) set.delete(value); else set.add(value);
+}
+
+function filterActive() {
+    const f = S.filter;
+    return f.types.size < 4 || f.areas.size < S.areas.size || f.minStrength > 0 || f.days > 0;
+}
+
+function refreshFilterUi() {
+    const f = S.filter;
+    $('filter-types').querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('active', f.types.has(b.dataset.type));
+    });
+    $('filter-areas').querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('active', f.areas.has(+b.dataset.area));
+    });
+    $('filter-time').querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('active', f.days === +b.dataset.days);
+    });
+    $('btn-filter').classList.toggle('filter-on', filterActive());
+}
+
 function closeNodePanel() {
     S.selected = null;
     $('node-panel').classList.add('hidden');
@@ -1412,6 +1491,7 @@ function setupShortcuts() {
             case '2': setView('net'); break;
             case '3': setView('layers'); break;
             case 'f': case 'F': e.preventDefault(); openDock('search'); break;
+            case 'g': case 'G': openDock('filter'); break;
             case 's': case 'S': openDock('stats'); break;
             case 'l': case 'L': openDock('legend'); break;
             case 't': case 'T': $('btn-timeline').click(); break;
@@ -1467,6 +1547,7 @@ function setupHints() {
 
 const DOCK_SECTIONS = {
     search: { title: 'Vyhľadávanie', btn: 'btn-search' },
+    filter: { title: 'Filtre', btn: 'btn-filter' },
     stats: { title: 'Štatistiky', btn: 'btn-stats' },
     legend: { title: 'Legenda', btn: 'btn-legend' },
     settings: { title: 'Zobrazenie', btn: 'btn-settings' },
@@ -1531,6 +1612,7 @@ function setupControls() {
     });
 
     $('btn-search').onclick = () => openDock('search');
+    $('btn-filter').onclick = () => openDock('filter');
     $('btn-stats').onclick = () => openDock('stats');
     $('btn-legend').onclick = () => openDock('legend');
     $('btn-settings').onclick = () => openDock('settings');
@@ -1617,6 +1699,106 @@ function setupControls() {
     };
 }
 
+/* ---------- príkazová paleta (Cmd/Ctrl+K) ---------- */
+
+let cmdkSel = 0;
+let cmdkItems = [];
+
+function cmdkCommands() {
+    return [
+        { icon: 'map', label: 'Zobraziť: Mapa', run: () => setView('map') },
+        { icon: 'hub', label: 'Zobraziť: Sieť', run: () => setView('net') },
+        { icon: 'layers', label: 'Zobraziť: Vrstvy', run: () => setView('layers') },
+        { icon: 'search', label: 'Otvoriť: Vyhľadávanie', run: () => openDock('search') },
+        { icon: 'filter_alt', label: 'Otvoriť: Filtre', run: () => openDock('filter') },
+        { icon: 'monitoring', label: 'Otvoriť: Štatistiky', run: () => openDock('stats') },
+        { icon: 'category', label: 'Otvoriť: Legenda', run: () => openDock('legend') },
+        { icon: 'tune', label: 'Otvoriť: Nastavenia', run: () => openDock('settings') },
+        { icon: 'history', label: 'Prepnúť: Časová os', run: () => $('btn-timeline').click() },
+        { icon: 'dark_mode', label: 'Prepnúť tému (svetlá/tmavá)', run: toggleTheme },
+        { icon: 'center_focus_strong', label: 'Vycentrovať pohľad', run: () => { S.cam = { x: 0, y: 0, k: 0.85 }; } },
+        { icon: 'fullscreen', label: 'Ambient režim', run: () => $('btn-ambient').click() },
+    ];
+}
+
+function openCmdk() {
+    $('cmdk').classList.remove('hidden');
+    const inp = $('cmdk-input');
+    inp.value = '';
+    renderCmdk('');
+    setTimeout(() => inp.focus(), 30);
+}
+
+function closeCmdk() {
+    $('cmdk').classList.add('hidden');
+}
+
+function renderCmdk(q) {
+    const query = (q || '').trim().toLowerCase();
+    const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+
+    const cmds = cmdkCommands()
+        .filter((c) => !query || c.label.toLowerCase().includes(query))
+        .map((c) => ({ kind: 'cmd', icon: c.icon, label: c.label, sub: 'príkaz', run: c.run }));
+
+    const nodes = (!query ? [] : S.nodes
+        .filter((n) => (n.label + ' ' + (n.description || '')).toLowerCase().includes(query))
+        .sort((a, b) => (b.strength || 0) - (a.strength || 0))
+        .slice(0, 6))
+        .map((n) => ({
+            kind: 'node', icon: 'lens', label: n.label, sub: typeNames[n.type],
+            run: () => { selectNode(n); focusNode(n); },
+        }));
+
+    cmdkItems = query ? [...nodes, ...cmds] : cmds;
+    cmdkSel = 0;
+
+    $('cmdk-results').innerHTML = cmdkItems.map((it, i) =>
+        '<button type="button" class="cmdk-item' + (i === 0 ? ' sel' : '') + '" data-idx="' + i + '">'
+        + '<span class="ms" aria-hidden="true">' + it.icon + '</span>'
+        + '<span class="cmdk-label">' + esc(it.label) + '</span>'
+        + '<span class="cmdk-sub">' + it.sub + '</span></button>'
+    ).join('') || '<div class="hist">Nič nenájdené.</div>';
+
+    $('cmdk-results').querySelectorAll('.cmdk-item').forEach((b) => {
+        b.onclick = () => runCmdk(+b.dataset.idx);
+    });
+}
+
+function moveCmdk(dir) {
+    if (!cmdkItems.length) return;
+    cmdkSel = (cmdkSel + dir + cmdkItems.length) % cmdkItems.length;
+    $('cmdk-results').querySelectorAll('.cmdk-item').forEach((b, i) => {
+        b.classList.toggle('sel', i === cmdkSel);
+        if (i === cmdkSel) b.scrollIntoView({ block: 'nearest' });
+    });
+}
+
+function runCmdk(idx) {
+    const it = cmdkItems[idx];
+    if (!it) return;
+    closeCmdk();
+    it.run();
+}
+
+function setupCmdk() {
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+            e.preventDefault();
+            $('cmdk').classList.contains('hidden') ? openCmdk() : closeCmdk();
+            return;
+        }
+        if ($('cmdk').classList.contains('hidden')) return;
+        if (e.key === 'Escape') { closeCmdk(); }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); moveCmdk(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); moveCmdk(-1); }
+        else if (e.key === 'Enter') { e.preventDefault(); runCmdk(cmdkSel); }
+    });
+
+    $('cmdk-input').addEventListener('input', () => renderCmdk($('cmdk-input').value));
+    $('cmdk').addEventListener('click', (e) => { if (e.target === $('cmdk')) closeCmdk(); });
+}
+
 /* ---------- štart ---------- */
 
 async function init() {
@@ -1635,6 +1817,13 @@ async function init() {
     for (const a of data.areas) S.areas.set(a.id, a);
     for (const d of data.departments) S.departments.set(d.id, d);
 
+    S.filter = {
+        types: new Set(['core', 'skill', 'memory', 'project']),
+        areas: new Set([...S.areas.keys()]),
+        minStrength: 0,
+        days: 0,
+    };
+
     S.nodes = data.nodes.map((n) => ({ ...n }));
     for (const n of S.nodes) S.byId.set(n.id, n);
 
@@ -1647,6 +1836,8 @@ async function init() {
     setupControls();
     setupShortcuts();
     buildLegend();
+    buildFilterControls();
+    setupCmdk();
     applyOpts();
     setView(S.view);
     setupTimeline();

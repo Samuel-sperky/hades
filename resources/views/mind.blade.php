@@ -22,6 +22,7 @@
 
         <div class="rail-group" role="group" aria-label="Sekcie">
             <button id="btn-search" class="ms" title="Vyhľadať uzol (F)" aria-label="Vyhľadať uzol">search</button>
+            <button id="btn-filter" class="ms" title="Filtre (G)" aria-label="Filtre">filter_alt</button>
             <button id="btn-stats" class="ms" title="Štatistiky (S)" aria-label="Štatistiky">monitoring</button>
             <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
             <button id="btn-timeline" class="ms" title="Časová os (T)" aria-label="Časová os">history</button>
@@ -49,6 +50,25 @@
         <section id="sec-search" class="hidden">
             <input id="search-input" placeholder="Hľadať uzol…" autocomplete="off">
             <div id="search-results"></div>
+        </section>
+
+        <section id="sec-filter" class="hidden">
+            <h3>Typ</h3>
+            <div id="filter-types" class="filter-chips"></div>
+            <h3>Oblasť</h3>
+            <div id="filter-areas" class="filter-chips"></div>
+            <h3>Minimálna sila</h3>
+            <label class="slider">Sila
+                <input type="range" id="filter-strength" min="0" max="20" step="1" value="0">
+            </label>
+            <h3>Časové okno</h3>
+            <div id="filter-time" class="filter-chips">
+                <button type="button" data-days="0" class="active">Všetko</button>
+                <button type="button" data-days="7">7 dní</button>
+                <button type="button" data-days="30">30 dní</button>
+                <button type="button" data-days="90">90 dní</button>
+            </div>
+            <div class="row"><button id="filter-reset">Zrušiť filtre</button></div>
         </section>
 
         <section id="sec-stats" class="hidden">
@@ -163,6 +183,16 @@
 
     <div id="toasts" aria-live="polite"></div>
     <div id="hover-card" class="hidden" role="tooltip"></div>
+
+    <div id="cmdk" class="hidden" role="dialog" aria-modal="true" aria-label="Príkazová paleta">
+        <div id="cmdk-card">
+            <div id="cmdk-search">
+                <span class="ms" aria-hidden="true">search</span>
+                <input id="cmdk-input" placeholder="Hľadaj uzol alebo príkaz…  (⌘K / Ctrl+K)" autocomplete="off">
+            </div>
+            <div id="cmdk-results"></div>
+        </div>
+    </div>
 
     <div id="help-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Klávesové skratky">
         <div id="help-card">
