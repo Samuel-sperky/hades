@@ -139,6 +139,40 @@ class MindMirrorTest extends TestCase
         $this->assertStringNotContainsString('[[Dočasné]]', $core);
     }
 
+    public function test_import_pulls_md_edits_back_to_db(): void
+    {
+        $r = $this->mind()->learn('skill', 'Pôvodný', 'Pôvodný popis.', 'Marketing & SEO');
+        $id = $r['node']['id'];
+        $path = "marketing-seo/povodny-{$id}.md";
+
+        $content = Storage::disk('mind')->get($path);
+        $content = str_replace('# Pôvodný', '# Nový názov', $content);
+        $content = str_replace('Pôvodný popis.', 'Upravený popis.', $content);
+        Storage::disk('mind')->put($path, $content);
+
+        $this->artisan('mind:import')->assertSuccessful();
+
+        $node = \App\Models\Node::find($id);
+        $this->assertSame('Nový názov', $node->label);
+        $this->assertSame('Upravený popis.', $node->description);
+    }
+
+    public function test_import_rejects_sensitive_edits(): void
+    {
+        $r = $this->mind()->learn('memory', 'Čistý', 'Nič citlivé.', 'Osobné & preferencie');
+        $id = $r['node']['id'];
+        $path = "osobne-preferencie/cisty-{$id}.md";
+
+        $content = Storage::disk('mind')->get($path);
+        $content = str_replace('Nič citlivé.', 'heslo: superTajne123', $content);
+        Storage::disk('mind')->put($path, $content);
+
+        $this->artisan('mind:import')->assertSuccessful();
+
+        // popis sa NEzmenil — import odmietol citlivý obsah
+        $this->assertSame('Nič citlivé.', \App\Models\Node::find($id)->description);
+    }
+
     public function test_mind_export_regenerates_full_tree_and_index(): void
     {
         $this->mind()->learn('skill', 'Regen test', 'x', 'Marketing & SEO', 'SEO');

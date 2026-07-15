@@ -51,9 +51,17 @@ databáza; súbory sú odvodené a kedykoľvek regenerovateľné:
 php artisan mind:export
 ```
 
-Synchronizácia je automatická (pri každom learn/activate/merge/edit/delete cez
-Eloquent observery). Vypnúť sa dá cez `HADES_MIRROR_ENABLED=false`, cesta sa mení
-cez `HADES_MIND_PATH`.
+Synchronizácia DB → súbory je automatická (pri každom learn/activate/merge/edit/
+delete cez Eloquent observery). Ručné úpravy `.md` (napr. v Obsidiane) premietneš
+späť do DB príkazom:
+
+```sh
+php artisan mind:import
+```
+
+Pri drifte je autoritou DB (`mind:export` prepíše súbory). Medzi počítačmi sa myseľ
+prenáša cez git: `git pull` a potom `mind:import`. Vypnúť zrkadlenie sa dá cez
+`HADES_MIRROR_ENABLED=false`, cesta sa mení cez `HADES_MIND_PATH`.
 
 ## Súkromie
 
