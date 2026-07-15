@@ -25,7 +25,8 @@
             <button id="btn-filter" class="ms" title="Filtre (G)" aria-label="Filtre">filter_alt</button>
             <button id="btn-stats" class="ms" title="Štatistiky (S)" aria-label="Štatistiky">monitoring</button>
             <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
-            <button id="btn-timeline" class="ms" title="Časová os (T)" aria-label="Časová os">history</button>
+            <button id="btn-suggest" class="ms" title="Návrhy (N)" aria-label="Návrhy">lightbulb</button>
+            <button id="btn-timeline" class="ms" title="Heatmapa aktivity (T)" aria-label="Heatmapa aktivity">history</button>
         </div>
 
         <div class="rail-group bottom" role="group" aria-label="Systém">
@@ -57,6 +58,10 @@
             <div id="filter-types" class="filter-chips"></div>
             <h3>Oblasť</h3>
             <div id="filter-areas" class="filter-chips"></div>
+            <div id="filter-sources-wrap" class="hidden">
+                <h3>Pôvod</h3>
+                <div id="filter-sources" class="filter-chips"></div>
+            </div>
             <h3>Minimálna sila</h3>
             <label class="slider">Sila
                 <input type="range" id="filter-strength" min="0" max="20" step="1" value="0">
@@ -89,6 +94,16 @@
             <div id="legend-types"></div>
             <h3>Oblasti</h3>
             <div id="legend-areas"></div>
+        </section>
+
+        <section id="sec-suggest" class="hidden">
+            <p class="sec-hint">Pasívne návrhy — Hades sám nič nemení.</p>
+            <h3>Medzery (zanedbané oblasti)</h3>
+            <div id="suggest-gaps"></div>
+            <h3>Spiace uzly</h3>
+            <div id="suggest-sleeping"></div>
+            <h3>Možné duplicity</h3>
+            <div id="suggest-duplicates"></div>
         </section>
 
         <section id="sec-settings" class="hidden">

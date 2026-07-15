@@ -1551,3 +1551,21 @@ body.ambient #toasts {
     border-radius: 2px;
     border: 1px solid var(--border);
 }
+
+/* ---------------------------------------------------------------------------
+   SUGGESTIONS PANEL (Q47 / návrhy)
+   --------------------------------------------------------------------------- */
+.sec-hint { font-size: var(--fs-caption); color: var(--muted); margin-bottom: var(--sp-1); }
+#sec-suggest .dup-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-0);
+    flex-wrap: wrap;
+}
+.dup-sim {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    color: var(--warn);
+    letter-spacing: var(--ls-mono);
+}

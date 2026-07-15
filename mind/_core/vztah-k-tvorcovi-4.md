@@ -6,8 +6,8 @@ area_slug: ""
 department: ""
 strength: 3
 source: ""
-created_at: "2026-07-15T23:18:33+00:00"
-last_activated_at: "2026-07-15T23:18:33+00:00"
+created_at: "2026-07-15T23:22:37+00:00"
+last_activated_at: "2026-07-15T23:22:37+00:00"
 connections:
   - "Hades"
 aliases:

@@ -391,6 +391,7 @@ function passesFilter(n) {
     if (!f) return true;
     if (f.types.size && !f.types.has(n.type)) return false;
     if (n.type !== 'core' && f.areas && f.areas.size && n.area_id && !f.areas.has(n.area_id)) return false;
+    if (n.source && f.sources && f.sources.size < f.allSources && !f.sources.has(n.source)) return false;
     if ((n.strength || 0) < f.minStrength) return false;
     if (f.days > 0) {
         const cutoff = now() - f.days * 86400000;
@@ -866,6 +867,7 @@ async function selectNode(n) {
         if (data.node.area_name) meta.push(data.node.area_name);
         if (data.node.department_name) meta.push(data.node.department_name);
         meta.push('sila ' + data.node.strength.toFixed(0));
+        if (data.node.source) meta.push('z: ' + data.node.source);
         $('node-meta').textContent = meta.join(' · ');
 
         const fileBtn = $('node-file');
@@ -944,11 +946,23 @@ function buildFilterControls() {
         + a.color + '"></span>' + esc(a.name) + '</button>'
     ).join('');
 
+    // Pôvod (source) — dynamicky z uzlov; sekcia sa ukáže len ak nejaký existuje
+    const sources = [...new Set(S.nodes.map((n) => n.source).filter(Boolean))].sort();
+    S.filter.allSources = sources.length;
+    S.filter.sources = new Set(sources);
+    $('filter-sources-wrap').classList.toggle('hidden', sources.length === 0);
+    $('filter-sources').innerHTML = sources.map((s) =>
+        '<button type="button" data-source="' + esc(s) + '">' + esc(s) + '</button>'
+    ).join('');
+
     $('filter-types').querySelectorAll('button').forEach((b) => {
         b.onclick = () => { toggleSet(S.filter.types, b.dataset.type); refreshFilterUi(); };
     });
     $('filter-areas').querySelectorAll('button').forEach((b) => {
         b.onclick = () => { toggleSet(S.filter.areas, +b.dataset.area); refreshFilterUi(); };
+    });
+    $('filter-sources').querySelectorAll('button').forEach((b) => {
+        b.onclick = () => { toggleSet(S.filter.sources, b.dataset.source); refreshFilterUi(); };
     });
     $('filter-time').querySelectorAll('button').forEach((b) => {
         b.onclick = () => { S.filter.days = +b.dataset.days; refreshFilterUi(); };
@@ -961,6 +975,7 @@ function buildFilterControls() {
     $('filter-reset').onclick = () => {
         S.filter.types = new Set(['core', 'skill', 'memory', 'project']);
         S.filter.areas = new Set([...S.areas.keys()]);
+        S.filter.sources = new Set(sources);
         S.filter.minStrength = 0;
         S.filter.days = 0;
         strength.value = 0;
@@ -977,7 +992,8 @@ function toggleSet(set, value) {
 
 function filterActive() {
     const f = S.filter;
-    return f.types.size < 4 || f.areas.size < S.areas.size || f.minStrength > 0 || f.days > 0;
+    return f.types.size < 4 || f.areas.size < S.areas.size || f.minStrength > 0 || f.days > 0
+        || (f.allSources && f.sources.size < f.allSources);
 }
 
 function refreshFilterUi() {
@@ -987,6 +1003,9 @@ function refreshFilterUi() {
     });
     $('filter-areas').querySelectorAll('button').forEach((b) => {
         b.classList.toggle('active', f.areas.has(+b.dataset.area));
+    });
+    $('filter-sources').querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('active', f.sources.has(b.dataset.source));
     });
     $('filter-time').querySelectorAll('button').forEach((b) => {
         b.classList.toggle('active', f.days === +b.dataset.days);
@@ -1327,6 +1346,7 @@ const SHORTCUTS = [
     ['G', 'Filtre'],
     ['S', 'Štatistiky'],
     ['L', 'Legenda'],
+    ['N', 'Návrhy (medzery, duplicity, spiace)'],
     ['T', 'Heatmapa aktivity'],
     ['D', 'Svetlá / tmavá téma'],
     ['C', 'Chat s Hadesom'],
@@ -1383,6 +1403,7 @@ function setupShortcuts() {
             case 'g': case 'G': openDock('filter'); break;
             case 's': case 'S': openDock('stats'); break;
             case 'l': case 'L': openDock('legend'); break;
+            case 'n': case 'N': openDock('suggest'); break;
             case 't': case 'T': $('btn-timeline').click(); break;
             case 'd': case 'D': toggleTheme(); break;
             case 'k': case 'K': e.preventDefault(); openCmdk(); break;
@@ -1435,6 +1456,7 @@ const DOCK_SECTIONS = {
     filter: { title: 'Filtre', btn: 'btn-filter' },
     stats: { title: 'Štatistiky', btn: 'btn-stats' },
     legend: { title: 'Legenda', btn: 'btn-legend' },
+    suggest: { title: 'Návrhy', btn: 'btn-suggest' },
     settings: { title: 'Zobrazenie', btn: 'btn-settings' },
 };
 
@@ -1452,10 +1474,40 @@ function openDock(name) {
     }
 
     if (name === 'stats') refreshStats();
+    if (name === 'suggest') renderSuggestions();
     if (name === 'search') {
         renderSearch($('search-input').value);
         setTimeout(() => $('search-input').focus(), 60);
     }
+}
+
+async function renderSuggestions() {
+    let s;
+    try {
+        s = await (await fetch('/api/mind/suggestions')).json();
+    } catch (e) {
+        return;
+    }
+
+    const jump = (id) => { const n = S.byId.get(+id); if (n) { selectNode(n); focusNode(n); } };
+
+    $('suggest-gaps').innerHTML = (s.gaps || []).map((g) =>
+        '<div class="stat-row"><span>' + esc(g.name) + '</span><span class="val">' + g.nodes + '</span></div>'
+    ).join('') || '<div class="hist">—</div>';
+
+    $('suggest-sleeping').innerHTML = (s.sleeping || []).map((n) =>
+        '<button type="button" class="search-item" data-id="' + n.id + '"><span>' + esc(n.label)
+        + '</span><span class="sub">' + (n.last_activated_at ? new Date(n.last_activated_at).toLocaleDateString('sk') : '') + '</span></button>'
+    ).join('') || '<div class="hist">žiadne spiace uzly</div>';
+
+    $('suggest-duplicates').innerHTML = (s.duplicates || []).map((d) =>
+        '<div class="dup-row"><button type="button" class="chip" data-id="' + d.a.id + '">' + esc(d.a.label)
+        + '</button><span class="dup-sim">' + d.similarity + '%</span><button type="button" class="chip" data-id="' + d.b.id + '">' + esc(d.b.label) + '</button></div>'
+    ).join('') || '<div class="hist">žiadne zjavné duplicity</div>';
+
+    $('sec-suggest').querySelectorAll('[data-id]').forEach((el) => {
+        el.onclick = () => jump(el.dataset.id);
+    });
 }
 
 function closeDock() {
@@ -1500,6 +1552,7 @@ function setupControls() {
     $('btn-filter').onclick = () => openDock('filter');
     $('btn-stats').onclick = () => openDock('stats');
     $('btn-legend').onclick = () => openDock('legend');
+    $('btn-suggest').onclick = () => openDock('suggest');
     $('btn-settings').onclick = () => openDock('settings');
     $('dock-close').onclick = closeDock;
 
@@ -1705,6 +1758,8 @@ async function init() {
     S.filter = {
         types: new Set(['core', 'skill', 'memory', 'project']),
         areas: new Set([...S.areas.keys()]),
+        sources: new Set(),
+        allSources: 0,
         minStrength: 0,
         days: 0,
     };
