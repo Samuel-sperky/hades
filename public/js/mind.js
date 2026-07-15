@@ -34,7 +34,6 @@ const S = {
     awakeMinutes: 5,
     dim: 1,
     activations: [],
-    replay: { on: false, t: 1, playing: false, tMin: 0, tMax: 0 },
     view: localStorage.getItem('hades.view') || 'map',
 };
 
@@ -253,7 +252,7 @@ function isAwake() {
 /* ---------- pulzy ---------- */
 
 function spawnPulse(fromNode, toNode, opts = {}) {
-    if (!fromNode || !toNode || S.replay.on) return;
+    if (!fromNode || !toNode) return;
     S.pulses.push({
         from: fromNode, to: toNode,
         t: 0,
@@ -273,7 +272,7 @@ function neighborsOf(node) {
 }
 
 function dream() {
-    if (REDUCED_MOTION || document.hidden || S.replay.on || !S.edges.length) return;
+    if (REDUCED_MOTION || document.hidden || !S.edges.length) return;
     const e = S.edges[Math.floor(Math.random() * S.edges.length)];
     const flip = Math.random() < 0.5;
     const from = flip ? e.source : e.target;
@@ -402,10 +401,7 @@ function passesFilter(n) {
 }
 
 function visibleInReplay(n) {
-    if (!passesFilter(n)) return false;
-    if (!S.replay.on) return true;
-    const cutoff = S.replay.tMin + (S.replay.tMax - S.replay.tMin) * S.replay.t;
-    return n.type === 'core' || ts(n.created_at) <= cutoff;
+    return passesFilter(n);
 }
 
 function draw() {
@@ -482,7 +478,8 @@ function draw() {
 
     if (S.view === 'map') for (const area of S.areas.values()) {
         const a = areaAnchor(area);
-        ctx.globalAlpha = 0.05 * S.dim;
+        // utlmená ambientná aura oblasti — takmer monochromatický pokoj (Q2)
+        ctx.globalAlpha = 0.035 * S.dim;
         const g = ctx.createRadialGradient(a.x, a.y, 20, a.x, a.y, 260);
         g.addColorStop(0, area.color);
         g.addColorStop(1, 'transparent');
@@ -490,7 +487,7 @@ function draw() {
         ctx.beginPath();
         ctx.arc(a.x, a.y, 260, 0, 7);
         ctx.fill();
-        ctx.globalAlpha = 0.28 * S.dim;
+        ctx.globalAlpha = 0.2 * S.dim;
         ctx.fillStyle = THEME.muted || '#566964';
         ctx.font = '600 13px "Geist Mono", ui-monospace, monospace';
         ctx.textAlign = 'center';
@@ -722,15 +719,6 @@ function frame() {
             S.pulses[i].to.flash = Math.min(1, (S.pulses[i].to.flash || 0) + 0.5 * S.pulses[i].dim);
             S.pulses.splice(i, 1);
         }
-    }
-
-    if (S.replay.playing) {
-        S.replay.t = Math.min(1, S.replay.t + dt / 22);
-        const tlr = document.getElementById('tl-range');
-        tlr.value = Math.round(S.replay.t * 1000);
-        syncSlider(tlr);
-        updateTimelineLabel();
-        if (S.replay.t >= 1) stopReplay();
     }
 
     draw();
@@ -1137,54 +1125,69 @@ async function refreshStats() {
     }
 }
 
-/* ---------- časová os ---------- */
+/* ---------- živá heatmapa aktivity (oblasť × čas) ---------- */
 
-function updateTimelineLabel() {
-    const label = $('tl-label');
-    if (!S.replay.on || S.replay.t >= 1) {
-        label.textContent = 'teraz';
+const HEAT_WEEKS = 12;
+
+async function buildHeatmap() {
+    const grid = $('heat-grid');
+    grid.innerHTML = '<div class="hist">načítavam…</div>';
+
+    let activations = [];
+    try {
+        const since = new Date(now() - HEAT_WEEKS * 7 * 86400000).toISOString();
+        const res = await fetch('/api/activations?since=' + encodeURIComponent(since) + '&limit=10000');
+        activations = (await res.json()).activations || [];
+    } catch (e) {
+        grid.innerHTML = '<div class="hist">aktivitu sa nepodarilo načítať</div>';
         return;
     }
-    const t = S.replay.tMin + (S.replay.tMax - S.replay.tMin) * S.replay.t;
-    label.textContent = new Date(t).toLocaleDateString('sk', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 
-function stopReplay() {
-    S.replay.playing = false;
-    S.replay.on = false;
-    S.replay.t = 1;
-    $('tl-range').value = 1000;
-    syncSlider($('tl-range'));
-    $('tl-play').textContent = 'play_arrow';
-    updateTimelineLabel();
-}
+    // node_id → area_id
+    const areaOf = new Map();
+    for (const n of S.nodes) areaOf.set(n.id, n.area_id);
 
-function setupTimeline() {
-    const range = $('tl-range');
+    const areas = [...S.areas.values()];
+    // matica [areaIndex][week] = počet
+    const weekStart = startOfWeek(now()) - (HEAT_WEEKS - 1) * 7 * 86400000;
+    const matrix = areas.map(() => new Array(HEAT_WEEKS).fill(0));
 
-    syncSlider(range);
-    range.addEventListener('input', () => {
-        syncSlider(range);
-        S.replay.t = +range.value / 1000;
-        S.replay.on = S.replay.t < 1;
-        S.replay.playing = false;
-        $('tl-play').textContent = 'play_arrow';
-        updateTimelineLabel();
+    for (const a of activations) {
+        const areaId = areaOf.get(a.node_id);
+        if (areaId == null) continue;
+        const ai = areas.findIndex((ar) => ar.id === areaId);
+        if (ai < 0) continue;
+        const wk = Math.floor((ts(a.created_at) - weekStart) / (7 * 86400000));
+        if (wk >= 0 && wk < HEAT_WEEKS) matrix[ai][wk]++;
+    }
+
+    const max = Math.max(1, ...matrix.flat());
+
+    let html = '';
+    areas.forEach((area, ai) => {
+        html += '<div class="heat-row"><span class="heat-label" title="' + esc(area.name) + '">'
+            + esc(area.name) + '</span><span class="heat-cells">';
+        for (let w = 0; w < HEAT_WEEKS; w++) {
+            const v = matrix[ai][w];
+            const alpha = v ? (0.14 + 0.86 * (v / max)) : 0;
+            const bg = v ? 'color-mix(in srgb, ' + area.color + ' ' + Math.round(alpha * 100) + '%, transparent)' : 'var(--surface-2)';
+            html += '<span class="heat-cell" style="background:' + bg + '" title="' + v + ' akcií"></span>';
+        }
+        html += '</span></div>';
     });
 
-    $('tl-play').addEventListener('click', () => {
-        if (S.replay.playing) { stopReplay(); return; }
-        S.replay.on = true;
-        S.replay.playing = true;
-        S.replay.t = 0;
-        $('tl-play').textContent = 'pause';
-    });
+    grid.innerHTML = html;
+
+    const from = new Date(weekStart).toLocaleDateString('sk', { day: 'numeric', month: 'short' });
+    $('heat-range').textContent = 'posledných ' + HEAT_WEEKS + ' týž. · od ' + from;
 }
 
-function computeReplayBounds() {
-    const times = S.nodes.filter((n) => n.type !== 'core').map((n) => ts(n.created_at)).filter(Boolean);
-    S.replay.tMin = times.length ? Math.min(...times) - 3600000 : now() - 86400000;
-    S.replay.tMax = now();
+function startOfWeek(t) {
+    const d = new Date(t);
+    d.setHours(0, 0, 0, 0);
+    const day = (d.getDay() + 6) % 7; // pondelok = 0
+    d.setDate(d.getDate() - day);
+    return d.getTime();
 }
 
 /* ---------- websocket ---------- */
@@ -1623,7 +1626,7 @@ function setupControls() {
     $('btn-timeline').onclick = () => {
         const shown = !$('timeline').classList.toggle('hidden');
         $('btn-timeline').classList.toggle('active', shown);
-        if (!shown) stopReplay();
+        if (shown) buildHeatmap();
     };
 
     $('zoom-in').onclick = () => zoomBy(1.3);
@@ -1831,7 +1834,6 @@ async function init() {
         .filter((e) => S.byId.has(e.source_id) && S.byId.has(e.target_id))
         .map((e) => ({ ...e, source: S.byId.get(e.source_id), target: S.byId.get(e.target_id) }));
 
-    computeReplayBounds();
     setupInput();
     setupControls();
     setupShortcuts();
@@ -1840,14 +1842,12 @@ async function init() {
     setupCmdk();
     applyOpts();
     setView(S.view);
-    setupTimeline();
     setupPrompt();
     setupHints();
     connectWs(data.ws);
 
     // plynulé, jemné pulzy putujúce po hranách — „živá sieť", no pokojne
     setInterval(dream, 3200 + Math.random() * 2600);
-    setInterval(computeReplayBounds, 60000);
 
     window.HADES = { S, draw, frame };
 

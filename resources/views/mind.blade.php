@@ -161,9 +161,11 @@
     </aside>
 
     <div id="timeline" class="hidden">
-        <button id="tl-play" class="ms primary" title="Prehrať rast vedomia" aria-label="Prehrať rast vedomia">play_arrow</button>
-        <input type="range" id="tl-range" min="0" max="1000" value="1000" aria-label="Časová os">
-        <span id="tl-label">teraz</span>
+        <div class="heat-head">
+            <span class="heat-title">Aktivita vedomia</span>
+            <span id="heat-range" class="heat-range"></span>
+        </div>
+        <div id="heat-grid" aria-label="Heatmapa aktivity podľa oblastí a času"></div>
     </div>
 
     <div id="zoomctl" role="group" aria-label="Ovládanie kamery">
