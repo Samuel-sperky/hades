@@ -2,15 +2,15 @@
 (() => {
 'use strict';
 
-const CORE_COLOR = '#8b7cf6';
+const CORE_COLOR = '#b88a3a';
 const AREA_RADIUS = 460;
 
-// Farby uzlov (identita) — zladene s CSS --node-* tokenmi
+// Farby uzlov (identita) — zladene s CSS --node-* tokenmi (Aura paleta)
 const NODE_COLORS = {
-    core: '#8b7cf6',
-    skill: '#34d399',
-    memory: '#60a5fa',
-    project: '#f0a35e',
+    core: '#b88a3a',
+    skill: '#03797e',
+    memory: '#2f6d8f',
+    project: '#c2761c',
 };
 const DEPT_RADIUS = 140;
 
@@ -42,16 +42,16 @@ const S = {
 };
 
 const VIEW_LAYER_COLORS = {
-    memory: '#60a5fa',
-    skill: '#34d399',
-    core: '#8b7cf6',
-    project: '#f0a35e',
+    memory: '#2f6d8f',
+    skill: '#03797e',
+    core: '#b88a3a',
+    project: '#c2761c',
 };
 
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const OPT_DEFAULTS = {
-    panelAlpha: 0.88,
+    panelAlpha: 0.92,
     bg: 1,
     edgeAlpha: 1,
     glow: 1,
@@ -95,20 +95,20 @@ const ts = (iso) => (iso ? new Date(iso).getTime() : 0);
 
 function nodeColor(n) {
     if (S.view === 'layers') {
-        return VIEW_LAYER_COLORS[n.type] || '#8ea2ff';
+        return VIEW_LAYER_COLORS[n.type] || '#566964';
     }
     if (n.type === 'core') return CORE_COLOR;
     const area = S.areas.get(n.area_id);
-    return area ? area.color : '#8ea2ff';
+    return area ? area.color : '#566964';
 }
 
 // Gradient plexus pozadia: fialova (vlavo) -> smaragdova (vpravo), ako referencny vizual
 // Tlmena technicka paleta: bridlicova indigo (vlavo) -> teal (vpravo)
 function plexusColor(x) {
     const t = Math.max(0, Math.min(1, (x + 1300) / 2600));
-    const r = Math.round(99 + (45 - 99) * t);
-    const g = Math.round(116 + (178 - 116) * t);
-    const b = Math.round(178 + (170 - 178) * t);
+    const r = Math.round(120 + (3 - 120) * t);
+    const g = Math.round(170 + (121 - 170) * t);
+    const b = Math.round(168 + (126 - 168) * t);
     return r + ',' + g + ',' + b;
 }
 
@@ -146,14 +146,14 @@ function drawLayerScaffold(layers) {
 
     ctx.textAlign = 'center';
     for (let i = 0; i < LAYER_X.length; i++) {
-        ctx.globalAlpha = 0.55 * S.dim;
-        ctx.fillStyle = '#c7d0ee';
-        ctx.font = '600 ' + (12.5 * invK) + 'px Inter, system-ui, sans-serif';
+        ctx.globalAlpha = 0.6 * S.dim;
+        ctx.fillStyle = '#2d3a38';
+        ctx.font = '600 ' + (12.5 * invK) + 'px "Geist Mono", ui-monospace, monospace';
         ctx.fillText(LAYER_META[i].title.toUpperCase(), LAYER_X[i], headerY);
 
-        ctx.globalAlpha = 0.34 * S.dim;
-        ctx.fillStyle = '#8b95c0';
-        ctx.font = (10.5 * invK) + 'px Inter, system-ui, sans-serif';
+        ctx.globalAlpha = 0.5 * S.dim;
+        ctx.fillStyle = '#566964';
+        ctx.font = (10.5 * invK) + 'px "Geist Mono", ui-monospace, monospace';
         ctx.fillText(LAYER_META[i].sub, LAYER_X[i], headerY + 18 * invK);
     }
     ctx.globalAlpha = 1;
@@ -352,7 +352,7 @@ function resize() {
 // Cistice pozadia: technicke gulicky s hlbkou (parallax) a jemnym driftom
 function makeStars() {
     S.stars = [];
-    const count = Math.round(300 * (S.opts ? S.opts.density : 1));
+    const count = Math.round(140 * (S.opts ? S.opts.density : 1));
     for (let i = 0; i < count; i++) {
         const z = 0.35 + Math.random() * 0.65;
         S.stars.push({
@@ -360,11 +360,11 @@ function makeStars() {
             y: (Math.random() - 0.5) * 2600,
             z,
             dir: Math.random() * Math.PI * 2,
-            speed: (1.6 + Math.random() * 3) * z,
-            curve: (Math.random() - 0.5) * 0.16,
+            speed: (0.25 + Math.random() * 0.5) * z,
+            curve: (Math.random() - 0.5) * 0.05,
             phase: Math.random() * Math.PI * 2,
-            twinkle: 0.5 + Math.random() * 0.9,
-            r: 1.05 + z * 1.35,
+            twinkle: 0.25 + Math.random() * 0.35,
+            r: 0.8 + z * 0.7,
         });
     }
 }
@@ -380,7 +380,7 @@ function draw() {
     S.dim += (targetDim - S.dim) * 0.02;
 
     ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
-    ctx.fillStyle = '#05060f';
+    ctx.fillStyle = '#f8f4f7';
     ctx.fillRect(0, 0, S.w, S.h);
 
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
@@ -389,11 +389,20 @@ function draw() {
     const layersView = S.view === 'layers';
     const bgLevel = layersView ? 0 : S.opts.bg;
     if (bgLevel > 0.01) {
-        const plexusDist = 190;
+        const plexusDist = 210;
         const invK = 1 / S.cam.k;
 
-        // linky: tenke, technicky ciste, tlmene podla hlbky a vzdialenosti
-        ctx.lineWidth = 0.55 * invK;
+        // jemna technicka mriezka (world-space, hyba sa so sietou)
+        const _step = 240, _ext = 1400;
+        ctx.lineWidth = 0.5 * invK;
+        ctx.strokeStyle = 'rgba(3,121,126,' + (0.035 * S.dim * bgLevel) + ')';
+        ctx.beginPath();
+        for (let gx = -_ext; gx <= _ext; gx += _step) { ctx.moveTo(gx, -_ext); ctx.lineTo(gx, _ext); }
+        for (let gy = -_ext; gy <= _ext; gy += _step) { ctx.moveTo(-_ext, gy); ctx.lineTo(_ext, gy); }
+        ctx.stroke();
+
+        // linky: jemne teal hairlines na papieri
+        ctx.lineWidth = 0.6 * invK;
         for (let i = 0; i < S.stars.length; i++) {
             const a = S.stars[i];
             for (let j = i + 1; j < S.stars.length; j++) {
@@ -402,8 +411,8 @@ function draw() {
                 const d2 = dx * dx + dy * dy;
                 if (d2 > plexusDist * plexusDist) continue;
                 const depth = Math.min(a.z, b.z);
-                const alpha = Math.min(0.45,
-                    (1 - Math.sqrt(d2) / plexusDist) * 0.24 * depth * S.dim * bgLevel);
+                const alpha = Math.min(0.10,
+                    (1 - Math.sqrt(d2) / plexusDist) * 0.07 * depth * S.dim * bgLevel);
                 ctx.strokeStyle = 'rgba(' + plexusColor((a.x + b.x) / 2) + ',' + alpha + ')';
                 ctx.beginPath();
                 ctx.moveTo(a.x, a.y);
@@ -412,24 +421,24 @@ function draw() {
             }
         }
 
-        // gulicky: jednotny tvar, jemne jadro pre technicky "ball" look
+        // gulicky: cisty solidny bod + jemny teal "node" prstenec
         for (const s of S.stars) {
             const col = plexusColor(s.x);
             const rr = s.r * s.z * invK;
-            const tw = 0.72 + 0.28 * Math.sin(s.phase);
-            const base = Math.min(1, s.z * 0.85 * tw * S.dim * bgLevel);
-
-            ctx.globalAlpha = base * 0.4;
-            ctx.fillStyle = 'rgba(' + col + ',1)';
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, rr * 1.7, 0, 7);
-            ctx.fill();
+            const base = Math.min(0.18, s.z * 0.5 * S.dim * bgLevel);
 
             ctx.globalAlpha = base;
             ctx.fillStyle = 'rgba(' + col + ',1)';
             ctx.beginPath();
             ctx.arc(s.x, s.y, rr, 0, 7);
             ctx.fill();
+
+            ctx.globalAlpha = base * 0.5;
+            ctx.lineWidth = 0.5 * invK;
+            ctx.strokeStyle = 'rgba(3,121,126,1)';
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, rr * 2.2, 0, 7);
+            ctx.stroke();
         }
         ctx.globalAlpha = 1;
     }
@@ -444,9 +453,9 @@ function draw() {
         ctx.beginPath();
         ctx.arc(a.x, a.y, 260, 0, 7);
         ctx.fill();
-        ctx.globalAlpha = 0.35 * S.dim;
-        ctx.fillStyle = area.color;
-        ctx.font = '600 15px "Segoe UI", sans-serif';
+        ctx.globalAlpha = 0.28 * S.dim;
+        ctx.fillStyle = '#566964';
+        ctx.font = '600 13px "Geist Mono", ui-monospace, monospace';
         ctx.textAlign = 'center';
         ctx.fillText(area.name.toUpperCase(), a.x, a.y - 230);
         ctx.globalAlpha = 1;
@@ -462,7 +471,7 @@ function draw() {
                 if (!visibleInReplay(a)) continue;
                 for (const b of layers[li + 1]) {
                     if (!visibleInReplay(b)) continue;
-                    ctx.strokeStyle = 'rgba(120, 145, 205,' + (0.16 * S.dim * S.opts.edgeAlpha) + ')';
+                    ctx.strokeStyle = 'rgba(3,121,126,' + (0.12 * S.dim * S.opts.edgeAlpha) + ')';
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
@@ -474,9 +483,9 @@ function draw() {
     } else {
         for (const e of S.edges) {
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
-            const alpha = Math.min(0.85,
-                Math.min(0.55, 0.17 + 0.07 * Math.log2(1 + (e.weight || 1))) * S.dim * S.opts.edgeAlpha);
-            ctx.strokeStyle = 'rgba(198, 206, 255,' + alpha + ')';
+            const alpha = Math.min(0.30,
+                Math.min(0.24, 0.12 + 0.06 * Math.log2(1 + (e.weight || 1))) * S.dim * S.opts.edgeAlpha);
+            ctx.strokeStyle = 'rgba(3,121,126,' + alpha + ')';
             ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
             ctx.beginPath();
             ctx.moveTo(e.source.x, e.source.y);
@@ -485,18 +494,18 @@ function draw() {
         }
     }
 
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = 'source-over';
 
     for (const p of S.pulses) {
         const x = p.from.x + (p.to.x - p.from.x) * p.t;
         const y = p.from.y + (p.to.y - p.from.y) * p.t;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 14);
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 10);
         g.addColorStop(0, p.color);
         g.addColorStop(1, 'transparent');
-        ctx.globalAlpha = 0.9 * p.dim * Math.sin(Math.PI * Math.min(p.t, 1));
+        ctx.globalAlpha = 0.8 * p.dim * Math.sin(Math.PI * Math.min(p.t, 1));
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(x, y, 14, 0, 7);
+        ctx.arc(x, y, 10, 0, 7);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -511,13 +520,13 @@ function draw() {
             const flash = n.flash || 0;
 
             // jemna aura
-            ctx.globalAlpha = Math.min(0.6, (0.16 + flash * 0.5) * S.dim * S.opts.glow);
-            const g = ctx.createRadialGradient(n.x, n.y, r * 0.6, n.x, n.y, r * 2.8);
+            ctx.globalAlpha = Math.min(0.4, (0.12 + flash * 0.5) * S.dim * S.opts.glow);
+            const g = ctx.createRadialGradient(n.x, n.y, r * 0.6, n.x, n.y, r * 2.4);
             g.addColorStop(0, color);
             g.addColorStop(1, 'transparent');
             ctx.fillStyle = g;
             ctx.beginPath();
-            ctx.arc(n.x, n.y, r * 2.8, 0, 7);
+            ctx.arc(n.x, n.y, r * 2.4, 0, 7);
             ctx.fill();
 
             // jadro
@@ -543,9 +552,9 @@ function draw() {
         const r = nodeRadius(n);
         const color = nodeColor(n);
         const flash = n.flash || 0;
-        const halo = r * (3.2 + flash * 2.5);
+        const halo = r * (2.4 + flash * 2);
 
-        ctx.globalAlpha = Math.min(1, (0.34 + flash * 0.5) * S.dim * S.opts.glow);
+        ctx.globalAlpha = Math.min(0.55, (0.18 + flash * 0.4) * S.dim * S.opts.glow);
         const g = ctx.createRadialGradient(n.x, n.y, r * 0.3, n.x, n.y, halo);
         g.addColorStop(0, color);
         g.addColorStop(1, 'transparent');
@@ -558,11 +567,13 @@ function draw() {
         ctx.fillStyle = color;
         drawShape(n, r);
 
-        ctx.globalAlpha = 0.9 * S.dim;
-        ctx.fillStyle = '#ffffff';
+        // ink hairline obrys pre cistu "gem" definiciu na papieri
+        ctx.globalAlpha = Math.min(0.9, (0.5 + flash) * S.dim);
+        ctx.lineWidth = Math.max(1, 0.8 / S.cam.k);
+        ctx.strokeStyle = 'rgba(16,29,27,0.22)';
         ctx.beginPath();
-        ctx.arc(n.x, n.y, Math.max(1.2, r * 0.28), 0, 7);
-        ctx.fill();
+        ctx.arc(n.x, n.y, r, 0, 7);
+        ctx.stroke();
 
         if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
     }
@@ -583,7 +594,7 @@ function draw() {
     const taken = [];
     ctx.textAlign = 'center';
     for (const { n, isHover } of candidates) {
-        ctx.font = (isHover ? '600 ' : '') + fontSize + 'px "Segoe UI", sans-serif';
+        ctx.font = (isHover ? '600 ' : '') + fontSize + 'px "Geist", system-ui, sans-serif';
         const w = ctx.measureText(n.label).width;
         const y = n.y + nodeRadius(n) + 15 / S.cam.k;
         const rect = { x: n.x - w / 2, y: y - fontSize, w, h: fontSize * 1.4 };
@@ -598,9 +609,9 @@ function draw() {
             (isHover ? 0.98 : Math.min(0.72, (S.cam.k - 0.5) * 1.6)) * S.dim * S.opts.labelAlpha);
         ctx.lineWidth = Math.max(2.5, fontSize * 0.28);
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(5, 6, 15, 0.85)';
+        ctx.strokeStyle = 'rgba(248, 244, 247, 0.9)';
         ctx.strokeText(n.label, n.x, y);
-        ctx.fillStyle = '#e3e8ff';
+        ctx.fillStyle = '#101d1b';
         ctx.fillText(n.label, n.x, y);
     }
     ctx.globalAlpha = 1;
@@ -797,7 +808,7 @@ async function selectNode(n) {
     $('node-form').classList.add('hidden');
     $('node-view').classList.remove('hidden');
     $('node-type-label').textContent = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' }[n.type] || n.type;
-    const nc = NODE_COLORS[n.type] || '#60a5fa';
+    const nc = NODE_COLORS[n.type] || '#2f6d8f';
     $('node-swatch').style.background = nc;
     $('node-panel').style.setProperty('--node-c', nc);
     $('node-label').textContent = n.label;
@@ -843,10 +854,10 @@ function zoomBy(factor) {
 }
 
 const TYPE_GLYPHS = {
-    core: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 0l1.6 4.2L13 3l-2.6 3.5L13 11l-4.4-1.2L7 14l-1.6-4.2L1 11l2.6-4.5L1 3l4.4 1.2z" fill="#8b7cf6"/></svg>',
-    skill: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#34d399"/></svg>',
-    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1l6 6-6 6-6-6z" fill="#60a5fa"/></svg>',
-    project: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M10.5 1l3 6-3 6h-7l-3-6 3-6z" fill="#f0a35e" transform="rotate(90 7 7)"/></svg>',
+    core: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 0l1.6 4.2L13 3l-2.6 3.5L13 11l-4.4-1.2L7 14l-1.6-4.2L1 11l2.6-4.5L1 3l4.4 1.2z" fill="#b88a3a"/></svg>',
+    skill: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#03797e"/></svg>',
+    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1l6 6-6 6-6-6z" fill="#2f6d8f"/></svg>',
+    project: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M10.5 1l3 6-3 6h-7l-3-6 3-6z" fill="#c2761c" transform="rotate(90 7 7)"/></svg>',
 };
 
 function buildLegend() {
@@ -900,7 +911,7 @@ async function refreshStats() {
         const bw = gc.width / Math.max(st.growth.length, 10);
         st.growth.forEach((g, i) => {
             const h = (g.count / max) * (gc.height - 6 * dpr);
-            gctx.fillStyle = '#3b82f6';
+            gctx.fillStyle = '#03797e';
             gctx.globalAlpha = 0.9;
             gctx.fillRect(i * bw + dpr, gc.height - h, Math.max(bw - 2 * dpr, 2), h);
         });

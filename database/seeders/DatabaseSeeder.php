@@ -15,11 +15,11 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $areas = [
-            ['name' => 'Marketing & SEO', 'slug' => 'marketing-seo', 'color' => '#ffb020', 'angle' => 270],
-            ['name' => 'Vývoj & kód', 'slug' => 'vyvoj-kod', 'color' => '#38bdf8', 'angle' => 342],
-            ['name' => 'Dizajn & kreatíva', 'slug' => 'dizajn-kreativa', 'color' => '#e879f9', 'angle' => 54],
-            ['name' => 'Biznis & projekty', 'slug' => 'biznis-projekty', 'color' => '#34d399', 'angle' => 126],
-            ['name' => 'Osobné & preferencie', 'slug' => 'osobne-preferencie', 'color' => '#fb7185', 'angle' => 198],
+            ['name' => 'Marketing & SEO', 'slug' => 'marketing-seo', 'color' => '#b88a3a', 'angle' => 270],
+            ['name' => 'Vývoj & kód', 'slug' => 'vyvoj-kod', 'color' => '#03797e', 'angle' => 342],
+            ['name' => 'Dizajn & kreatíva', 'slug' => 'dizajn-kreativa', 'color' => '#9d5c7a', 'angle' => 54],
+            ['name' => 'Biznis & projekty', 'slug' => 'biznis-projekty', 'color' => '#2f6d8f', 'angle' => 126],
+            ['name' => 'Osobné & preferencie', 'slug' => 'osobne-preferencie', 'color' => '#a86a4a', 'angle' => 198],
         ];
 
         foreach ($areas as $area) {
