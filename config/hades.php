@@ -7,7 +7,7 @@ return [
 
     // Anthropic API pre chat s vedomim
     'anthropic_api_key' => env('ANTHROPIC_API_KEY'),
-    'chat_model' => env('HADES_CHAT_MODEL', 'claude-sonnet-5'),
+    'chat_model' => env('HADES_CHAT_MODEL', 'claude-opus-4-8'),
 
     // WebSocket adresa tak, ako ju vidi prehliadac (nie docker siet)
     'public_ws_host' => env('HADES_PUBLIC_WS_HOST', 'localhost'),
