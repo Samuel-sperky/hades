@@ -27,3 +27,7 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Denníky vedomia sú runtime artefakty
+mind/_daily/*
+!mind/_daily/.gitkeep

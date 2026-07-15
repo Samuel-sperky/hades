@@ -173,6 +173,21 @@ class MindMirrorTest extends TestCase
         $this->assertSame('Nič citlivé.', \App\Models\Node::find($id)->description);
     }
 
+    public function test_mind_daily_writes_summary_and_survives_rebuild(): void
+    {
+        $this->mind()->learn('skill', 'Denný test', 'x', 'Marketing & SEO');
+
+        $this->artisan('mind:daily')->assertSuccessful();
+
+        $date = now()->format('Y-m-d');
+        Storage::disk('mind')->assertExists("_daily/{$date}.md");
+        $this->assertStringContainsString('Denný test', Storage::disk('mind')->get("_daily/{$date}.md"));
+
+        // export nesmie zmazať denníky
+        $this->artisan('mind:export')->assertSuccessful();
+        Storage::disk('mind')->assertExists("_daily/{$date}.md");
+    }
+
     public function test_mind_export_regenerates_full_tree_and_index(): void
     {
         $this->mind()->learn('skill', 'Regen test', 'x', 'Marketing & SEO', 'SEO');

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/mind', [MindController::class, 'graph']);
 Route::get('/mind/stats', [MindController::class, 'stats']);
 Route::get('/mind/summary', [MindController::class, 'summary']);
+Route::get('/mind/suggestions', [MindController::class, 'suggestions']);
 
 Route::get('/nodes/{node}', [NodeController::class, 'show']);
 Route::put('/nodes/{node}', [NodeController::class, 'update']);

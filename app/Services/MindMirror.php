@@ -110,12 +110,15 @@ class MindMirror
         }
 
         foreach ($this->disk()->allFiles() as $file) {
-            if (basename($file) !== '.gitkeep') {
+            // Denníky (_daily/) sú vlastný obsah, nie zrkadlo uzlov — nechaj ich.
+            if (basename($file) !== '.gitkeep' && ! str_starts_with($file, '_daily/')) {
                 $this->disk()->delete($file);
             }
         }
         foreach ($this->disk()->directories() as $dir) {
-            $this->disk()->deleteDirectory($dir);
+            if ($dir !== '_daily') {
+                $this->disk()->deleteDirectory($dir);
+            }
         }
 
         Node::with(['area', 'department'])

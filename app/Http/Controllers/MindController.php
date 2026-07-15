@@ -115,6 +115,78 @@ class MindController extends Controller
         ]);
     }
 
+    /**
+     * Pasívne návrhy (bez LLM): možné duplicity, medzery, spiace uzly.
+     */
+    public function suggestions(): JsonResponse
+    {
+        return response()->json([
+            'gaps' => $this->gaps(),
+            'sleeping' => $this->sleeping(),
+            'duplicates' => $this->duplicates(),
+        ]);
+    }
+
+    /** Zanedbané oblasti — najmenej uzlov / najdlhšie bez aktivity. */
+    protected function gaps(): array
+    {
+        return Area::withCount('nodes')
+            ->with(['nodes' => fn ($q) => $q->orderByDesc('last_activated_at')->limit(1)])
+            ->get()
+            ->map(fn (Area $a) => [
+                'id' => $a->id,
+                'name' => $a->name,
+                'nodes' => $a->nodes_count,
+                'last_activity_at' => $a->nodes->first()?->last_activated_at?->toIso8601String(),
+            ])
+            ->sortBy([['nodes', 'asc']])
+            ->take(5)
+            ->values()
+            ->all();
+    }
+
+    /** Uzly dlho bez aktivácie (spiace). */
+    protected function sleeping(): array
+    {
+        return Node::where('type', '!=', 'core')
+            ->whereNotNull('last_activated_at')
+            ->where('last_activated_at', '<', now()->subDays(30))
+            ->orderBy('last_activated_at')
+            ->limit(8)
+            ->get()
+            ->map(fn (Node $n) => [
+                'id' => $n->id,
+                'label' => $n->label,
+                'type' => $n->type,
+                'last_activated_at' => $n->last_activated_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /** Možné duplicity — dvojice uzlov rovnakého typu s veľmi podobným labelom. */
+    protected function duplicates(): array
+    {
+        $nodes = Node::where('type', '!=', 'core')->get(['id', 'label', 'type']);
+        $pairs = [];
+
+        foreach ($nodes as $i => $a) {
+            foreach ($nodes as $j => $b) {
+                if ($j <= $i || $a->type !== $b->type) {
+                    continue;
+                }
+                similar_text(mb_strtolower($a->label), mb_strtolower($b->label), $pct);
+                if ($pct >= 80) {
+                    $pairs[] = ['a' => ['id' => $a->id, 'label' => $a->label],
+                        'b' => ['id' => $b->id, 'label' => $b->label], 'similarity' => round($pct)];
+                }
+            }
+        }
+
+        usort($pairs, fn ($x, $y) => $y['similarity'] <=> $x['similarity']);
+
+        return array_slice($pairs, 0, 8);
+    }
+
     protected function state(): array
     {
         $lastActivation = Activation::latest('created_at')->first();

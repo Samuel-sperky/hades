@@ -192,6 +192,15 @@ class McpController extends Controller
                     'properties' => (object) [],
                 ],
             ],
+            [
+                'name' => 'mind_summary',
+                'description' => 'Get a quick pulse of the mind: how much was learned today and this '
+                    .'week, and which areas are most neglected (gaps). Useful at the start of a session.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+            ],
         ];
     }
 
@@ -206,6 +215,7 @@ class McpController extends Controller
                 'mind_recall' => $this->toolRecall($args, $mind),
                 'mind_activate' => $this->toolActivate($args, $mind),
                 'mind_overview' => $mind->overview(),
+                'mind_summary' => $this->toolSummary(),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {
@@ -267,6 +277,31 @@ class McpController extends Controller
                 'strength' => (float) $node->strength,
                 'description' => $node->description,
             ])->all(),
+        ];
+    }
+
+    protected function toolSummary(): array
+    {
+        $today = now()->startOfDay();
+        $week = now()->subDays(7);
+
+        $gaps = \App\Models\Area::withCount('nodes')->get()
+            ->sortBy('nodes_count')
+            ->take(3)
+            ->map(fn ($a) => ['area' => $a->name, 'nodes' => $a->nodes_count])
+            ->values()
+            ->all();
+
+        return [
+            'today' => [
+                'learned' => \App\Models\Node::where('created_at', '>=', $today)->count(),
+                'activations' => \App\Models\Activation::where('created_at', '>=', $today)->count(),
+            ],
+            'week' => [
+                'learned' => \App\Models\Node::where('created_at', '>=', $week)->count(),
+            ],
+            'totals' => ['nodes' => \App\Models\Node::count()],
+            'gaps' => $gaps,
         ];
     }
 

@@ -16,3 +16,6 @@ Schedule::exec(
 
 // Nocna regeneracia .md zrkadla (mind/) — poistka proti driftu suborov voci DB
 Schedule::command('mind:export')->dailyAt('03:30');
+
+// Denny suhrn vedomia do mind/_daily/*.md (co pribudlo, aktivita, medzery)
+Schedule::command('mind:daily')->dailyAt('23:50');
