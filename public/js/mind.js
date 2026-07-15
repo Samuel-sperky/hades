@@ -322,11 +322,13 @@ function buildSim() {
 
     const net = S.view === 'net';
 
+    // Radiálne ukotvenie k oblasti platí v oboch pohľadoch (Mapa aj Sieť);
+    // Sieť má len voľnejšiu gravitáciu a silnejšie odpudzovanie pre vzdušný web.
     S.sim = d3.forceSimulation(S.nodes)
-        .force('x', d3.forceX(d => net ? 0 : anchorOf(d).x)
-            .strength(d => net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)))
-        .force('y', d3.forceY(d => net ? 0 : anchorOf(d).y)
-            .strength(d => net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)))
+        .force('x', d3.forceX(d => anchorOf(d).x)
+            .strength(d => d.type === 'core' ? 0.25 : (net ? 0.04 : 0.055)))
+        .force('y', d3.forceY(d => anchorOf(d).y)
+            .strength(d => d.type === 'core' ? 0.25 : (net ? 0.04 : 0.055)))
         .force('charge', d3.forceManyBody().strength(net ? -120 : -42).distanceMax(net ? 520 : 320))
         .force('collide', d3.forceCollide(d => nodeRadius(d) + 7))
         .force('link', d3.forceLink(S.edges)
@@ -394,6 +396,10 @@ function visibleInReplay(n) {
 function draw() {
     const targetDim = isAwake() ? 1 : 0.5;
     S.dim += (targetDim - S.dim) * 0.02;
+
+    // pokojný dych (pomalá sínusoida) + adaptívna žiara (živšie keď je bdelé)
+    const breath = REDUCED_MOTION ? 0.5 : (Math.sin(now() * 0.0011) * 0.5 + 0.5);
+    const awakeBoost = isAwake() ? 1 : 0.62;
 
     ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
     ctx.fillStyle = THEME.bg || '#f8f4f7';
@@ -568,9 +574,13 @@ function draw() {
         const r = nodeRadius(n);
         const color = nodeColor(n);
         const flash = n.flash || 0;
-        const halo = r * (2.4 + flash * 2);
+        const isCore = n.type === 'core';
+        const glow = S.dim * S.opts.glow * awakeBoost;
+        // obradné jadro dýcha; ostatné uzly majú pokojnú stálu auru
+        const halo = r * (isCore ? (3 + breath * 0.9 + flash * 2) : (2.4 + flash * 2));
 
-        ctx.globalAlpha = Math.min(0.55, (0.18 + flash * 0.4) * S.dim * S.opts.glow);
+        ctx.globalAlpha = Math.min(isCore ? 0.62 : 0.55,
+            ((isCore ? 0.24 : 0.18) + flash * 0.4) * glow);
         const g = ctx.createRadialGradient(n.x, n.y, r * 0.3, n.x, n.y, halo);
         g.addColorStop(0, color);
         g.addColorStop(1, 'transparent');
@@ -578,6 +588,18 @@ function draw() {
         ctx.beginPath();
         ctx.arc(n.x, n.y, halo, 0, 7);
         ctx.fill();
+
+        // obradné sústredné prstence okolo jadra (dýchajúca zlatá „koruna")
+        if (isCore) {
+            for (let ri = 1; ri <= 2; ri++) {
+                ctx.globalAlpha = Math.min(0.45, (0.2 + flash * 0.3) * glow) / ri;
+                ctx.lineWidth = (1.1 / ri) / S.cam.k;
+                ctx.strokeStyle = color;
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, r * (1.5 + ri * 0.6) + breath * 2, 0, 7);
+                ctx.stroke();
+            }
+        }
 
         ctx.globalAlpha = (0.95 + flash) * S.dim;
         ctx.fillStyle = color;
@@ -1548,7 +1570,8 @@ async function init() {
     setupHints();
     connectWs(data.ws);
 
-    setInterval(dream, 9000 + Math.random() * 6000);
+    // plynulé, jemné pulzy putujúce po hranách — „živá sieť", no pokojne
+    setInterval(dream, 3200 + Math.random() * 2600);
     setInterval(computeReplayBounds, 60000);
 
     window.HADES = { S, draw, frame };
