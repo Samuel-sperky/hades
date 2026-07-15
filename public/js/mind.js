@@ -95,6 +95,16 @@ function plexusColor(x) {
     return r + ',' + g + ',' + b;
 }
 
+const LAYER_X = [-560, -280, 0, 280, 560];
+const LAYER_SPACING = (nodes) => Math.max(48, Math.min(95, 1100 / Math.max(nodes.length, 1)));
+const LAYER_META = [
+    { title: 'Vstup', sub: 'Spomienky' },
+    { title: 'Skrytá', sub: 'Skills' },
+    { title: 'Jadro', sub: 'Osobnosť' },
+    { title: 'Skrytá', sub: 'Skills' },
+    { title: 'Výstup', sub: 'Projekty' },
+];
+
 function layerColumns() {
     const mem = [], skillA = [], core = [], skillB = [], proj = [];
     const skills = S.nodes
@@ -107,6 +117,29 @@ function layerColumns() {
         else if (n.type === 'project') proj.push(n);
     }
     return [mem, skillA, core, skillB, proj];
+}
+
+function drawLayerScaffold(layers) {
+    let maxHalf = 0;
+    layers.forEach((nodes) => {
+        maxHalf = Math.max(maxHalf, (nodes.length - 1) / 2 * LAYER_SPACING(nodes));
+    });
+    const headerY = -maxHalf - 66;
+    const invK = 1 / S.cam.k;
+
+    ctx.textAlign = 'center';
+    for (let i = 0; i < LAYER_X.length; i++) {
+        ctx.globalAlpha = 0.55 * S.dim;
+        ctx.fillStyle = '#c7d0ee';
+        ctx.font = '600 ' + (12.5 * invK) + 'px Inter, system-ui, sans-serif';
+        ctx.fillText(LAYER_META[i].title.toUpperCase(), LAYER_X[i], headerY);
+
+        ctx.globalAlpha = 0.34 * S.dim;
+        ctx.fillStyle = '#8b95c0';
+        ctx.font = (10.5 * invK) + 'px Inter, system-ui, sans-serif';
+        ctx.fillText(LAYER_META[i].sub, LAYER_X[i], headerY + 18 * invK);
+    }
+    ctx.globalAlpha = 1;
 }
 
 function nodeRadius(n) {
@@ -226,11 +259,10 @@ function dream() {
 
 function applyViewPins() {
     if (S.view === 'layers') {
-        const colX = [-560, -280, 0, 280, 560];
         layerColumns().forEach((nodes, li) => {
-            const spacing = Math.max(48, Math.min(95, 1100 / Math.max(nodes.length, 1)));
+            const spacing = LAYER_SPACING(nodes);
             nodes.forEach((n, i) => {
-                n.fx = colX[li];
+                n.fx = LAYER_X[li];
                 n.fy = (i - (nodes.length - 1) / 2) * spacing;
             });
         });
@@ -337,7 +369,8 @@ function draw() {
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
     ctx.scale(S.cam.k, S.cam.k);
 
-    const bgLevel = S.opts.bg;
+    const layersView = S.view === 'layers';
+    const bgLevel = layersView ? 0 : S.opts.bg;
     if (bgLevel > 0.01) {
         const plexusDist = 190;
         const invK = 1 / S.cam.k;
@@ -402,15 +435,17 @@ function draw() {
         ctx.globalAlpha = 1;
     }
 
-    if (S.view === 'layers') {
+    if (layersView) {
+        // Cisty neuronovy wireframe: plne prepojena sieť medzi susednymi vrstvami
         const layers = layerColumns();
-        ctx.lineWidth = 0.4 / S.cam.k;
-        ctx.strokeStyle = 'rgba(148, 163, 255,' + 0.055 * S.dim + ')';
+        const invK = 1 / S.cam.k;
+        ctx.lineWidth = 0.5 * invK;
         for (let li = 0; li < layers.length - 1; li++) {
             for (const a of layers[li]) {
                 if (!visibleInReplay(a)) continue;
                 for (const b of layers[li + 1]) {
                     if (!visibleInReplay(b)) continue;
+                    ctx.strokeStyle = 'rgba(120, 145, 205,' + (0.16 * S.dim * S.opts.edgeAlpha) + ')';
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
@@ -418,18 +453,19 @@ function draw() {
                 }
             }
         }
-    }
-
-    for (const e of S.edges) {
-        if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
-        const alpha = Math.min(0.85,
-            Math.min(0.55, 0.17 + 0.07 * Math.log2(1 + (e.weight || 1))) * S.dim * S.opts.edgeAlpha);
-        ctx.strokeStyle = 'rgba(198, 206, 255,' + alpha + ')';
-        ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
-        ctx.beginPath();
-        ctx.moveTo(e.source.x, e.source.y);
-        ctx.lineTo(e.target.x, e.target.y);
-        ctx.stroke();
+        drawLayerScaffold(layers);
+    } else {
+        for (const e of S.edges) {
+            if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
+            const alpha = Math.min(0.85,
+                Math.min(0.55, 0.17 + 0.07 * Math.log2(1 + (e.weight || 1))) * S.dim * S.opts.edgeAlpha);
+            ctx.strokeStyle = 'rgba(198, 206, 255,' + alpha + ')';
+            ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
+            ctx.beginPath();
+            ctx.moveTo(e.source.x, e.source.y);
+            ctx.lineTo(e.target.x, e.target.y);
+            ctx.stroke();
+        }
     }
 
     ctx.globalCompositeOperation = 'lighter';
@@ -448,7 +484,44 @@ function draw() {
     }
     ctx.globalAlpha = 1;
 
-    for (const n of S.nodes) {
+    if (layersView) {
+        ctx.globalCompositeOperation = 'source-over';
+        const invK = 1 / S.cam.k;
+        for (const n of S.nodes) {
+            if (!visibleInReplay(n)) continue;
+            const r = Math.max(6, nodeRadius(n)) * 0.9;
+            const color = nodeColor(n);
+            const flash = n.flash || 0;
+
+            // jemna aura
+            ctx.globalAlpha = Math.min(0.6, (0.16 + flash * 0.5) * S.dim * S.opts.glow);
+            const g = ctx.createRadialGradient(n.x, n.y, r * 0.6, n.x, n.y, r * 2.8);
+            g.addColorStop(0, color);
+            g.addColorStop(1, 'transparent');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r * 2.8, 0, 7);
+            ctx.fill();
+
+            // jadro
+            ctx.globalAlpha = Math.min(1, (0.82 + flash * 0.5) * S.dim);
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r * 0.72, 0, 7);
+            ctx.fill();
+
+            // prsteň (wireframe)
+            ctx.globalAlpha = Math.min(1, (0.95 + flash) * S.dim);
+            ctx.lineWidth = 1.5 * invK;
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r, 0, 7);
+            ctx.stroke();
+
+            if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
+        }
+        ctx.globalAlpha = 1;
+    } else for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
         const r = nodeRadius(n);
         const color = nodeColor(n);
