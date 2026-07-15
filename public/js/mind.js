@@ -40,6 +40,36 @@ const VIEW_LAYER_COLORS = {
     project: '#f87171',
 };
 
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const OPT_DEFAULTS = {
+    panelAlpha: 0.88,
+    bg: 1,
+    edgeAlpha: 1,
+    glow: 1,
+    labelAlpha: 1,
+    nodeScale: 1,
+    labelSize: 1,
+    density: 1,
+};
+
+S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.opts') || '{}'));
+
+function setOpt(key, value) {
+    S.opts[key] = value;
+    localStorage.setItem('hades.opts', JSON.stringify(S.opts));
+    if (key === 'density') makeStars();
+    applyOpts();
+}
+
+function applyOpts() {
+    document.documentElement.style.setProperty('--panel-alpha', S.opts.panelAlpha);
+    document.querySelectorAll('input[data-opt]').forEach((inp) => {
+        const v = S.opts[inp.dataset.opt];
+        if (v !== undefined && parseFloat(inp.value) !== v) inp.value = v;
+    });
+}
+
 /* ---------- pomocníci ---------- */
 
 const now = () => Date.now();
@@ -79,8 +109,11 @@ function layerColumns() {
 }
 
 function nodeRadius(n) {
-    if (n.type === 'core') return n.label === S.name ? 20 : 11;
-    return 5.5 + 2.6 * Math.log2(1 + (n.strength || 1));
+    const base = n.type === 'core'
+        ? (n.label === S.name ? 20 : 11)
+        : 5.5 + 2.6 * Math.log2(1 + (n.strength || 1));
+
+    return base * (S.opts ? S.opts.nodeScale : 1);
 }
 
 function areaAnchor(area) {
@@ -173,7 +206,7 @@ function neighborsOf(node) {
 }
 
 function dream() {
-    if (document.hidden || S.replay.on || !S.edges.length) return;
+    if (REDUCED_MOTION || document.hidden || S.replay.on || !S.edges.length) return;
     const e = S.edges[Math.floor(Math.random() * S.edges.length)];
     const flip = Math.random() < 0.5;
     const from = flip ? e.source : e.target;
@@ -268,12 +301,13 @@ function resize() {
 
 function makeStars() {
     S.stars = [];
-    for (let i = 0; i < 340; i++) {
+    const count = Math.round(340 * (S.opts ? S.opts.density : 1));
+    for (let i = 0; i < count; i++) {
         S.stars.push({
             x: (Math.random() - 0.5) * 2600,
             y: (Math.random() - 0.5) * 2600,
-            vx: (Math.random() - 0.5) * 8,
-            vy: (Math.random() - 0.5) * 8,
+            vx: REDUCED_MOTION ? 0 : (Math.random() - 0.5) * 8,
+            vy: REDUCED_MOTION ? 0 : (Math.random() - 0.5) * 8,
             r: Math.random() * 1.4 + 0.4,
             a: Math.random() * 0.45 + 0.2,
         });
@@ -297,29 +331,32 @@ function draw() {
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
     ctx.scale(S.cam.k, S.cam.k);
 
-    const plexusDist = 195;
-    ctx.lineWidth = 0.8 / S.cam.k;
-    for (let i = 0; i < S.stars.length; i++) {
-        const a = S.stars[i];
-        for (let j = i + 1; j < S.stars.length; j++) {
-            const b = S.stars[j];
-            const dx = a.x - b.x, dy = a.y - b.y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 > plexusDist * plexusDist) continue;
-            const alpha = (1 - Math.sqrt(d2) / plexusDist) * 0.3 * S.dim;
-            ctx.strokeStyle = 'rgba(' + plexusColor((a.x + b.x) / 2) + ',' + alpha + ')';
+    const bgLevel = S.opts.bg;
+    if (bgLevel > 0.01) {
+        const plexusDist = 195;
+        ctx.lineWidth = 0.8 / S.cam.k;
+        for (let i = 0; i < S.stars.length; i++) {
+            const a = S.stars[i];
+            for (let j = i + 1; j < S.stars.length; j++) {
+                const b = S.stars[j];
+                const dx = a.x - b.x, dy = a.y - b.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 > plexusDist * plexusDist) continue;
+                const alpha = Math.min(0.6, (1 - Math.sqrt(d2) / plexusDist) * 0.3 * S.dim * bgLevel);
+                ctx.strokeStyle = 'rgba(' + plexusColor((a.x + b.x) / 2) + ',' + alpha + ')';
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = Math.min(1, a.a * S.dim * bgLevel);
+            ctx.fillStyle = 'rgba(' + plexusColor(a.x) + ',1)';
             ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.stroke();
+            ctx.arc(a.x, a.y, a.r / Math.sqrt(S.cam.k), 0, 7);
+            ctx.fill();
         }
-        ctx.globalAlpha = a.a * S.dim;
-        ctx.fillStyle = 'rgba(' + plexusColor(a.x) + ',1)';
-        ctx.beginPath();
-        ctx.arc(a.x, a.y, a.r / Math.sqrt(S.cam.k), 0, 7);
-        ctx.fill();
+        ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
 
     if (S.view === 'map') for (const area of S.areas.values()) {
         const a = areaAnchor(area);
@@ -359,7 +396,8 @@ function draw() {
 
     for (const e of S.edges) {
         if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
-        const alpha = Math.min(0.55, 0.17 + 0.07 * Math.log2(1 + (e.weight || 1))) * S.dim;
+        const alpha = Math.min(0.85,
+            Math.min(0.55, 0.17 + 0.07 * Math.log2(1 + (e.weight || 1))) * S.dim * S.opts.edgeAlpha);
         ctx.strokeStyle = 'rgba(198, 206, 255,' + alpha + ')';
         ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
         ctx.beginPath();
@@ -391,7 +429,7 @@ function draw() {
         const flash = n.flash || 0;
         const halo = r * (3.2 + flash * 2.5);
 
-        ctx.globalAlpha = (0.34 + flash * 0.5) * S.dim;
+        ctx.globalAlpha = Math.min(1, (0.34 + flash * 0.5) * S.dim * S.opts.glow);
         const g = ctx.createRadialGradient(n.x, n.y, r * 0.3, n.x, n.y, halo);
         g.addColorStop(0, color);
         g.addColorStop(1, 'transparent');
@@ -415,16 +453,39 @@ function draw() {
 
     ctx.globalCompositeOperation = 'source-over';
 
-    const showLabels = S.cam.k > 0.55;
+    const showLabels = S.cam.k > 0.55 && S.opts.labelAlpha > 0.02;
+    const candidates = [];
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
         const isHover = S.hover === n || S.selected === n;
         if (!showLabels && !isHover) continue;
-        ctx.globalAlpha = (isHover ? 0.95 : Math.min(0.65, (S.cam.k - 0.5) * 1.6)) * S.dim;
-        ctx.fillStyle = '#dbe2ff';
-        ctx.font = (isHover ? '600 ' : '') + (12 / S.cam.k) + 'px "Segoe UI", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(n.label, n.x, n.y + nodeRadius(n) + 15 / S.cam.k);
+        candidates.push({ n, isHover });
+    }
+    candidates.sort((a, b) => (b.isHover - a.isHover) || ((b.n.strength || 0) - (a.n.strength || 0)));
+
+    const fontSize = (12 * S.opts.labelSize) / S.cam.k;
+    const taken = [];
+    ctx.textAlign = 'center';
+    for (const { n, isHover } of candidates) {
+        ctx.font = (isHover ? '600 ' : '') + fontSize + 'px "Segoe UI", sans-serif';
+        const w = ctx.measureText(n.label).width;
+        const y = n.y + nodeRadius(n) + 15 / S.cam.k;
+        const rect = { x: n.x - w / 2, y: y - fontSize, w, h: fontSize * 1.4 };
+
+        const collides = taken.some((t) =>
+            rect.x < t.x + t.w && t.x < rect.x + rect.w
+            && rect.y < t.y + t.h && t.y < rect.y + rect.h);
+        if (collides && !isHover) continue;
+        taken.push(rect);
+
+        ctx.globalAlpha = Math.min(1,
+            (isHover ? 0.98 : Math.min(0.72, (S.cam.k - 0.5) * 1.6)) * S.dim * S.opts.labelAlpha);
+        ctx.lineWidth = Math.max(2.5, fontSize * 0.28);
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(5, 6, 15, 0.85)';
+        ctx.strokeText(n.label, n.x, y);
+        ctx.fillStyle = '#e3e8ff';
+        ctx.fillText(n.label, n.x, y);
     }
     ctx.globalAlpha = 1;
 }
@@ -626,6 +687,30 @@ function focusNode(n) {
     S.cam.y = -n.y * S.cam.k;
 }
 
+function zoomBy(factor) {
+    S.cam.k = Math.min(3.2, Math.max(0.14, S.cam.k * factor));
+}
+
+const TYPE_GLYPHS = {
+    core: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 0l1.6 4.2L13 3l-2.6 3.5L13 11l-4.4-1.2L7 14l-1.6-4.2L1 11l2.6-4.5L1 3l4.4 1.2z" fill="#a78bfa"/></svg>',
+    skill: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#8ea2ff"/></svg>',
+    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1l6 6-6 6-6-6z" fill="#8ea2ff"/></svg>',
+    project: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M10.5 1l3 6-3 6h-7l-3-6 3-6z" fill="#8ea2ff" transform="rotate(90 7 7)"/></svg>',
+};
+
+function buildLegend() {
+    const typeNames = { core: 'Jadro', skill: 'Skill', memory: 'Spomienka', project: 'Projekt' };
+
+    $('legend-types').innerHTML = Object.keys(typeNames).map(
+        (t) => '<div class="legend-row">' + TYPE_GLYPHS[t] + '<span>' + typeNames[t] + '</span></div>'
+    ).join('');
+
+    $('legend-areas').innerHTML = [...S.areas.values()].map(
+        (a) => '<div class="legend-row"><span class="swatch" style="background:' + a.color
+            + ';box-shadow:0 0 6px ' + a.color + '"></span><span>' + esc(a.name) + '</span></div>'
+    ).join('');
+}
+
 function closeNodePanel() {
     S.selected = null;
     $('node-panel').classList.add('hidden');
@@ -687,7 +772,7 @@ function stopReplay() {
     S.replay.on = false;
     S.replay.t = 1;
     $('tl-range').value = 1000;
-    $('tl-play').textContent = '▶';
+    $('tl-play').textContent = 'play_arrow';
     updateTimelineLabel();
 }
 
@@ -698,7 +783,7 @@ function setupTimeline() {
         S.replay.t = +range.value / 1000;
         S.replay.on = S.replay.t < 1;
         S.replay.playing = false;
-        $('tl-play').textContent = '▶';
+        $('tl-play').textContent = 'play_arrow';
         updateTimelineLabel();
     });
 
@@ -707,7 +792,7 @@ function setupTimeline() {
         S.replay.on = true;
         S.replay.playing = true;
         S.replay.t = 0;
-        $('tl-play').textContent = '⏸';
+        $('tl-play').textContent = 'pause';
     });
 }
 
@@ -870,23 +955,57 @@ function setupChat() {
 
 /* ---------- ovládanie ---------- */
 
+function togglePanel(id) {
+    const el = $(id);
+    const other = $(id === 'stats-panel' ? 'settings-panel' : 'stats-panel');
+    const opening = el.classList.contains('hidden');
+    el.classList.toggle('hidden');
+    if (opening) other.classList.add('hidden');
+    $('btn-stats').classList.toggle('active', !$('stats-panel').classList.contains('hidden'));
+    $('btn-settings').classList.toggle('active', !$('settings-panel').classList.contains('hidden'));
+    if (id === 'stats-panel' && opening) refreshStats();
+}
+
 function setupControls() {
     document.querySelectorAll('#views button').forEach((b) => {
         b.onclick = () => setView(b.dataset.view);
     });
 
-    $('btn-stats').onclick = () => {
-        const panel = $('stats-panel');
-        panel.classList.toggle('hidden');
-        if (!panel.classList.contains('hidden')) refreshStats();
+    $('btn-stats').onclick = () => togglePanel('stats-panel');
+    $('btn-settings').onclick = () => togglePanel('settings-panel');
+
+    const legendBtn = $('btn-legend');
+    if (localStorage.getItem('hades.legend') === 'on') {
+        $('legend').classList.remove('hidden');
+        legendBtn.classList.add('active');
+    }
+    legendBtn.onclick = () => {
+        const shown = !$('legend').classList.toggle('hidden');
+        legendBtn.classList.toggle('active', shown);
+        localStorage.setItem('hades.legend', shown ? 'on' : 'off');
+    };
+
+    $('zoom-in').onclick = () => zoomBy(1.3);
+    $('zoom-out').onclick = () => zoomBy(1 / 1.3);
+    $('zoom-reset').onclick = () => { S.cam = { x: 0, y: 0, k: 0.85 }; };
+
+    document.querySelectorAll('input[data-opt]').forEach((inp) => {
+        inp.oninput = () => setOpt(inp.dataset.opt, parseFloat(inp.value));
+    });
+
+    $('opts-reset').onclick = () => {
+        S.opts = Object.assign({}, OPT_DEFAULTS);
+        localStorage.setItem('hades.opts', JSON.stringify(S.opts));
+        makeStars();
+        applyOpts();
     };
 
     const soundBtn = $('btn-sound');
-    soundBtn.textContent = S.sound ? '🔊' : '🔇';
+    soundBtn.textContent = S.sound ? 'volume_up' : 'volume_off';
     soundBtn.onclick = () => {
         S.sound = !S.sound;
         localStorage.setItem('hades.sound', S.sound ? 'on' : 'off');
-        soundBtn.textContent = S.sound ? '🔊' : '🔇';
+        soundBtn.textContent = S.sound ? 'volume_up' : 'volume_off';
         if (S.sound) blip(523);
     };
 
@@ -971,6 +1090,8 @@ async function init() {
     computeReplayBounds();
     setupInput();
     setupControls();
+    buildLegend();
+    applyOpts();
     setView(S.view);
     setupTimeline();
     setupChat();
