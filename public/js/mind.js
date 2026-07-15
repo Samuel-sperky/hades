@@ -1,0 +1,879 @@
+/* Hades — živá neurónová sieť vedomia */
+(() => {
+'use strict';
+
+const CORE_COLOR = '#a78bfa';
+const AREA_RADIUS = 460;
+const DEPT_RADIUS = 140;
+
+const canvas = document.getElementById('mind');
+const ctx = canvas.getContext('2d');
+
+const S = {
+    name: 'Hades',
+    nodes: [],
+    edges: [],
+    areas: new Map(),
+    departments: new Map(),
+    byId: new Map(),
+    sim: null,
+    cam: { x: 0, y: 0, k: 0.85 },
+    dpr: 1, w: 0, h: 0,
+    pulses: [],
+    stars: [],
+    hover: null,
+    selected: null,
+    awakeUntil: 0,
+    awakeMinutes: 5,
+    dim: 1,
+    activations: [],
+    replay: { on: false, t: 1, playing: false, tMin: 0, tMax: 0 },
+    sound: localStorage.getItem('hades.sound') !== 'off',
+    audio: null,
+};
+
+/* ---------- pomocníci ---------- */
+
+const now = () => Date.now();
+const rad = (deg) => (deg * Math.PI) / 180;
+const ts = (iso) => (iso ? new Date(iso).getTime() : 0);
+
+function nodeColor(n) {
+    if (n.type === 'core') return CORE_COLOR;
+    const area = S.areas.get(n.area_id);
+    return area ? area.color : '#8ea2ff';
+}
+
+function nodeRadius(n) {
+    if (n.type === 'core') return n.label === S.name ? 20 : 11;
+    return 5.5 + 2.6 * Math.log2(1 + (n.strength || 1));
+}
+
+function areaAnchor(area) {
+    return {
+        x: Math.cos(rad(area.angle)) * AREA_RADIUS,
+        y: Math.sin(rad(area.angle)) * AREA_RADIUS,
+    };
+}
+
+function deptAnchor(dept) {
+    const area = S.areas.get(dept.area_id);
+    if (!area) return { x: 0, y: 0 };
+    const siblings = [...S.departments.values()].filter(d => d.area_id === dept.area_id);
+    const i = siblings.findIndex(d => d.id === dept.id);
+    const spread = rad(area.angle) + (i - (siblings.length - 1) / 2) * 0.55;
+    const a = areaAnchor(area);
+    return { x: a.x + Math.cos(spread) * DEPT_RADIUS, y: a.y + Math.sin(spread) * DEPT_RADIUS };
+}
+
+function anchorOf(n) {
+    if (n.type === 'core') {
+        if (n.label === S.name) return { x: 0, y: 0 };
+        const cores = S.nodes.filter(m => m.type === 'core' && m.label !== S.name);
+        const i = cores.findIndex(m => m.id === n.id);
+        const a = rad((360 / Math.max(cores.length, 1)) * i - 90);
+        return { x: Math.cos(a) * 85, y: Math.sin(a) * 85 };
+    }
+    if (n.department_id && S.departments.has(n.department_id)) {
+        return deptAnchor(S.departments.get(n.department_id));
+    }
+    if (n.area_id && S.areas.has(n.area_id)) return areaAnchor(S.areas.get(n.area_id));
+    return { x: 0, y: 0 };
+}
+
+function markAwake() {
+    S.awakeUntil = now() + S.awakeMinutes * 60000;
+}
+
+function isAwake() {
+    return now() < S.awakeUntil;
+}
+
+/* ---------- zvuk ---------- */
+
+function audioCtx() {
+    if (!S.audio) {
+        S.audio = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (S.audio.state === 'suspended') S.audio.resume();
+    return S.audio;
+}
+
+function blip(freq, dur = 0.35, vol = 0.05) {
+    if (!S.sound) return;
+    try {
+        const ac = audioCtx();
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, ac.currentTime);
+        gain.gain.linearRampToValueAtTime(vol, ac.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+        osc.connect(gain).connect(ac.destination);
+        osc.start();
+        osc.stop(ac.currentTime + dur + 0.05);
+    } catch (e) { /* zvuk nie je kritický */ }
+}
+
+/* ---------- pulzy ---------- */
+
+function spawnPulse(fromNode, toNode, opts = {}) {
+    if (!fromNode || !toNode || S.replay.on) return;
+    S.pulses.push({
+        from: fromNode, to: toNode,
+        t: 0,
+        speed: opts.speed || 0.9 + Math.random() * 0.5,
+        color: opts.color || nodeColor(toNode),
+        dim: opts.dim || 1,
+    });
+}
+
+function neighborsOf(node) {
+    const out = [];
+    for (const e of S.edges) {
+        if (e.source.id === node.id) out.push(e.target);
+        else if (e.target.id === node.id) out.push(e.source);
+    }
+    return out;
+}
+
+function dream() {
+    if (document.hidden || S.replay.on || !S.edges.length) return;
+    const e = S.edges[Math.floor(Math.random() * S.edges.length)];
+    const flip = Math.random() < 0.5;
+    const from = flip ? e.source : e.target;
+    let to = flip ? e.target : e.source;
+    spawnPulse(from, to, { dim: isAwake() ? 0.6 : 0.3, speed: 0.5 });
+    if (Math.random() < 0.4) {
+        const next = neighborsOf(to).filter(n => n !== from);
+        if (next.length) {
+            const n2 = next[Math.floor(Math.random() * next.length)];
+            setTimeout(() => spawnPulse(to, n2, { dim: isAwake() ? 0.5 : 0.25, speed: 0.5 }), 900);
+        }
+    }
+}
+
+/* ---------- simulácia ---------- */
+
+function buildSim() {
+    if (S.sim) S.sim.stop();
+
+    for (const n of S.nodes) {
+        if (n.x === undefined) {
+            const a = anchorOf(n);
+            n.x = a.x + (Math.random() - 0.5) * 60;
+            n.y = a.y + (Math.random() - 0.5) * 60;
+        }
+        if (n.type === 'core' && n.label === S.name) { n.fx = 0; n.fy = 0; }
+    }
+
+    S.sim = d3.forceSimulation(S.nodes)
+        .force('x', d3.forceX(d => anchorOf(d).x).strength(d => d.type === 'core' ? 0.25 : 0.055))
+        .force('y', d3.forceY(d => anchorOf(d).y).strength(d => d.type === 'core' ? 0.25 : 0.055))
+        .force('charge', d3.forceManyBody().strength(-42).distanceMax(320))
+        .force('collide', d3.forceCollide(d => nodeRadius(d) + 7))
+        .force('link', d3.forceLink(S.edges)
+            .id(d => d.id)
+            .distance(72)
+            .strength(e => Math.min(0.09, 0.025 * (e.weight || 1))))
+        .alpha(0.9)
+        .alphaDecay(0.015)
+        .alphaTarget(0.012)
+        .alphaMin(0.001);
+}
+
+function kickSim(alpha = 0.35) {
+    if (S.sim) S.sim.alpha(Math.max(S.sim.alpha(), alpha));
+}
+
+/* ---------- render ---------- */
+
+function resize() {
+    S.dpr = window.devicePixelRatio || 1;
+    S.w = window.innerWidth;
+    S.h = window.innerHeight;
+    canvas.width = S.w * S.dpr;
+    canvas.height = S.h * S.dpr;
+    canvas.style.width = S.w + 'px';
+    canvas.style.height = S.h + 'px';
+}
+
+function makeStars() {
+    S.stars = [];
+    for (let i = 0; i < 130; i++) {
+        S.stars.push({
+            x: (Math.random() - 0.5) * 2600,
+            y: (Math.random() - 0.5) * 2600,
+            r: Math.random() * 1.1 + 0.2,
+            a: Math.random() * 0.35 + 0.05,
+        });
+    }
+}
+
+function visibleInReplay(n) {
+    if (!S.replay.on) return true;
+    const cutoff = S.replay.tMin + (S.replay.tMax - S.replay.tMin) * S.replay.t;
+    return n.type === 'core' || ts(n.created_at) <= cutoff;
+}
+
+function draw() {
+    const targetDim = isAwake() ? 1 : 0.5;
+    S.dim += (targetDim - S.dim) * 0.02;
+
+    ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+    ctx.fillStyle = '#05060f';
+    ctx.fillRect(0, 0, S.w, S.h);
+
+    ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
+    ctx.scale(S.cam.k, S.cam.k);
+
+    for (const st of S.stars) {
+        ctx.globalAlpha = st.a * S.dim * 0.8;
+        ctx.fillStyle = '#9fb0ff';
+        ctx.beginPath();
+        ctx.arc(st.x, st.y, st.r / S.cam.k, 0, 7);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const area of S.areas.values()) {
+        const a = areaAnchor(area);
+        ctx.globalAlpha = 0.05 * S.dim;
+        const g = ctx.createRadialGradient(a.x, a.y, 20, a.x, a.y, 260);
+        g.addColorStop(0, area.color);
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, 260, 0, 7);
+        ctx.fill();
+        ctx.globalAlpha = 0.35 * S.dim;
+        ctx.fillStyle = area.color;
+        ctx.font = '600 15px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(area.name.toUpperCase(), a.x, a.y - 230);
+        ctx.globalAlpha = 1;
+    }
+
+    for (const e of S.edges) {
+        if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
+        const alpha = Math.min(0.42, 0.1 + 0.05 * Math.log2(1 + (e.weight || 1))) * S.dim;
+        ctx.strokeStyle = 'rgba(142, 162, 255,' + alpha + ')';
+        ctx.lineWidth = Math.min(2.6, 0.6 + 0.35 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
+        ctx.beginPath();
+        ctx.moveTo(e.source.x, e.source.y);
+        ctx.lineTo(e.target.x, e.target.y);
+        ctx.stroke();
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (const p of S.pulses) {
+        const x = p.from.x + (p.to.x - p.from.x) * p.t;
+        const y = p.from.y + (p.to.y - p.from.y) * p.t;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 14);
+        g.addColorStop(0, p.color);
+        g.addColorStop(1, 'transparent');
+        ctx.globalAlpha = 0.9 * p.dim * Math.sin(Math.PI * Math.min(p.t, 1));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, 14, 0, 7);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const n of S.nodes) {
+        if (!visibleInReplay(n)) continue;
+        const r = nodeRadius(n);
+        const color = nodeColor(n);
+        const flash = n.flash || 0;
+        const halo = r * (3.2 + flash * 2.5);
+
+        ctx.globalAlpha = (0.34 + flash * 0.5) * S.dim;
+        const g = ctx.createRadialGradient(n.x, n.y, r * 0.3, n.x, n.y, halo);
+        g.addColorStop(0, color);
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, halo, 0, 7);
+        ctx.fill();
+
+        ctx.globalAlpha = (0.95 + flash) * S.dim;
+        ctx.fillStyle = color;
+        drawShape(n, r);
+
+        ctx.globalAlpha = 0.9 * S.dim;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, Math.max(1.2, r * 0.28), 0, 7);
+        ctx.fill();
+
+        if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+
+    const showLabels = S.cam.k > 0.55;
+    for (const n of S.nodes) {
+        if (!visibleInReplay(n)) continue;
+        const isHover = S.hover === n || S.selected === n;
+        if (!showLabels && !isHover) continue;
+        ctx.globalAlpha = (isHover ? 0.95 : Math.min(0.65, (S.cam.k - 0.5) * 1.6)) * S.dim;
+        ctx.fillStyle = '#dbe2ff';
+        ctx.font = (isHover ? '600 ' : '') + (12 / S.cam.k) + 'px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.label, n.x, n.y + nodeRadius(n) + 15 / S.cam.k);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function drawShape(n, r) {
+    const { x, y } = n;
+    ctx.beginPath();
+    if (n.type === 'core') {
+        const spikes = 6;
+        for (let i = 0; i < spikes * 2; i++) {
+            const rr = i % 2 === 0 ? r : r * 0.55;
+            const a = (Math.PI * i) / spikes - Math.PI / 2;
+            ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+        }
+        ctx.closePath();
+    } else if (n.type === 'memory') {
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r, y);
+        ctx.closePath();
+    } else if (n.type === 'project') {
+        for (let i = 0; i < 6; i++) {
+            const a = (Math.PI / 3) * i - Math.PI / 6;
+            ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+        ctx.closePath();
+    } else {
+        ctx.arc(x, y, r, 0, 7);
+    }
+    ctx.fill();
+}
+
+let lastFrame = now();
+let framePending = false;
+function frame() {
+    framePending = false;
+    const dt = Math.min((now() - lastFrame) / 1000, 0.1);
+    lastFrame = now();
+
+    for (const p of S.pulses) p.t += dt * p.speed;
+    for (let i = S.pulses.length - 1; i >= 0; i--) {
+        if (S.pulses[i].t >= 1) {
+            S.pulses[i].to.flash = Math.min(1, (S.pulses[i].to.flash || 0) + 0.5 * S.pulses[i].dim);
+            S.pulses.splice(i, 1);
+        }
+    }
+
+    if (S.replay.playing) {
+        S.replay.t = Math.min(1, S.replay.t + dt / 22);
+        document.getElementById('tl-range').value = Math.round(S.replay.t * 1000);
+        updateTimelineLabel();
+        if (S.replay.t >= 1) stopReplay();
+    }
+
+    draw();
+    updateStateUi();
+    scheduleFrame();
+}
+
+function scheduleFrame() {
+    if (framePending) return;
+    framePending = true;
+    requestAnimationFrame(frame);
+}
+
+/* ---------- stav (bdie / spí) ---------- */
+
+let lastStateUi = '';
+function updateStateUi() {
+    const awake = isAwake();
+    const key = awake ? 'awake' : 'asleep';
+    if (key === lastStateUi) return;
+    lastStateUi = key;
+    document.getElementById('state-dot').classList.toggle('asleep', !awake);
+    document.getElementById('state-label').textContent = awake ? 'bdie' : 'spí — sníva';
+}
+
+/* ---------- interakcia ---------- */
+
+function screenToWorld(px, py) {
+    return {
+        x: (px - S.w / 2 - S.cam.x) / S.cam.k,
+        y: (py - S.h / 2 - S.cam.y) / S.cam.k,
+    };
+}
+
+function pick(px, py) {
+    const w = screenToWorld(px, py);
+    let best = null, bestD = Infinity;
+    for (const n of S.nodes) {
+        if (!visibleInReplay(n)) continue;
+        const d = Math.hypot(n.x - w.x, n.y - w.y);
+        if (d < nodeRadius(n) + 8 / S.cam.k && d < bestD) { best = n; bestD = d; }
+    }
+    return best;
+}
+
+function setupInput() {
+    let dragging = false, moved = false, lx = 0, ly = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+        dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
+        canvas.classList.add('dragging');
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (dragging) {
+            const dx = e.clientX - lx, dy = e.clientY - ly;
+            if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+            S.cam.x += dx; S.cam.y += dy;
+            lx = e.clientX; ly = e.clientY;
+        } else {
+            S.hover = pick(e.clientX, e.clientY);
+            canvas.style.cursor = S.hover ? 'pointer' : 'grab';
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        canvas.classList.remove('dragging');
+        if (dragging && !moved) {
+            const n = pick(e.clientX, e.clientY);
+            if (n) selectNode(n);
+            else closeNodePanel();
+        }
+        dragging = false;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = Math.pow(1.0015, -e.deltaY);
+        const before = screenToWorld(e.clientX, e.clientY);
+        S.cam.k = Math.min(3.2, Math.max(0.14, S.cam.k * factor));
+        const after = screenToWorld(e.clientX, e.clientY);
+        S.cam.x += (after.x - before.x) * S.cam.k;
+        S.cam.y += (after.y - before.y) * S.cam.k;
+    }, { passive: false });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.body.classList.remove('ambient');
+            closeNodePanel();
+        }
+    });
+}
+
+/* ---------- panely ---------- */
+
+const $ = (id) => document.getElementById(id);
+
+async function selectNode(n) {
+    S.selected = n;
+    $('node-panel').classList.remove('hidden');
+    $('node-form').classList.add('hidden');
+    $('node-view').classList.remove('hidden');
+    $('node-type').textContent = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' }[n.type] || n.type;
+    $('node-label').textContent = n.label;
+    $('node-desc').textContent = n.description || '';
+    $('node-meta').textContent = 'sila ' + (n.strength || 1).toFixed(0);
+    $('node-neighbors').innerHTML = '';
+    $('node-history').innerHTML = '';
+
+    try {
+        const res = await fetch('/api/nodes/' + n.id);
+        const data = await res.json();
+        const meta = [];
+        if (data.node.area_name) meta.push(data.node.area_name);
+        if (data.node.department_name) meta.push(data.node.department_name);
+        meta.push('sila ' + data.node.strength.toFixed(0));
+        $('node-meta').textContent = meta.join(' · ');
+
+        $('node-neighbors').innerHTML = data.neighbors.map(
+            (m) => '<span class="chip" data-id="' + m.id + '">' + esc(m.label) + '</span>'
+        ).join('') || '<span class="hist">žiadne</span>';
+
+        $('node-neighbors').querySelectorAll('.chip').forEach((chip) => {
+            chip.onclick = () => {
+                const target = S.byId.get(+chip.dataset.id);
+                if (target) { selectNode(target); focusNode(target); }
+            };
+        });
+
+        $('node-history').innerHTML = data.activations.map((a) => {
+            const kinds = { learn: 'naučené', activate: 'aktivované', merge: 'posilnené', recall: 'spomenuté', seed: 'zasiate' };
+            return '<div class="hist">' + (kinds[a.kind] || a.kind) + ' · ' + new Date(a.created_at).toLocaleString('sk') + '</div>';
+        }).join('') || '<div class="hist">žiadna</div>';
+    } catch (e) { /* offline detail nevadí */ }
+}
+
+function focusNode(n) {
+    S.cam.x = -n.x * S.cam.k;
+    S.cam.y = -n.y * S.cam.k;
+}
+
+function closeNodePanel() {
+    S.selected = null;
+    $('node-panel').classList.add('hidden');
+}
+
+function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function refreshStats() {
+    const res = await fetch('/api/mind/stats');
+    const st = await res.json();
+
+    $('stats-totals').innerHTML =
+        row('uzly', st.totals.nodes) + row('spojenia', st.totals.edges) + row('aktivácie', st.totals.activations);
+
+    $('stats-areas').innerHTML = [...S.areas.values()].map((a) =>
+        '<div class="stat-row"><span><span class="swatch" style="background:' + a.color + '"></span>'
+        + esc(a.name) + '</span><span class="val">' + (st.by_area[a.id] || 0) + '</span></div>'
+    ).join('');
+
+    $('stats-top').innerHTML = st.top_nodes.map(
+        (n) => row(esc(n.label), n.strength.toFixed(0))
+    ).join('') || '<div class="hist">zatiaľ nič</div>';
+
+    const gc = $('growth-chart');
+    const gctx = gc.getContext('2d');
+    gctx.clearRect(0, 0, gc.width, gc.height);
+    if (st.growth.length) {
+        const max = Math.max(...st.growth.map((g) => g.count));
+        const bw = gc.width / Math.max(st.growth.length, 10);
+        st.growth.forEach((g, i) => {
+            const h = (g.count / max) * (gc.height - 6);
+            gctx.fillStyle = '#a78bfa';
+            gctx.globalAlpha = 0.85;
+            gctx.fillRect(i * bw + 1, gc.height - h, Math.max(bw - 2, 2), h);
+        });
+    }
+
+    function row(k, v) {
+        return '<div class="stat-row"><span>' + k + '</span><span class="val">' + v + '</span></div>';
+    }
+}
+
+/* ---------- časová os ---------- */
+
+function updateTimelineLabel() {
+    const label = $('tl-label');
+    if (!S.replay.on || S.replay.t >= 1) {
+        label.textContent = 'teraz';
+        return;
+    }
+    const t = S.replay.tMin + (S.replay.tMax - S.replay.tMin) * S.replay.t;
+    label.textContent = new Date(t).toLocaleDateString('sk', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function stopReplay() {
+    S.replay.playing = false;
+    S.replay.on = false;
+    S.replay.t = 1;
+    $('tl-range').value = 1000;
+    $('tl-play').textContent = '▶';
+    updateTimelineLabel();
+}
+
+function setupTimeline() {
+    const range = $('tl-range');
+
+    range.addEventListener('input', () => {
+        S.replay.t = +range.value / 1000;
+        S.replay.on = S.replay.t < 1;
+        S.replay.playing = false;
+        $('tl-play').textContent = '▶';
+        updateTimelineLabel();
+    });
+
+    $('tl-play').addEventListener('click', () => {
+        if (S.replay.playing) { stopReplay(); return; }
+        S.replay.on = true;
+        S.replay.playing = true;
+        S.replay.t = 0;
+        $('tl-play').textContent = '⏸';
+    });
+}
+
+function computeReplayBounds() {
+    const times = S.nodes.filter((n) => n.type !== 'core').map((n) => ts(n.created_at)).filter(Boolean);
+    S.replay.tMin = times.length ? Math.min(...times) - 3600000 : now() - 86400000;
+    S.replay.tMax = now();
+}
+
+/* ---------- websocket ---------- */
+
+function connectWs(ws) {
+    const pusher = new Pusher(ws.key, {
+        wsHost: ws.host,
+        wsPort: ws.port,
+        forceTLS: false,
+        enabledTransports: ['ws'],
+        cluster: 'mt1',
+        disableStats: true,
+    });
+
+    pusher.subscribe('mind').bind('pulse', (msg) => handlePulse(msg.type, msg.data || {}));
+}
+
+function hadesNode() {
+    return S.nodes.find((n) => n.type === 'core' && n.label === S.name) || S.nodes[0];
+}
+
+function handlePulse(type, data) {
+    markAwake();
+
+    if (type === 'node.created' && data.node) {
+        if (S.byId.has(data.node.id)) return;
+        const n = { ...data.node };
+        const a = anchorOf(n);
+        n.x = a.x + (Math.random() - 0.5) * 40;
+        n.y = a.y + (Math.random() - 0.5) * 40;
+        n.flash = 1;
+        S.nodes.push(n);
+        S.byId.set(n.id, n);
+        buildSim();
+        kickSim(0.5);
+        spawnPulse(hadesNode(), n, { speed: 1.4 });
+        blip(520);
+    }
+
+    if (type === 'node.activated') {
+        const n = S.byId.get(data.node_id);
+        if (!n) return;
+        n.strength = data.strength;
+        n.flash = 1;
+        const from = neighborsOf(n)[0] || hadesNode();
+        spawnPulse(from, n, { speed: 1.6 });
+        kickSim(0.12);
+        blip(440);
+    }
+
+    if (type === 'node.updated' && data.node) {
+        const n = S.byId.get(data.node.id);
+        if (n) Object.assign(n, data.node);
+    }
+
+    if (type === 'node.deleted') {
+        const n = S.byId.get(data.node_id);
+        if (!n) return;
+        S.nodes = S.nodes.filter((m) => m.id !== n.id);
+        S.edges = S.edges.filter((e) => e.source.id !== n.id && e.target.id !== n.id);
+        S.byId.delete(n.id);
+        if (S.selected === n) closeNodePanel();
+        buildSim();
+    }
+
+    if (type === 'edge.created' && data.edge) {
+        const src = S.byId.get(data.edge.source_id);
+        const tgt = S.byId.get(data.edge.target_id);
+        if (!src || !tgt) return;
+        if (S.edges.some((e) => e.id === data.edge.id)) return;
+        S.edges.push({ ...data.edge, source: src, target: tgt });
+        buildSim();
+        kickSim(0.2);
+        spawnPulse(src, tgt, { speed: 1.2 });
+        blip(660, 0.25, 0.035);
+    }
+
+    if (type === 'edge.strengthened') {
+        const e = S.edges.find((x) => x.id === data.edge_id);
+        if (e) {
+            e.weight = data.weight;
+            spawnPulse(e.source, e.target, { speed: 1.5 });
+        }
+    }
+
+    if (type === 'department.created' && data.department) {
+        S.departments.set(data.department.id, data.department);
+        buildSim();
+    }
+
+    if (type === 'recall' && Array.isArray(data.node_ids)) {
+        data.node_ids.forEach((id, i) => {
+            const n = S.byId.get(id);
+            if (n) setTimeout(() => { spawnPulse(hadesNode(), n, { speed: 1.8, dim: 0.8 }); }, i * 120);
+        });
+        blip(392, 0.5, 0.03);
+        setTimeout(() => blip(523, 0.5, 0.03), 150);
+    }
+
+    if (type === 'chat') {
+        const h = hadesNode();
+        if (h) h.flash = 1;
+    }
+
+    if (!$('stats-panel').classList.contains('hidden')) refreshStats();
+}
+
+/* ---------- chat ---------- */
+
+const chatHistory = [];
+
+function setupChat() {
+    $('chat-toggle').onclick = () => $('chat-window').classList.toggle('hidden');
+    $('chat-close').onclick = () => $('chat-window').classList.add('hidden');
+
+    $('chat-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = $('chat-input');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+
+        addMsg('me', text);
+        chatHistory.push({ role: 'user', content: text });
+        const thinking = addMsg('hades thinking', '…');
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text, history: chatHistory.slice(-12, -1) }),
+            });
+            const data = await res.json();
+            thinking.remove();
+            const reply = data.reply || data.message || 'Hades mlčí.';
+            addMsg('hades', reply);
+            chatHistory.push({ role: 'assistant', content: reply });
+        } catch (err) {
+            thinking.remove();
+            addMsg('hades', 'Spojenie s vedomím zlyhalo.');
+        }
+    });
+
+    function addMsg(cls, text) {
+        const div = document.createElement('div');
+        div.className = 'msg ' + cls;
+        div.textContent = text;
+        $('chat-messages').appendChild(div);
+        $('chat-messages').scrollTop = 1e9;
+        return div;
+    }
+}
+
+/* ---------- ovládanie ---------- */
+
+function setupControls() {
+    $('btn-stats').onclick = () => {
+        const panel = $('stats-panel');
+        panel.classList.toggle('hidden');
+        if (!panel.classList.contains('hidden')) refreshStats();
+    };
+
+    const soundBtn = $('btn-sound');
+    soundBtn.textContent = S.sound ? '🔊' : '🔇';
+    soundBtn.onclick = () => {
+        S.sound = !S.sound;
+        localStorage.setItem('hades.sound', S.sound ? 'on' : 'off');
+        soundBtn.textContent = S.sound ? '🔊' : '🔇';
+        if (S.sound) blip(523);
+    };
+
+    $('btn-ambient').onclick = () => {
+        document.body.classList.add('ambient');
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
+        }
+    };
+
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement) document.body.classList.remove('ambient');
+    });
+
+    $('node-close').onclick = closeNodePanel;
+
+    $('node-edit').onclick = () => {
+        if (!S.selected) return;
+        $('edit-label').value = S.selected.label;
+        $('edit-desc').value = S.selected.description || '';
+        $('node-view').classList.add('hidden');
+        $('node-form').classList.remove('hidden');
+    };
+
+    $('edit-cancel').onclick = () => {
+        $('node-form').classList.add('hidden');
+        $('node-view').classList.remove('hidden');
+    };
+
+    $('edit-save').onclick = async () => {
+        if (!S.selected) return;
+        const res = await fetch('/api/nodes/' + S.selected.id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                label: $('edit-label').value.trim(),
+                description: $('edit-desc').value.trim() || null,
+            }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            Object.assign(S.selected, data.node);
+            selectNode(S.selected);
+        }
+    };
+
+    $('node-delete').onclick = async () => {
+        if (!S.selected) return;
+        if (!confirm('Naozaj zmazať „' + S.selected.label + '" z vedomia?')) return;
+        const res = await fetch('/api/nodes/' + S.selected.id, { method: 'DELETE' });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            alert(data.message || 'Nepodarilo sa zmazať.');
+        }
+    };
+}
+
+/* ---------- štart ---------- */
+
+async function init() {
+    resize();
+    makeStars();
+    window.addEventListener('resize', resize);
+
+    const res = await fetch('/api/mind');
+    const data = await res.json();
+
+    S.name = data.name;
+    S.awakeMinutes = 5;
+    if (data.state.awake) markAwake();
+
+    for (const a of data.areas) S.areas.set(a.id, a);
+    for (const d of data.departments) S.departments.set(d.id, d);
+
+    S.nodes = data.nodes.map((n) => ({ ...n }));
+    for (const n of S.nodes) S.byId.set(n.id, n);
+
+    S.edges = data.edges
+        .filter((e) => S.byId.has(e.source_id) && S.byId.has(e.target_id))
+        .map((e) => ({ ...e, source: S.byId.get(e.source_id), target: S.byId.get(e.target_id) }));
+
+    computeReplayBounds();
+    buildSim();
+    setupInput();
+    setupControls();
+    setupTimeline();
+    setupChat();
+    connectWs(data.ws);
+
+    setInterval(dream, 9000 + Math.random() * 6000);
+    setInterval(computeReplayBounds, 60000);
+
+    window.HADES = { S, draw, frame };
+
+    scheduleFrame();
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) { lastFrame = now(); scheduleFrame(); }
+    });
+}
+
+init();
+
+})();
