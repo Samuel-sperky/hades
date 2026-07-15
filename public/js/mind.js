@@ -1283,123 +1283,7 @@ function handlePulse(type, data) {
         });
     }
 
-    if (type === 'chat') {
-        const h = hadesNode();
-        if (h) h.flash = 1;
-    }
-
     if (dockOpen === 'stats') refreshStats();
-}
-
-/* ---------- chat ---------- */
-
-const chatHistory = [];
-
-function addMsg(cls, text) {
-    const log = $('chat-log');
-    log.classList.remove('hidden');
-    const div = document.createElement('div');
-    div.className = 'msg ' + cls;
-    if (cls.indexOf('thinking') !== -1) {
-        div.innerHTML = '<span class="dot">·</span><span class="dot">·</span><span class="dot">·</span>';
-    } else {
-        div.textContent = text;
-    }
-    log.appendChild(div);
-    log.scrollTop = 1e9;
-    return div;
-}
-
-function collapsePrompt() {
-    $('prompt').classList.remove('open');
-    $('chat-log').classList.add('hidden');
-    $('prompt-input').blur();
-}
-
-function setupPrompt() {
-    const bar = $('prompt');
-    const input = $('prompt-input');
-    const form = $('prompt-form');
-
-    const syncSend = () => form.classList.toggle('has-text', input.value.trim().length > 0);
-    input.addEventListener('input', syncSend);
-    syncSend();
-
-    const open = () => {
-        bar.classList.add('open');
-        if ($('chat-log').children.length) $('chat-log').classList.remove('hidden');
-    };
-
-    input.addEventListener('focus', open);
-
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const text = input.value.trim();
-        if (!text) return;
-        input.value = '';
-        syncSend();
-        open();
-
-        if (text.startsWith('/')) {
-            handleCommand(text);
-            return;
-        }
-
-        addMsg('me', text);
-        chatHistory.push({ role: 'user', content: text });
-        const thinking = addMsg('hades thinking', '…');
-
-        try {
-            const res = await fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, history: chatHistory.slice(-12, -1) }),
-            });
-            const data = await res.json();
-            thinking.remove();
-            const reply = data.reply || data.message || 'Hades mlčí.';
-            addMsg('hades', reply);
-            chatHistory.push({ role: 'assistant', content: reply });
-        } catch (err) {
-            thinking.remove();
-            addMsg('sys sys--error', 'Spojenie s vedomím zlyhalo.');
-        }
-    });
-}
-
-function handleCommand(text) {
-    const parts = text.slice(1).split(/\s+/);
-    const cmd = (parts.shift() || '').toLowerCase();
-    const arg = parts.join(' ');
-    const sys = (m) => addMsg('sys', m);
-
-    switch (cmd) {
-        case 'nahlad': case 'view': {
-            const map = { mapa: 'map', siet: 'net', 'sieť': 'net', vrstvy: 'layers' };
-            const v = map[arg.toLowerCase()];
-            if (v) { setView(v); sys('Náhľad prepnutý: ' + arg); }
-            else sys('Použi: /nahlad mapa | siet | vrstvy');
-            break;
-        }
-        case 'najdi': case 'find':
-            openDock('search');
-            $('search-input').value = arg;
-            renderSearch(arg);
-            sys(arg ? 'Hľadám: ' + arg : 'Otvoril som vyhľadávanie.');
-            break;
-        case 'zoom':
-            if (arg === 'in') zoomBy(1.3);
-            else if (arg === 'out') zoomBy(1 / 1.3);
-            else S.cam = { x: 0, y: 0, k: 0.85 };
-            sys('Zoom upravený.');
-            break;
-        case 'legenda': openDock('legend'); sys('Legenda otvorená.'); break;
-        case 'statistiky': case 'stats': openDock('stats'); sys('Štatistiky otvorené.'); break;
-        case 'os': case 'replay': $('btn-timeline').click(); sys('Časová os prepnutá.'); break;
-        case 'pomoc': case 'help': toggleHelp(true); break;
-        default:
-            sys('Neznámy príkaz. Skús /nahlad, /najdi, /zoom, /legenda, /statistiky, /os, /pomoc');
-    }
 }
 
 /* ---------- toasty, pomocnik, hinty ---------- */
@@ -1485,7 +1369,6 @@ function setupShortcuts() {
             toggleHelp(false);
             closeDock();
             closeNodePanel();
-            collapsePrompt();
             return;
         }
 
@@ -1502,11 +1385,7 @@ function setupShortcuts() {
             case 'l': case 'L': openDock('legend'); break;
             case 't': case 'T': $('btn-timeline').click(); break;
             case 'd': case 'D': toggleTheme(); break;
-            case 'c': case 'C':
-                e.preventDefault();
-                $('prompt').classList.add('open');
-                $('prompt-input').focus();
-                break;
+            case 'k': case 'K': e.preventDefault(); openCmdk(); break;
             case '+': case '=': zoomBy(1.3); break;
             case '-': zoomBy(1 / 1.3); break;
             case '0': S.cam = { x: 0, y: 0, k: 0.85 }; break;
@@ -1518,7 +1397,7 @@ function setupShortcuts() {
 const HINTS = [
     { pos: { left: '88px', top: '120px' }, text: 'V ľavom paneli je vyhľadávanie, štatistiky, legenda a časová os. Úplne dole nájdeš nastavenia zobrazenia.' },
     { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Tu prepínaš náhľady siete — Mapa, Sieť a Vrstvy. Fungujú aj klávesy 1, 2, 3.' },
-    { pos: { left: '50%', bottom: '84px', transform: 'translateX(-50%)' }, text: 'Sem napíš otázku pre Hadesa. Príkazy začínajú lomkou — skús /pomoc.' },
+    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Príkazová paleta je pod ⌘K / Ctrl+K — rýchly skok na uzol alebo príkaz. Vedomie sa učí samo cez Claude Code (MCP), netreba API kľúč.' },
 ];
 
 function setupHints() {
@@ -1845,7 +1724,6 @@ async function init() {
     setupCmdk();
     applyOpts();
     setView(S.view);
-    setupPrompt();
     setupHints();
     connectWs(data.ws);
 

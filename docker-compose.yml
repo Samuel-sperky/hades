@@ -14,7 +14,8 @@ services:
   app:
     <<: *app
     ports:
-      - "8080:8080"
+      # len localhost — osobny druhy mozog nema byt dostupny zo siete
+      - "127.0.0.1:8080:8080"
     environment:
       PHP_CLI_SERVER_WORKERS: 8
     command: php artisan serve --host=0.0.0.0 --port=8080
@@ -30,7 +31,7 @@ services:
   reverb:
     <<: *app
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     command: php artisan reverb:start --host=0.0.0.0 --port=8081
 
   mariadb:

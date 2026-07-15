@@ -174,15 +174,6 @@
         <button id="zoom-reset" class="ms" title="Vycentrovať (0)" aria-label="Vycentrovať">center_focus_strong</button>
     </div>
 
-    <div id="prompt">
-        <div id="chat-log" class="hidden" aria-live="polite"></div>
-        <form id="prompt-form">
-            <span class="ms spark" aria-hidden="true">auto_awesome</span>
-            <input id="prompt-input" placeholder="Opýtaj sa Hadesa…  ( / pre príkazy )" autocomplete="off" aria-label="Správa pre Hadesa">
-            <button type="submit" class="ms send-btn" aria-label="Odoslať">send</button>
-        </form>
-    </div>
-
     <div id="toasts" aria-live="polite"></div>
     <div id="hover-card" class="hidden" role="tooltip"></div>
 

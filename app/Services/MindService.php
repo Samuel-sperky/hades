@@ -13,6 +13,8 @@ use Illuminate\Support\Str;
 
 class MindService
 {
+    public function __construct(protected SensitiveFilter $filter = new SensitiveFilter) {}
+
     /**
      * Ulozi novy poznatok. Ak uz podobny uzol existuje, zluci ho (auto-merge)
      * namiesto vytvorenia duplicity.
@@ -26,6 +28,14 @@ class MindService
         array $connections = [],
         ?string $sessionKey = null,
     ): array {
+        // Lokalny bezpecnostny filter — Hades nikdy neuklada tajomstva/citlive udaje.
+        if ($reason = $this->filter->scan($label, $description)) {
+            throw new \RuntimeException(
+                "Odmietnuté — vyzerá to ako citlivý údaj ({$reason}). Hades zásadne "
+                ."neukladá heslá, API kľúče, finančné, zdravotné ani cudzie osobné údaje."
+            );
+        }
+
         $existing = $this->findByLabel($label, $type);
 
         if ($existing) {

@@ -5,9 +5,8 @@ return [
     // Meno vedomia
     'name' => 'Hades',
 
-    // Anthropic API pre chat s vedomim
-    'anthropic_api_key' => env('ANTHROPIC_API_KEY'),
-    'chat_model' => env('HADES_CHAT_MODEL', 'claude-opus-4-8'),
+    // Hades bezi bez akehokolvek LLM/API. Ucenie prichadza cez MCP z Claude Code;
+    // server je cista pamat + vizualizacia. Ziadny externy API kluc netreba.
 
     // WebSocket adresa tak, ako ju vidi prehliadac (nie docker siet)
     'public_ws_host' => env('HADES_PUBLIC_WS_HOST', 'localhost'),

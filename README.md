@@ -11,15 +11,18 @@ docker compose up -d
 
 - **Vizualizácia:** http://localhost:8080 — glow sieť, klik na uzol = detail/editácia,
   heatmapa aktivity, filtre, príkazová paleta (⌘K), svetlá/tmavá téma (D),
-  ambient režim (⛶), chat s Hadesom (💬)
+  ambient režim (⛶)
 - **MCP endpoint:** http://localhost:8080/mcp (Streamable HTTP)
 - **WebSocket (Reverb):** ws://localhost:8081
+
+> **Bez LLM/API.** Hades sám nevolá žiadny externý model — učenie prichádza výhradne
+> cez MCP z Claude Code. Netreba `ANTHROPIC_API_KEY`. Web beží len na localhote.
 
 ## Architektúra
 
 | Služba    | Účel                                             |
 |-----------|--------------------------------------------------|
-| app       | Laravel — MCP server, REST API, chat, frontend   |
+| app       | Laravel — MCP server, REST API, frontend         |
 | queue     | Redis queue worker                               |
 | scheduler | Denné zálohy DB do `backups/` (rotácia 14 dní)   |
 | reverb    | WebSocket server pre live pulzy                  |
@@ -52,11 +55,14 @@ Synchronizácia je automatická (pri každom learn/activate/merge/edit/delete ce
 Eloquent observery). Vypnúť sa dá cez `HADES_MIRROR_ENABLED=false`, cesta sa mení
 cez `HADES_MIND_PATH`.
 
-## Konfigurácia
+## Súkromie
 
-Chat s Hadesom vyžaduje `ANTHROPIC_API_KEY` v `.env` (model `HADES_CHAT_MODEL`,
-default `claude-opus-4-8`). Po zmene `.env` reštartuj: `docker compose restart`.
+Hades beží len lokálne (localhost) a **nikdy neukladá tajomstvá** — lokálny
+bezpečnostný filter (`SensitiveFilter`) odmietne heslá, API kľúče, finančné,
+zdravotné aj cudzie osobné údaje ešte pred uložením.
 
-Model vedomia: uzly majú silu (rastie aktiváciami, nikdy neklesá — Hades
-nezabúda), hrany váhu; oblasti sú preddefinované v seederi, oddelenia vznikajú
-emergentne. Stav bdie/spí sa riadi poslednou aktivitou.
+## Model vedomia
+
+Uzly majú silu (rastie aktiváciami, nikdy neklesá — Hades nezabúda), hrany váhu;
+oblasti aj oddelenia vznikajú emergentne pri učení. Stav bdie/spí sa riadi
+poslednou aktivitou (len vizuál).
