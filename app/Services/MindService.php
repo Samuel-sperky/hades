@@ -177,7 +177,7 @@ class MindService
             return null;
         }
 
-        return (clone $query)
+        $candidates = (clone $query)
             ->whereRaw('LOWER(label) LIKE ?', ['%'.$normalized.'%'])
             ->orWhere(function ($q) use ($normalized, $type) {
                 if ($type) {
@@ -186,7 +186,19 @@ class MindService
                 $q->whereRaw('? LIKE CONCAT(\'%\', LOWER(label), \'%\')', [$normalized]);
             })
             ->orderByDesc('strength')
-            ->first();
+            ->get();
+
+        // Zluc len skutocne podobne labely — samotny substring nestaci
+        // ("Canva" nesmie splynut s "Canvas visualization").
+        return $candidates->first(function (Node $candidate) use ($normalized) {
+            $other = mb_strtolower($candidate->label);
+            $lengthRatio = min(mb_strlen($normalized), mb_strlen($other))
+                / max(mb_strlen($normalized), mb_strlen($other));
+
+            similar_text($normalized, $other, $percent);
+
+            return $lengthRatio >= 0.6 || $percent >= 85;
+        });
     }
 
     /**
