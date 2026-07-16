@@ -1,0 +1,489 @@
+SEO REPORT – SPERKY-ESHOP.SK
+================================================================
+
+Reportované obdobie:        2026-06 (jún 2026, stav k 2026-06-30)
+Porovnávané obdobie:        2026-05 (máj 2026, stav k 2026-05-31)
+Dátum a čas vytvorenia:     2026-07-16 18:50 (Europe/Bratislava)
+Ahrefs target:              sperky-eshop.sk (mód: subdomains, projekt Rank Tracker ID 9364794)
+Krajina:                    Slovensko (SK), zariadenie: desktop
+Použité MCP connectory:     Ahrefs MCP (hlavný zdroj dát)
+Chýbajúce dátové zdroje:    Google Search Console (nepripojené k projektu), backlinkový/DR profil
+                            (mimo rozsahu tohto behu), Figma dizajnové tokeny (nepoužité –
+                            HTML používa predvolený firemný štýl)
+
+Poznámka k metodike: Všetky čísla pochádzajú z Ahrefs Rank Tracker projektu sperky-eshop.sk
+(626 sledovaných kľúčových slov, SK/desktop). Agregátne KPI a rozdelenie pozícií vychádzajú
+z endpointu rank-tracker-competitors-stats (kompletná množina 626 KW). Detailné tabuľky
+(TOP KW, rasty, poklesy, výkon skupín) vychádzajú z per-keyword dát Rank Trackera.
+
+
+1. EXECUTIVE SUMMARY
+================================================================
+1. Silný mesiac pre viditeľnosť: TOP 3 pozície narástli zo 105 na 152 kľúčových slov
+   (+47, +44,8 %) – najvýraznejšie zlepšenie za sledované obdobie.
+2. TOP 10 stúplo z 359 na 408 KW (+49, +13,6 %); priemerná pozícia sa zlepšila z 9,7 na 8,6.
+3. Share of Voice (podiel na organickej návštevnosti trhu) vzrástol z 5,54 % na 6,00 %;
+   sperky-eshop.sk je aktuálne 2. najsilnejší hráč v sledovanej množine za izlato.sk.
+4. Odhadovaná organická návštevnosť zo sledovaných KW: 9 319 návštev/mes. (+240, +2,6 %).
+5. Zdroj rastu: masívny posun KW z pásma 11–20 (169 → 127) smerom do TOP 10; skupina
+   „zlaty_piercing" ostáva dominantná (avg pozícia 3,5), silno rástli strieborné retiazky a privesky.
+6. Hlavné riziko: dve dôležité kategórie prepadli z TOP 10 mimo TOP 50 – „striebro" (6 → 51,
+   URL /informacie/15-strieborne-sperky) a „zlate prstene" (12 → 51, URL /75-zlate-prstene).
+7. Rastie konkurencia: olivie.sk viac než zdvojnásobil SoV (2,59 % → 5,61 %) a takmer nás
+   dobehol; izlato.sk mierne oslabil (17,19 % → 16,11 %), ale ostáva líder s 362 KW v TOP 3.
+8. Signál kanibalizácie: viacero URL (/55, /68, /69) si konkuruje na dopytoch „strieborný prsteň";
+   viaceré varianty spadli z TOP 3–5 do pásma 11–16.
+
+
+2. HLAVNÉ KPI
+================================================================
+(zdroj všetkých KPI: Ahrefs rank-tracker-competitors-stats, projekt 9364794, SK/desktop,
+ stav 2026-06-30 vs 2026-05-31)
+
+KPI 1 – KW v TOP 3
+  Aktuálne: 152 | Predchádzajúce: 105 | Zmena: +47 | %: +44,8 %
+  Interpretácia: Najsilnejší ukazovateľ mesiaca; konsolidácia do najviditeľnejších pozícií.
+  Zdroj: rank-tracker-competitors-stats (pos_1_3)
+
+KPI 2 – KW v TOP 10
+  Aktuálne: 408 | Predchádzajúce: 359 | Zmena: +49 | %: +13,6 %
+  Interpretácia: Do prvej strany sa posunulo takmer 50 KW, hlavne z pásma 11–20.
+  Zdroj: rank-tracker-competitors-stats (pos_1_3 + pos_4_10)
+
+KPI 3 – KW v TOP 20
+  Aktuálne: 535 | Predchádzajúce: 528 | Zmena: +7 | %: +1,3 %
+  Interpretácia: Široká báza stabilná; rast sa deje najmä vo vnútri TOP 20 (posun nahor).
+  Zdroj: rank-tracker-competitors-stats (pos_1_3 + pos_4_10 + pos_11_20)
+
+KPI 4 – Priemerná pozícia
+  Aktuálne: 8,6 | Predchádzajúce: 9,7 | Zmena: -1,1 pozície | %: zlepšenie o 11,3 %
+  Interpretácia: Nižšie číslo = lepšie; celková viditeľnosť portfólia sa zlepšila.
+  Zdroj: rank-tracker-competitors-stats (average_position)
+
+KPI 5 – Share of Voice
+  Aktuálne: 6,00 % | Predchádzajúce: 5,54 % | Zmena: +0,46 p.b. | %: +8,3 %
+  Interpretácia: Rastúci podiel na organickej návštevnosti v sledovanej množine KW.
+  Zdroj: rank-tracker-competitors-stats (share_of_voice)
+
+KPI 6 – Odhadovaná organická návštevnosť (sledované KW)
+  Aktuálne: 9 319 /mes. | Predchádzajúce: 9 079 /mes. | Zmena: +240 | %: +2,6 %
+  Interpretácia: Návštevnosť mierne rástla; rast pozícií sa zatiaľ len začína prejavovať
+  na návštevnosti (efekt býva oneskorený).
+  Zdroj: rank-tracker-competitors-stats (traffic)
+
+KPI 7 – Hodnota organickej návštevnosti
+  Aktuálne: 1 813,21 USD | Predchádzajúce: 1 795,40 USD | Zmena: +17,81 USD | %: +1,0 %
+  Interpretácia: Ekvivalentná hodnota návštevnosti v PPC; stabilný mierny rast.
+  Zdroj: rank-tracker-competitors-stats (traffic_value, prepočet z centov)
+
+KPI 8 – KW bez umiestnenia (netrackované/nerankujúce)
+  Aktuálne: 57 | Predchádzajúce: 45 | Zmena: +12 | %: +26,7 %
+  Interpretácia: Zhoršenie čiastočne spôsobené 20 novo pridanými KW (ešte nerankujú)
+  a 3 KW, ktoré vypadli z TOP 100. Vyžaduje sledovanie.
+  Zdroj: rank-tracker-competitors-stats (pos_no_rank)
+
+
+3. ROZDELENIE KW PODĽA POZÍCIÍ
+================================================================
+(sledovaná množina 626 KW; zdroj rank-tracker-competitors-stats)
+
+Pásmo            2026-06   2026-05    Zmena
+TOP 3 (1–3)        152       105       +47   ▲
+Pozície 4–10       256       254        +2   ▲
+Pozície 11–20      127       169       -42   ▼ (posun nahor do TOP 10)
+Pozície 21–50       31        32        -1   ▼
+Pozície 51–100       3         1        +2   ▲
+Mimo TOP 100 /
+nerankuje            57        45       +12   ▲
+----------------------------------------------------
+SPOLU              626       606       +20   (20 novo pridaných KW v júni)
+
+Podiely (2026-06): TOP 3 = 24,3 %, TOP 10 = 65,2 %, TOP 20 = 85,5 % zo sledovaných KW.
+Pozn.: pásmo 11–20 kleslo o 42 KW, pričom TOP 3 a TOP 10 rástli – ide o zdravý posun nahor.
+
+
+4. MEDZIMESAČNÉ POROVNANIE
+================================================================
+Ukazovateľ                       Jún 2026     Máj 2026     Zmena
+KW v TOP 3                          152          105        +47
+KW v TOP 10                         408          359        +49
+KW v TOP 20                         535          528         +7
+Rankujúce KW (≤100)                 569          561         +8
+Priemerná pozícia                    8,6          9,7        -1,1
+Share of Voice                      6,00 %       5,54 %     +0,46 p.b.
+Odhad. návštevnosť/mes.            9 319        9 079       +240
+Hodnota návštevnosti (USD)        1 813,21     1 795,40    +17,81
+AI Overview výskyty                    2            1         +1
+
+Zhrnutie: Zlepšenie naprieč takmer všetkými ukazovateľmi. Návštevnosť rastie pomalšie než
+pozície, čo je bežný oneskorený efekt – plný dopad rastu TOP 3/TOP 10 sa prejaví v ďalších
+1–2 mesiacoch.
+
+
+5. VÝKON SKUPÍN A TAGOV KW
+================================================================
+(agregát z analyzovanej podmnožiny 411 KW s kompletnými dátami – najvyšší objem + najlepšie
+ pozície; priemerná pozícia počítaná len z rankujúcich KW)
+
+Skupina (tag)              Počet KW  Avg poz.  Avg poz. pred  Návšt.  TOP3  TOP10
+zlaty_piercing                91       3,5        4,2         2 739    56    88
+strieborne_prstene            30       4,2        3,5           798    14    28
+zlate_prstene                 43       7,9        8,2           650    12    33
+strieborne_retiazky           30       5,9        8,6           436    11    25   ▲ výrazný rast
+zlate_retiazky                41       7,5       10,2           368     6    34   ▲ výrazný rast
+zlate_nausnice                41      10,7       11,9           324     7    19
+zlate_privesky                13       4,2        5,8           223     5    13   ▲
+zlate_naramky                 30      12,8       15,6           220     5    13   ▲ (slabé pásmo)
+strieborne_sety                8       2,2        1,3           191     7     8   ▼ mierne
+strieborne_nahrdelniky         7       4,0        8,0           150     4     6   ▲ výrazný rast
+strieborne_nausnice           16       7,9        9,1           136     6    10   ▲
+strieborne_naramky            15       9,8       11,0           133     3     6
+zlate_nahrdelniky              7       9,9       10,2            80     3     3
+strieborne_privesky            7       2,9       11,5            67     6     7   ▲ najväčší skok
+bez tagu                      28       9,0        7,0         2 380     5    12   ▼ (vrátane "striebro")
+
+Kľúčové zistenia:
+- „zlaty_piercing" je najsilnejšia a najziskovejšia skupina (56 KW v TOP 3, avg 3,5) – udržať.
+- „strieborne_retiazky", „zlate_retiazky", „strieborne_nahrdelniky" a „strieborne_privesky"
+  zaznamenali najväčšie zlepšenie priemernej pozície.
+- „zlate_naramky" je najslabšia skupina (avg 12,8) s najväčším priestorom na rast.
+- Skupina „bez tagu" klesla (7,0 → 9,0) hlavne kvôli prepadu KW „striebro".
+
+
+6. TOP KW – JADROVÉ KĽÚČOVÉ SLOVÁ (podľa organickej návštevnosti)
+================================================================
+(TOP 40 zo sledovaných KW; poz. = pozícia jún, pred = pozícia máj)
+
+#   KW                                Obj.   Poz  Pred  Návšt.  URL
+1   sperky eshop                      1100    1    1    1165   /
+2   šperky eshop                       700    1    1     868   /
+3   piercing do ucha                  2700    2    1     563   /21-piercing-do-ucha
+4   piercing do nosa                  1700    2    3     284   /19-piercing-do-nosa-piercing-nos
+5   piercing                          3000    2    2     278   /14-piercing
+6   piercing do pupku                 1400    2    2     277   /20-piercing-do-pupku
+7   strieborny prsten pansky           200    1    1     156   /69-panske-strieborne-prstene
+8   zlaté prstene dámske               400    2    6     135   /75-zlate-prstene
+9   zlaty prsten                       900    4    6     133   /75-zlate-prstene
+10  zlaty naramok                     1000    5   11      89   /79-zlate-naramky
+11  strieborne obrucky                 250    2    8      86   /57-strieborne-obrucky
+12  náušnice z chirurgickej ocele     1200    8   15      85   /11-nausnice-z-chirurgickej-ocele
+13  strieborný náhrdelník              150    1    9      76   /56-strieborne-nahrdelniky
+14  prstene z chirurgickej ocele       700    6    8      76   /5-prstene-z-chirurgickej-ocele
+15  zlaty privesok                     500    3   10      71   /76-zlate-privesky
+16  snubné prstene                     200    2   11      68   /37-zasnubne-prstene-snubne-prstene
+17  piercing do nosa kruzok            200    1    3      67   /29-piercing-kruzok
+18  piercingove nausnice do ucha       200    1    4      67   /21-piercing-do-ucha
+19  piercing do jazyka                 250    1    3      67   /15-piercing-do-jazyka
+20  strieborne prstene                 800    5    1      65   /55-strieborne-prstene   ▼ pozor
+21  strieborná retiazka pánska         450    5    8      63   /64-strieborne-retiazky-panske
+22  strieborne retiazky panske         100    1    8      61   /64-strieborne-retiazky-panske
+23  strieborné sety pre ženy           150    1    1      59   /73-strieborne-sety
+24  piercingy                          250    1    1      58   /14-piercing
+25  piercing nausnice                  150    1    2      57   /14-piercing
+26  zlaty piercing do pupku            100    1    4      54   /109-zlaty-piercing
+27  panske prstene striebro             80    1    1      54   /69-panske-strieborne-prstene
+28  šperky                             800    7    5      53   /   ▼
+29  strieborné obrúčky                 150    2    8      50   /57-strieborne-obrucky
+30  zlate nausnice kruhy               700    9   12      49   /94-zlate-nausnice-kruhy
+31  zlate nahrdelniky damske           200    2    6      48   /80-zlate-nahrdelniky
+32  zlaté prstene                      250    4    9      45   /75-zlate-prstene
+33  zlate nausnice detske              350    4   15      44   /93-detske-zlate-nausnice
+34  piercing pupok                     100    1    2      43   /20-piercing-do-pupku
+35  falošný piercing                    70    1    4      42   /31-falosny-piercing-fake-plug
+36  strieborny naramok na nohu         100    1    2      41   /167-strieborne-naramky-na-nohu
+37  strieborne sety damske             100    1    1      41   /73-strieborne-sety
+38  strieborné prstene dámske          200    5    1      41   /68-strieborne-prstene-damske   ▼
+39  zlatý piercing do ucha             100    1    4      40   /109-zlaty-piercing
+40  panske strieborne retiazky         100    2   10      39   /64-strieborne-retiazky-panske
+
+Pozn.: Kompletný TOP 100 core zoznam je dostupný v interaktívnom HTML reporte (filtrovateľná
+tabuľka). Poznámka k dátam: Ahrefs MCP vracia max. 250 riadkov na dopyt – TOP zoznam je
+zoradený podľa návštevnosti/objemu, agregátne počty (sekcia 3) sú kompletné za 626 KW.
+
+
+7. NAJVÄČŠIE RASTY (reálne zlepšenie pozície, mesiac/mesiac)
+================================================================
+KW                              Obj.   Máj → Jún   Zmena   Návšt.
+percing                          30     42 → 2      -40      6
+strieborné prívesky              40     24 → 2      -22     11
+dámske zlaté retiazky            60     29 → 9      -20      2
+zasnubny prsten zlte zlato      100     38 → 25     -13      0
+strieborny naramok s krizikom    60     51 → 39     -12      0
+zlaty naramok na nohu           200     18 → 6      -12     11
+zlata obrucka                   100     13 → 2      -11     15
+zlate nausnice detske           350     15 → 4      -11     44
+snubné prstene                  200     11 → 2       -9     68
+strieborné náušnice kruhy       350     17 → 8       -9     20
+strieborný náhrdelník           150      9 → 1       -8     76
+panske strieborne retiazky      100     10 → 2       -8     39
+strieborne obrucky              250      8 → 2       -6     86
+zlaty naramok                  1000     11 → 5       -6     89
+
+NOVÉ VSTUPY DO REBRÍČKA (predtým nerankovali / novo sledované, teraz rankujú):
+  nahrdelnik (obj. 2500) → poz. 18 | zlatý náhrdelník (obj. 500) → poz. 20
+  strieborny nahrdelnik (obj. 450) → poz. 11 | zlatý naramok → 11 | zlatá reťaz → 11
+  zlatý náramok na ruku → 9 | zlatý obručový náramok → 9 | 14k → 10
+
+
+8. NAJVÄČŠIE POKLESY (reálne zhoršenie pozície, mesiac/mesiac)
+================================================================
+KW                              Obj.   Máj → Jún   Zmena   Poznámka / URL
+striebro                       1200      6 → 51     +45    /informacie/15-strieborne-sperky  ⚠ KRITICKÉ
+zlate prstene                   700     12 → 51     +39    /75-zlate-prstene  ⚠ KRITICKÉ
+piercing do nosa kamienok        50      6 → 20     +14    produktová URL
+strieborný prsteň               200      3 → 16     +13    /68 – signál kanibalizácie
+strieborný prsten                50      4 → 13      +9    /55
+male strieborne nausnice         50      2 → 11      +9    /54
+prsten strieborny                70      2 → 11      +9    /68 – kanibalizácia
+prsteň strieborný               100      1 → 11     +10    /68 – kanibalizácia
+zlate náušnice do 50 eur         30     15 → 26     +11    /77
+moderné zlaté prstene            10     15 → 24      +9    /83
+
+ÚPLNÉ VÝPADKY Z TOP 100 (z rankujúcich do nerankujúcich):
+  fake piercing (obj. 40): 2 → mimo TOP 100  ⚠
+  zlate retiazky na ruku (obj. ~): 8 → mimo TOP 100  ⚠
+  zlatá retiazka na ruku: 9 → mimo TOP 100  ⚠
+
+
+9. VSTUPY A VÝSTUPY Z TOP 3, TOP 10 A TOP 20
+================================================================
+Vstupy do TOP 3   (nové KW v pozíciách 1–3):        69
+Vstupy do TOP 10  (nové KW v pozíciách 1–10):       82
+Vstupy do TOP 20  (nové KW prekročili hranicu 20):  30
+Výstupy z TOP 10  (spadli mimo pozície 1–10):       33   (vrátane "striebro", 3 úplné výpadky)
+Výstupy z TOP 20  (spadli mimo pozície 1–20):       23   (vrátane "striebro", "zlate prstene")
+
+Čistá bilancia: TOP 3 +47, TOP 10 +49 – vstupy výrazne prevažujú nad výstupmi.
+
+
+10. KONKURENCIA
+================================================================
+(zdroj rank-tracker-competitors-stats, rovnaká množina 626 sledovaných KW; SK/desktop)
+
+Doména              SoV Jún  SoV Máj   Avg poz  Návšt.Jún  KW v TOP 3
+izlato.sk           16,11 %  17,19 %    6,0      24 930      362      (LÍDER)
+sperky-eshop.sk      6,00 %   5,54 %    8,6       9 319      152      (MY, #2)
+olivie.sk            5,61 %   2,59 %    9,2       8 799      113      ▲▲ silný rast
+lotsi.sk             3,28 %   3,19 %   16,5       5 100       39
+yesjewellery.com     2,55 %   0,80 %   13,8       4 009       26      ▲
+www.isperky.sk       1,63 %   1,76 %   12,7       2 570       25
+sofia.sk             1,45 %   1,00 %   13,3       2 282       28      ▲
+www.glamira.sk       0,60 %   0,81 %   22,8         946       15
+
+Prioritné porovnanie – SPERKY-ESHOP.SK vs IZLATO.SK (hlavný konkurent):
+- Rozdiel SoV: -10,11 p.b. (izlato 16,11 % vs my 6,00 %) – medzera sa mierne zúžila
+  (v máji -11,65 p.b.), keďže izlato oslabil a my sme rástli.
+- Rozdiel priemernej pozície: +2,6 (my 8,6 vs izlato 6,0) v neprospech nás.
+- Rozdiel v TOP 3: -210 KW (my 152 vs izlato 362) – najväčšia strategická medzera.
+- Rozdiel v TOP 10: +73 KW v náš prospech (my 408 vs izlato 433 = 362+71) → -25 v neprospech nás.
+- Izlato nerankuje na 79 z našich sledovaných KW – priestor, kde môžeme mať náskok.
+- Kde prehrávame: „strieborne nausnice", „zlate retiazky/nausnice" objemové kategórie –
+  izlato drží TOP 3, my TOP 8–17.
+- Kde máme náskok: piercing sortiment (zlaty_piercing) – izlato v tejto oblasti nedominuje.
+
+Prioritné porovnanie – vs OLIVIE.SK a SOFIA.SK:
+- olivie.sk je najrýchlejšie rastúci konkurent (SoV 2,59 % → 5,61 %, návšt. 4 251 → 8 799,
+  TOP 3 90 → 113). Priblížil sa nám na dosah – potrebné sledovať, na ktorých KW rastie.
+- sofia.sk rástol miernejšie (SoV 1,00 % → 1,45 %); ostáva výrazne za nami.
+
+
+11. CONTENT GAP
+================================================================
+Na základe agregátneho porovnania (izlato.sk má 362 KW v TOP 3 vs naše 152) je najväčšia
+obsahová/pozičná medzera v týchto oblastiach:
+
+1. ZLATÉ RETIAZKY / NÁUŠNICE (objemové kategórie): izlato drží TOP 3, my TOP 6–12.
+   Príklady: „zlata retiazka damska" (obj. 1200, my #10), „zlate nausnice kruhy" (obj. 700, my #9),
+   „zlata retiazka panska" (obj. 1000, my #10). → priestor na obsahovú optimalizáciu kategórií.
+2. ZLATÉ NÁRAMKY: naša najslabšia skupina (avg 12,8). Viacero KW rankuje až v pásme 20–46
+   s produktovými/nesprávnymi URL (napr. „pansky naramok na ruku" #36).
+3. STRIEBORNÉ NÁUŠNICE (objem): „strieborne nausnice" (obj. 4200) sme na #17 (z #13) –
+   veľký nevyužitý objem.
+4. INFORMAČNÉ/ŠIROKÉ DOPYTY: „nahrdelnik" (obj. 2500, #18), „zlatý náhrdelník" (obj. 500, #20)
+   – novo rankujú nízko, potenciál na dedikovaný obsah.
+
+Pozn.: Detailná per-keyword content-gap analýza voči izlato.sk (spoločné vs chýbajúce KW)
+nebola v tomto behu vyťažená – navrhnutá ako samostatná akcia (viď Akčný plán).
+
+
+12. RANKING URL A KANIBALIZÁCIA
+================================================================
+Identifikované signály kanibalizácie (viac URL súťaží o príbuzné dopyty):
+
+STRIEBORNÉ PRSTENE – tri URL si konkurujú:
+  /55-strieborne-prstene, /68-strieborne-prstene-damske, /69-panske-strieborne-prstene
+  - „strieborne prstene" (obj. 800): #1 → #5 (/55) ▼
+  - „strieborny prsten" (obj. 700): #1 → #9 (/69) ▼
+  - „prsteň strieborný" (obj. 100): #1 → #11 (/68) ▼
+  - „strieborné prstene dámske" (obj. 200): #1 → #5 (/68) ▼
+  → Odporúčanie: ujasniť cieľovú URL pre generický dopyt „strieborný prsteň" a interne
+    prelinkovať, aby sa autorita nerozdrobovala.
+
+TAG NEZROVNALOSTI (KW priradený k skupine, ale rankuje s URL inej skupiny):
+  - „pánsky prsteň" (tag zlate_prstene) rankuje s /69-panske-strieborne-prstene
+  - „strieborny prsten pansky" (tag strieborne_prstene) OK na /69
+  → Odporúčanie: revízia tagov a cieľových URL pre pánske prstene.
+
+PREPADNUTÉ INFORMAČNÉ URL:
+  - „striebro" (obj. 1200) rankuje s /informacie/15-strieborne-sperky, spadlo 6 → 51.
+    Informačná URL stratila pozíciu voči kategórii – zvážiť presmerovanie zámeru na kategóriu.
+
+
+13. DÁTOVÉ NEZROVNALOSTI
+================================================================
+1. Ahrefs MCP endpoint rank-tracker-overview vracia max. 250 riadkov/dopyt. Agregátne počty
+   (sekcia 3, KPI) sú kompletné za 626 KW (cez competitors-stats a filtrované počítacie dopyty);
+   detailné TOP tabuľky sú zoradené výbery, nie úplný výpis 626 KW.
+2. Celkový počet sledovaných KW: jún 626 vs máj 606. Rozdiel +20 = novo pridané KW počas júna
+   (majú prázdnu májovú pozíciu), čo mierne nadhodnocuje „pos_no_rank" medzimesačne.
+3. GSC (Google Search Console) nie je k projektu pripojené – reálne kliky/impresie/CTR
+   neboli k dispozícii; návštevnosť je Ahrefs odhad.
+4. Priemerné pozície skupín (sekcia 5) sú počítané z analyzovanej podmnožiny 411 KW
+   s kompletnými dátami, nie z celých 626 – slúžia na trendové porovnanie skupín.
+
+
+14. BODY NA SEO PORADU
+================================================================
+BOD 1 – Prepad kategórie „zlate prstene" a dopytu „striebro"  [8 min]
+  Fakt: „zlate prstene" 12→51 a „striebro" 6→51 vypadli z TOP 50.
+  Dopad: Strata viditeľnosti na dvoch objemných dopytoch (obj. 700 + 1200).
+  Pravdepodobná príčina: technický/obsahový problém na /75-zlate-prstene a /informacie/15;
+  možná strata interných odkazov alebo aktualizácia obsahu.
+  Potrebné rozhodnutie: priorita a zodpovedný za audit oboch URL.
+  Odporúčaná akcia: technický + obsahový audit URL, kontrola indexácie a interného prelinkovania.
+  Odhadovaný čas riešenia: audit do 1 týždňa.
+
+BOD 2 – Kanibalizácia strieborných prsteňov (/55, /68, /69)  [10 min]
+  Fakt: 4 KW pre „strieborný prsteň" spadli z TOP 3–5 do pásma 5–11.
+  Dopad: Rozdrobenie autority medzi 3 URL, pokles na kľúčovej kategórii.
+  Pravdepodobná príčina: neujasnená cieľová URL + prekrývajúci sa obsah.
+  Potrebné rozhodnutie: ktorá URL je primárna pre generický dopyt.
+  Odporúčaná akcia: konsolidácia zámeru, interné prelinkovanie, revízia titulov/H1.
+  Odhadovaný čas riešenia: 1 šprint.
+
+BOD 3 – Ofenzíva na zlaté retiazky/náušnice (medzera voči izlato)  [10 min]
+  Fakt: na objemových „zlata retiazka/nausnice" sme #9–10, izlato TOP 3.
+  Dopad: Najväčšia medzera SoV (-10 p.b.) leží v týchto kategóriách.
+  Pravdepodobná príčina: slabšia obsahová/odkazová sila kategórií.
+  Potrebné rozhodnutie: schválenie obsahového rozpočtu na 3 kategórie.
+  Odporúčaná akcia: rozšírenie a optimalizácia kategórií, FAQ, interné odkazy.
+  Odhadovaný čas riešenia: 4–6 týždňov.
+
+BOD 4 – Konkurenčná hrozba olivie.sk  [7 min]
+  Fakt: olivie.sk zdvojnásobil SoV (2,59 → 5,61 %) a priblížil sa nám.
+  Dopad: Riziko straty pozície #2 na trhu.
+  Pravdepodobná príčina: aktívna SEO/obsahová kampaň konkurenta.
+  Potrebné rozhodnutie: či spustiť detailný monitoring olivie.sk.
+  Odporúčaná akcia: content-gap analýza olivie.sk, identifikácia ich rastúcich KW.
+  Odhadovaný čas riešenia: analýza do 1 týždňa.
+
+BOD 5 – Zhodnotenie výhry v pásme 11–20 → TOP 10  [8 min]
+  Fakt: 82 KW vstúpilo do TOP 10, pásmo 11–20 kleslo o 42.
+  Dopad: Pozitívny; treba udržať momentum a dotlačiť KW z pozícií 4–10 do TOP 3.
+  Pravdepodobná príčina: predošlé optimalizácie začínajú účinkovať.
+  Potrebné rozhodnutie: ktoré KW z 4–10 prioritne tlačiť do TOP 3.
+  Odporúčaná akcia: cielená on-page optimalizácia 20 KW s najvyšším objemom v pásme 4–10.
+  Odhadovaný čas riešenia: priebežne.
+
+BOD 6 – Zaradenie novo rankujúcich náhrdelníkov  [6 min]
+  Fakt: „nahrdelnik" (obj. 2500) #18, „zlatý náhrdelník" (obj. 500) #20 – novo, nízko.
+  Dopad: Veľký nevyužitý objemový potenciál.
+  Pravdepodobná príčina: nová/slabo optimalizovaná landing page.
+  Potrebné rozhodnutie: cieľová URL pre generický „náhrdelník".
+  Odporúčaná akcia: optimalizácia a interné odkazy na /56 a /80.
+  Odhadovaný čas riešenia: 2 týždne.
+
+CELKOVÝ PLÁNOVANÝ ČAS PORADY: 49 minút (limit 60 min – OK).
+
+
+15. ZÁVER
+================================================================
+Čo sa zmenilo?
+  Portfólio sledovaných KW sa výrazne posilnilo: TOP 3 +47 (105→152), TOP 10 +49 (359→408),
+  priemerná pozícia 9,7→8,6, Share of Voice 5,54 %→6,00 %. Návštevnosť mierne rástla (+2,6 %).
+  Dve dôležité kategórie („zlate prstene", „striebro") však prepadli mimo TOP 50.
+
+Čo pravdepodobne spôsobilo zmenu?
+  Kladný trend = dozrievanie predošlých optimalizácií a posun širokej bázy KW z pásma 11–20
+  do TOP 10, najmä v skupinách strieborné/zlaté retiazky, prívesky a náhrdelníky.
+  Negatíva = pravdepodobný technický/obsahový problém na konkrétnych URL (/75, /informacie/15)
+  a nevyriešená kanibalizácia strieborných prsteňov.
+
+Čo sa bude robiť ďalej?
+  1) Audit prepadnutých URL (zlate prstene, striebro). 2) Vyriešenie kanibalizácie strieborných
+  prsteňov. 3) Ofenzíva na objemové zlaté retiazky/náušnice voči izlato.sk. 4) Monitoring
+  rastúceho konkurenta olivie.sk. 5) Dotlačenie KW z pásma 4–10 do TOP 3.
+
+
+16. AKČNÝ PLÁN
+================================================================
+A1 – Audit prepadnutých URL
+  Priorita: VYSOKÁ | KW/URL: „zlate prstene" /75-zlate-prstene, „striebro" /informacie/15-strieborne-sperky
+  Problém/príležitosť: pokles 12→51 a 6→51 (strata viditeľnosti na obj. 700+1200)
+  Očakávaný merateľný výsledok: návrat oboch KW do TOP 20 do 60 dní
+  Zodpovedný: SEO špecialista + vývoj (technická kontrola)
+  Termín: 2026-07-31 | Stav: NOVÉ
+
+A2 – Konsolidácia kanibalizácie strieborných prsteňov
+  Priorita: VYSOKÁ | KW/URL: „strieborný prsteň" + varianty; /55, /68, /69
+  Problém/príležitosť: 4 KW spadli z TOP 3–5; rozdrobená autorita
+  Očakávaný merateľný výsledok: aspoň 2 varianty späť do TOP 5 do 45 dní
+  Zodpovedný: SEO špecialista + obsah
+  Termín: 2026-08-08 | Stav: NOVÉ
+
+A3 – Obsahová ofenzíva zlaté retiazky/náušnice
+  Priorita: STREDNÁ | KW/URL: „zlata retiazka damska/panska", „zlate nausnice kruhy" /86,/87,/94
+  Problém/príležitosť: medzera voči izlato.sk (my #9–10, oni TOP 3)
+  Očakávaný merateľný výsledok: +5 KW do TOP 5 v týchto skupinách do 90 dní
+  Zodpovedný: obsahový tím
+  Termín: 2026-09-15 | Stav: NOVÉ
+
+A4 – Monitoring konkurenta olivie.sk
+  Priorita: STREDNÁ | KW/URL: celý sledovaný set vs olivie.sk
+  Problém/príležitosť: olivie zdvojnásobil SoV, blíži sa k #2 pozícii
+  Očakávaný merateľný výsledok: identifikácia 20 KW, na ktorých olivie rástol
+  Zodpovedný: SEO analytik
+  Termín: 2026-07-25 | Stav: NOVÉ
+
+A5 – Dotlačenie KW z pásma 4–10 do TOP 3
+  Priorita: STREDNÁ | KW/URL: 20 KW s najvyšším objemom v pozíciách 4–10
+  Problém/príležitosť: 256 KW v pásme 4–10 – rýchle výhry návštevnosti
+  Očakávaný merateľný výsledok: +15 KW do TOP 3 do 60 dní
+  Zodpovedný: SEO špecialista
+  Termín: 2026-09-01 | Stav: NOVÉ
+
+A6 – Optimalizácia novo rankujúcich náhrdelníkov
+  Priorita: NÍZKA | KW/URL: „nahrdelnik", „zlatý náhrdelník" /56, /80
+  Problém/príležitosť: obj. 2500+500 rankuje nízko (#18–20)
+  Očakávaný merateľný výsledok: obe KW do TOP 10 do 60 dní
+  Zodpovedný: obsahový tím
+  Termín: 2026-08-31 | Stav: NOVÉ
+
+
+17. TECHNICKÉ OBMEDZENIA
+================================================================
+- Ahrefs MCP rank-tracker endpoint limituje výstup na 250 riadkov/dopyt; kompletné agregáty
+  boli získané cez competitors-stats a filtrované počítacie dopyty (spolu 626 KW overené).
+- GSC nie je k projektu pripojené – chýbajú reálne kliky/impresie/CTR.
+- Backlinkové a Domain Rating metriky neboli v tomto behu vyťažené (mimo rozsahu mesačného
+  rankingového reportu).
+- Návštevnosť a jej hodnota sú Ahrefs modelové odhady, nie reálne analytické dáta.
+- Figma dizajnové tokeny neboli dostupné/použité; HTML používa predvolený firemný štýl.
+- Canva nebola použitá (v súlade so zadaním).
+
+
+18. ZDROJE MCP
+================================================================
+- Ahrefs MCP – hlavný a jediný zdroj SEO dát:
+    • management-projects, management-project-competitors
+    • rank-tracker-overview (per-keyword, pozičné pásma, rasty/poklesy, vstupy/výstupy)
+    • rank-tracker-competitors-stats (agregátne KPI a konkurenčné porovnanie, 2026-06 a 2026-05)
+    • subscription-info-limits-and-usage (kontrola kvóty)
+  Spotreba API jednotiek: 0 (Rank Tracker dopyty nespotrebúvajú jednotky).
+- Google Calendar MCP – vytvorenie novej porady s Google Meet (viď kalendárna udalosť).
+- Canva MCP – NEPOUŽITÁ.
+- Figma MCP – nepoužitá (dizajnové tokeny nedostupné).
+
+================================================================
+KONIEC REPORTU – SEO-ROUTINE-ID: sperky-eshop.sk-2026-06-2026-07-16
+================================================================
