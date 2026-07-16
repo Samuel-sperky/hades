@@ -3,24 +3,18 @@
 'use strict';
 
 const CORE_COLOR = '#b88a3a';
-const AREA_RADIUS = 460;
+const AREA_RADIUS = 640;
 
-// Témy — kontrakt pre budúci dark mode (canvas literály idú cez T.*)
+// Témy — kontrakt pre canvas literály (idú cez T.*)
+// nodeFloor/edgeFloor: spodná hranica tlmenia (hover × focus), gridAlpha: sila mriežky
 const THEMES = {
-    light: { paper:'#f8f4f7', ink:'#101d1b', inkSoft:'#2d3a38', muted:'#566964', labelHalo:'rgba(248,244,247,0.92)', edge:'45,58,56', gridColor:'3,121,126', outline:'rgba(16,29,27,0.35)' },
-    dark:  { paper:'#0e1413', ink:'#eaf3f1', inkSoft:'#c3d1ce', muted:'#8a9b98', labelHalo:'rgba(14,20,19,0.92)', edge:'195,209,206', gridColor:'5,188,196', outline:'rgba(234,243,241,0.30)' },
+    light: { paper:'#f8f4f7', ink:'#101d1b', inkSoft:'#2d3a38', muted:'#566964', labelHalo:'rgba(248,244,247,0.92)', edge:'45,58,56', gridColor:'3,121,126', outline:'rgba(16,29,27,0.35)', gridAlpha:0.05, nodeFloor:0.30, edgeFloor:0.20 },
+    dark:  { paper:'#0e1413', ink:'#eaf3f1', inkSoft:'#c3d1ce', muted:'#8a9b98', labelHalo:'rgba(14,20,19,0.92)', edge:'195,209,206', gridColor:'5,188,196', outline:'rgba(234,243,241,0.30)', gridAlpha:0.09, nodeFloor:0.35, edgeFloor:0.25 },
 };
 let T = THEMES.light;
 function setTheme(name){ T = THEMES[name] || THEMES.light; document.documentElement.dataset.theme = (name === 'dark' ? 'dark' : 'light'); localStorage.setItem('hades.theme', name); }
 
-// Farby uzlov (identita) — zladene s CSS --node-* tokenmi (Aura paleta)
-const NODE_COLORS = {
-    core: '#b88a3a',
-    skill: '#03797e',
-    memory: '#2f6d8f',
-    project: '#c2761c',
-};
-const DEPT_RADIUS = 140;
+const DEPT_RADIUS = 170;
 
 const canvas = document.getElementById('mind');
 const ctx = canvas.getContext('2d');
@@ -52,13 +46,6 @@ const S = {
     view: localStorage.getItem('hades.view') || 'map',
 };
 
-const VIEW_LAYER_COLORS = {
-    memory: '#2f6d8f',
-    skill: '#03797e',
-    core: '#b88a3a',
-    project: '#c2761c',
-};
-
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const OPT_DEFAULTS = {
@@ -85,6 +72,16 @@ function syncSlider(inp) {
     const val = parseFloat(inp.value);
     const pct = max > min ? ((val - min) / (max - min)) * 100 : 100;
     inp.style.setProperty('--pct', pct + '%');
+
+    // číselný odpočet vedľa slidera — alfy ako percento, mierky ako násobok
+    const wrap = inp.closest('label.slider');
+    const out = wrap && wrap.querySelector('output');
+    if (out) {
+        const opt = inp.dataset.opt;
+        out.textContent = (opt === 'nodeScale' || opt === 'labelSize')
+            ? '×' + val.toFixed(2)
+            : Math.round(val * 100) + ' %';
+    }
 }
 
 function applyOpts() {
@@ -102,13 +99,51 @@ const now = () => Date.now();
 const rad = (deg) => (deg * Math.PI) / 180;
 const ts = (iso) => (iso ? new Date(iso).getTime() : 0);
 
-function nodeColor(n) {
-    if (S.view === 'layers') {
-        return VIEW_LAYER_COLORS[n.type] || '#566964';
+// Svetlejší/sytejší variant farby oblasti pre tmavý papier — hex→HSL→hex, cache
+const _darkColorCache = new Map();
+function darkAreaColor(hex) {
+    const cached = _darkColorCache.get(hex);
+    if (cached) return cached;
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+    if (!m) return hex;
+    const num = parseInt(m[1], 16);
+    const r = ((num >> 16) & 255) / 255, g = ((num >> 8) & 255) / 255, b = (num & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (d > 0) {
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
     }
-    if (n.type === 'core') return CORE_COLOR;
-    const area = S.areas.get(n.area_id);
-    return area ? area.color : '#566964';
+    l = Math.max(l, 0.62);
+    s = Math.min(s + 0.12, 0.9);
+    const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const toHex = (t) => Math.round(hue2rgb(p, q, t) * 255).toString(16).padStart(2, '0');
+    const out = '#' + toHex(h + 1 / 3) + toHex(h) + toHex(h - 1 / 3);
+    _darkColorCache.set(hex, out);
+    return out;
+}
+
+// Farba = oblasť vo VŠETKÝCH náhľadoch; typ vyjadruje tvar (drawShape)
+function nodeColor(n) {
+    let hex;
+    if (n.type === 'core') hex = CORE_COLOR;
+    else {
+        const area = S.areas.get(n.area_id);
+        hex = area ? area.color : '#2f6d8f';
+    }
+    return T === THEMES.dark ? darkAreaColor(hex) : hex;
 }
 
 // Focus mód (priečinky): zaostrenie na oblasť / oddelenie
@@ -187,14 +222,15 @@ function nodeAlphaMul(n, hl) {
     let mul = 1;
     if (hl && !hl.has(n.id)) mul *= 0.18;
     if (!focusPass(n)) mul *= 0.15;
-    return mul;
+    // podlaha na SÚČINE (hover × focus) — tlmené uzly ostávajú čitateľné
+    return Math.max(T.nodeFloor, mul);
 }
 
 function edgeAlphaMul(e, hl, anchor) {
     let mul = 1;
     if (hl && !(anchor && (e.source.id === anchor.id || e.target.id === anchor.id))) mul *= 0.18;
     if (!(focusPass(e.source) && focusPass(e.target))) mul *= 0.15;
-    return mul;
+    return Math.max(T.edgeFloor, mul);
 }
 
 const LAYER_X = [-560, -280, 0, 280, 560];
@@ -416,6 +452,9 @@ function setView(view) {
     });
     buildSim();
     kickSim(0.6);
+    // mapa/sieť: pár tikov, nech bbox sedí na usadených pozíciách; vrstvy sú deterministické (fx/fy)
+    if (S.sim && view !== 'layers') S.sim.tick(30);
+    fitView();
 }
 
 function kickSim(alpha = 0.35) {
@@ -465,43 +504,82 @@ function draw() {
         const invK = 1 / S.cam.k;
 
         // jemna technicka mriezka (world-space, hyba sa so sietou) — jedine pozadie
-        const _step = 240, _ext = 1400;
+        // rozsah z viditelneho viewportu, start zarovnany na nasobok kroku
+        const _step = 240;
+        const _tl = screenToWorld(0, 0);
+        const _br = screenToWorld(S.w, S.h);
         ctx.lineWidth = 0.5 * invK;
-        ctx.strokeStyle = 'rgba(' + T.gridColor + ',' + (0.05 * S.dim * bgLevel) + ')';
+        ctx.strokeStyle = 'rgba(' + T.gridColor + ',' + (T.gridAlpha * S.dim * bgLevel) + ')';
         ctx.beginPath();
-        for (let gx = -_ext; gx <= _ext; gx += _step) { ctx.moveTo(gx, -_ext); ctx.lineTo(gx, _ext); }
-        for (let gy = -_ext; gy <= _ext; gy += _step) { ctx.moveTo(-_ext, gy); ctx.lineTo(_ext, gy); }
+        for (let gx = Math.floor(_tl.x / _step) * _step; gx <= _br.x; gx += _step) { ctx.moveTo(gx, _tl.y); ctx.lineTo(gx, _br.y); }
+        for (let gy = Math.floor(_tl.y / _step) * _step; gy <= _br.y; gy += _step) { ctx.moveTo(_tl.x, gy); ctx.lineTo(_br.x, gy); }
         ctx.stroke();
     }
 
-    if (S.view === 'map') for (const area of S.areas.values()) {
-        const a = areaAnchor(area);
-        ctx.globalAlpha = 0.28 * S.dim;
+    if (S.view === 'map') {
+        // bbox uzlov kazdej oblasti — label centrovany nad vrcholom klastra
+        const areaBox = new Map();
+        for (const n of S.nodes) {
+            if (n.type === 'core' || !n.area_id || !visibleInReplay(n)) continue;
+            const b = areaBox.get(n.area_id);
+            if (!b) areaBox.set(n.area_id, { minX: n.x, maxX: n.x, minY: n.y });
+            else {
+                if (n.x < b.minX) b.minX = n.x;
+                if (n.x > b.maxX) b.maxX = n.x;
+                if (n.y < b.minY) b.minY = n.y;
+            }
+        }
+        ctx.globalAlpha = 0.5;
         ctx.fillStyle = T.muted;
-        ctx.font = '600 13px "Geist Mono", ui-monospace, monospace';
+        ctx.font = '600 ' + (12.5 / S.cam.k) + 'px "Geist Mono", ui-monospace, monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(area.name.toUpperCase(), a.x, a.y - 230);
+        for (const area of S.areas.values()) {
+            const b = areaBox.get(area.id);
+            const a = areaAnchor(area);
+            ctx.fillText(area.name.toUpperCase(), b ? (b.minX + b.maxX) / 2 : a.x, (b ? b.minY : a.y) - 36);
+        }
         ctx.globalAlpha = 1;
     }
 
     if (layersView) {
-        // Cisty neuronovy wireframe: plne prepojena sieť medzi susednymi vrstvami
+        // (1) tlmená mriežka susedných vrstiev — len pozadie (alpha 0.03)
         const layers = layerColumns();
         const invK = 1 / S.cam.k;
         ctx.lineWidth = 0.5 * invK;
+        ctx.strokeStyle = 'rgba(' + T.edge + ',0.03)';
+        ctx.beginPath();
         for (let li = 0; li < layers.length - 1; li++) {
             for (const a of layers[li]) {
                 if (!visibleInReplay(a)) continue;
                 for (const b of layers[li + 1]) {
                     if (!visibleInReplay(b)) continue;
-                    ctx.strokeStyle = 'rgba(' + T.edge + ',0.10)';
-                    ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
-                    ctx.stroke();
                 }
             }
         }
+        ctx.stroke();
+
+        // (2) skutočné spojenia zo S.edges — rovnaké váhové štýlovanie ako mapa/sieť
+        for (const e of S.edges) {
+            if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
+            let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
+            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor);
+            ctx.strokeStyle = 'rgba(' + T.edge + ',' + alpha + ')';
+            ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
+            ctx.beginPath();
+            ctx.moveTo(e.source.x, e.source.y);
+            const sameCol = e.source.fx != null && e.source.fx === e.target.fx;
+            if (sameCol) {
+                // rovnaký stĺpec: jemný oblúk ~24 px smerom von, nech neprekrýva líniu stĺpca
+                const dir = e.source.fx >= 0 ? 1 : -1;
+                ctx.quadraticCurveTo(e.source.fx + dir * 48, (e.source.y + e.target.y) / 2, e.target.x, e.target.y);
+            } else {
+                ctx.lineTo(e.target.x, e.target.y);
+            }
+            ctx.stroke();
+        }
+
         drawLayerScaffold(layers);
     } else {
         for (const e of S.edges) {
@@ -531,44 +609,17 @@ function draw() {
     }
     ctx.globalAlpha = 1;
 
-    if (layersView) {
-        ctx.globalCompositeOperation = 'source-over';
-        const invK = 1 / S.cam.k;
-        for (const n of S.nodes) {
-            if (!visibleInReplay(n)) continue;
-            const r = Math.max(6, nodeRadius(n)) * 0.9;
-            const color = nodeColor(n);
-            const flash = n.flash || 0;
-            const mul = nodeAlphaMul(n, hl);
-
-            // jadro (bez aury — žiadna hmla)
-            ctx.globalAlpha = Math.min(1, (0.82 + flash * 0.5)) * mul;
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, r * 0.72, 0, 7);
-            ctx.fill();
-
-            // prsteň (wireframe)
-            ctx.globalAlpha = Math.min(1, (0.95 + flash)) * mul;
-            ctx.lineWidth = 1.5 * invK;
-            ctx.strokeStyle = color;
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, r, 0, 7);
-            ctx.stroke();
-
-            if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
-        }
-        ctx.globalAlpha = 1;
-    } else for (const n of S.nodes) {
+    ctx.globalCompositeOperation = 'source-over';
+    for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
-        const r = nodeRadius(n);
+        const r = layersView ? Math.max(6, nodeRadius(n)) * 0.9 : nodeRadius(n);
         const color = nodeColor(n);
+        const flash = layersView ? (n.flash || 0) : 0;
         const mul = nodeAlphaMul(n, hl);
 
         // plne nepriehľadný uzol (žiadne halo) — tlmí sa len highlight/focus násobičom
-        ctx.globalAlpha = 1 * mul;
-        ctx.fillStyle = color;
-        drawShape(n, r);
+        ctx.globalAlpha = Math.min(1, (layersView ? 0.9 + flash * 0.5 : 1)) * mul;
+        drawShape(n, n.x, n.y, r, color);
 
         // ink obrys — silu ovláda slider 'glow' (Obrysy uzlov)
         ctx.globalAlpha = Math.min(1, S.opts.glow) * mul;
@@ -580,25 +631,32 @@ function draw() {
 
         if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
     }
+    ctx.globalAlpha = 1;
 
     ctx.globalCompositeOperation = 'source-over';
 
     const showLabels = S.cam.k > 0.5 && S.opts.labelAlpha > 0.02;
+    const baseLabelAlpha = Math.min(1, S.opts.labelAlpha);
     const candidates = [];
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
         const isHover = S.hover === n || S.selected === n;
         if (!showLabels && !isHover) continue;
-        candidates.push({ n, isHover });
+        const alpha = baseLabelAlpha * nodeAlphaMul(n, hl);
+        // pod prahom čitateľnosti: nekresliť ani nerezervovať obdĺžnik
+        if (alpha < 0.12) continue;
+        candidates.push({ n, isHover, alpha });
     }
-    candidates.sort((a, b) => (b.isHover - a.isHover) || ((b.n.strength || 0) - (a.n.strength || 0)));
+    // viditeľné najprv, potom hover, potom sila — kolízie vyhrávajú čitateľné labely
+    candidates.sort((a, b) => (b.alpha - a.alpha) || (b.isHover - a.isHover) || ((b.n.strength || 0) - (a.n.strength || 0)));
 
     const fontSize = (12 * S.opts.labelSize) / S.cam.k;
     const taken = [];
     ctx.textAlign = 'center';
-    for (const { n, isHover } of candidates) {
+    for (const { n, isHover, alpha } of candidates) {
+        const label = truncLabel(n.label);
         ctx.font = (isHover ? '600 ' : '') + fontSize + 'px "Geist", system-ui, sans-serif';
-        const w = ctx.measureText(n.label).width;
+        const w = ctx.measureText(label).width;
         const y = n.y + nodeRadius(n) + 15 / S.cam.k;
         const rect = { x: n.x - w / 2, y: y - fontSize, w, h: fontSize * 1.4 };
 
@@ -609,30 +667,53 @@ function draw() {
         taken.push(rect);
 
         // vždy plne čitateľné — žiadny zoom fade, len highlight/focus tlmenie
-        ctx.globalAlpha = Math.min(1, S.opts.labelAlpha) * nodeAlphaMul(n, hl);
+        ctx.globalAlpha = alpha;
         ctx.lineWidth = Math.max(2.5, fontSize * 0.28);
         ctx.lineJoin = 'round';
         ctx.strokeStyle = T.labelHalo;
-        ctx.strokeText(n.label, n.x, y);
+        ctx.strokeText(label, n.x, y);
         ctx.fillStyle = T.ink;
-        ctx.fillText(n.label, n.x, y);
+        ctx.fillText(label, n.x, y);
     }
     ctx.globalAlpha = 1;
 }
 
-// Jednotny seriozny tvar: vsetky uzly su ciste kruhy.
-// Jadro dostane jemny sustredny prstenec ako "hub" marker (bez hviezd).
-function drawShape(n, r) {
-    const { x, y } = n;
+// Skrátenie labelu LEN pri kreslení (hover-card a panel používajú n.label v plnej dĺžke)
+function truncLabel(s) {
+    const chars = Array.from(String(s)); // mb-safe (surrogate pairs)
+    return chars.length > 30 ? chars.slice(0, 29).join('').trimEnd() + '…' : s;
+}
+
+// Typ uzla = tvar (farba patrí oblasti): spomienka disk, skill donut,
+// projekt disk + tenký prstenec, jadro zlatý sústredný prstenec.
+function drawShape(n, x, y, r, color) {
+    const k = S.cam.k;
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, 7);
     ctx.fill();
 
-    if (n.type === 'core') {
+    if (n.type === 'skill') {
+        // donut — vnútorný otvor v papieri, ink obrys ostáva na vonkajšej hrane
+        ctx.fillStyle = T.paper;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.42, 0, 7);
+        ctx.fill();
+    } else if (n.type === 'project') {
+        // jeden tenký sústredný prstenec — tiché echo jadra
+        const a = ctx.globalAlpha;
+        ctx.globalAlpha = a * 0.7;
+        ctx.lineWidth = 1.2 / k;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3.5 / k, 0, 7);
+        ctx.stroke();
+        ctx.globalAlpha = a;
+    } else if (n.type === 'core') {
         const a = ctx.globalAlpha;
         ctx.globalAlpha = a * 0.4;
-        ctx.lineWidth = Math.max(1, 1.1 / S.cam.k);
-        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = Math.max(1, 1.1 / k);
+        ctx.strokeStyle = color;
         ctx.beginPath();
         ctx.arc(x, y, r * 1.55, 0, 7);
         ctx.stroke();
@@ -687,6 +768,14 @@ function updateStateUi() {
     brand.classList.toggle('awake', awake);
     brand.classList.toggle('asleep', !awake);
     brand.title = awake ? 'Hades — bdie' : 'Hades — spí';
+
+    // stavový čip v hlavičke (bdie / spí)
+    const chip = document.getElementById('status-chip');
+    if (chip) {
+        chip.classList.toggle('awake', awake);
+        const txt = chip.querySelector('.txt');
+        if (txt) txt.textContent = awake ? 'bdie' : 'spí';
+    }
 }
 
 /* ---------- interakcia ---------- */
@@ -805,7 +894,7 @@ async function selectNode(n) {
     $('node-form').classList.add('hidden');
     $('node-view').classList.remove('hidden');
     $('node-type-label').textContent = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' }[n.type] || n.type;
-    const nc = NODE_COLORS[n.type] || '#2f6d8f';
+    const nc = nodeColor(n); // farba oblasti — typ hovorí tvar, nie farba
     $('node-swatch').style.background = nc;
     $('node-panel').style.setProperty('--node-c', nc);
     $('node-label').textContent = n.label;
@@ -837,9 +926,9 @@ async function selectNode(n) {
         });
 
         $('node-history').innerHTML = data.activations.map((a) => {
-            const kinds = { learn: 'naučené', activate: 'aktivované', merge: 'posilnené', recall: 'spomenuté', seed: 'zasiate' };
+            const kinds = { learn: 'naučené', activate: 'aktivované', merge: 'zlúčené', recall: 'spomenuté', seed: 'zasiate' };
             return '<div class="hist">' + (kinds[a.kind] || a.kind) + ' · ' + new Date(a.created_at).toLocaleString('sk') + '</div>';
-        }).join('') || '<div class="hist">žiadna</div>';
+        }).join('') || emptyHtml('history', 'Zatiaľ žiadna aktivita');
     } catch (e) { /* offline detail nevadí */ }
 }
 
@@ -888,10 +977,17 @@ function renderNodeRecord(node) {
             }).join('');
     }
 
-    if (Array.isArray(meta.tools) && meta.tools.length) {
-        html += '<h3>Nástroje</h3><div class="rec-tools">'
-            + meta.tools.map((t) => '<span class="meta-chip">' + esc(t) + '</span>').join('')
-            + '</div>';
+    // meta.tools je objekt {name: count}; pole necháme ako fallback starších záznamov
+    let toolChips = '';
+    if (Array.isArray(meta.tools)) {
+        toolChips = meta.tools.map((t) => '<span class="meta-chip">' + esc(t) + '</span>').join('');
+    } else if (meta.tools && typeof meta.tools === 'object') {
+        toolChips = Object.entries(meta.tools).map(([name, count]) =>
+            '<span class="meta-chip"><strong>' + esc(name) + '</strong>&nbsp;×' + esc(String(count)) + '</span>'
+        ).join('');
+    }
+    if (toolChips) {
+        html += '<h3>Nástroje</h3><div class="rec-tools">' + toolChips + '</div>';
     }
 
     if (meta.final) {
@@ -907,18 +1003,65 @@ function focusNode(n) {
 }
 
 function zoomBy(factor) {
+    // pivot okolo stredu obrazovky — rovnaká technika ako wheel handler
+    const before = screenToWorld(S.w / 2, S.h / 2);
     S.cam.k = Math.min(3.2, Math.max(0.14, S.cam.k * factor));
+    const after = screenToWorld(S.w / 2, S.h / 2);
+    S.cam.x += (after.x - before.x) * S.cam.k;
+    S.cam.y += (after.y - before.y) * S.cam.k;
 }
 
+// Fit view — kamera obsiahne všetky viditeľné uzly aktuálneho náhľadu
+function fitView(pad = 90) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const add = (x, y) => {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    };
+
+    if (S.view === 'layers') {
+        // deterministický layout — ciele fx/fy + hlavičky stĺpcov (vždy v zábere)
+        const layers = layerColumns();
+        let maxHalf = 0;
+        layers.forEach((nodes) => {
+            maxHalf = Math.max(maxHalf, (nodes.length - 1) / 2 * LAYER_SPACING(nodes));
+        });
+        add(LAYER_X[0], -maxHalf - 66);
+        add(LAYER_X[LAYER_X.length - 1], maxHalf);
+        for (const n of S.nodes) {
+            if (!visibleInReplay(n)) continue;
+            add(n.fx != null ? n.fx : n.x, n.fy != null ? n.fy : n.y);
+        }
+    } else {
+        for (const n of S.nodes) {
+            if (!visibleInReplay(n)) continue;
+            add(n.x, n.y);
+        }
+    }
+
+    if (minX > maxX) { S.cam = { x: 0, y: 0, k: 0.85 }; draw(); return; }
+
+    const bw = Math.max(maxX - minX, 1);
+    const bh = Math.max(maxY - minY, 1);
+    S.cam.k = Math.min(1.6, Math.max(0.14, Math.min((S.w - 2 * pad) / bw, (S.h - 2 * pad) / bh)));
+    S.cam.x = -((minX + maxX) / 2) * S.cam.k;
+    S.cam.y = -((minY + maxY) / 2) * S.cam.k;
+    draw();
+}
+
+// Tvarové glyfy typov — neutrálny ink (var(--muted)); farba v legende patrí len oblastiam.
+// Jadro je jediná výnimka: dvojitý zlatý prstenec (brand moment).
 const TYPE_GLYPHS = {
-    core: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" fill="#b88a3a"/><circle cx="7" cy="7" r="6" fill="none" stroke="#b88a3a" stroke-opacity=".5" stroke-width="1"/></svg>',
-    skill: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#03797e"/></svg>',
-    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#2f6d8f"/></svg>',
-    project: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#c2761c"/></svg>',
+    memory: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="var(--muted)"/></svg>',
+    skill: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="var(--muted)"/><circle cx="8" cy="8" r="2.3" fill="var(--bg)"/></svg>',
+    project: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" fill="var(--muted)"/><circle cx="8" cy="8" r="6.8" fill="none" stroke="var(--muted)" stroke-opacity=".7" stroke-width="1.2"/></svg>',
+    core: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4" fill="var(--gold)"/><circle cx="8" cy="8" r="6.8" fill="none" stroke="var(--gold)" stroke-opacity=".5" stroke-width="1.2"/></svg>',
 };
 
 function buildLegend() {
-    const typeNames = { core: 'Jadro', skill: 'Skill', memory: 'Spomienka', project: 'Projekt' };
+    const typeNames = { memory: 'Spomienka', skill: 'Skill', project: 'Projekt', core: 'Jadro' };
 
     $('legend-types').innerHTML = Object.keys(typeNames).map(
         (t) => '<div class="legend-row">' + TYPE_GLYPHS[t] + '<span>' + typeNames[t] + '</span></div>'
@@ -928,6 +1071,15 @@ function buildLegend() {
         (a) => '<div class="legend-row"><span class="swatch" style="background:' + a.color
             + ';box-shadow:0 0 6px ' + a.color + '"></span><span>' + esc(a.name) + '</span></div>'
     ).join('');
+
+    const strengthEl = $('legend-strength');
+    if (strengthEl) {
+        strengthEl.innerHTML = '<div class="legend-row legend-strength">'
+            + [6, 10, 14].map((d) =>
+                '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="' + (d / 2) + '" fill="var(--muted)"/></svg>'
+            ).join('')
+            + '<span class="cap">slabšia → silnejšia</span></div>';
+    }
 }
 
 function closeNodePanel() {
@@ -958,6 +1110,16 @@ function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Async spätná väzba tlačidiel — disable + dočasný text počas behu
+async function busy(btn, fn, busyText) {
+    if (btn.disabled) return;
+    const old = btn.textContent;
+    btn.disabled = true;
+    if (busyText) btn.textContent = busyText;
+    try { return await fn(); }
+    finally { btn.disabled = false; btn.textContent = old; }
+}
+
 // Jednotný prázdny stav — jedna šablóna pre všetky sekcie
 function emptyHtml(icon, text) {
     return '<div class="empty"><span class="ms" aria-hidden="true">' + icon + '</span><p>' + esc(text) + '</p></div>';
@@ -968,8 +1130,14 @@ function renderEmpty(container, icon, text) {
 }
 
 async function refreshStats() {
-    const res = await fetch('/api/mind/stats');
-    const st = await res.json();
+    let st;
+    try {
+        const res = await fetch('/api/mind/stats');
+        st = await res.json();
+    } catch (e) {
+        renderEmpty($('stats-cards'), 'cloud_off', 'Nepodarilo sa načítať');
+        return;
+    }
 
     const card = (label, value, sub) =>
         '<div class="metric"><div class="metric-val">' + value + '</div>'
@@ -1004,7 +1172,7 @@ async function refreshStats() {
 
     $('stats-top').innerHTML = st.top_nodes.map(
         (n) => row(esc(n.label), n.strength.toFixed(0))
-    ).join('') || '<div class="hist">zatiaľ nič</div>';
+    ).join('') || emptyHtml('leaderboard', 'Zatiaľ žiadne uzly');
 
     const gc = $('growth-chart');
     const dpr = window.devicePixelRatio || 1;
@@ -1300,7 +1468,7 @@ function handleCommand(text) {
         case 'zoom':
             if (arg === 'in') zoomBy(1.3);
             else if (arg === 'out') zoomBy(1 / 1.3);
-            else S.cam = { x: 0, y: 0, k: 0.85 };
+            else fitView();
             sys('Zoom upravený.');
             break;
         case 'legenda': openDock('legend'); sys('Legenda otvorená.'); break;
@@ -1316,7 +1484,10 @@ function handleCommand(text) {
 
 function showToast(text, nodeId) {
     const wrap = $('toasts');
-    const el = document.createElement('div');
+    // button — prístupné z klávesnice, klik naviguje na uzol
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.setAttribute('role', 'status');
     el.className = 'toast';
     const parts = String(text).split(/:\s(.+)/);
     el.innerHTML = parts.length > 1
@@ -1361,6 +1532,14 @@ const SHORTCUTS = [
     ['Esc', 'Zavrieť panely'],
 ];
 
+const MOUSE_HINTS = [
+    ['ťahanie', 'Posun plátna'],
+    ['koliesko', 'Zoom'],
+    ['klik na uzol', 'Detail'],
+    ['dvojklik na oblasť', 'Zaostrenie oblasti'],
+    ['Esc', 'Postupné zatváranie'],
+];
+
 let helpReturnFocus = null;
 
 function toggleHelp(show) {
@@ -1368,10 +1547,13 @@ function toggleHelp(show) {
     const target = show === undefined ? el.classList.contains('hidden') : show;
     el.classList.toggle('hidden', !target);
     if (target && !$('help-body').children.length) {
-        $('help-body').innerHTML = SHORTCUTS.map(([k, d]) => {
+        const row = ([k, d]) => {
             const caps = k.split(/\s*\/\s*/).map((x) => '<kbd>' + x + '</kbd>').join('<span class="sep">/</span>');
             return '<div class="key-row"><span class="label">' + d + '</span><span>' + caps + '</span></div>';
-        }).join('');
+        };
+        $('help-body').innerHTML = SHORTCUTS.map(row).join('')
+            + '<h3>Myš</h3>'
+            + MOUSE_HINTS.map(row).join('');
     }
     if (target) {
         helpReturnFocus = document.activeElement;
@@ -1390,17 +1572,36 @@ function setupShortcuts() {
 
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            document.body.classList.remove('ambient');
-            toggleHelp(false);
-            closeDock();
-            closeNodePanel();
-            collapsePrompt();
-            setFocus(null, null);
+            // kaskáda — jeden Esc zavrie vždy len najvrchnejšiu vrstvu
+            if (document.body.classList.contains('ambient')) {
+                document.body.classList.remove('ambient');
+                return;
+            }
+            if (!$('help-overlay').classList.contains('hidden')) { toggleHelp(false); return; }
+            const deptRow = document.querySelector('#structure-tree .dept-actions');
+            if (deptRow) { deptRow.remove(); return; }
+            if (!$('node-panel').classList.contains('hidden')) { closeNodePanel(); return; }
+            if (dockOpen) { closeDock(); return; }
+            if ($('prompt').classList.contains('open') || !$('chat-log').classList.contains('hidden')) {
+                collapsePrompt();
+                return;
+            }
+            if (S.focus.areaId) setFocus(null, null);
             return;
         }
 
         const tag = (document.activeElement && document.activeElement.tagName) || '';
-        if (/INPUT|TEXTAREA/.test(tag)) return;
+        if (/INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable)) return;
+
+        // SK klávesnica: fyzické kódy číslic fungujú nezávisle od rozloženia
+        switch (e.code) {
+            case 'Digit1': setView('map'); return;
+            case 'Digit2': setView('net'); return;
+            case 'Digit3': setView('layers'); return;
+            case 'Digit0': fitView(); return;
+            case 'NumpadAdd': zoomBy(1.3); return;
+            case 'NumpadSubtract': zoomBy(1 / 1.3); return;
+        }
 
         switch (e.key) {
             case '1': setView('map'); break;
@@ -1419,26 +1620,28 @@ function setupShortcuts() {
                 break;
             case '+': case '=': zoomBy(1.3); break;
             case '-': zoomBy(1 / 1.3); break;
-            case '0': S.cam = { x: 0, y: 0, k: 0.85 }; break;
+            case '0': fitView(); break;
             case '?': toggleHelp(); break;
         }
     });
 }
 
 const HINTS = [
-    { pos: { left: '88px', top: '120px' }, text: 'V ľavom paneli je vyhľadávanie, štatistiky, legenda a časová os. Úplne dole nájdeš nastavenia zobrazenia.' },
-    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Tu prepínaš náhľady siete — Mapa, Sieť a Vrstvy. Fungujú aj klávesy 1, 2, 3.' },
+    { pos: { left: '88px', top: '120px' }, text: 'V ľavej lište sú sekcie — Štruktúra (R), Vyhľadávanie (F), Prehľad (S), Denník (D) a Legenda (L).' },
+    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore prepínaš náhľady — Mapa, Sieť a Vrstvy (klávesy 1, 2, 3). Nulou vycentruješ celú sieť.' },
+    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Klik na uzol otvorí detail. Dvojklik na oblasť ju zaostrí — Esc zaostrenie zruší.' },
     { pos: { left: '50%', bottom: '84px', transform: 'translateX(-50%)' }, text: 'Sem napíš otázku pre Hadesa. Príkazy začínajú lomkou — skús /pomoc.' },
+    { pos: { left: '88px', bottom: '24px' }, text: 'Dole na lište nájdeš pomocníka a nastavenia — tmavý režim aj priehľadnosti siete.' },
 ];
 
 function setupHints() {
-    if (localStorage.getItem('hades.hints') === 'done') return;
+    if (localStorage.getItem('hades.hints2') === 'done') return;
     const el = $('hint');
     let i = 0;
 
     const finish = () => {
         el.classList.add('hidden');
-        localStorage.setItem('hades.hints', 'done');
+        localStorage.setItem('hades.hints2', 'done');
     };
 
     const show = () => {
@@ -1551,14 +1754,14 @@ function timeHM(iso) {
 
 async function renderJournal() {
     const list = $('journal-list');
-    list.innerHTML = '<div class="hist">Načítavam…</div>';
+    renderEmpty(list, 'hourglass_empty', 'Načítavam…');
     try {
         const data = await (await fetch('/api/journal')).json();
         journalRecords = data.records || [];
         renderJournalFilter();
         renderJournalList();
     } catch (e) {
-        list.innerHTML = '<div class="hist">Denník sa nepodarilo načítať.</div>';
+        renderEmpty(list, 'cloud_off', 'Nepodarilo sa načítať');
     }
 }
 
@@ -1595,7 +1798,7 @@ function renderJournalList() {
         : journalRecords;
 
     if (!records.length) {
-        list.innerHTML = '<div class="hist">Žiadne záznamy pre tento projekt.</div>';
+        renderEmpty(list, 'filter_alt_off', 'Žiadne záznamy pre tento projekt');
         return;
     }
 
@@ -1612,7 +1815,11 @@ function renderJournalList() {
         const badges = [];
         if (r.project) badges.push('<span class="tag">' + esc(r.project) + '</span>');
         if (r.file_count) badges.push('<span class="tag muted">' + r.file_count + ' súb.</span>');
-        if (r.commits && r.commits.length) badges.push('<span class="tag muted">' + r.commits.length + ' commit</span>');
+        if (r.commits && r.commits.length) {
+            const c = r.commits.length;
+            const word = c === 1 ? 'commit' : (c >= 2 && c <= 4 ? 'commity' : 'commitov');
+            badges.push('<span class="tag muted">' + c + ' ' + word + '</span>');
+        }
         html += '<button type="button" class="record" data-id="' + r.id + '">'
             + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
             + '<span class="record-title">' + esc(r.label) + '</span>'
@@ -1634,7 +1841,7 @@ function renderJournalList() {
 
 async function renderStructure() {
     const wrap = $('structure-tree');
-    wrap.innerHTML = '<div class="hist">Načítavam…</div>';
+    renderEmpty(wrap, 'hourglass_empty', 'Načítavam…');
     try {
         const data = await (await fetch('/api/structure')).json();
         const cnt = (v) => (v && typeof v === 'object') ? (v.node_count || v.count || 0) : (v || 0);
@@ -1691,7 +1898,7 @@ async function renderStructure() {
 
         markTreeActive();
     } catch (e) {
-        wrap.innerHTML = '<div class="hist">Štruktúru sa nepodarilo načítať.</div>';
+        renderEmpty(wrap, 'cloud_off', 'Nepodarilo sa načítať');
     }
 }
 
@@ -1741,7 +1948,7 @@ function toggleDeptActions(deptId) {
         sel.onchange = () => deptRequest(deptId, 'PUT', { area_id: +sel.value }, 'Oddelenie presunuté');
     };
 
-    // Zmazanie cez double-click pattern: prvý klik ozbrojí (.danger + text), druhý do 3 s maže
+    // Zmazanie cez arm pattern: prvý klik ozbrojí (.danger + text), druhý do 3 s maže
     const del = box.querySelector('[data-act="delete"]');
     del.onclick = () => {
         if (!del.classList.contains('danger')) {
@@ -1752,7 +1959,7 @@ function toggleDeptActions(deptId) {
             }, 3000);
             return;
         }
-        deptRequest(deptId, 'DELETE', null, 'Oddelenie zmazané');
+        busy(del, () => deptRequest(deptId, 'DELETE', null, 'Oddelenie zmazané'), 'Mažem…');
     };
 }
 
@@ -1888,7 +2095,7 @@ function renderSearch(q) {
 
 async function findDuplicates() {
     const wrap = $('dup-list');
-    wrap.innerHTML = '<div class="hist">Hľadám…</div>';
+    renderEmpty(wrap, 'hourglass_empty', 'Načítavam…');
     const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
     try {
         const data = await (await fetch('/api/duplicates')).json();
@@ -1907,20 +2114,26 @@ async function findDuplicates() {
         ).join('');
 
         wrap.querySelectorAll('.dup-card').forEach((card) => {
-            card.querySelector('.dup-merge').onclick = async () => {
+            const btn = card.querySelector('.dup-merge');
+            btn.onclick = () => busy(btn, async () => {
                 const p = pairs[+card.dataset.i];
                 // slabší uzol sa zlúči do silnejšieho; pri zhode a → b
                 const [loser, winner] = (p.a.strength || 0) > (p.b.strength || 0) ? [p.b, p.a] : [p.a, p.b];
-                const res = await fetch('/api/nodes/' + loser.id + '/merge/' + winner.id, { method: 'POST' });
-                if (!res.ok) { showToast('Zlúčenie sa nepodarilo'); return; }
+                try {
+                    const res = await fetch('/api/nodes/' + loser.id + '/merge/' + winner.id, { method: 'POST' });
+                    if (!res.ok) { showToast('Zlúčenie sa nepodarilo'); return; }
+                } catch (e) {
+                    showToast('Zlúčenie sa nepodarilo');
+                    return;
+                }
                 card.remove();
                 if (!wrap.querySelector('.dup-card')) renderEmpty(wrap, 'done_all', 'Žiadne duplicity');
                 showToast('Zlúčené');
                 await reloadGraph();
-            };
+            }, 'Zlúčujem…');
         });
     } catch (e) {
-        wrap.innerHTML = '<div class="hist">Duplicity sa nepodarilo načítať.</div>';
+        renderEmpty(wrap, 'cloud_off', 'Nepodarilo sa načítať');
     }
 }
 
@@ -1934,6 +2147,7 @@ function setupControls() {
     $('btn-stats').onclick = () => openDock('stats');
     $('btn-journal').onclick = () => openDock('journal');
     $('btn-legend').onclick = () => openDock('legend');
+    $('btn-help').onclick = () => toggleHelp(true);
     $('btn-settings').onclick = () => openDock('settings');
     $('dock-close').onclick = closeDock;
 
@@ -1947,8 +2161,8 @@ function setupControls() {
 
     $('zoom-in').onclick = () => zoomBy(1.3);
     $('zoom-out').onclick = () => zoomBy(1 / 1.3);
-    $('zoom-reset').onclick = () => { S.cam = { x: 0, y: 0, k: 0.85 }; };
-    $('brand-core').onclick = () => { S.cam = { x: 0, y: 0, k: 0.85 }; };
+    $('zoom-reset').onclick = () => fitView();
+    $('brand-core').onclick = () => fitView();
 
     document.querySelectorAll('input[data-opt]').forEach((inp) => {
         inp.oninput = () => { syncSlider(inp); setOpt(inp.dataset.opt, parseFloat(inp.value)); };
@@ -1959,6 +2173,7 @@ function setupControls() {
         localStorage.setItem('hades.opts', JSON.stringify(S.opts));
         makeStars();
         applyOpts();
+        showToast('Predvolené obnovené');
     };
 
     // Tmavý režim — prepínač v nastaveniach, synchronizovaný s data-theme
@@ -2012,40 +2227,93 @@ function setupControls() {
         $('node-view').classList.remove('hidden');
     };
 
-    $('edit-save').onclick = async () => {
+    $('edit-save').onclick = () => busy($('edit-save'), async () => {
         if (!S.selected) return;
-        const res = await fetch('/api/nodes/' + S.selected.id, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                label: $('edit-label').value.trim(),
-                description: $('edit-desc').value.trim() || null,
-                area_id: $('edit-area').value ? +$('edit-area').value : null,
-                department_id: $('edit-dept').value ? +$('edit-dept').value : null,
-            }),
-        });
-        if (res.ok) {
-            const data = await res.json();
-            Object.assign(S.selected, data.node);
-            selectNode(S.selected);
-            await reloadGraph();
-            if (dockOpen === 'structure') renderStructure();
-            draw();
+        try {
+            const res = await fetch('/api/nodes/' + S.selected.id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    label: $('edit-label').value.trim(),
+                    description: $('edit-desc').value.trim() || null,
+                    area_id: $('edit-area').value ? +$('edit-area').value : null,
+                    department_id: $('edit-dept').value ? +$('edit-dept').value : null,
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                Object.assign(S.selected, data.node);
+                selectNode(S.selected);
+                await reloadGraph();
+                if (dockOpen === 'structure') renderStructure();
+                draw();
+                showToast('Uložené');
+            } else {
+                showToast('Uloženie sa nepodarilo');
+            }
+        } catch (e) {
+            showToast('Uloženie sa nepodarilo');
         }
-    };
+    }, 'Ukladám…');
 
-    $('node-delete').onclick = async () => {
+    // Mazanie uzla — arm pattern namiesto confirm(): prvý klik ozbrojí, druhý do 3 s maže
+    const nodeDel = $('node-delete');
+    const disarmNodeDelete = () => {
+        clearTimeout(nodeDel._disarm);
+        nodeDel.classList.remove('armed');
+        nodeDel.classList.add('ms');
+        nodeDel.textContent = 'delete';
+    };
+    $('node-close').addEventListener('click', disarmNodeDelete);
+    nodeDel.onclick = async () => {
         if (!S.selected) return;
-        if (!confirm('Naozaj zmazať „' + S.selected.label + '" z vedomia?')) return;
-        const res = await fetch('/api/nodes/' + S.selected.id, { method: 'DELETE' });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            alert(data.message || 'Nepodarilo sa zmazať.');
+        if (!nodeDel.classList.contains('armed')) {
+            nodeDel.classList.add('armed');
+            nodeDel.classList.remove('ms');
+            nodeDel.textContent = 'Naozaj zmazať?';
+            nodeDel._disarm = setTimeout(() => { if (nodeDel.isConnected) disarmNodeDelete(); }, 3000);
+            return;
         }
+        clearTimeout(nodeDel._disarm);
+        const node = S.selected;
+        await busy(nodeDel, async () => {
+            try {
+                const res = await fetch('/api/nodes/' + node.id, { method: 'DELETE' });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    showToast(data.message || 'Nepodarilo sa zmazať');
+                    return;
+                }
+                // lokálne odstránenie — pulse node.deleted je idempotentný, duplicitu toleruje
+                S.nodes = S.nodes.filter((m) => m.id !== node.id);
+                S.edges = S.edges.filter((e) => e.source.id !== node.id && e.target.id !== node.id);
+                S.byId.delete(node.id);
+                closeNodePanel();
+                buildSim();
+                kickSim(0.3);
+                draw();
+                showToast('Uzol zmazaný');
+            } catch (e) {
+                showToast('Nepodarilo sa zmazať');
+            }
+        }, 'Mažem…');
+        disarmNodeDelete();
     };
 }
 
 /* ---------- štart ---------- */
+
+// Chybový hero cez plátno — vedomie sa nepodarilo načítať
+function renderInitError() {
+    const el = document.createElement('div');
+    el.className = 'empty empty-network';
+    el.innerHTML = '<span class="ms" aria-hidden="true">cloud_off</span>'
+        + '<h4 class="title">Vedomie sa nepodarilo prebudiť</h4>'
+        + '<p class="hint">Server neodpovedá — skontroluj, či Hades beží.</p>'
+        + '<button type="button" class="primary" id="retry-init">Skúsiť znova</button>';
+    document.body.appendChild(el);
+    el.querySelector('#retry-init').onclick = () => location.reload();
+}
 
 async function init() {
     setTheme(localStorage.getItem('hades.theme') || 'light');
@@ -2053,8 +2321,15 @@ async function init() {
     makeStars();
     window.addEventListener('resize', resize);
 
-    const res = await fetch('/api/mind');
-    const data = await res.json();
+    let data;
+    try {
+        const res = await fetch('/api/mind');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        data = await res.json();
+    } catch (e) {
+        renderInitError();
+        return;
+    }
 
     S.name = data.name;
     S.awakeMinutes = 5;
@@ -2079,6 +2354,8 @@ async function init() {
     renderBreadcrumb();
     applyOpts();
     setView(S.view);
+    // prvé načítanie: nechaj simuláciu usadiť (~150 tikov spolu so setView) a fitni znova
+    if (S.sim && S.view !== 'layers') { S.sim.tick(120); fitView(); }
     setupTimeline();
     setupPrompt();
     setupHints();
@@ -2088,7 +2365,7 @@ async function init() {
     setInterval(dream, 9000 + Math.random() * 6000);
     setInterval(computeReplayBounds, 60000);
 
-    window.HADES = { S, draw, frame, setTheme, setFocus };
+    window.HADES = { S, draw, frame, setTheme, setFocus, fitView };
 
     scheduleFrame();
     document.addEventListener('visibilitychange', () => {

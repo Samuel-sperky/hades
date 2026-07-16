@@ -17,6 +17,7 @@
         <div class="h-left">
             <span id="brand-name">Hades</span>
             <nav id="breadcrumb" aria-label="Aktuálny fokus"></nav>
+            <span id="status-chip" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="txt">spí</span></span>
         </div>
         <div class="h-center">
             <div id="view-switch" role="group" aria-label="Náhľad siete">
@@ -24,6 +25,11 @@
                 <button data-view="net">Sieť</button>
                 <button data-view="layers">Vrstvy</button>
             </div>
+        </div>
+        <div id="timeline" class="hidden">
+            <button id="tl-play" class="ms primary" title="Prehrať rast vedomia" aria-label="Prehrať rast vedomia">play_arrow</button>
+            <input type="range" id="tl-range" min="0" max="1000" value="1000" aria-label="Časová os">
+            <span id="tl-label">teraz</span>
         </div>
         <div id="header-metrics" aria-live="polite"></div>
     </header>
@@ -48,6 +54,7 @@
         <div class="rail-group bottom" role="group" aria-label="Systém">
             <button id="btn-sound" class="ms" title="Zvuk" aria-label="Zvuk">volume_up</button>
             <button id="btn-ambient" class="ms" title="Ambient režim" aria-label="Ambient režim">fullscreen</button>
+            <button id="btn-help" class="ms" title="Pomocník (?)" aria-label="Pomocník">help</button>
             <button id="btn-settings" class="ms" title="Nastavenia zobrazenia" aria-label="Nastavenia zobrazenia">tune</button>
         </div>
     </nav>
@@ -89,6 +96,8 @@
             <div id="legend-types"></div>
             <h3>Oblasti</h3>
             <div id="legend-areas"></div>
+            <h3>Sila</h3>
+            <div id="legend-strength"></div>
         </section>
 
         <section id="sec-settings" class="hidden">
@@ -100,25 +109,32 @@
             <h3>Priehľadnosť</h3>
             <label class="slider">Panely
                 <input type="range" data-opt="panelAlpha" min="0.3" max="1" step="0.01">
+                <output></output>
             </label>
             <label class="slider">Pozadie
                 <input type="range" data-opt="bg" min="0" max="1.5" step="0.05">
+                <output></output>
             </label>
             <label class="slider">Spojenia
                 <input type="range" data-opt="edgeAlpha" min="0.1" max="1.5" step="0.05">
+                <output></output>
             </label>
             <label class="slider">Obrysy uzlov
                 <input type="range" data-opt="glow" min="0.2" max="1.5" step="0.05">
+                <output></output>
             </label>
             <label class="slider">Popisky
                 <input type="range" data-opt="labelAlpha" min="0" max="1.5" step="0.05">
+                <output></output>
             </label>
             <h3>Veľkosti</h3>
             <label class="slider">Uzly
                 <input type="range" data-opt="nodeScale" min="0.6" max="1.6" step="0.05">
+                <output></output>
             </label>
             <label class="slider">Písmo popiskov
                 <input type="range" data-opt="labelSize" min="0.7" max="1.5" step="0.05">
+                <output></output>
             </label>
             <div class="row">
                 <button id="opts-reset">Obnoviť predvolené</button>
@@ -160,12 +176,6 @@
         </div>
     </aside>
 
-    <div id="timeline" class="hidden">
-        <button id="tl-play" class="ms primary" title="Prehrať rast vedomia" aria-label="Prehrať rast vedomia">play_arrow</button>
-        <input type="range" id="tl-range" min="0" max="1000" value="1000" aria-label="Časová os">
-        <span id="tl-label">teraz</span>
-    </div>
-
     <div id="zoomctl" role="group" aria-label="Ovládanie kamery">
         <button id="zoom-in" class="ms" title="Priblížiť (+)" aria-label="Priblížiť">add</button>
         <button id="zoom-out" class="ms" title="Oddialiť (−)" aria-label="Oddialiť">remove</button>
@@ -176,7 +186,7 @@
         <div id="chat-log" class="hidden" aria-live="polite"></div>
         <form id="prompt-form">
             <span class="ms spark" aria-hidden="true">hub</span>
-            <input id="prompt-input" placeholder="Opýtaj sa Hadesa…  ( / pre príkazy )" autocomplete="off" aria-label="Správa pre Hadesa">
+            <input id="prompt-input" placeholder="Opýtaj sa Hadesa… (/ príkazy)" autocomplete="off" aria-label="Správa pre Hadesa">
             <button type="submit" class="ms send-btn" aria-label="Odoslať">send</button>
         </form>
     </div>

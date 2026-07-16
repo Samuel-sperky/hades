@@ -184,8 +184,14 @@
     --glow-accent-lg: 0 8px 24px -12px rgba(5, 188, 196, .30);
     --gold-text: #d8b878;
     --gold-soft: rgba(184, 138, 58, .18);
-    --success-soft: rgba(15, 140, 90, .18);
-    --danger-soft: rgba(214, 69, 69, .16);
+    --success: #34d399;
+    --success-soft: rgba(52, 211, 153, .18);
+    --danger: #f07575;
+    --danger-rgb: 240, 117, 117;
+    --danger-soft: rgba(240, 117, 117, .16);
+    --danger-border: rgba(240, 117, 117, .34);
+    --danger-border-hover: rgba(240, 117, 117, .60);
+    --warn: #f59e0b;
     --elev-1: 0 1px 2px rgba(0, 0, 0, .40), inset 0 1px 0 var(--top-rim);
     --elev-2: 0 1px 2px rgba(0, 0, 0, .40), 0 8px 24px -14px rgba(0, 0, 0, .50), inset 0 1px 0 var(--top-rim);
     --elev-3: 0 2px 4px rgba(0, 0, 0, .45), 0 24px 56px -22px rgba(0, 0, 0, .60), inset 0 1px 0 var(--top-rim);
@@ -237,10 +243,9 @@ body {
 .hist .time,
 .search-item .sub,
 .key-row kbd,
-label.slider .val,
 label.slider output,
 #hover-card .m,
-.sleep-pill {
+#status-chip {
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: var(--ls-mono);
@@ -427,13 +432,15 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
    --------------------------------------------------------------------------- */
 #app-header {
     position: fixed;
-    top: 0; left: 88px; right: 0;
+    top: var(--edge); left: 88px; right: var(--edge);
     height: 44px;
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
     background: var(--panel);
-    border-bottom: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
     backdrop-filter: var(--blur-1);
+    box-shadow: var(--elev-1);
     z-index: calc(var(--z-panel) - 1);
 }
 #app-header .h-left {
@@ -486,6 +493,22 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     white-space: nowrap;
 }
 
+/* Stavový čip (bdie / spí) — malá bodka + mono text vedľa breadcrumbu */
+#status-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    flex-shrink: 0;
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    white-space: nowrap;
+}
+#status-chip .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+}
+#status-chip.awake .dot { background: var(--success); }
+
 /* ---------------------------------------------------------------------------
    VIEW SWITCH (#view-switch) — segmented control, lives in the header flow
    --------------------------------------------------------------------------- */
@@ -520,7 +543,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
    --------------------------------------------------------------------------- */
 #dock, #node-panel {
     position: fixed;
-    top: calc(44px + var(--sp-1)); bottom: var(--edge);
+    top: calc(var(--edge) + 44px + var(--sp-1)); bottom: var(--edge);
     width: 300px;
     background: var(--panel);
     border: 1px solid var(--border);
@@ -672,7 +695,13 @@ label.slider {
     font-weight: var(--fw-medium);
 }
 label.slider input[type="range"] { width: 130px; flex: 0 0 auto; }
-label.slider .val, label.slider output { color: var(--text); font-weight: var(--fw-medium); }
+label.slider output {
+    color: var(--text);
+    font-weight: var(--fw-medium);
+    min-width: 44px;
+    text-align: right;
+    flex-shrink: 0;
+}
 
 /* ---------------------------------------------------------------------------
    SWITCH — 34×20 pill toggle (theme switch in settings)
@@ -759,6 +788,16 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     color: var(--text-secondary);
 }
 .legend-row svg { flex-shrink: 0; }
+
+/* legenda — sila uzla: tri kruhy 6/10/14 px + mono popis */
+.legend-row.legend-strength { gap: var(--sp-1); }
+.legend-row.legend-strength .cap {
+    margin-left: var(--sp-0);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
 
 #growth-chart { width: 100%; height: auto; display: block; margin-top: var(--sp-1); }
 
@@ -856,7 +895,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .chip:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent-600); }
 .chip:active { background: var(--accent-soft); transform: scale(.97); }
-.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* History rows */
 .hist {
@@ -881,43 +920,40 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     padding: 0;
     font-size: var(--icon-md);
 }
+/* Ozbrojený stav mazania — ikona sa mení na textovú otázku */
+#node-delete.armed {
+    width: auto;
+    padding: 0 12px;
+    font-family: var(--font);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    border-color: var(--danger-border-hover);
+    background: var(--danger-soft);
+}
 
 /* ---------------------------------------------------------------------------
-   TIMELINE (#timeline) — white glass pill, bottom-left
+   TIMELINE (#timeline) — kompaktne v hlavičke, pred metrikami
    --------------------------------------------------------------------------- */
 #timeline {
-    position: fixed;
-    left: 88px; bottom: var(--edge);
     display: flex; align-items: center; gap: var(--sp-1);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    padding: var(--sp-1) 16px var(--sp-1) var(--sp-1);
-    backdrop-filter: var(--blur-2);
-    box-shadow: var(--elev-2);
-    z-index: var(--z-chrome);
-    animation: rise-in var(--dur-slow) var(--ease);
-}
-@keyframes rise-in {
-    from { opacity: 0; transform: translateY(var(--motion-shift)); }
-    to   { opacity: 1; transform: translateY(0); }
+    flex: 0 0 auto;
 }
 #tl-play {
     background: var(--accent);
     border: 1px solid var(--accent);
     color: var(--on-accent);
     border-radius: var(--r-pill);
-    width: 32px; height: 32px; min-height: 32px;
+    width: 26px; height: 26px; min-height: 26px;
     padding: 0;
-    font-size: var(--icon-md);
+    font-size: var(--icon-sm);
     flex-shrink: 0;
 }
 #tl-play:hover { background: var(--accent-600); border-color: var(--accent-600); }
-#tl-range { width: min(380px, 34vw); }
+#tl-range { width: clamp(120px, 16vw, 220px); }
 #tl-label {
-    font-size: var(--fs-body);
+    font-size: var(--fs-small);
     color: var(--muted);
-    width: 104px;
+    min-width: 56px;
     flex-shrink: 0;
 }
 
@@ -983,8 +1019,8 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     box-shadow: var(--elev-2), 0 0 0 4px rgba(var(--accent-rgb), .10);
 }
 
-/* spark echoes the gold core */
-#prompt-form .spark { color: var(--brand-gold); font-size: var(--icon-sm); flex-shrink: 0; }
+/* spark echoes the gold core — --gold-text passes contrast in both themes */
+#prompt-form .spark { color: var(--gold-text); font-size: var(--icon-sm); flex-shrink: 0; }
 
 #prompt-input {
     flex: 1;
@@ -1067,9 +1103,9 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .avatar {
     width: 22px; height: 22px;
     border-radius: 50%;
-    border: 1.5px solid var(--gold);
+    border: 1.5px solid var(--gold-text);
     background: none;
-    color: var(--gold);
+    color: var(--gold-text);
     font-family: var(--mono);
     font-size: 11px;
     font-weight: var(--fw-semibold);
@@ -1109,15 +1145,20 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
    --------------------------------------------------------------------------- */
 #toasts {
     position: fixed;
-    bottom: var(--sp-3); right: var(--sp-3);
+    bottom: calc(var(--edge) + 128px); right: var(--edge);
     display: flex; flex-direction: column; gap: var(--sp-1);
     z-index: var(--z-toast);
     pointer-events: none;
 }
+/* Toast je <button> (klávesnica) — reset button chrómu, vlastný glass vzhľad */
 .toast {
     position: relative;
     overflow: hidden;
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    text-align: left;
+    width: auto; min-height: auto;
+    font-family: var(--font);
+    font-weight: var(--fw-regular);
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
@@ -1142,7 +1183,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .toast .ms { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
 .toast strong { color: var(--text); font-weight: var(--fw-semibold); }
 .toast:hover { border-color: var(--border-accent); background: var(--panel-solid); }
-.toast:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toast:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .toast.leaving {
     opacity: 0;
     transform: translateY(var(--motion-shift));
@@ -1266,27 +1307,8 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #hint button#hint-next:hover { background: var(--accent-600); border-color: var(--accent-600); }
 
 /* ---------------------------------------------------------------------------
-   EMPTY STATE — one reusable component for all empties
+   EMPTY STATE — .empty je základ, .empty-network jeho hero modifikátor
    --------------------------------------------------------------------------- */
-.empty-state {
-    display: flex; flex-direction: column; align-items: center;
-    text-align: center;
-    gap: 10px;
-    padding: var(--sp-4) var(--sp-2);
-    color: var(--muted);
-}
-.empty-state .ms {
-    font-size: 32px;
-    opacity: .6;
-    font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
-}
-.empty-state h4, .empty-state .title {
-    font-size: var(--fs-body);
-    font-weight: var(--fw-semibold);
-    color: var(--text);
-}
-.empty-state .hint { font-size: var(--fs-body); color: var(--muted); }
-
 /* Compact unified empty state — renderEmpty(container, icon, text) in JS */
 .empty {
     display: flex; flex-direction: column; align-items: center;
@@ -1302,50 +1324,28 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .empty p { font-size: 12.5px; line-height: var(--lh-body); color: var(--muted); }
 
-/* Empty-network onboarding hero (sits over canvas) — the lone serif moment */
-.empty-state.empty-network {
+/* Hero nad plátnom (prázdna sieť / chyba štartu) — jediný serif moment */
+.empty.empty-network {
     position: fixed; inset: 0;
     justify-content: center;
-    place-items: center;
+    gap: 10px;
     pointer-events: none;
     z-index: var(--z-chrome);
 }
-.empty-state.empty-network .ms { font-size: 48px; color: var(--gold); opacity: 1; }
-.empty-state.empty-network h4, .empty-state.empty-network .title {
+.empty.empty-network .ms { font-size: 48px; color: var(--gold); opacity: 1; }
+.empty.empty-network .title {
     font-family: var(--serif);
     font-weight: var(--fw-semibold);
     font-size: 28px;
     line-height: 1.2;
     color: var(--text);
 }
-.empty-state.empty-network .hint {
+.empty.empty-network .hint {
     font-family: var(--mono);
     font-size: var(--fs-base);
     color: var(--muted);
 }
-.empty-state.empty-network .primary { pointer-events: auto; }
-
-/* Sleeping status pill near rail — quiet white mono status chip, gold dot */
-.sleep-pill {
-    position: fixed;
-    left: 88px; top: var(--edge);
-    z-index: var(--z-chrome);
-    display: inline-flex; align-items: center; gap: var(--sp-1);
-    background: var(--panel-solid);
-    border: 1px solid var(--border);
-    border-radius: var(--r-pill);
-    padding: var(--sp-0) 10px;
-    font-size: 11px;
-    letter-spacing: .04em;
-    color: var(--muted);
-    backdrop-filter: var(--blur-1);
-    transition: opacity var(--dur-ambient) var(--ease);
-}
-.sleep-pill .dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--gold);
-    opacity: .6;
-}
+.empty.empty-network button { pointer-events: auto; margin-top: var(--sp-1); }
 
 /* ---------------------------------------------------------------------------
    AMBIENT MODE — all chrome recedes on one long fade
@@ -1354,7 +1354,6 @@ body.ambient #rail,
 body.ambient #app-header,
 body.ambient #dock,
 body.ambient #node-panel,
-body.ambient #timeline,
 body.ambient #zoomctl,
 body.ambient #prompt,
 body.ambient #toasts {
@@ -1705,4 +1704,24 @@ body.ambient #toasts {
     min-height: 26px;
     padding: 2px 12px;
     font-size: var(--fs-small);
+}
+
+/* ---------------------------------------------------------------------------
+   RESPONSIVE — užšie panely a redukovaná hlavička na menších oknách
+   --------------------------------------------------------------------------- */
+@media (max-width: 1280px) {
+    #dock, #node-panel { width: min(300px, 26vw); }
+    #prompt.open,
+    #prompt:focus-within { width: min(600px, calc(100vw - 96px - min(300px, 26vw) - 48px)); }
+    #header-metrics { display: none; }
+}
+
+@media (max-width: 900px) {
+    #dock, #node-panel {
+        left: auto; right: var(--edge);
+        width: min(340px, calc(100vw - 104px));
+        z-index: var(--z-panel);
+    }
+    #tl-range { width: 100px; }
+    #brand-name { display: none; }
 }
