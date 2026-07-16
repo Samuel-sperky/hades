@@ -13,6 +13,21 @@
 <body>
     <canvas id="mind"></canvas>
 
+    <header id="app-header">
+        <div class="h-left">
+            <span id="brand-name">Hades</span>
+            <nav id="breadcrumb" aria-label="Aktuálny fokus"></nav>
+        </div>
+        <div class="h-center">
+            <div id="view-switch" role="group" aria-label="Náhľad siete">
+                <button data-view="map">Mapa</button>
+                <button data-view="net">Sieť</button>
+                <button data-view="layers">Vrstvy</button>
+            </div>
+        </div>
+        <div id="header-metrics" aria-live="polite"></div>
+    </header>
+
     <nav id="rail" aria-label="Hlavná navigácia">
         <button id="brand-core" type="button" title="Hades" aria-label="Hades — vycentrovať">
             <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
@@ -22,6 +37,7 @@
         </button>
 
         <div class="rail-group" role="group" aria-label="Sekcie">
+            <button id="btn-structure" class="ms" title="Štruktúra (R)" aria-label="Štruktúra">account_tree</button>
             <button id="btn-search" class="ms" title="Vyhľadať uzol (F)" aria-label="Vyhľadať uzol">search</button>
             <button id="btn-stats" class="ms" title="Prehľad (S)" aria-label="Prehľad">monitoring</button>
             <button id="btn-journal" class="ms" title="Denník záznamov (D)" aria-label="Denník záznamov">receipt_long</button>
@@ -36,17 +52,15 @@
         </div>
     </nav>
 
-    <div id="view-switch" role="group" aria-label="Náhľad siete">
-        <button data-view="map">Mapa</button>
-        <button data-view="net">Sieť</button>
-        <button data-view="layers">Vrstvy</button>
-    </div>
-
     <aside id="dock" class="hidden" aria-label="Bočný panel">
         <div class="dock-head">
             <h2 id="dock-title"></h2>
             <button class="close ms" id="dock-close" aria-label="Zavrieť panel">close</button>
         </div>
+
+        <section id="sec-structure" class="hidden">
+            <div id="structure-tree"></div>
+        </section>
 
         <section id="sec-search" class="hidden">
             <input id="search-input" placeholder="Hľadať uzol…" autocomplete="off">
@@ -78,6 +92,11 @@
         </section>
 
         <section id="sec-settings" class="hidden">
+            <h3>Vzhľad</h3>
+            <div class="switch-row">
+                <span id="theme-toggle-label">Tmavý režim</span>
+                <button id="theme-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="theme-toggle-label"></button>
+            </div>
             <h3>Priehľadnosť</h3>
             <label class="slider">Panely
                 <input type="range" data-opt="panelAlpha" min="0.3" max="1" step="0.01">
@@ -104,6 +123,9 @@
             <div class="row">
                 <button id="opts-reset">Obnoviť predvolené</button>
             </div>
+            <h3>Údržba</h3>
+            <button id="btn-duplicates" class="ghost" type="button">Nájsť duplicity</button>
+            <div id="dup-list"></div>
         </section>
     </aside>
 
@@ -116,6 +138,7 @@
             <span id="node-type" class="badge"><span id="node-swatch" class="swatch" aria-hidden="true"></span><span id="node-type-label"></span></span>
             <p id="node-meta"></p>
             <p id="node-desc"></p>
+            <div id="node-record"></div>
             <h3>Spojenia</h3>
             <div id="node-neighbors"></div>
             <h3>História</h3>
@@ -128,6 +151,8 @@
         <div id="node-form" class="hidden">
             <label>Názov<input id="edit-label" maxlength="255"></label>
             <label>Popis<textarea id="edit-desc" rows="5"></textarea></label>
+            <label>Oblasť<select id="edit-area"></select></label>
+            <label>Oddelenie<select id="edit-dept"></select></label>
             <div class="row">
                 <button id="edit-save" class="primary">Uložiť</button>
                 <button id="edit-cancel">Zrušiť</button>

@@ -112,7 +112,55 @@ function nodeColor(n) {
 }
 
 // Focus mód (priečinky): zaostrenie na oblasť / oddelenie
-function setFocus(areaId, departmentId) { S.focus = { areaId: areaId || null, departmentId: departmentId || null }; }
+// Jediná cesta k zmene fokusu — synchronizuje breadcrumb, strom aj plátno.
+function setFocus(areaId, departmentId) {
+    S.focus = { areaId: areaId || null, departmentId: departmentId || null };
+    renderBreadcrumb();
+    markTreeActive();
+    draw();
+}
+
+function renderBreadcrumb() {
+    const bc = document.getElementById('breadcrumb');
+    if (!bc) return;
+    const area = S.focus.areaId ? S.areas.get(S.focus.areaId) : null;
+    const dept = S.focus.departmentId ? S.departments.get(S.focus.departmentId) : null;
+
+    if (!area) {
+        bc.innerHTML = '<span class="crumb-idle">živé vedomie</span>';
+        return;
+    }
+
+    let html = '<button type="button" class="crumb" data-bc="root">Hades</button><span class="sep">/</span>';
+    if (dept) {
+        html += '<button type="button" class="crumb" data-bc="area">' + esc(area.name) + '</button>'
+            + '<span class="sep">/</span><span class="current">' + esc(dept.name) + '</span>';
+    } else {
+        html += '<span class="current">' + esc(area.name) + '</span>';
+    }
+    bc.innerHTML = html;
+
+    bc.querySelectorAll('.crumb[data-bc]').forEach((b) => {
+        b.onclick = () => setFocus(b.dataset.bc === 'area' ? area.id : null, null);
+    });
+}
+
+function markTreeActive() {
+    const tree = document.getElementById('structure-tree');
+    if (!tree) return;
+    tree.querySelectorAll('.tree-row').forEach((row) => {
+        const aid = row.dataset.area ? +row.dataset.area : null;
+        const did = row.dataset.dept ? +row.dataset.dept : null;
+        const active = !!S.focus.areaId && aid === S.focus.areaId
+            && (did ? did === S.focus.departmentId : !S.focus.departmentId);
+        row.classList.toggle('active', active);
+    });
+}
+
+function updateHeaderMetrics() {
+    const el = document.getElementById('header-metrics');
+    if (el) el.textContent = S.nodes.length + ' uzlov · ' + S.edges.length + ' spojení';
+}
 
 function focusPass(n) {
     if (!S.focus.areaId) return true;
@@ -765,10 +813,12 @@ async function selectNode(n) {
     $('node-meta').textContent = 'sila ' + (n.strength || 1).toFixed(0);
     $('node-neighbors').innerHTML = '';
     $('node-history').innerHTML = '';
+    $('node-record').innerHTML = '';
 
     try {
         const res = await fetch('/api/nodes/' + n.id);
         const data = await res.json();
+        renderNodeRecord(data.node);
         const meta = [];
         if (data.node.area_name) meta.push(data.node.area_name);
         if (data.node.department_name) meta.push(data.node.department_name);
@@ -777,7 +827,7 @@ async function selectNode(n) {
 
         $('node-neighbors').innerHTML = data.neighbors.map(
             (m) => '<button type="button" class="chip" data-id="' + m.id + '">' + esc(m.label) + '</button>'
-        ).join('') || '<span class="hist">žiadne</span>';
+        ).join('') || emptyHtml('hub', 'Bez spojení');
 
         $('node-neighbors').querySelectorAll('.chip').forEach((chip) => {
             chip.onclick = () => {
@@ -791,6 +841,64 @@ async function selectNode(n) {
             return '<div class="hist">' + (kinds[a.kind] || a.kind) + ' · ' + new Date(a.created_at).toLocaleString('sk') + '</div>';
         }).join('') || '<div class="hist">žiadna</div>';
     } catch (e) { /* offline detail nevadí */ }
+}
+
+// Detail záznamu (session / digest / archive) v paneli uzla — stavia sa z node.meta
+const RECORD_SOURCES = ['session', 'digest', 'archive'];
+
+function renderNodeRecord(node) {
+    const wrap = $('node-record');
+    wrap.innerHTML = '';
+    const meta = node && node.meta;
+    if (!meta || !RECORD_SOURCES.includes(node.source)) return;
+
+    const clip = (s, max) => {
+        s = String(s);
+        return s.length > max ? s.slice(0, max - 1).trimEnd() + '…' : s;
+    };
+
+    let html = '';
+
+    if (Array.isArray(meta.prompts) && meta.prompts.length) {
+        html += '<h3>Prompty</h3><ol class="rec-prompts">'
+            + meta.prompts.map((p) => '<li>' + esc(clip(p, 140)) + '</li>').join('')
+            + '</ol>';
+    }
+
+    if (Array.isArray(meta.files) && meta.files.length) {
+        html += '<h3>Súbory</h3><div class="rec-files">'
+            + meta.files.slice(0, 10).map((f) => {
+                const s = String(f);
+                const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+                const dir = i >= 0 ? s.slice(0, i + 1) : '';
+                const base = i >= 0 ? s.slice(i + 1) : s;
+                return '<span class="meta-chip" title="' + esc(s) + '">'
+                    + (dir ? '<span class="dir">' + esc(dir) + '</span>' : '')
+                    + '<strong>' + esc(base) + '</strong></span>';
+            }).join('')
+            + '</div>';
+    }
+
+    if (Array.isArray(meta.commits) && meta.commits.length) {
+        html += '<h3>Commity</h3>'
+            + meta.commits.map((c) => {
+                const label = typeof c === 'string' ? c : (c && (c.message || c.hash)) || '';
+                return '<div class="rec-commit"><span class="ms" aria-hidden="true">commit</span>'
+                    + '<span>' + esc(clip(label, 160)) + '</span></div>';
+            }).join('');
+    }
+
+    if (Array.isArray(meta.tools) && meta.tools.length) {
+        html += '<h3>Nástroje</h3><div class="rec-tools">'
+            + meta.tools.map((t) => '<span class="meta-chip">' + esc(t) + '</span>').join('')
+            + '</div>';
+    }
+
+    if (meta.final) {
+        html += '<h3>Záver</h3><p class="rec-final">' + esc(clip(meta.final, 400)) + '</p>';
+    }
+
+    wrap.innerHTML = html;
 }
 
 function focusNode(n) {
@@ -827,8 +935,36 @@ function closeNodePanel() {
     $('node-panel').classList.add('hidden');
 }
 
+// Presun uzla — naplnenie selectov Oblasť / Oddelenie v edit forme
+function fillMoveSelects(n) {
+    const aSel = $('edit-area');
+    aSel.innerHTML = '<option value="">— bez oblasti —</option>'
+        + [...S.areas.values()].map((a) =>
+            '<option value="' + a.id + '">' + esc(a.name) + '</option>'
+        ).join('');
+    aSel.value = n.area_id || '';
+    fillDeptOptions(n.area_id || null, n.department_id || null);
+}
+
+function fillDeptOptions(areaId, deptId) {
+    const dSel = $('edit-dept');
+    const depts = areaId ? [...S.departments.values()].filter((d) => d.area_id === areaId) : [];
+    dSel.innerHTML = '<option value="">— bez oddelenia —</option>'
+        + depts.map((d) => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
+    dSel.value = deptId || '';
+}
+
 function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Jednotný prázdny stav — jedna šablóna pre všetky sekcie
+function emptyHtml(icon, text) {
+    return '<div class="empty"><span class="ms" aria-hidden="true">' + icon + '</span><p>' + esc(text) + '</p></div>';
+}
+
+function renderEmpty(container, icon, text) {
+    container.innerHTML = emptyHtml(icon, text);
 }
 
 async function refreshStats() {
@@ -852,7 +988,7 @@ async function refreshStats() {
         + '<span class="ms" aria-hidden="true">article</span>'
         + '<span class="mr-title">' + esc(r.label) + '</span>'
         + '<span class="mr-time">' + timeAgo(r.created_at) + '</span></button>'
-    ).join('') || '<div class="hist">zatiaľ nič</div>';
+    ).join('') || emptyHtml('receipt_long', 'Zatiaľ žiadne záznamy');
 
     $('stats-recent').querySelectorAll('.mini-record').forEach((el) => {
         el.onclick = () => {
@@ -980,6 +1116,10 @@ function handlePulse(type, data) {
         spawnPulse(hadesNode(), n, { speed: 1.4 });
         blip(520);
         showToast('Naučil som sa: ' + n.label, n.id);
+        if (n.source === 'session') {
+            if (dockOpen === 'journal') { renderJournal(); markJournalSeen(); }
+            else setJournalDot(true);
+        }
     }
 
     if (type === 'node.activated') {
@@ -1048,6 +1188,9 @@ function handlePulse(type, data) {
     }
 
     if (dockOpen === 'stats') refreshStats();
+    if (dockOpen === 'structure' && /^(node|department)\./.test(type)
+        && !$('structure-tree').querySelector('.dept-actions')) renderStructure();
+    updateHeaderMetrics();
 }
 
 /* ---------- chat ---------- */
@@ -1064,9 +1207,17 @@ function addMsg(cls, text) {
     } else {
         div.textContent = text;
     }
-    log.appendChild(div);
+    // Hadesove odpovede (aj thinking) dostanú avatar so zlatým prstencom
+    let el = div;
+    if (cls.indexOf('hades') !== -1) {
+        el = document.createElement('div');
+        el.className = 'msg-row';
+        el.innerHTML = '<span class="avatar" aria-hidden="true">H</span>';
+        el.appendChild(div);
+    }
+    log.appendChild(el);
     log.scrollTop = 1e9;
-    return div;
+    return el;
 }
 
 function collapsePrompt() {
@@ -1198,6 +1349,7 @@ function showToast(text, nodeId) {
 const SHORTCUTS = [
     ['1 / 2 / 3', 'Náhľad: Mapa / Sieť / Vrstvy'],
     ['F', 'Vyhľadávanie'],
+    ['R', 'Štruktúra'],
     ['S', 'Prehľad'],
     ['D', 'Denník záznamov'],
     ['L', 'Legenda'],
@@ -1255,6 +1407,7 @@ function setupShortcuts() {
             case '2': setView('net'); break;
             case '3': setView('layers'); break;
             case 'f': case 'F': e.preventDefault(); openDock('search'); break;
+            case 'r': case 'R': openDock('structure'); break;
             case 's': case 'S': openDock('stats'); break;
             case 'd': case 'D': openDock('journal'); break;
             case 'l': case 'L': openDock('legend'); break;
@@ -1309,6 +1462,7 @@ function setupHints() {
 /* ---------- ovládanie ---------- */
 
 const DOCK_SECTIONS = {
+    structure: { title: 'Štruktúra', btn: 'btn-structure' },
     search: { title: 'Vyhľadávanie', btn: 'btn-search' },
     stats: { title: 'Prehľad', btn: 'btn-stats' },
     journal: { title: 'Denník záznamov', btn: 'btn-journal' },
@@ -1329,8 +1483,9 @@ function openDock(name) {
         $(DOCK_SECTIONS[key].btn).classList.toggle('active', key === name);
     }
 
+    if (name === 'structure') renderStructure();
     if (name === 'stats') refreshStats();
-    if (name === 'journal') renderJournal();
+    if (name === 'journal') { renderJournal(); markJournalSeen(); }
     if (name === 'search') {
         renderSearch($('search-input').value);
         setTimeout(() => $('search-input').focus(), 60);
@@ -1346,40 +1501,311 @@ function timeAgo(iso) {
     return new Date(iso).toLocaleDateString('sk', { day: 'numeric', month: 'short' });
 }
 
+// Denník — neprečítané záznamy (teal bodka na tlačidle denníka)
+function setJournalDot(show) {
+    const btn = $('btn-journal');
+    let dot = btn.querySelector('.dot');
+    if (show && !dot) {
+        dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.setAttribute('aria-hidden', 'true');
+        btn.appendChild(dot);
+    }
+    if (!show && dot) dot.remove();
+}
+
+function markJournalSeen() {
+    localStorage.setItem('hades.journal.lastSeen', new Date().toISOString());
+    setJournalDot(false);
+}
+
+function checkJournalUnread() {
+    fetch('/api/journal').then((r) => r.json()).then((d) => {
+        let latest = 0;
+        for (const r of d.records || []) latest = Math.max(latest, ts(r.created_at));
+        const seen = ts(localStorage.getItem('hades.journal.lastSeen'));
+        if (latest && latest > seen) setJournalDot(true);
+    }).catch(() => { /* offline check nevadí */ });
+}
+
+// Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
+const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
+    'júla', 'augusta', 'septembra', 'októbra', 'novembra', 'decembra'];
+
+let journalRecords = [];
+let journalProject = null;
+
+function dayLabel(iso) {
+    const d = new Date(iso);
+    const t = new Date();
+    const midnight = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((midnight(t) - midnight(d)) / 86400000);
+    if (diff === 0) return 'Dnes';
+    if (diff === 1) return 'Včera';
+    return d.getDate() + '. ' + SK_MONTHS_GEN[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+function timeHM(iso) {
+    return new Date(iso).toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
+}
+
 async function renderJournal() {
     const list = $('journal-list');
     list.innerHTML = '<div class="hist">Načítavam…</div>';
     try {
         const data = await (await fetch('/api/journal')).json();
-        if (!data.records.length) {
-            list.innerHTML = '<div class="empty-state"><span class="ms" aria-hidden="true">history_edu</span>'
-                + '<div class="title">Zatiaľ žiadne záznamy</div>'
-                + '<div class="hint">Mozog si sám zapíše každú Claude Code session.</div></div>';
-            return;
-        }
-        list.innerHTML = data.records.map((r) => {
-            const isDigest = r.source === 'digest';
-            const badges = [];
-            if (r.project) badges.push('<span class="tag">' + esc(r.project) + '</span>');
-            if (r.file_count) badges.push('<span class="tag muted">' + r.file_count + ' súb.</span>');
-            if (r.commits && r.commits.length) badges.push('<span class="tag muted">' + r.commits.length + ' commit</span>');
-            return '<button type="button" class="record" data-id="' + r.id + '">'
-                + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
-                + '<span class="record-title">' + esc(r.label) + '</span>'
-                + '<span class="record-time">' + timeAgo(r.created_at) + '</span></div>'
-                + (badges.length ? '<div class="record-tags">' + badges.join('') + '</div>' : '')
-                + '</button>';
-        }).join('');
-
-        list.querySelectorAll('.record').forEach((el) => {
-            el.onclick = () => {
-                const n = S.byId.get(+el.dataset.id);
-                if (n) { S.cam.k = Math.max(S.cam.k, 1); focusNode(n); selectNode(n); }
-            };
-        });
+        journalRecords = data.records || [];
+        renderJournalFilter();
+        renderJournalList();
     } catch (e) {
         list.innerHTML = '<div class="hist">Denník sa nepodarilo načítať.</div>';
     }
+}
+
+function renderJournalFilter() {
+    const wrap = $('journal-filter');
+    const projects = [...new Set(journalRecords.map((r) => r.project).filter(Boolean))];
+    if (journalProject && !projects.includes(journalProject)) journalProject = null;
+    if (!projects.length) { wrap.innerHTML = ''; return; }
+
+    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '" data-project="">Všetky</button>'
+        + projects.map((p) =>
+            '<button type="button" class="chip' + (journalProject === p ? ' active' : '') + '" data-project="' + esc(p) + '">' + esc(p) + '</button>'
+        ).join('');
+
+    wrap.querySelectorAll('.chip').forEach((chip) => {
+        chip.onclick = () => {
+            journalProject = chip.dataset.project || null;
+            renderJournalFilter();
+            renderJournalList();
+        };
+    });
+}
+
+function renderJournalList() {
+    const list = $('journal-list');
+
+    if (!journalRecords.length) {
+        renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy');
+        return;
+    }
+
+    const records = journalProject
+        ? journalRecords.filter((r) => r.project === journalProject)
+        : journalRecords;
+
+    if (!records.length) {
+        list.innerHTML = '<div class="hist">Žiadne záznamy pre tento projekt.</div>';
+        return;
+    }
+
+    const sorted = [...records].sort((a, b) => ts(b.created_at) - ts(a.created_at));
+
+    let html = '', lastDay = null;
+    for (const r of sorted) {
+        const day = dayLabel(r.created_at);
+        if (day !== lastDay) {
+            html += '<div class="day-head">' + esc(day) + '</div>';
+            lastDay = day;
+        }
+        const isDigest = r.source === 'digest';
+        const badges = [];
+        if (r.project) badges.push('<span class="tag">' + esc(r.project) + '</span>');
+        if (r.file_count) badges.push('<span class="tag muted">' + r.file_count + ' súb.</span>');
+        if (r.commits && r.commits.length) badges.push('<span class="tag muted">' + r.commits.length + ' commit</span>');
+        html += '<button type="button" class="record" data-id="' + r.id + '">'
+            + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
+            + '<span class="record-title">' + esc(r.label) + '</span>'
+            + '<span class="record-time">' + timeHM(r.created_at) + '</span></div>'
+            + (badges.length ? '<div class="record-tags">' + badges.join('') + '</div>' : '')
+            + '</button>';
+    }
+    list.innerHTML = html;
+
+    list.querySelectorAll('.record').forEach((el) => {
+        el.onclick = () => {
+            const n = S.byId.get(+el.dataset.id);
+            if (n) { S.cam.k = Math.max(S.cam.k, 1); focusNode(n); selectNode(n); }
+        };
+    });
+}
+
+/* ---------- štruktúra (oblasti a oddelenia) ---------- */
+
+async function renderStructure() {
+    const wrap = $('structure-tree');
+    wrap.innerHTML = '<div class="hist">Načítavam…</div>';
+    try {
+        const data = await (await fetch('/api/structure')).json();
+        const cnt = (v) => (v && typeof v === 'object') ? (v.node_count || v.count || 0) : (v || 0);
+
+        let html = '';
+        for (const a of data.areas || []) {
+            html += '<div class="tree-row area" role="button" tabindex="0" data-area="' + a.id + '">'
+                + '<span class="dot" style="background:' + esc(a.color || '#566964') + '"></span>'
+                + '<span class="t-name">' + esc(a.name) + '</span>'
+                + '<span class="count">' + (a.node_count || 0) + '</span></div>';
+            for (const d of a.departments || []) {
+                html += '<div class="tree-row dept" role="button" tabindex="0" data-area="' + a.id + '" data-dept="' + d.id + '">'
+                    + '<span class="t-name">' + esc(d.name) + '</span>'
+                    + '<span class="count">' + (d.node_count || 0) + '</span>'
+                    + '<button type="button" class="ghost ms dept-more" data-more="' + d.id
+                    + '" title="Možnosti oddelenia" aria-label="Možnosti oddelenia">more_horiz</button>'
+                    + '</div>';
+            }
+        }
+        const core = cnt(data.core);
+        const unassigned = cnt(data.unassigned);
+        if (core > 0) html += '<div class="tree-muted"><span>Jadro</span><span class="count">' + core + '</span></div>';
+        if (unassigned > 0) html += '<div class="tree-muted"><span>Nezaradené</span><span class="count">' + unassigned + '</span></div>';
+
+        wrap.innerHTML = html || emptyHtml('account_tree', 'Zatiaľ žiadna štruktúra');
+
+        const rowActivate = (row, fn) => {
+            row.onclick = (e) => { if (!e.target.closest('.dept-more')) fn(); };
+            row.onkeydown = (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); }
+            };
+        };
+
+        wrap.querySelectorAll('.tree-row.area').forEach((row) => {
+            const id = +row.dataset.area;
+            rowActivate(row, () => {
+                if (S.focus.areaId === id && !S.focus.departmentId) setFocus(null, null);
+                else setFocus(id, null);
+            });
+        });
+
+        wrap.querySelectorAll('.tree-row.dept').forEach((row) => {
+            const aid = +row.dataset.area;
+            const did = +row.dataset.dept;
+            rowActivate(row, () => {
+                if (S.focus.departmentId === did) setFocus(null, null);
+                else setFocus(aid, did);
+            });
+        });
+
+        wrap.querySelectorAll('.dept-more').forEach((btn) => {
+            btn.onclick = (e) => { e.stopPropagation(); toggleDeptActions(+btn.dataset.more); };
+        });
+
+        markTreeActive();
+    } catch (e) {
+        wrap.innerHTML = '<div class="hist">Štruktúru sa nepodarilo načítať.</div>';
+    }
+}
+
+// Malý inline action riadok pod oddelením — žiadny modál
+function toggleDeptActions(deptId) {
+    const wrap = $('structure-tree');
+    const existing = wrap.querySelector('.dept-actions');
+    const wasOpen = existing && +existing.dataset.dept === deptId;
+    if (existing) existing.remove();
+    if (wasOpen) return;
+
+    const row = wrap.querySelector('.tree-row.dept[data-dept="' + deptId + '"]');
+    if (!row) return;
+
+    const box = document.createElement('div');
+    box.className = 'dept-actions';
+    box.dataset.dept = deptId;
+    box.innerHTML = '<button type="button" data-act="rename">Premenovať</button>'
+        + '<button type="button" data-act="move">Presunúť do…</button>'
+        + '<button type="button" data-act="delete">Zmazať</button>';
+    row.after(box);
+
+    box.querySelector('[data-act="rename"]').onclick = () => {
+        const d = S.departments.get(deptId);
+        box.innerHTML = '<input type="text" maxlength="255" aria-label="Nový názov oddelenia">';
+        const inp = box.querySelector('input');
+        inp.value = d ? d.name : '';
+        inp.focus();
+        inp.select();
+        inp.onkeydown = (ev) => {
+            if (ev.key === 'Escape') { ev.stopPropagation(); box.remove(); return; }
+            if (ev.key !== 'Enter') return;
+            const name = inp.value.trim();
+            if (name) deptRequest(deptId, 'PUT', { name }, 'Oddelenie premenované');
+        };
+    };
+
+    box.querySelector('[data-act="move"]').onclick = () => {
+        const d = S.departments.get(deptId);
+        box.innerHTML = '<select aria-label="Cieľová oblasť">'
+            + [...S.areas.values()].map((a) =>
+                '<option value="' + a.id + '"' + (d && d.area_id === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>'
+            ).join('')
+            + '</select>';
+        const sel = box.querySelector('select');
+        sel.focus();
+        sel.onchange = () => deptRequest(deptId, 'PUT', { area_id: +sel.value }, 'Oddelenie presunuté');
+    };
+
+    // Zmazanie cez double-click pattern: prvý klik ozbrojí (.danger + text), druhý do 3 s maže
+    const del = box.querySelector('[data-act="delete"]');
+    del.onclick = () => {
+        if (!del.classList.contains('danger')) {
+            del.classList.add('danger');
+            del.textContent = 'Naozaj zmazať?';
+            setTimeout(() => {
+                if (del.isConnected) { del.classList.remove('danger'); del.textContent = 'Zmazať'; }
+            }, 3000);
+            return;
+        }
+        deptRequest(deptId, 'DELETE', null, 'Oddelenie zmazané');
+    };
+}
+
+async function deptRequest(deptId, method, body, okMsg) {
+    try {
+        const res = await fetch('/api/departments/' + deptId, {
+            method,
+            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.message || 'Akcia sa nepodarila');
+            return;
+        }
+        if (S.focus.departmentId === deptId && method === 'DELETE') setFocus(S.focus.areaId, null);
+        showToast(okMsg);
+        await reloadGraph();
+        if (dockOpen === 'structure') renderStructure();
+    } catch (e) {
+        showToast('Akcia sa nepodarila');
+    }
+}
+
+// Znovunačítanie grafu bez straty pozícií existujúcich uzlov
+async function reloadGraph() {
+    try {
+        const res = await fetch('/api/mind');
+        const data = await res.json();
+
+        S.areas = new Map(data.areas.map((a) => [a.id, a]));
+        S.departments = new Map(data.departments.map((d) => [d.id, d]));
+
+        const old = S.byId;
+        S.nodes = data.nodes.map((n) => {
+            const prev = old.get(n.id);
+            return prev ? Object.assign(prev, n) : { ...n };
+        });
+        S.byId = new Map(S.nodes.map((n) => [n.id, n]));
+
+        S.edges = data.edges
+            .filter((e) => S.byId.has(e.source_id) && S.byId.has(e.target_id))
+            .map((e) => ({ ...e, source: S.byId.get(e.source_id), target: S.byId.get(e.target_id) }));
+
+        if (S.selected && !S.byId.has(S.selected.id)) closeNodePanel();
+        if (S.focus.areaId && !S.areas.has(S.focus.areaId)) setFocus(null, null);
+
+        buildSim();
+        kickSim(0.3);
+        updateHeaderMetrics();
+        renderBreadcrumb();
+        draw();
+    } catch (e) { /* offline reload nevadí */ }
 }
 
 function closeDock() {
@@ -1390,21 +1816,29 @@ function closeDock() {
     }
 }
 
+let searchTimer = null;
+let searchSeq = 0;
+
 function renderSearch(q) {
     const query = (q || '').trim().toLowerCase();
     const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+    const wrap = $('search-results');
 
+    // Lokálne uzly — okamžité výsledky bez čakania na server
     const matches = !query ? [] : S.nodes
         .filter((n) => (n.label + ' ' + (n.description || '')).toLowerCase().includes(query))
         .sort((a, b) => (b.strength || 0) - (a.strength || 0))
         .slice(0, 8);
 
-    $('search-results').innerHTML = matches.map((n) =>
+    const local = matches.map((n) =>
         '<button type="button" class="search-item" data-id="' + n.id + '"><span>' + esc(n.label)
         + '</span><span class="sub">' + typeNames[n.type] + '</span></button>'
-    ).join('') || (query ? '<div class="hist">Žiadny uzol nezodpovedá hľadaniu.</div>' : '');
+    ).join('');
 
-    $('search-results').querySelectorAll('.search-item').forEach((el) => {
+    wrap.innerHTML = (local || (query ? emptyHtml('search_off', 'Nič sa nenašlo') : ''))
+        + '<div id="search-playbooks"></div>';
+
+    wrap.querySelectorAll('.search-item').forEach((el) => {
         el.onclick = () => {
             const n = S.byId.get(+el.dataset.id);
             if (!n) return;
@@ -1413,6 +1847,81 @@ function renderSearch(q) {
             selectNode(n);
         };
     });
+
+    // Fulltext (playbooky) — debounce 250 ms, od 2 znakov
+    clearTimeout(searchTimer);
+    const seq = ++searchSeq;
+    if (query.length < 2) return;
+    searchTimer = setTimeout(async () => {
+        try {
+            const data = await (await fetch('/api/search?q=' + encodeURIComponent(query))).json();
+            if (seq !== searchSeq) return;
+            const pb = $('search-playbooks');
+            if (!pb) return;
+            const books = data.playbooks || [];
+            if (!books.length) return;
+            const empty = wrap.querySelector('.empty');
+            if (empty) empty.remove();
+            pb.innerHTML = '<div class="result-divider">Playbooky</div>'
+                + books.map((b, i) =>
+                    '<button type="button" class="pb-item" data-i="' + i + '">'
+                    + '<span class="ms" aria-hidden="true">menu_book</span>'
+                    + '<span class="pb-text"><span class="pb-title">' + esc(b.title || b.path || '') + '</span>'
+                    + (b.snippet ? '<span class="pb-snippet">' + esc(b.snippet) + '</span>' : '')
+                    + '</span></button>'
+                ).join('');
+            pb.querySelectorAll('.pb-item').forEach((el) => {
+                el.onclick = () => {
+                    const b = books[+el.dataset.i];
+                    const n = b && b.node_id ? S.byId.get(+b.node_id) : null;
+                    if (!n) return;
+                    S.cam.k = Math.max(S.cam.k, 1.1);
+                    focusNode(n);
+                    selectNode(n);
+                };
+            });
+        } catch (e) { /* fulltext offline nevadí */ }
+    }, 250);
+}
+
+/* ---------- údržba: duplicity ---------- */
+
+async function findDuplicates() {
+    const wrap = $('dup-list');
+    wrap.innerHTML = '<div class="hist">Hľadám…</div>';
+    const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+    try {
+        const data = await (await fetch('/api/duplicates')).json();
+        const pairs = data.pairs || [];
+        if (!pairs.length) { renderEmpty(wrap, 'done_all', 'Žiadne duplicity'); return; }
+
+        const nodeHtml = (n) => '<div class="dup-node"><span class="dup-label">' + esc(n.label) + '</span>'
+            + '<span class="tag muted">' + (typeNames[n.type] || esc(n.type)) + '</span></div>';
+
+        wrap.innerHTML = pairs.map((p, i) =>
+            '<div class="dup-card" data-i="' + i + '">'
+            + '<div class="dup-pair">' + nodeHtml(p.a) + nodeHtml(p.b) + '</div>'
+            + '<div class="dup-side"><span class="dup-pct">' + Math.round(p.percent) + ' %</span>'
+            + '<button type="button" class="primary dup-merge" aria-label="Zlúčiť ' + esc(p.a.label) + ' a ' + esc(p.b.label) + '">Zlúčiť</button></div>'
+            + '</div>'
+        ).join('');
+
+        wrap.querySelectorAll('.dup-card').forEach((card) => {
+            card.querySelector('.dup-merge').onclick = async () => {
+                const p = pairs[+card.dataset.i];
+                // slabší uzol sa zlúči do silnejšieho; pri zhode a → b
+                const [loser, winner] = (p.a.strength || 0) > (p.b.strength || 0) ? [p.b, p.a] : [p.a, p.b];
+                const res = await fetch('/api/nodes/' + loser.id + '/merge/' + winner.id, { method: 'POST' });
+                if (!res.ok) { showToast('Zlúčenie sa nepodarilo'); return; }
+                card.remove();
+                if (!wrap.querySelector('.dup-card')) renderEmpty(wrap, 'done_all', 'Žiadne duplicity');
+                showToast('Zlúčené');
+                await reloadGraph();
+            };
+        });
+    } catch (e) {
+        wrap.innerHTML = '<div class="hist">Duplicity sa nepodarilo načítať.</div>';
+    }
 }
 
 function setupControls() {
@@ -1420,6 +1929,7 @@ function setupControls() {
         b.onclick = () => setView(b.dataset.view);
     });
 
+    $('btn-structure').onclick = () => openDock('structure');
     $('btn-search').onclick = () => openDock('search');
     $('btn-stats').onclick = () => openDock('stats');
     $('btn-journal').onclick = () => openDock('journal');
@@ -1451,6 +1961,19 @@ function setupControls() {
         applyOpts();
     };
 
+    // Tmavý režim — prepínač v nastaveniach, synchronizovaný s data-theme
+    const themeBtn = $('theme-toggle');
+    const syncThemeBtn = () => themeBtn.setAttribute('aria-checked',
+        document.documentElement.dataset.theme === 'dark' ? 'true' : 'false');
+    syncThemeBtn();
+    themeBtn.onclick = () => {
+        setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+        syncThemeBtn();
+        draw();
+    };
+
+    $('btn-duplicates').onclick = findDuplicates;
+
     const soundBtn = $('btn-sound');
     soundBtn.textContent = S.sound ? 'volume_up' : 'volume_off';
     soundBtn.onclick = () => {
@@ -1477,9 +2000,12 @@ function setupControls() {
         if (!S.selected) return;
         $('edit-label').value = S.selected.label;
         $('edit-desc').value = S.selected.description || '';
+        fillMoveSelects(S.selected);
         $('node-view').classList.add('hidden');
         $('node-form').classList.remove('hidden');
     };
+
+    $('edit-area').onchange = () => fillDeptOptions(+$('edit-area').value || null, null);
 
     $('edit-cancel').onclick = () => {
         $('node-form').classList.add('hidden');
@@ -1494,12 +2020,17 @@ function setupControls() {
             body: JSON.stringify({
                 label: $('edit-label').value.trim(),
                 description: $('edit-desc').value.trim() || null,
+                area_id: $('edit-area').value ? +$('edit-area').value : null,
+                department_id: $('edit-dept').value ? +$('edit-dept').value : null,
             }),
         });
         if (res.ok) {
             const data = await res.json();
             Object.assign(S.selected, data.node);
             selectNode(S.selected);
+            await reloadGraph();
+            if (dockOpen === 'structure') renderStructure();
+            draw();
         }
     };
 
@@ -1544,12 +2075,15 @@ async function init() {
     setupControls();
     setupShortcuts();
     buildLegend();
+    updateHeaderMetrics();
+    renderBreadcrumb();
     applyOpts();
     setView(S.view);
     setupTimeline();
     setupPrompt();
     setupHints();
     connectWs(data.ws);
+    checkJournalUnread();
 
     setInterval(dream, 9000 + Math.random() * 6000);
     setInterval(computeReplayBounds, 60000);
