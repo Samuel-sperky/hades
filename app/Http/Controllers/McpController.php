@@ -213,6 +213,11 @@ class McpController extends Controller
             ];
         }
 
+        // hotová MCP odpoveď (napr. odmietnutie blacklistom) — pošli bez obalu
+        if (isset($data['isError'], $data['content'])) {
+            return $data;
+        }
+
         return [
             'content' => [[
                 'type' => 'text',
@@ -230,15 +235,52 @@ class McpController extends Controller
             }
         }
 
+        $label = (string) $args['label'];
+        $description = isset($args['description']) ? (string) $args['description'] : null;
+
+        // serverová poistka blacklistu — heslá/kľúče/tokeny sa nikdy neukladajú
+        if ($this->looksLikeSecret($label) || ($description !== null && $this->looksLikeSecret($description))) {
+            return [
+                'content' => [[
+                    'type' => 'text',
+                    'text' => 'Odmietnuté: obsah vyzerá ako heslo/API kľúč/token — tie do vedomia nepatria (pravidlo blacklistu).',
+                ]],
+                'isError' => true,
+            ];
+        }
+
         return $mind->learn(
             type: (string) $args['type'],
-            label: (string) $args['label'],
-            description: isset($args['description']) ? (string) $args['description'] : null,
+            label: $label,
+            description: $description,
             areaName: (string) $args['area'],
             departmentName: isset($args['department']) ? (string) $args['department'] : null,
             connections: array_values((array) ($args['connections'] ?? [])),
             sessionKey: isset($args['session_key']) ? (string) $args['session_key'] : null,
         );
+    }
+
+    /** Heuristika na heslá, API kľúče a tokeny — nič z toho do vedomia nepatrí. */
+    protected function looksLikeSecret(string $text): bool
+    {
+        $patterns = [
+            '/-----BEGIN [A-Z ]*PRIVATE KEY/',                                  // PEM privátny kľúč
+            '/\bAKIA[0-9A-Z]{16}\b/',                                           // AWS access key
+            '/\bsk-[A-Za-z0-9_-]{20,}\b/',                                      // OpenAI/Anthropic style key
+            '/\bghp_[A-Za-z0-9]{36}\b/',                                        // GitHub PAT
+            '/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/',                               // Slack token
+            '/\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\./',                  // JWT
+            '/\b[0-9a-f]{40,}\b/i',                                             // dlhý hex (SHA/API kľúč)
+            '/(password|heslo|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S{6,}/i', // "heslo: ..."
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $text)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function toolRecall(array $args, MindService $mind): array

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\MindPulse;
+use App\Models\Department;
 use App\Models\Node;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -49,6 +50,23 @@ class NodeController extends Controller
             'area_id' => 'sometimes|nullable|exists:areas,id',
             'department_id' => 'sometimes|nullable|exists:departments,id',
         ]);
+
+        // oddelenie musí patriť do zvolenej oblasti; bez oblasti sa odvodí z oddelenia
+        if (! empty($validated['department_id'])) {
+            $department = Department::find($validated['department_id']);
+
+            if ($department) {
+                if (! empty($validated['area_id']) && (int) $validated['area_id'] !== (int) $department->area_id) {
+                    return response()->json([
+                        'message' => 'Oddelenie nepatrí do zvolenej oblasti.',
+                    ], 422);
+                }
+
+                if (empty($validated['area_id'])) {
+                    $validated['area_id'] = $department->area_id;
+                }
+            }
+        }
 
         $node->update($validated);
 

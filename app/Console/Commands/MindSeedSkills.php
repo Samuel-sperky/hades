@@ -85,9 +85,15 @@ class MindSeedSkills extends Command
             }
         }
 
-        // prepoj skills v ramci oddelenia do klastra
+        // prepoj skills v ramci oddelenia do klastra — oddelenie hladaj v ramci
+        // spravnej oblasti, slug sam o sebe nie je unikatny naprieč oblastami
         foreach ($this->areaMap as $folder => [$areaSlug, $deptName]) {
-            $dept = Department::where('slug', Str::slug($deptName))->first();
+            $area = Area::where('slug', $areaSlug)->first();
+            if (! $area) {
+                continue;
+            }
+
+            $dept = Department::where('area_id', $area->id)->where('slug', Str::slug($deptName))->first();
             if (! $dept) {
                 continue;
             }

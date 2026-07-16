@@ -8,6 +8,7 @@ use App\Models\Node;
 use App\Services\MindService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ChatController extends Controller
@@ -62,10 +63,11 @@ class ChatController extends Controller
                 $reply = 'Hades sa zamyslel, ale neodpovedal. Skús to ešte raz.';
             }
         } catch (Throwable $e) {
-            report($e);
+            // detail chyby len do logu — klientovi nikdy neposielame text výnimky
+            Log::error('Chat error', ['e' => $e->getMessage()]);
 
             return response()->json([
-                'reply' => 'Spojenie s mysľou zlyhalo: '.$e->getMessage(),
+                'reply' => 'Spojenie s mysľou zlyhalo, skús to o chvíľu.',
             ], 502);
         }
 

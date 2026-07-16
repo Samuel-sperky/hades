@@ -6,6 +6,7 @@ use App\Events\MindPulse;
 use App\Models\Activation;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\Tombstone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -81,6 +82,23 @@ class MaintenanceController extends Controller
 
             $target->strength = (float) $target->strength + (float) $node->strength;
             $target->last_activated_at = now();
+
+            // náhrobok — pohltený external_key sa už nikdy nesmie znovu zapísať
+            if ($node->external_key) {
+                Tombstone::firstOrCreate(
+                    ['external_key' => $node->external_key],
+                    ['reason' => 'merge', 'created_at' => now()],
+                );
+
+                $meta = $target->meta ?? [];
+                $meta['absorbed_keys'] = collect($meta['absorbed_keys'] ?? [])
+                    ->push($node->external_key)
+                    ->unique()
+                    ->values()
+                    ->all();
+                $target->meta = $meta;
+            }
+
             $target->save();
 
             // hrany — prepoj na target, preskoč self a duplicity

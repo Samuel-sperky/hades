@@ -19,7 +19,7 @@ Route::delete('/nodes/{node}', [NodeController::class, 'destroy']);
 
 Route::get('/activations', [ActivationController::class, 'index']);
 
-Route::post('/chat', [ChatController::class, 'send']);
+Route::post('/chat', [ChatController::class, 'send'])->middleware('throttle:20,1');
 
 // Foldering / štruktúra vedomia
 Route::get('/structure', [StructureController::class, 'index']);

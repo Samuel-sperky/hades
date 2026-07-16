@@ -6,6 +6,7 @@ use App\Events\MindPulse;
 use App\Models\Activation;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\Tombstone;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -82,6 +83,12 @@ class MindArchiveOld extends Command
         $year = substr($month, 0, 4);
         $monthName = $this->months[$monthNum] ?? $month;
 
+        // kľúče pohltených originálov — zlúč naprieč behmi, bez duplicít
+        $absorbedKeys = collect($previous?->meta['absorbed_keys'] ?? [])
+            ->merge($records->pluck('external_key')->filter())
+            ->unique()
+            ->values();
+
         $archive = Node::updateOrCreate(
             ['external_key' => $key],
             [
@@ -96,11 +103,20 @@ class MindArchiveOld extends Command
                     'project' => $project,
                     'count' => $count,
                     'titles' => $titles->all(),
+                    'absorbed_keys' => $absorbedKeys->all(),
                 ],
                 'strength' => 1,
                 'last_activated_at' => now(),
             ],
         );
+
+        // náhrobky — zmazané originály sa už nikdy nesmú znovu zapísať
+        foreach ($records->pluck('external_key')->filter() as $externalKey) {
+            Tombstone::firstOrCreate(
+                ['external_key' => $externalKey],
+                ['reason' => 'archive', 'created_at' => now()],
+            );
+        }
 
         $originalIds = $records->pluck('id')->all();
 

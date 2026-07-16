@@ -7,8 +7,10 @@ use App\Models\Area;
 use App\Models\Department;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\Tombstone;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Deterministický parser Claude Code transcriptov (JSONL) — bez modelu.
@@ -34,22 +36,38 @@ class TranscriptIngestService
         $this->base = rtrim((string) config('hades.transcripts_path', '/transcripts'), '/');
     }
 
-    /** Spracuje všetky transcript súbory; $onlyNew preskočí už zapísané sessions. */
-    public function ingestAll(bool $onlyNew = true): array
+    /**
+     * Spracuje všetky transcript súbory. $onlyNew spracuje len chýbajúce uzly
+     * a súbory novšie než posledný zápis (meta.ingested_at). $forceRefresh
+     * urobí plný refresh existujúcich uzlov (prepíše aj label/oblasť).
+     */
+    public function ingestAll(bool $onlyNew = true, bool $forceRefresh = false): array
     {
         $summary = ['processed' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'files' => 0];
+
+        // Náhrobky — zlúčené/archivované sessions sa už nikdy znovu nezapisujú
+        $tombstoned = Tombstone::pluck('external_key')->flip();
 
         foreach ($this->transcriptFiles() as $path) {
             $summary['files']++;
             $key = 'session:'.pathinfo($path, PATHINFO_FILENAME);
 
-            if ($onlyNew && Node::where('external_key', $key)->exists()) {
+            if ($tombstoned->has($key)) {
                 $summary['skipped']++;
 
                 continue;
             }
 
-            $result = $this->ingestFile($path);
+            if ($onlyNew && ! $forceRefresh) {
+                $existing = Node::where('external_key', $key)->first(['id', 'meta']);
+                if ($existing && ! $this->fileIsNewerThanIngest($path, $existing)) {
+                    $summary['skipped']++;
+
+                    continue;
+                }
+            }
+
+            $result = $this->ingestFile($path, $forceRefresh);
             if ($result === null) {
                 $summary['skipped']++;
 
@@ -63,6 +81,25 @@ class TranscriptIngestService
         return $summary;
     }
 
+    /** Súbor sa spracuje znova, len keď je novší než posledný zápis do uzla. */
+    protected function fileIsNewerThanIngest(string $path, Node $node): bool
+    {
+        $ingestedAt = $node->meta['ingested_at'] ?? null;
+        if (! is_string($ingestedAt) || $ingestedAt === '') {
+            return true; // starší záznam bez ingested_at → považuj za neaktuálny
+        }
+
+        try {
+            $last = Carbon::parse($ingestedAt)->getTimestamp();
+        } catch (Throwable) {
+            return true;
+        }
+
+        $mtime = @filemtime($path);
+
+        return $mtime === false || $mtime > $last;
+    }
+
     public function transcriptFiles(): array
     {
         if (! is_dir($this->base)) {
@@ -73,7 +110,7 @@ class TranscriptIngestService
     }
 
     /** @return 'created'|'updated'|null */
-    public function ingestFile(string $path): ?string
+    public function ingestFile(string $path, bool $forceRefresh = false): ?string
     {
         if (! is_file($path)) {
             return null;
@@ -92,56 +129,97 @@ class TranscriptIngestService
 
         $sessionId = $rec['session_id'] ?: pathinfo($path, PATHINFO_FILENAME);
         $key = 'session:'.$sessionId;
-        $existed = Node::where('external_key', $key)->exists();
 
-        [$area, $department] = $this->classify($rec['project']);
+        // Náhrobok — zlúčená/archivovaná session sa nesmie vrátiť ako zombie
+        if (Tombstone::where('external_key', $key)->exists()) {
+            return null;
+        }
 
-        $title = $this->smartTitle($rec);
-        $desc = $this->describe($rec);
+        $existing = Node::where('external_key', $key)->first();
 
-        $node = Node::updateOrCreate(
-            ['external_key' => $key],
-            [
+        $meta = [
+            'session_id' => $sessionId,
+            'project' => $rec['project'],
+            'cwd' => $rec['cwd'],
+            'git_branch' => $rec['git_branch'],
+            'started_at' => $rec['started_at'],
+            'ended_at' => $rec['ended_at'],
+            'prompt_count' => count($rec['prompts']),
+            'prompts' => array_slice($rec['prompts'], 0, 8),
+            'noise_filtered' => $noiseFiltered,
+            'files' => array_slice($rec['files'], 0, 20),
+            'file_count' => count($rec['files']),
+            'commits' => $rec['commits'],
+            'tools' => $rec['tools'],
+            'final' => $rec['final'],
+            'ingested_at' => now()->toIso8601String(),
+        ];
+
+        // kľúče pohltené archívom/merge zostávajú v meta zachované
+        if (! empty($existing?->meta['absorbed_keys'])) {
+            $meta['absorbed_keys'] = $existing->meta['absorbed_keys'];
+        }
+
+        $lastActivatedAt = $rec['ended_at'] ? Carbon::parse($rec['ended_at']) : now();
+        $created = false;
+
+        if (! $existing) {
+            [$area, $department] = $this->classify($rec['project']);
+
+            $node = Node::create([
+                'external_key' => $key,
                 'type' => 'memory',
                 'source' => 'session',
                 'area_id' => $area?->id,
                 'department_id' => $department?->id,
-                'label' => $title,
-                'description' => $desc,
-                'meta' => [
-                    'session_id' => $sessionId,
-                    'project' => $rec['project'],
-                    'cwd' => $rec['cwd'],
-                    'git_branch' => $rec['git_branch'],
-                    'started_at' => $rec['started_at'],
-                    'ended_at' => $rec['ended_at'],
-                    'prompt_count' => count($rec['prompts']),
-                    'prompts' => array_slice($rec['prompts'], 0, 8),
-                    'noise_filtered' => $noiseFiltered,
-                    'files' => array_slice($rec['files'], 0, 20),
-                    'file_count' => count($rec['files']),
-                    'commits' => $rec['commits'],
-                    'tools' => $rec['tools'],
-                    'final' => $rec['final'],
-                ],
+                'label' => $this->smartTitle($rec),
+                'description' => $this->describe($rec),
+                'meta' => $meta,
                 'strength' => 1,
-                'last_activated_at' => $rec['ended_at'] ? Carbon::parse($rec['ended_at']) : now(),
-            ],
-        );
+                'last_activated_at' => $lastActivatedAt,
+            ]);
+            $created = true;
 
-        // umelo posunúť created_at na začiatok session (pre časovú os / denník)
-        if (! $existed && $rec['started_at']) {
-            $node->forceFill(['created_at' => Carbon::parse($rec['started_at'])])->save();
+            // umelo posunúť created_at na začiatok session (pre časovú os / denník)
+            if ($rec['started_at']) {
+                $node->forceFill(['created_at' => Carbon::parse($rec['started_at'])])->save();
+            }
+        } elseif ($forceRefresh) {
+            // jednorazová oprava: plný refresh vrátane labelu/oblasti/oddelenia,
+            // silu zachová (nikdy ju neresetuje späť na 1)
+            [$area, $department] = $this->classify($rec['project']);
+
+            $existing->fill([
+                'type' => 'memory',
+                'source' => 'session',
+                'area_id' => $area?->id,
+                'department_id' => $department?->id,
+                'label' => $this->smartTitle($rec),
+                'description' => $this->describe($rec),
+                'meta' => $meta,
+                'last_activated_at' => $lastActivatedAt,
+            ])->save();
+            $node = $existing;
+        } else {
+            // UPDATE: iba meta + last_activated_at — manuálne úpravy labelu,
+            // popisu, oblasti a sily zostávajú nedotknuté
+            $area = $this->resolveArea($rec['project']);
+
+            $existing->fill([
+                'meta' => $meta,
+                'last_activated_at' => $lastActivatedAt,
+            ])->save();
+            $node = $existing;
         }
 
-        $this->linkToProject($node, $rec['project'], $area);
-        $this->linkSkillMentions($node, $rec);
+        $this->linkToProject($node, $rec['project'], $area, $created);
 
-        if (! $existed) {
+        if ($created) {
+            $this->linkSkillMentions($node, $rec);
             MindPulse::dispatch('node.created', ['node' => $node->toApi()]);
         }
 
-        return $existed ? 'updated' : 'created';
+        return $created ? 'created' : 'updated';
     }
 
     protected function parse(string $path): ?array
@@ -214,7 +292,7 @@ class TranscriptIngestService
                         if (in_array($name, $this->fileTools, true)) {
                             $fp = $input['file_path'] ?? $input['path'] ?? ($input['notebook_path'] ?? null);
                             if ($fp) {
-                                $rec['files'][basename($fp)] = true;
+                                $rec['files'][$fp] = true;
                             }
                         }
                         if ($name === 'Bash' && is_string($input['command'] ?? null)) {
@@ -231,7 +309,7 @@ class TranscriptIngestService
         }
         fclose($fh);
 
-        $rec['files'] = array_keys($rec['files']);
+        $rec['files'] = $this->normalizeFilePaths(array_keys($rec['files']), $rec['cwd']);
         arsort($toolCounts);
         $rec['tools'] = $toolCounts;
         if (is_string($rec['final'])) {
@@ -240,6 +318,32 @@ class TranscriptIngestService
         $rec['commits'] = array_values(array_unique($rec['commits']));
 
         return $rec;
+    }
+
+    /**
+     * Cesty súborov relatívne k cwd session (ak sa dá), inak absolútne.
+     * Zjednotí lomky a odstráni duplicity.
+     *
+     * @param  array<int, string>  $paths
+     * @return array<int, string>
+     */
+    protected function normalizeFilePaths(array $paths, ?string $cwd): array
+    {
+        $cwd = $cwd ? rtrim(str_replace('\\', '/', $cwd), '/') : null;
+        $cwdLower = $cwd ? mb_strtolower($cwd) : null;
+
+        $out = [];
+        foreach ($paths as $fp) {
+            $norm = str_replace('\\', '/', $fp);
+            if ($cwdLower && str_starts_with(mb_strtolower($norm), $cwdLower.'/')) {
+                $norm = ltrim(substr($norm, strlen($cwd)), '/');
+            }
+            if ($norm !== '') {
+                $out[$norm] = true;
+            }
+        }
+
+        return array_keys($out);
     }
 
     /** Krátke potvrdzovacie prompty typu "ok", "pokračuj" nenesú informáciu. */
@@ -289,34 +393,48 @@ class TranscriptIngestService
     }
 
     /**
-     * Titulok z prvej zmysluplnej prompty: prvá veta, max 60 znakov
-     * bez rozseknutia slova. Fallback: "<projekt> — práca <dátum>".
+     * Titulok v2: prejde všetky zmysluplné prompty, odstráni úvodné
+     * slash-commandy a URL a použije prvú vetu s aspoň 15 znakmi.
+     * Titulok nikdy nezačína na "http", "www." ani "/".
+     * Fallback: "<projekt> — práca <dátum>".
      */
     protected function smartTitle(array $rec): string
     {
-        $prompt = $rec['prompts'][0] ?? null;
-
-        if (is_string($prompt) && trim($prompt) !== '') {
-            // prvá veta — rozdeľ na . ! ? alebo nový riadok
-            $parts = preg_split('/(?<=[.!?])\s+|\r?\n/u', trim($prompt), 2);
-            $sentence = trim($parts[0] ?? '');
-            $sentence = $this->cleanPrompt($sentence);
-            $sentence = trim(preg_replace('/\s+/u', ' ', $sentence));
-
-            if ($sentence !== '') {
-                if (mb_strlen($sentence) <= 60) {
-                    return $sentence;
-                }
-
-                // skráť na 60 znakov, ale nikdy uprostred slova
-                $cut = mb_substr($sentence, 0, 60);
-                $lastSpace = mb_strrpos($cut, ' ');
-                if ($lastSpace !== false && $lastSpace > 0) {
-                    $cut = mb_substr($cut, 0, $lastSpace);
-                }
-
-                return rtrim($cut, " \t.,;:—-");
+        foreach ($rec['prompts'] as $prompt) {
+            if (! is_string($prompt) || trim($prompt) === '') {
+                continue;
             }
+
+            $clean = $this->cleanPrompt($prompt);
+
+            // opakovane odstráň úvodný slash-command token a úvodné URL
+            do {
+                $before = $clean;
+                $clean = preg_replace('/^\/[\w:-]+\s*/u', '', $clean);
+                $clean = preg_replace('/^(https?:\/\/\S+|www\.\S+)\s*/iu', '', $clean);
+                $clean = ltrim($clean);
+            } while ($clean !== $before);
+
+            // prvá veta — rozdeľ na . ! ? alebo nový riadok
+            $parts = preg_split('/(?<=[.!?])\s+|\r?\n/u', trim($clean), 2);
+            $sentence = trim(preg_replace('/\s+/u', ' ', $parts[0] ?? ''));
+
+            if (mb_strlen($sentence) < 15 || preg_match('/^(https?:|www\.|\/)/iu', $sentence)) {
+                continue;
+            }
+
+            if (mb_strlen($sentence) <= 60) {
+                return $sentence;
+            }
+
+            // skráť na 60 znakov, ale nikdy uprostred slova
+            $cut = mb_substr($sentence, 0, 60);
+            $lastSpace = mb_strrpos($cut, ' ');
+            if ($lastSpace !== false && $lastSpace > 0) {
+                $cut = mb_substr($cut, 0, $lastSpace);
+            }
+
+            return rtrim($cut, " \t.,;:—-");
         }
 
         $date = $rec['started_at'] ? Carbon::parse($rec['started_at'])->format('j.n.Y') : now()->format('j.n.Y');
@@ -406,9 +524,10 @@ class TranscriptIngestService
 
     /**
      * Auto project uzol: firstOrCreate 'project:<slug>' a prepoj záznam naň.
-     * Pri opakovaní sa hrana posilňuje.
+     * Váha hrany rastie len keď bol session uzol v tomto behu vytvorený —
+     * opakovaný ingest nie je nová aktivita.
      */
-    protected function linkToProject(Node $node, ?string $project, ?Area $area): void
+    protected function linkToProject(Node $node, ?string $project, ?Area $area, bool $created): void
     {
         $project = trim((string) $project);
         if ($project === '') {
@@ -438,7 +557,7 @@ class TranscriptIngestService
             ['weight' => 1, 'last_activated_at' => now()],
         );
 
-        if (! $edge->wasRecentlyCreated) {
+        if ($created && ! $edge->wasRecentlyCreated) {
             $edge->increment('weight');
             $edge->forceFill(['last_activated_at' => now()])->save();
         }
@@ -475,7 +594,9 @@ class TranscriptIngestService
 
             $hit = false;
             foreach ($needles as $needle) {
-                if (str_contains($text, $needle)) {
+                // celé slová — "git" sa nesmie trafiť v "digital"
+                $pattern = '/(?<![\p{L}\p{N}])'.preg_quote($needle, '/').'(?![\p{L}\p{N}])/ui';
+                if (preg_match($pattern, $text)) {
                     $hit = true;
                     break;
                 }

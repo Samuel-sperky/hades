@@ -3,10 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Events\MindPulse;
+use App\Models\Area;
+use App\Models\Department;
 use App\Models\Edge;
 use App\Models\Node;
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
 
 class MindDigest extends Command
 {
@@ -32,7 +33,8 @@ class MindDigest extends Command
             ->sortDesc()
             ->take(5);
 
-        $week = now()->format('W/Y');
+        // ISO týždeň + ISO rok (format 'o') — na prelome roka sedí s kľúčom
+        $week = now()->format('W/o');
         $key = 'digest:'.now()->format('o-\WW');
 
         $lines = [];
@@ -47,12 +49,23 @@ class MindDigest extends Command
 
         $core = Node::where('type', 'core')->where('label', config('hades.name'))->first();
 
+        // súhrn ide rovno do oddelenia "Súhrny" v oblasti jadra (fallback osobne-preferencie)
+        $area = $core?->area_id ? Area::find($core->area_id) : null;
+        $area ??= Area::where('slug', 'osobne-preferencie')->first() ?? Area::orderBy('id')->first();
+        $dept = $area
+            ? Department::firstOrCreate(
+                ['area_id' => $area->id, 'slug' => 'suhrny'],
+                ['name' => 'Súhrny'],
+            )
+            : null;
+
         $node = Node::updateOrCreate(
             ['external_key' => $key],
             [
                 'type' => 'memory',
                 'source' => 'digest',
-                'area_id' => $core?->area_id,
+                'area_id' => $area?->id,
+                'department_id' => $dept?->id,
                 'label' => "Súhrn týždňa {$week}",
                 'description' => implode("\n", $lines),
                 'meta' => [

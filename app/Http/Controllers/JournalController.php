@@ -19,7 +19,9 @@ class JournalController extends Controller
             $query->where('meta->project', $project);
         }
 
-        $records = $query->limit((int) $request->query('limit', 60))->get()->map(function (Node $n) {
+        $limit = max(1, min(50, (int) $request->query('limit', 50)));
+
+        $records = $query->limit($limit)->get()->map(function (Node $n) {
             $m = $n->meta ?? [];
 
             return [
