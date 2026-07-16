@@ -1,0 +1,616 @@
+SEO REPORT – SPERKY-ESHOP.SK
+================================================================
+
+Reportované obdobie:            2026-06 (jún 2026)
+Porovnávané obdobie:            2026-05 (máj 2026)
+Dátum a čas vytvorenia:         2026-07-16 18:23 CEST (Europe/Bratislava)
+Ahrefs target:                  sperky-eshop.sk (mode = subdomains)
+Krajina:                        Slovensko (SK)
+Použité MCP connectory:         Ahrefs MCP (hlavný zdroj SEO dát)
+Chýbajúce dátové zdroje:        Google Search Console (nepripojený k Ahrefs projektu),
+                                Rank Tracker projekt (nezaložený), Figma dizajnové
+                                tokeny (nebol poskytnutý firemný Figma súbor)
+
+Poznámka k metodike: Všetky hodnoty pochádzajú z Ahrefs API v3 (Site Explorer).
+Snímka KPI je k 2026-06-30 vs 2026-05-31. Rozdelenie KW podľa pozícií pochádza
+z endpointu keywords-history (mesačná snímka k 1. dňu mesiaca), preto sa jeho
+súčty mierne líšia od endpointu metrics – detail v sekcii 13.
+
+
+================================================================
+1. EXECUTIVE SUMMARY
+================================================================
+
+1. Organický traffic vzrástol na 9 728 návštev/mes (+643, +7,1 %) – najlepší
+   mesiac v roku 2026.
+2. Počet KW v TOP 3 skokovo vzrástol: 375 (metrics) / 434 (history) oproti máju,
+   nárast +85 (+29,3 %) podľa metrics – najsilnejší signál mesiaca.
+3. Zotavenie po prepade Q1: TOP 3 KW klesli z 351 (jan) na dno 227 (apr),
+   v júni dosiahli 434 – plné zotavenie a nové maximum.
+4. Piercing kategória je najsilnejší pilier: "piercing do ucha" #1 (2 700/mes),
+   "piercing" #1 (3 000/mes), "piercing do pupku" skok 9→2 (1 400/mes).
+5. Silné vstupy striebra do TOP 3: "strieborné šperky" 9→1, "panske strieborne
+   retiazky" 6→1, "strieborne retiazky panske" 7→2.
+6. Najväčšie riziko: vysokoobjemové KW prepadli – "zasnubny prsten" (5 600/mes)
+   15→30, "nausnice strieborne" 7→23, "zlata retiazka" (2 400/mes) 11→16.
+7. Konkurencia: izlato.sk zostáva líder (traffic 75 029, DR 50, 7,7× náš organic).
+   sofia.sk stratila ~60 % trafficu (44 602 → 17 916) – príležitosť.
+8. Content gap: izlato.sk má 1 918 KW, ktoré my nemáme – najväčší priestor rastu
+   v segmentoch zlaté retiazky, zásnubné/snubné prstene a strieborné náušnice.
+
+
+================================================================
+2. HLAVNÉ KPI
+================================================================
+
+KPI 1 – Organický traffic (odhad/mes)
+  Aktuálna hodnota:      9 728
+  Predchádzajúca:        9 085
+  Absolútna zmena:       +643
+  Percentuálna zmena:    +7,1 %
+  Interpretácia:         Najsilnejší mesiac 2026, ťahaný piercing a striebro kategóriami.
+  Zdroj:                 Ahrefs site-explorer-metrics (2026-06-30 vs 2026-05-31), SK.
+
+KPI 2 – Hodnota organického trafficu (org_cost)
+  Aktuálna hodnota:      1 737,05 USD
+  Predchádzajúca:        1 633,71 USD
+  Absolútna zmena:       +103,34 USD
+  Percentuálna zmena:    +6,3 %
+  Interpretácia:         Rast hodnoty potvrdzuje, že rástli komerčne relevantné KW.
+  Zdroj:                 Ahrefs site-explorer-metrics (org_cost, prepočet centy/100).
+
+KPI 3 – Organické KW v TOP 100
+  Aktuálna hodnota:      970
+  Predchádzajúca:        959
+  Absolútna zmena:       +11
+  Percentuálna zmena:    +1,1 %
+  Interpretácia:         Celkový rozsah viditeľnosti stabilný, kvalita pozícií rastie.
+  Zdroj:                 Ahrefs site-explorer-metrics (org_keywords).
+
+KPI 4 – Organické KW v TOP 3
+  Aktuálna hodnota:      375
+  Predchádzajúca:        290
+  Absolútna zmena:       +85
+  Percentuálna zmena:    +29,3 %
+  Interpretácia:         Kľúčový pozitívny signál – masívny posun do TOP 3.
+  Zdroj:                 Ahrefs site-explorer-metrics (org_keywords_1_3).
+
+KPI 5 – Domain Rating (DR)
+  Aktuálna hodnota:      38,0
+  Predchádzajúca:        (nemeraná v máji v tomto behu)
+  Absolútna zmena:       n/a
+  Percentuálna zmena:    n/a
+  Interpretácia:         Stred poľa – za izlato.sk (50) a sofia.sk (40), pred olivie.sk (25).
+  Zdroj:                 Ahrefs site-explorer-domain-rating (2026-06-30).
+
+KPI 6 – Platené KW (paid)
+  Aktuálna hodnota:      117
+  Predchádzajúca:        104
+  Absolútna zmena:       +13
+  Percentuálna zmena:    +12,5 %
+  Interpretácia:         Rast PPC pokrytia; sledovať prekryv s organikou (kanibalizácia rozpočtu).
+  Zdroj:                 Ahrefs site-explorer-metrics (paid_keywords).
+
+KPI 7 – Platený traffic (paid)
+  Aktuálna hodnota:      3 880
+  Predchádzajúca:        3 304
+  Absolútna zmena:       +576
+  Percentuálna zmena:    +17,4 %
+  Interpretácia:         PPC rastie rýchlejšie ako organic v %, ale objem organiky je 2,5× vyšší.
+  Zdroj:                 Ahrefs site-explorer-metrics (paid_traffic).
+
+
+================================================================
+3. ROZDELENIE KW PODĽA POZÍCIÍ
+================================================================
+
+Zdroj: Ahrefs site-explorer-keywords-history (mesačná snímka, SK).
+
+Pásmo         Jún 2026 (01.06.)   Máj 2026 (01.05.)   Zmena
+----------------------------------------------------------------
+TOP 3               434                 331            +103
+Pozície 4–10        557                 631            -74
+Pozície 11–20        83                  75             +8
+Pozície 21–50        10                  19             -9
+Pozície 51–100        0                   1             -1
+----------------------------------------------------------------
+Spolu (TOP 100)    1 084               1 057            +27
+
+Interpretácia: Presun z pásma 4–10 (-74) do TOP 3 (+103) = zlepšovanie kvality
+pozícií, nie len rast počtu. Pásmo 21–50 a 51+ sa takmer vyprázdnilo (čistenie
+"chvosta"). Pozn.: tento súčet (1 084) sa líši od metrics org_keywords (970) –
+iná snímka a metodika, viď sekcia 13.
+
+
+================================================================
+4. MEDZIMESAČNÉ POROVNANIE (2026-01 až 2026-06)
+================================================================
+
+Zdroj: Ahrefs site-explorer-keywords-history (SK).
+
+Mesiac     TOP3   4–10   11–20   21–50   51+
+----------------------------------------------------
+Jan 2026    351    610     93      37     22
+Feb 2026    304    556    107      42     18
+Mar 2026    268    548    112      42     15
+Apr 2026    227    540     72      28      8
+Máj 2026    331    631     75      19      1
+Jún 2026    434    557     83      10      0
+
+Príbeh polroka: TOP 3 pozície klesali 4 mesiace za sebou (351 → 227 v apríli),
+následne prudké zotavenie (máj 331, jún 434). Jún = nové 6-mesačné maximum TOP 3.
+Odporúčanie: identifikovať, čo spôsobilo apríľové dno (algoritmus / technická
+zmena / sezónnosť) a čo naštartovalo máj–jún obrat, aby sa rast dal zopakovať.
+
+
+================================================================
+5. VÝKON SKUPÍN A TAGOV KW
+================================================================
+
+Skupiny odvodené z rankujúcich URL (kategórie e-shopu). Odhad z TOP 100 KW podľa
+trafficu (Ahrefs organic-keywords, jún vs máj).
+
+Skupina                 Stav        Hlavné KW / poznámka
+----------------------------------------------------------------
+Piercing                SILNÝ ↑     "piercing do ucha" #1, "piercing" #1,
+                                    "piercing do pupku" 9→2, "piercing do nosa" #2.
+                                    Najkonzistentnejší pilier trafficu.
+Strieborné šperky       RASTÚCI ↑   "strieborné šperky" 9→1, "panske strieborne
+                                    retiazky" 6→1, "strieborna retiazka" 13→7;
+                                    ale "nausnice strieborne" 7→23 (riziko).
+Zlaté šperky            ZMIEŠANÝ ↕  "zlate nausnice" (7 000/mes) #7 stabilne,
+                                    "zlate prstene" 10→6; ale "zlata retiazka"
+                                    (2 400) 11→16, "zasnubny prsten" 15→30.
+Chirurgická oceľ        ZMIEŠANÝ ↕  "chirurgicka ocel retiazka" #2; ale kategória
+                                    "prstene z chirurgickej ocele" 2→9,
+                                    "nausnice chirurgicka ocel" 7→14.
+Magnetické náramky      STABILNÝ →  "magnetický náramok" #1, sada KW v TOP 1.
+Brandové KW             STABILNÝ →  "sperky eshop" #1, "eshop sperky" #1 – držíme.
+
+
+================================================================
+6. TOP 100 CORE KW (výber TOP 40 podľa organického trafficu)
+================================================================
+
+Zdroj: Ahrefs site-explorer-organic-keywords, SK, jún 2026 vs máj 2026,
+zoradené podľa sum_traffic (odhad org. trafficu z daného KW).
+Legenda pozícií: akt = aktuálna, pred = predchádzajúca, Δ = zmena (− = zlepšenie).
+
+#   KW                              Obj.   akt  pred   Δ     Traffic
+----------------------------------------------------------------------------
+1   piercing do ucha                2700    1    3    -2      604
+2   sperky eshop                    1100    1    1     0      490
+3   šperky eshop                     700    1    1     0      346
+4   piercing do pupku               1400    2    9    -7      276
+5   piercing                        3000    1    2    -1      173
+6   piercing do nosa                1700    2    2     0      173
+7   zlate nausnice                  7000    7    6    +1      171
+8   šperky                          1100    1    2    -1      156
+9   magnetický náramok               200    1    1     0      123
+10  piercingy                        250    1    3    -2      119
+11  ocelove sperky                    90    1    4    -3      102
+12  panske strieborne retiazky       100    1    6    -5       98
+13  strieborny nahrdelnik            450    2    2     0       89
+14  piercing do bradaviek            350    2    2     0       82
+15  detské zlaté náušnice lacné      150    1    1     0       60
+16  strieborne obrucky               250    2    5    -3       60
+17  zlaty prsten                     900    6    8    -2       59
+18  eshop sperky                      60    1    1     0       57
+19  wolframove obrucky               100    2    3    -1       54
+20  strieborné šperky                250    1    9    -8       54
+21  piercing shop                    100    1    3    -2       53
+22  náušnice z chirurgickej ocele   1200    7   10    -3       49
+23  panske prstene striebro           70    1    1     0       49
+24  piercingove nausnice do ucha     100    1    5    -4       45
+25  strieborné šperky sety            60    1    1     0       43
+26  zlate nausnice kruhy             700    7    7     0       43
+27  chirurgicka ocel retiazka        250    2    3    -1       41
+28  piercing pupok                   100    1    2    -1       41
+29  strieborné prstene dámske        200    3    4    -1       39
+30  zlatý piercing do ucha           100    1    3    -2       39
+31  svadobne obrucky do 100 eur      100    1    2    -1       38
+32  kozene naramky damske             80    1    1     0       38
+33  strieborna retiazka             1100    7   13    -6       36
+34  strieborne nausnice             3900   15   15     0       31
+35  zlate prstene                    700    6   10    -4       29
+36  zlaty naramok                   1000   11   15    -4       24
+37  septum piercing                  700    2    3    -1       24
+38  zlaté náušnice                   350    3    7    -4       21
+39  prstene z chirurgickej ocele     700    9    2    +7       21
+40  strieborne nausnice (kat.)       350    4    8    -4       21
+
+Plný TOP 100 zoznam (100 KW) je dostupný v dátovom modeli reportu; HTML report
+obsahuje filtrovateľnú a zoraditeľnú tabuľku.
+
+
+================================================================
+7. NAJVÄČŠIE RASTY (min. 10)
+================================================================
+
+Zdroj: organic-keywords, obj. ≥ 30, zoradené podľa zlepšenia pozície (jún vs máj).
+
+#   KW                                   Obj.   pred → akt    Zlepšenie
+----------------------------------------------------------------------------
+1   pandora náramky                      1300    28 → 6         +22
+2   detske nausnice kruzky                 50    12 → 2         +10
+3   náušnice z chirurgickej ocele kruhy    90    10 → 1          +9
+4   zlate nausnice kruhy s priveskom       30    10 → 1          +9
+5   bff nahrdelniky                        40    10 → 1          +9
+6   masivny nahrdelnik                     30     9 → 1          +8
+7   strieborný prívesok na retiazku        50    10 → 2          +8
+8   strieborné šperky                     250     9 → 1          +8   (traffic 54)
+9   naramok mama a dcera                   50     8 → 1          +7
+10  puzetové náušnice                     100     9 → 2          +7
+11  piercing do pupku                    1400     9 → 2          +7   (traffic 276)
+12  velke strieborne prstene               70     8 → 1          +7
+13  strieborna retiazka                  1100    13 → 7          +6   (traffic 36)
+
+Najhodnotnejšie rasty (objem × zlepšenie): "piercing do pupku" (1 400, 9→2),
+"pandora náramky" (1 300, 28→6), "strieborné šperky" (250, 9→1).
+
+
+================================================================
+8. NAJVÄČŠIE POKLESY (min. 10)
+================================================================
+
+Zdroj: organic-keywords, obj. ≥ 30, zoradené podľa zhoršenia pozície (jún vs máj).
+
+#   KW                                   Obj.   pred → akt    Pokles
+----------------------------------------------------------------------------
+1   nausnice strieborne                   500     7 → 23        +16
+2   zasnubny prsten                      5600    15 → 30        +15   (vysoký objem!)
+3   labreta do ucha                       150     1 → 13        +12
+4   retiazka                              500    19 → 28         +9
+5   detsky naramok                         60     2 → 11         +9
+6   náušnice z bieleho zlata              500    22 → 30         +8
+7   zlatý naramok na ruku                 100     1 → 9          +8
+8   naramky na ruku z chirurgickej ocele   30     2 → 10         +8
+9   prstene z chirurgickej ocele          700     2 → 9          +7   (kategória, traffic 21)
+10  nausnice chirurgicka ocel             900     7 → 14         +7
+11  zlaté náušnice dámské                  40     4 → 11         +7
+12  strieborné náramky dámske              70     2 → 8          +6
+13  zlata retiazka                       2400    11 → 16         +5   (vysoký objem!)
+
+Prioritné poklesy na riešenie: "zasnubny prsten" (5 600/mes → #30),
+"zlata retiazka" (2 400 → #16), "nausnice strieborne" (7→23),
+"prstene z chirurgickej ocele" (kategória 2→9).
+
+
+================================================================
+9. VSTUPY A VÝSTUPY Z TOP 3, TOP 10 A TOP 20
+================================================================
+
+VSTUPY DO TOP 3 (pred > 3 → akt ≤ 3):
+  - strieborné šperky (9→1), panske strieborne retiazky (6→1),
+    strieborné retiazky pánske (7→2), damske strieborne retiazky (6→1),
+    ocelove sperky (4→1), lacne zlate prstene (4→1), fake piercing (4→1),
+    strieborne obrucky (5→2), piercingove nausnice do ucha (5→1),
+    dámske náramky z chirurgickej ocele (6→2), damske strieborne prstene (6→2),
+    strieborný prívesok na retiazku (10→2), puzetové náušnice (9→2),
+    piercing do pupku (9→2).  → Silná vlna, hlavne striebro + piercing.
+
+VSTUPY DO TOP 10 (pred > 10 → akt ≤ 10):
+  - strieborna retiazka (13→7), pandora náramky (28→6),
+    náušnice z chirurgickej ocele kruhy (10→1), detske nausnice kruzky (12→2).
+
+VÝSTUPY Z TOP 10 (pred ≤ 10 → akt > 10):
+  - nausnice strieborne (7→23), nausnice chirurgicka ocel (7→14),
+    zlaté náušnice dámské (4→11), detsky naramok (2→11), labreta do ucha (1→13).
+
+VÝSTUPY Z TOP 20 (pred ≤ 20 → akt > 20):
+  - nausnice strieborne (7→23), zasnubny prsten (15→30), retiazka (19→28).
+
+Bilancia: vstupy jednoznačne prevažujú (najmä do TOP 3), ale výstupy sa
+koncentrujú do segmentu "náušnice" a vysokoobjemových KW – cielene riešiť.
+
+
+================================================================
+10. KONKURENCIA
+================================================================
+
+Zdroj: Ahrefs site-explorer-organic-competitors, SK, jún vs máj 2026.
+Náš organický traffic (referencia): 9 728 / mes, DR 38.
+
+Konkurent      DR    Spoloč.KW  My-only  Oni-only  Traffic(jún)  Traffic(máj)
+----------------------------------------------------------------------------
+izlato.sk      50      539        431     1 918       75 029        78 044
+olivie.sk      25      287        679       858       19 116        18 827
+sofia.sk       40      151        796       531       17 916        44 602
+
+PRIORITA – izlato.sk (líder trhu):
+  - Traffic 75 029 = 7,7× náš organic; DR 50 vs náš 38.
+  - 1 918 KW, na ktoré rankujú a my nie = najväčší content gap.
+  - My máme náskok na 431 spoločných-neprekrytých KW (naša piercing a
+    magneticke/ocelove nika).
+  - Ich traffic mierne klesol (-3,9 %) – ale stále dominantný.
+
+sofia.sk:
+  - Dramatický prepad trafficu 44 602 → 17 916 (-59,8 %) – pravdepodobne strata
+    viditeľnosti / algoritmus. Príležitosť získať ich uvoľnené pozície.
+  - DR 40 (vyšší než náš), ale len 151 spoločných KW.
+
+olivie.sk:
+  - Menší, porovnateľný hráč (traffic 19 116, +1,5 %), DR 25 (nižší než náš).
+  - 287 spoločných KW; 858 KW majú navyše – stredný content gap.
+
+Ostatní relevantní: klenota.sk (DR 37, traffic 9 866), isperky.sk (DR 31,
+traffic 8 451, ale rastie +10 %), mabell.sk (traffic 12 759).
+
+
+================================================================
+11. CONTENT GAP
+================================================================
+
+Metóda: agregovaný gap z organic-competitors (KW, ktoré rankujú konkurenti a my
+nie) + naše vysokoobjemové KW so slabou pozíciou (interný gap = podoptimalizované
+existujúce stránky).
+
+A) EXTERNÝ GAP (konkurenti majú, my nie):
+   - izlato.sk: 1 918 KW navyše  (najväčšia zásoba)
+   - olivie.sk:   858 KW navyše
+   - sofia.sk:    531 KW navyše
+   Segmenty s najväčším priestorom (podľa nášho slabého pokrytia): zlaté
+   retiazky, zásnubné/snubné prstene, strieborné náušnice, biele zlato.
+   Pozn.: detailný KW-level content gap export (konkrétne KW) nebol v tomto behu
+   stiahnutý – odporúčaný samostatný pull (viď akčný plán A6).
+
+B) INTERNÝ GAP (máme stránku, ale slabá pozícia pri vysokom objeme):
+   - "zasnubny prsten"        5600/mes   pozícia 30   → kategória /37 podceňovaná
+   - "zlata retiazka"         2400/mes   pozícia 16   → /78-zlate-retiazky
+   - "strieborne nausnice"    3900/mes   pozícia 15   → /54-strieborne-nausnice
+   - "nausnice chirurgicka ocel" 900/mes pozícia 14   → /11
+   - "zlaty naramok"          1000/mes   pozícia 11   → /79-zlate-naramky
+   Tieto majú najlepší pomer námaha/výsledok (stránka existuje, treba on-page +
+   interné odkazy + obsah).
+
+
+================================================================
+12. RANKING URL A KANIBALIZÁCIA
+================================================================
+
+Zistené signály (Ahrefs organic-keywords, ranking URL):
+
+1) Produkt vs kategória – "náušnice z chirurgickej ocele":
+   - "náušnice z chirurgickej ocele" (1 200/mes) rankuje produktovou stránkou
+     /11408-...-dvojite-srdce-zirkon.html (pozícia 7).
+   - "nausnice chirurgicka ocel" (900/mes) rankuje kategóriou /11 (pozícia 14, ↓).
+   → Rozdvojenie intentu medzi produkt a kategóriu = mierna kanibalizácia;
+     konsolidovať na kategóriu /11.
+
+2) "septum" (1 400/mes) aj "septum piercing" (700/mes) rankujú tou istou
+   PRODUKTOVOU stránkou /37429-...html namiesto kategórie. Kategória piercing by
+   mala prevziať generický "septum" dopyt.
+
+3) "chirurgicka ocel" (800/mes) rankuje produktom /30175-...byzantsky-motiv.html
+   namiesto informačnej/kategóriovej stránky – suboptimálna landing page.
+
+4) "strieborne nausnice" (3 900) aj "nausnice strieborne" (500) mieria na
+   /54-strieborne-nausnice; jedna varianta (nausnice strieborne) prepadla 7→23,
+   kým hlavná drží 15 – sledovať, či nejde o osciláciu tej istej stránky.
+
+Odporúčanie: zaviesť mapu "1 primárna URL = 1 hlavný intent", posilniť kategórie
+interným prelinkovaním z produktov a fixnúť generické dopyty na kategórie.
+
+
+================================================================
+13. DÁTOVÉ NEZROVNALOSTI
+================================================================
+
+1) Rozdiel keywords-history vs metrics:
+   - keywords-history (snímka 2026-06-01) súčet TOP 100 = 1 084, z toho TOP 3 = 434.
+   - metrics (snímka 2026-06-30) org_keywords = 970, org_keywords_1_3 = 375.
+   Príčina: iný dátum snímky (začiatok vs koniec mesiaca) a iná metodika počítania
+   (history zahŕňa širšie inštancie pozícií vrátane SERP prvkov). Pre KPI používame
+   metrics, pre pásmovú distribúciu keywords-history – každé s uvedeným zdrojom.
+
+2) Chýba GSC (Google Search Console) napojenie – nemáme reálne kliky/impresie/CTR,
+   len Ahrefs odhady trafficu. Odhad trafficu ≠ reálne návštevy z GA/GSC.
+
+3) Chýba Rank Tracker projekt – nemáme denné trackované pozície ani oficiálny
+   Share of Voice; konkurencia je z organic-competitors (odhad).
+
+4) Máj DR nebol v tomto behu meraný (uvedené len jún DR = 38).
+
+5) Niektoré KW majú sum_traffic = 0 pri dobrej pozícii (napr. "pandora náramky"
+   28→6) – Ahrefs zatiaľ nepriradil traffic; efekt sa prejaví s oneskorením.
+
+
+================================================================
+14. BODY NA SEO PORADU (celkovo max. 60 min)
+================================================================
+
+BOD 1 – Vysokoobjemové poklesy (12 min)
+  Fakt:            "zasnubny prsten" (5 600) 15→30, "zlata retiazka" (2 400) 11→16.
+  Dopad:           Strata potenciálu tisícok návštev v najvýnosnejších segmentoch.
+  Pravdepodobná príčina: Oslabené kategórie (obsah/interné odkazy), tlak konkurencie.
+  Potrebné rozhodnutie: Schváliť prioritnú optimalizáciu kategórií zásnubné + zlaté retiazky.
+  Odporúčaná akcia: On-page + obsah + interné prelinkovanie na /37 a /78.
+  Odhadovaný čas:  12 min.
+
+BOD 2 – Ochrana a rozšírenie piercing piliera (8 min)
+  Fakt:            Piercing kategória dominuje (#1 na "piercing", "piercing do ucha").
+  Dopad:           Najstabilnejší zdroj trafficu – kľúčové ho neohroziť.
+  Pravdepodobná príčina: Silná tematická autorita.
+  Potrebné rozhodnutie: Alokovať obsah na dlhý chvost piercing (labreta, septum).
+  Odporúčaná akcia: Fix "labreta do ucha" (1→13), kategorizovať "septum".
+  Odhadovaný čas:  8 min.
+
+BOD 3 – Náušnice segment – zastaviť prepad (10 min)
+  Fakt:            "nausnice strieborne" 7→23, "nausnice chirurgicka ocel" 7→14,
+                   "zlaté náušnice dámské" 4→11.
+  Dopad:           Systematický pokles celej podskupiny náušníc.
+  Pravdepodobná príčina: Kanibalizácia produkt vs kategória, slabšie kategórie.
+  Potrebné rozhodnutie: Konsolidácia URL a posilnenie kategórií náušníc.
+  Odporúčaná akcia: Mapa 1 intent = 1 URL, interné odkazy na /54 a /11.
+  Odhadovaný čas:  10 min.
+
+BOD 4 – Konkurencia: využiť prepad sofia.sk (8 min)
+  Fakt:            sofia.sk stratila -59,8 % trafficu (44 602 → 17 916).
+  Dopad:           Uvoľnené pozície na spoločných KW.
+  Pravdepodobná príčina: Strata viditeľnosti konkurenta.
+  Potrebné rozhodnutie: Cielený push na 151 spoločných KW so sofia.sk.
+  Odporúčaná akcia: Identifikovať konkrétne KW a posilniť ich.
+  Odhadovaný čas:  8 min.
+
+BOD 5 – Content gap voči izlato.sk (12 min)
+  Fakt:            izlato.sk má 1 918 KW navyše (my ich nemáme).
+  Dopad:           Najväčší dlhodobý rastový potenciál.
+  Pravdepodobná príčina: Chýbajúci obsah / kategórie / informačné stránky.
+  Potrebné rozhodnutie: Schváliť content plán + samostatný content-gap export.
+  Odporúčaná akcia: Stiahnuť KW-level gap, priorizovať podľa objemu/intentu.
+  Odhadovaný čas:  12 min.
+
+BOD 6 – Dátová infraštruktúra (GSC + Rank Tracker) (10 min)
+  Fakt:            Chýba GSC napojenie a Rank Tracker projekt.
+  Dopad:           Reportujeme len odhady, nie reálne kliky/pozície.
+  Pravdepodobná príčina: Projekt v Ahrefs nezaložený, GSC neprepojené.
+  Potrebné rozhodnutie: Schváliť zriadenie Rank Tracker + GSC prepojenie.
+  Odporúčaná akcia: Založiť projekt, pridať KW zoznam a konkurentov.
+  Odhadovaný čas:  10 min.
+
+CELKOVÝ PLÁNOVANÝ ČAS PORADY: 60 min.
+
+
+================================================================
+15. ZÁVER
+================================================================
+
+ČO SA ZMENILO?
+  Jún 2026 bol najsilnejší mesiac roka: organický traffic +7,1 % (9 728),
+  hodnota trafficu +6,3 %, a najmä počet KW v TOP 3 +29,3 % (375). Prebehol
+  masívny presun z pásma 4–10 do TOP 3. Rast ťahal piercing a strieborný segment.
+  Súčasne prepadli niektoré vysokoobjemové KW (zásnubný prsteň, zlatá retiazka)
+  a časť náušnicového segmentu.
+
+ČO PRAVDEPODOBNE SPÔSOBILO ZMENU?
+  Zotavenie po Q1 prepade (dno v apríli) + zlepšenie pozícií existujúcich stránok
+  (piercing, striebro) posunutých do TOP 3. Poklesy vyzerajú ako kombinácia
+  oslabených kategórií (zásnubné, zlaté retiazky), kanibalizácie produkt/kategória
+  v náušniciach a tlaku konkurencie. sofia.sk medzitým výrazne oslabila.
+
+ČO SA BUDE ROBIŤ ĎALEJ?
+  1) Prioritne optimalizovať vysokoobjemové prepadnuté kategórie (zásnubné, zlaté
+     retiazky). 2) Zastaviť prepad náušníc konsolidáciou URL. 3) Chrániť a rozširovať
+     piercing pilier. 4) Využiť prepad sofia.sk. 5) Rozbehnúť content plán voči
+     izlato.sk. 6) Zriadiť GSC + Rank Tracker pre reálne dáta.
+
+
+================================================================
+16. AKČNÝ PLÁN
+================================================================
+
+A1
+  Priorita:               P1 (vysoká)
+  Úloha:                  Optimalizovať kategóriu zásnubné/snubné prstene
+  Konkrétne KW/URL:       "zasnubny prsten" (5600), /37-zasnubne-prstene-snubne-prstene
+  Problém/príležitosť:    Pozícia 30 pri objeme 5 600/mes – najväčší nevyužitý potenciál
+  Očakávaný výsledok:     Návrat do TOP 10 (z 30), +150–300 návštev/mes
+  Funkčný zodpovedný:     SEO špecialista + Content manažér
+  Termín:                 2026-08-15
+  Stav:                   Nová
+
+A2
+  Priorita:               P1 (vysoká)
+  Úloha:                  Posilniť kategóriu zlaté retiazky
+  Konkrétne KW/URL:       "zlata retiazka" (2400), /78-zlate-retiazky
+  Problém/príležitosť:    Pokles 11→16 pri vysokom objeme
+  Očakávaný výsledok:     Návrat do TOP 10, +80–150 návštev/mes
+  Funkčný zodpovedný:     SEO špecialista
+  Termín:                 2026-08-15
+  Stav:                   Nová
+
+A3
+  Priorita:               P1 (vysoká)
+  Úloha:                  Konsolidovať URL v segmente náušnice (1 intent = 1 URL)
+  Konkrétne KW/URL:       "nausnice strieborne" (/54), "nausnice chirurgicka ocel" (/11)
+  Problém/príležitosť:    Prepady 7→23 a 7→14, kanibalizácia produkt vs kategória
+  Očakávaný výsledok:     Stabilizácia + návrat do TOP 10, zastavenie strát
+  Funkčný zodpovedný:     SEO špecialista + Kategórie/PIM
+  Termín:                 2026-08-31
+  Stav:                   Nová
+
+A4
+  Priorita:               P2 (stredná)
+  Úloha:                  Fix dlhého chvosta piercing (ochrana piliera)
+  Konkrétne KW/URL:       "labreta do ucha" (1→13), "septum" (1400) → kategória /14
+  Problém/príležitosť:    Prepad labreta + generický "septum" visí na produkte
+  Očakávaný výsledok:     Návrat labreta do TOP 3, "septum" do TOP 5
+  Funkčný zodpovedný:     SEO špecialista
+  Termín:                 2026-08-20
+  Stav:                   Nová
+
+A5
+  Priorita:               P2 (stredná)
+  Úloha:                  Konkurenčný push na uvoľnené KW po sofia.sk
+  Konkrétne KW/URL:       151 spoločných KW so sofia.sk (traffic -59,8 %)
+  Problém/príležitosť:    Konkurent oslabil – okno na zisk pozícií
+  Očakávaný výsledok:     Zisk 10–20 pozícií v spoločných KW
+  Funkčný zodpovedný:     SEO špecialista
+  Termín:                 2026-08-31
+  Stav:                   Nová
+
+A6
+  Priorita:               P2 (stredná)
+  Úloha:                  Stiahnuť a priorizovať KW-level content gap voči izlato.sk
+  Konkrétne KW/URL:       1 918 KW izlato-only (Ahrefs content gap export)
+  Problém/príležitosť:    Najväčšia zásoba rastu, chýba detailný zoznam
+  Očakávaný výsledok:     Content plán na 20–30 nových/rozšírených stránok
+  Funkčný zodpovedný:     Content manažér + SEO špecialista
+  Termín:                 2026-08-10
+  Stav:                   Nová
+
+A7
+  Priorita:               P3 (nižšia)
+  Úloha:                  Dokončiť víťaznú vlnu do TOP 3 (podpora momentu)
+  Konkrétne KW/URL:       "zlate nausnice" (7000) #7, "strieborne nausnice" (3900) #15
+  Problém/príležitosť:    Blízko prielomu, vysoký objem
+  Očakávaný výsledok:     Posun do TOP 5 / TOP 10
+  Funkčný zodpovedný:     SEO špecialista
+  Termín:                 2026-09-15
+  Stav:                   Nová
+
+A8
+  Priorita:               P1 (infraštruktúra)
+  Úloha:                  Zriadiť Ahrefs Rank Tracker projekt + prepojiť GSC
+  Konkrétne KW/URL:       Core KW zoznam + konkurenti (izlato, sofia, olivie)
+  Problém/príležitosť:    Reportujeme odhady, chýbajú reálne kliky/pozície
+  Očakávaný výsledok:     Denné pozície + reálny CTR/kliky v ďalšom reporte
+  Funkčný zodpovedný:     SEO špecialista + Vývoj/Technické
+  Termín:                 2026-08-05
+  Stav:                   Nová
+
+
+================================================================
+17. TECHNICKÉ OBMEDZENIA
+================================================================
+
+- Nepoužitý XLSX (podľa zadania) – dáta sú v TXT a HTML.
+- Nepoužitá Canva (podľa zadania).
+- GSC nie je napojený na Ahrefs projekt – nedostupné reálne kliky/impresie/CTR.
+- Rank Tracker projekt nie je založený – nedostupný oficiálny Share of Voice a
+  denné trackovanie; konkurencia je z organic-competitors (odhad).
+- Figma dizajnové tokeny neboli poskytnuté – HTML používa default dizajn systém.
+- Detailný KW-level content gap (konkrétne KW konkurentov) nebol v tomto behu
+  stiahnutý – naplánované ako akcia A6.
+- Ahrefs traffic sú odhady, nie namerané návštevy z analytiky.
+
+
+================================================================
+18. ZDROJE MCP
+================================================================
+
+- Ahrefs MCP (API v3) – HLAVNÝ ZDROJ:
+    * site-explorer-metrics (KPI, 2026-06-30 vs 2026-05-31)
+    * site-explorer-keywords-history (pásmová distribúcia, 2026-01 až 2026-06)
+    * site-explorer-organic-keywords (TOP 100 core, rasty, poklesy)
+    * site-explorer-organic-competitors (konkurencia + content gap agregát)
+    * site-explorer-domain-rating (DR = 38)
+    * subscription-info-limits-and-usage (kontrola limitov)
+- Figma MCP: nepoužité (nebol poskytnutý firemný dizajnový súbor) – iba na čítanie.
+- Google Calendar MCP: použité na vytvorenie novej udalosti SEO porady s Google Meet.
+- Canva MCP: NEPOUŽITÉ (zakázané zadaním).
+
+Krajina dát: SK. Target: sperky-eshop.sk (subdomains). Mena hodnôt: USD.
+================================================================
+KONIEC REPORTU – SEO_report_2026-06.txt
+================================================================
