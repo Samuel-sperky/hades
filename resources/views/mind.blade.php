@@ -88,7 +88,7 @@
             <label class="slider">Spojenia
                 <input type="range" data-opt="edgeAlpha" min="0.1" max="1.5" step="0.05">
             </label>
-            <label class="slider">Žiara uzlov
+            <label class="slider">Obrysy uzlov
                 <input type="range" data-opt="glow" min="0.2" max="1.5" step="0.05">
             </label>
             <label class="slider">Popisky
@@ -100,9 +100,6 @@
             </label>
             <label class="slider">Písmo popiskov
                 <input type="range" data-opt="labelSize" min="0.7" max="1.5" step="0.05">
-            </label>
-            <label class="slider">Hustota častíc
-                <input type="range" data-opt="density" min="0" max="2" step="0.1">
             </label>
             <div class="row">
                 <button id="opts-reset">Obnoviť predvolené</button>

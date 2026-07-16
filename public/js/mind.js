@@ -5,6 +5,14 @@
 const CORE_COLOR = '#b88a3a';
 const AREA_RADIUS = 460;
 
+// Témy — kontrakt pre budúci dark mode (canvas literály idú cez T.*)
+const THEMES = {
+    light: { paper:'#f8f4f7', ink:'#101d1b', inkSoft:'#2d3a38', muted:'#566964', labelHalo:'rgba(248,244,247,0.92)', edge:'45,58,56', gridColor:'3,121,126', outline:'rgba(16,29,27,0.35)' },
+    dark:  { paper:'#0e1413', ink:'#eaf3f1', inkSoft:'#c3d1ce', muted:'#8a9b98', labelHalo:'rgba(14,20,19,0.92)', edge:'195,209,206', gridColor:'5,188,196', outline:'rgba(234,243,241,0.30)' },
+};
+let T = THEMES.light;
+function setTheme(name){ T = THEMES[name] || THEMES.light; document.documentElement.dataset.theme = (name === 'dark' ? 'dark' : 'light'); localStorage.setItem('hades.theme', name); }
+
 // Farby uzlov (identita) — zladene s CSS --node-* tokenmi (Aura paleta)
 const NODE_COLORS = {
     core: '#b88a3a',
@@ -31,6 +39,9 @@ const S = {
     stars: [],
     hover: null,
     selected: null,
+    focus: { areaId: null, departmentId: null },
+    _hlFor: null,
+    _hlSet: null,
     awakeUntil: 0,
     awakeMinutes: 5,
     dim: 1,
@@ -58,7 +69,6 @@ const OPT_DEFAULTS = {
     labelAlpha: 1,
     nodeScale: 1,
     labelSize: 1,
-    density: 1,
 };
 
 S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.opts') || '{}'));
@@ -66,7 +76,6 @@ S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.
 function setOpt(key, value) {
     S.opts[key] = value;
     localStorage.setItem('hades.opts', JSON.stringify(S.opts));
-    if (key === 'density') makeStars();
     applyOpts();
 }
 
@@ -102,14 +111,42 @@ function nodeColor(n) {
     return area ? area.color : '#566964';
 }
 
-// Gradient plexus pozadia: fialova (vlavo) -> smaragdova (vpravo), ako referencny vizual
-// Tlmena technicka paleta: bridlicova indigo (vlavo) -> teal (vpravo)
-function plexusColor(x) {
-    const t = Math.max(0, Math.min(1, (x + 1300) / 2600));
-    const r = Math.round(120 + (3 - 120) * t);
-    const g = Math.round(170 + (121 - 170) * t);
-    const b = Math.round(168 + (126 - 168) * t);
-    return r + ',' + g + ',' + b;
+// Focus mód (priečinky): zaostrenie na oblasť / oddelenie
+function setFocus(areaId, departmentId) { S.focus = { areaId: areaId || null, departmentId: departmentId || null }; }
+
+function focusPass(n) {
+    if (!S.focus.areaId) return true;
+    if (n.type === 'core') return true;
+    if (n.area_id !== S.focus.areaId) return false;
+    if (S.focus.departmentId && n.department_id !== S.focus.departmentId) return false;
+    return true;
+}
+
+// Zvýraznená množina pri hover/select — cache podľa kotvového uzla
+function highlightSet() {
+    const anchor = S.hover || S.selected;
+    if (!anchor) { S._hlFor = null; S._hlSet = null; return null; }
+    if (S._hlFor !== anchor) {
+        const set = new Set([anchor.id]);
+        for (const m of neighborsOf(anchor)) set.add(m.id);
+        S._hlFor = anchor;
+        S._hlSet = set;
+    }
+    return S._hlSet;
+}
+
+function nodeAlphaMul(n, hl) {
+    let mul = 1;
+    if (hl && !hl.has(n.id)) mul *= 0.18;
+    if (!focusPass(n)) mul *= 0.15;
+    return mul;
+}
+
+function edgeAlphaMul(e, hl, anchor) {
+    let mul = 1;
+    if (hl && !(anchor && (e.source.id === anchor.id || e.target.id === anchor.id))) mul *= 0.18;
+    if (!(focusPass(e.source) && focusPass(e.target))) mul *= 0.15;
+    return mul;
 }
 
 const LAYER_X = [-560, -280, 0, 280, 560];
@@ -147,12 +184,12 @@ function drawLayerScaffold(layers) {
     ctx.textAlign = 'center';
     for (let i = 0; i < LAYER_X.length; i++) {
         ctx.globalAlpha = 0.6 * S.dim;
-        ctx.fillStyle = '#2d3a38';
+        ctx.fillStyle = T.inkSoft;
         ctx.font = '600 ' + (12.5 * invK) + 'px "Geist Mono", ui-monospace, monospace';
         ctx.fillText(LAYER_META[i].title.toUpperCase(), LAYER_X[i], headerY);
 
         ctx.globalAlpha = 0.5 * S.dim;
-        ctx.fillStyle = '#566964';
+        ctx.fillStyle = T.muted;
         ctx.font = (10.5 * invK) + 'px "Geist Mono", ui-monospace, monospace';
         ctx.fillText(LAYER_META[i].sub, LAYER_X[i], headerY + 18 * invK);
     }
@@ -162,7 +199,7 @@ function drawLayerScaffold(layers) {
 function nodeRadius(n) {
     const base = n.type === 'core'
         ? (n.label === S.name ? 24 : 14)
-        : 7 + 2.9 * Math.log2(1 + (n.strength || 1));
+        : Math.min(16, 7 + 2.9 * Math.log2(1 + (n.strength || 1)));
 
     return base * (S.opts ? S.opts.nodeScale : 1);
 }
@@ -349,24 +386,9 @@ function resize() {
     canvas.style.height = S.h + 'px';
 }
 
-// Cistice pozadia: technicke gulicky s hlbkou (parallax) a jemnym driftom
+// Časticový systém odstránený — žiadna hmla na papieri. No-op kvôli existujúcim volaniam.
 function makeStars() {
     S.stars = [];
-    const count = Math.round(140 * (S.opts ? S.opts.density : 1));
-    for (let i = 0; i < count; i++) {
-        const z = 0.35 + Math.random() * 0.65;
-        S.stars.push({
-            x: (Math.random() - 0.5) * 2600,
-            y: (Math.random() - 0.5) * 2600,
-            z,
-            dir: Math.random() * Math.PI * 2,
-            speed: (0.25 + Math.random() * 0.5) * z,
-            curve: (Math.random() - 0.5) * 0.05,
-            phase: Math.random() * Math.PI * 2,
-            twinkle: 0.25 + Math.random() * 0.35,
-            r: 0.8 + z * 0.7,
-        });
-    }
 }
 
 function visibleInReplay(n) {
@@ -380,81 +402,34 @@ function draw() {
     S.dim += (targetDim - S.dim) * 0.02;
 
     ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
-    ctx.fillStyle = '#f8f4f7';
+    ctx.fillStyle = T.paper;
     ctx.fillRect(0, 0, S.w, S.h);
 
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
     ctx.scale(S.cam.k, S.cam.k);
 
+    const hl = highlightSet();
+    const hlAnchor = S.hover || S.selected;
+
     const layersView = S.view === 'layers';
     const bgLevel = layersView ? 0 : S.opts.bg;
     if (bgLevel > 0.01) {
-        const plexusDist = 210;
         const invK = 1 / S.cam.k;
 
-        // jemna technicka mriezka (world-space, hyba sa so sietou)
+        // jemna technicka mriezka (world-space, hyba sa so sietou) — jedine pozadie
         const _step = 240, _ext = 1400;
         ctx.lineWidth = 0.5 * invK;
-        ctx.strokeStyle = 'rgba(3,121,126,' + (0.035 * S.dim * bgLevel) + ')';
+        ctx.strokeStyle = 'rgba(' + T.gridColor + ',' + (0.05 * S.dim * bgLevel) + ')';
         ctx.beginPath();
         for (let gx = -_ext; gx <= _ext; gx += _step) { ctx.moveTo(gx, -_ext); ctx.lineTo(gx, _ext); }
         for (let gy = -_ext; gy <= _ext; gy += _step) { ctx.moveTo(-_ext, gy); ctx.lineTo(_ext, gy); }
         ctx.stroke();
-
-        // linky: jemne teal hairlines na papieri
-        ctx.lineWidth = 0.6 * invK;
-        for (let i = 0; i < S.stars.length; i++) {
-            const a = S.stars[i];
-            for (let j = i + 1; j < S.stars.length; j++) {
-                const b = S.stars[j];
-                const dx = a.x - b.x, dy = a.y - b.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 > plexusDist * plexusDist) continue;
-                const depth = Math.min(a.z, b.z);
-                const alpha = Math.min(0.10,
-                    (1 - Math.sqrt(d2) / plexusDist) * 0.07 * depth * S.dim * bgLevel);
-                ctx.strokeStyle = 'rgba(' + plexusColor((a.x + b.x) / 2) + ',' + alpha + ')';
-                ctx.beginPath();
-                ctx.moveTo(a.x, a.y);
-                ctx.lineTo(b.x, b.y);
-                ctx.stroke();
-            }
-        }
-
-        // gulicky: cisty solidny bod + jemny teal "node" prstenec
-        for (const s of S.stars) {
-            const col = plexusColor(s.x);
-            const rr = s.r * s.z * invK;
-            const base = Math.min(0.18, s.z * 0.5 * S.dim * bgLevel);
-
-            ctx.globalAlpha = base;
-            ctx.fillStyle = 'rgba(' + col + ',1)';
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, rr, 0, 7);
-            ctx.fill();
-
-            ctx.globalAlpha = base * 0.5;
-            ctx.lineWidth = 0.5 * invK;
-            ctx.strokeStyle = 'rgba(3,121,126,1)';
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, rr * 2.2, 0, 7);
-            ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
     }
 
     if (S.view === 'map') for (const area of S.areas.values()) {
         const a = areaAnchor(area);
-        ctx.globalAlpha = 0.05 * S.dim;
-        const g = ctx.createRadialGradient(a.x, a.y, 20, a.x, a.y, 260);
-        g.addColorStop(0, area.color);
-        g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(a.x, a.y, 260, 0, 7);
-        ctx.fill();
         ctx.globalAlpha = 0.28 * S.dim;
-        ctx.fillStyle = '#566964';
+        ctx.fillStyle = T.muted;
         ctx.font = '600 13px "Geist Mono", ui-monospace, monospace';
         ctx.textAlign = 'center';
         ctx.fillText(area.name.toUpperCase(), a.x, a.y - 230);
@@ -471,7 +446,7 @@ function draw() {
                 if (!visibleInReplay(a)) continue;
                 for (const b of layers[li + 1]) {
                     if (!visibleInReplay(b)) continue;
-                    ctx.strokeStyle = 'rgba(3,121,126,' + (0.12 * S.dim * S.opts.edgeAlpha) + ')';
+                    ctx.strokeStyle = 'rgba(' + T.edge + ',0.10)';
                     ctx.beginPath();
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
@@ -483,9 +458,10 @@ function draw() {
     } else {
         for (const e of S.edges) {
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
-            const alpha = Math.min(0.30,
-                Math.min(0.24, 0.12 + 0.06 * Math.log2(1 + (e.weight || 1))) * S.dim * S.opts.edgeAlpha);
-            ctx.strokeStyle = 'rgba(3,121,126,' + alpha + ')';
+            // atramentovo-šedé hrany, bez S.dim hmly; podlaha 0.12, potom highlight/focus tlmenie
+            let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
+            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor);
+            ctx.strokeStyle = 'rgba(' + T.edge + ',' + alpha + ')';
             ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
             ctx.beginPath();
             ctx.moveTo(e.source.x, e.source.y);
@@ -499,13 +475,10 @@ function draw() {
     for (const p of S.pulses) {
         const x = p.from.x + (p.to.x - p.from.x) * p.t;
         const y = p.from.y + (p.to.y - p.from.y) * p.t;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 10);
-        g.addColorStop(0, p.color);
-        g.addColorStop(1, 'transparent');
-        ctx.globalAlpha = 0.8 * p.dim * Math.sin(Math.PI * Math.min(p.t, 1));
-        ctx.fillStyle = g;
+        ctx.globalAlpha = 0.7 * p.dim * Math.sin(Math.PI * Math.min(p.t, 1));
+        ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(x, y, 10, 0, 7);
+        ctx.arc(x, y, 8, 0, 7);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -518,26 +491,17 @@ function draw() {
             const r = Math.max(6, nodeRadius(n)) * 0.9;
             const color = nodeColor(n);
             const flash = n.flash || 0;
+            const mul = nodeAlphaMul(n, hl);
 
-            // jemna aura
-            ctx.globalAlpha = Math.min(0.4, (0.12 + flash * 0.5) * S.dim * S.opts.glow);
-            const g = ctx.createRadialGradient(n.x, n.y, r * 0.6, n.x, n.y, r * 2.4);
-            g.addColorStop(0, color);
-            g.addColorStop(1, 'transparent');
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, r * 2.4, 0, 7);
-            ctx.fill();
-
-            // jadro
-            ctx.globalAlpha = Math.min(1, (0.82 + flash * 0.5) * S.dim);
+            // jadro (bez aury — žiadna hmla)
+            ctx.globalAlpha = Math.min(1, (0.82 + flash * 0.5)) * mul;
             ctx.fillStyle = color;
             ctx.beginPath();
             ctx.arc(n.x, n.y, r * 0.72, 0, 7);
             ctx.fill();
 
             // prsteň (wireframe)
-            ctx.globalAlpha = Math.min(1, (0.95 + flash) * S.dim);
+            ctx.globalAlpha = Math.min(1, (0.95 + flash)) * mul;
             ctx.lineWidth = 1.5 * invK;
             ctx.strokeStyle = color;
             ctx.beginPath();
@@ -551,26 +515,17 @@ function draw() {
         if (!visibleInReplay(n)) continue;
         const r = nodeRadius(n);
         const color = nodeColor(n);
-        const flash = n.flash || 0;
-        const halo = r * (2.4 + flash * 2);
+        const mul = nodeAlphaMul(n, hl);
 
-        ctx.globalAlpha = Math.min(0.55, (0.18 + flash * 0.4) * S.dim * S.opts.glow);
-        const g = ctx.createRadialGradient(n.x, n.y, r * 0.3, n.x, n.y, halo);
-        g.addColorStop(0, color);
-        g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, halo, 0, 7);
-        ctx.fill();
-
-        ctx.globalAlpha = (0.95 + flash) * S.dim;
+        // plne nepriehľadný uzol (žiadne halo) — tlmí sa len highlight/focus násobičom
+        ctx.globalAlpha = 1 * mul;
         ctx.fillStyle = color;
         drawShape(n, r);
 
-        // ink hairline obrys pre cistu "gem" definiciu na papieri
-        ctx.globalAlpha = Math.min(1, (0.6 + flash) * S.dim);
+        // ink obrys — silu ovláda slider 'glow' (Obrysy uzlov)
+        ctx.globalAlpha = Math.min(1, S.opts.glow) * mul;
         ctx.lineWidth = Math.max(1, 0.9 / S.cam.k);
-        ctx.strokeStyle = 'rgba(16,29,27,0.32)';
+        ctx.strokeStyle = T.outline;
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, 7);
         ctx.stroke();
@@ -580,7 +535,7 @@ function draw() {
 
     ctx.globalCompositeOperation = 'source-over';
 
-    const showLabels = S.cam.k > 0.55 && S.opts.labelAlpha > 0.02;
+    const showLabels = S.cam.k > 0.5 && S.opts.labelAlpha > 0.02;
     const candidates = [];
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
@@ -605,13 +560,13 @@ function draw() {
         if (collides && !isHover) continue;
         taken.push(rect);
 
-        ctx.globalAlpha = Math.min(1,
-            (isHover ? 0.98 : Math.min(0.72, (S.cam.k - 0.5) * 1.6)) * S.dim * S.opts.labelAlpha);
+        // vždy plne čitateľné — žiadny zoom fade, len highlight/focus tlmenie
+        ctx.globalAlpha = Math.min(1, S.opts.labelAlpha) * nodeAlphaMul(n, hl);
         ctx.lineWidth = Math.max(2.5, fontSize * 0.28);
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(248, 244, 247, 0.9)';
+        ctx.strokeStyle = T.labelHalo;
         ctx.strokeText(n.label, n.x, y);
-        ctx.fillStyle = '#101d1b';
+        ctx.fillStyle = T.ink;
         ctx.fillText(n.label, n.x, y);
     }
     ctx.globalAlpha = 1;
@@ -643,15 +598,6 @@ function frame() {
     framePending = false;
     const dt = Math.min((now() - lastFrame) / 1000, 0.1);
     lastFrame = now();
-
-    if (!REDUCED_MOTION) for (const st of S.stars) {
-        st.dir += st.curve * dt;
-        st.x += Math.cos(st.dir) * st.speed * dt;
-        st.y += Math.sin(st.dir) * st.speed * dt;
-        st.phase += st.twinkle * dt;
-        if (st.x > 1300) st.x -= 2600; else if (st.x < -1300) st.x += 2600;
-        if (st.y > 1300) st.y -= 2600; else if (st.y < -1300) st.y += 2600;
-    }
 
     for (const p of S.pulses) p.t += dt * p.speed;
     for (let i = S.pulses.length - 1; i >= 0; i--) {
@@ -744,6 +690,18 @@ function setupInput() {
             else closeNodePanel();
         }
         dragging = false;
+    });
+
+    // Dvojklik pri kotve oblasti (do 260 world-jednotiek) prepína focus mód
+    canvas.addEventListener('dblclick', (e) => {
+        const w = screenToWorld(e.clientX, e.clientY);
+        let best = null, bestD = 260;
+        for (const area of S.areas.values()) {
+            const a = areaAnchor(area);
+            const d = Math.hypot(a.x - w.x, a.y - w.y);
+            if (d < bestD) { best = area; bestD = d; }
+        }
+        if (best) setFocus(S.focus.areaId === best.id ? null : best.id, null);
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -1285,6 +1243,7 @@ function setupShortcuts() {
             closeDock();
             closeNodePanel();
             collapsePrompt();
+            setFocus(null, null);
             return;
         }
 
@@ -1558,6 +1517,7 @@ function setupControls() {
 /* ---------- štart ---------- */
 
 async function init() {
+    setTheme(localStorage.getItem('hades.theme') || 'light');
     resize();
     makeStars();
     window.addEventListener('resize', resize);
@@ -1594,7 +1554,7 @@ async function init() {
     setInterval(dream, 9000 + Math.random() * 6000);
     setInterval(computeReplayBounds, 60000);
 
-    window.HADES = { S, draw, frame };
+    window.HADES = { S, draw, frame, setTheme, setFocus };
 
     scheduleFrame();
     document.addEventListener('visibilitychange', () => {

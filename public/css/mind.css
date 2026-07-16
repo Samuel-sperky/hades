@@ -229,19 +229,6 @@ label.slider output,
 }
 #mind.dragging { cursor: grabbing; }
 
-/* Fixed non-interactive vignette — faint teal-ink paper edge, not black. */
-body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-vignette);
-    pointer-events: none;
-    background: radial-gradient(120% 100% at 50% 45%,
-        transparent 60%,
-        rgba(15, 40, 38, .06) 84%,
-        rgba(15, 40, 38, .12) 100%);
-}
-
 /* ---------------------------------------------------------------------------
    BASE BUTTON + VARIANTS (no transform lift anywhere — chrome recedes)
    --------------------------------------------------------------------------- */

@@ -34,6 +34,7 @@ class NodeController extends Controller
             'node' => $node->toApi() + [
                 'area_name' => $node->area?->name,
                 'department_name' => $node->department?->name,
+                'meta' => $node->meta,
             ],
             'neighbors' => $neighbors,
             'activations' => $activations,

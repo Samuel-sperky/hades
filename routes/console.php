@@ -19,3 +19,6 @@ Schedule::exec(
 Schedule::command('mind:ingest')->everyTenMinutes()->withoutOverlapping();
 Schedule::command('mind:ingest --all')->dailyAt('03:30');
 Schedule::command('mind:digest')->weeklyOn(0, '04:00');
+
+// Mesačná archivácia starých session záznamov (starších ako 90 dní)
+Schedule::command('mind:archive-old')->monthlyOn(1, '04:30');

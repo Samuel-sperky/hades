@@ -13,12 +13,21 @@ use Illuminate\Support\Str;
 /**
  * Deterministický parser Claude Code transcriptov (JSONL) — bez modelu.
  * Z každej session vytvorí memory uzol so source=session a meta detailmi.
+ *
+ * v2: mapovanie projekt→oblasť, oddelenie "Záznamy — <projekt>", noise filter,
+ * inteligentný titulok, auto project uzol a prepájanie na skill uzly.
  */
 class TranscriptIngestService
 {
     protected string $base;
 
     protected array $fileTools = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'];
+
+    /** Krátke potvrdzovacie prompty, ktoré nenesú informáciu. */
+    protected array $noiseWords = [
+        'pokračuj', 'pokracuj', 'ok', 'oki', 'áno', 'ano', 'nie', 'dobre', 'super',
+        'go', 'continue', 'yes', 'no', 'daj', 'ešte', 'este',
+    ];
 
     public function __construct()
     {
@@ -75,13 +84,19 @@ class TranscriptIngestService
             return null; // prázdna / systémová session
         }
 
+        // Noise filter — potvrdzovacie prompty nejdú do meta ani do titulku
+        $allPrompts = $rec['prompts'];
+        $prompts = array_values(array_filter($allPrompts, fn ($p) => ! $this->isNoisePrompt($p)));
+        $noiseFiltered = count($allPrompts) - count($prompts);
+        $rec['prompts'] = $prompts;
+
         $sessionId = $rec['session_id'] ?: pathinfo($path, PATHINFO_FILENAME);
         $key = 'session:'.$sessionId;
         $existed = Node::where('external_key', $key)->exists();
 
         [$area, $department] = $this->classify($rec['project']);
 
-        $title = $this->shortTitle($rec['prompts'][0]);
+        $title = $this->smartTitle($rec);
         $desc = $this->describe($rec);
 
         $node = Node::updateOrCreate(
@@ -102,6 +117,7 @@ class TranscriptIngestService
                     'ended_at' => $rec['ended_at'],
                     'prompt_count' => count($rec['prompts']),
                     'prompts' => array_slice($rec['prompts'], 0, 8),
+                    'noise_filtered' => $noiseFiltered,
                     'files' => array_slice($rec['files'], 0, 20),
                     'file_count' => count($rec['files']),
                     'commits' => $rec['commits'],
@@ -118,7 +134,8 @@ class TranscriptIngestService
             $node->forceFill(['created_at' => Carbon::parse($rec['started_at'])])->save();
         }
 
-        $this->linkToProject($node, $rec['project']);
+        $this->linkToProject($node, $rec['project'], $area);
+        $this->linkSkillMentions($node, $rec);
 
         if (! $existed) {
             MindPulse::dispatch('node.created', ['node' => $node->toApi()]);
@@ -225,6 +242,26 @@ class TranscriptIngestService
         return $rec;
     }
 
+    /** Krátke potvrdzovacie prompty typu "ok", "pokračuj" nenesú informáciu. */
+    public function isNoisePrompt(string $prompt): bool
+    {
+        $trimmed = trim($prompt);
+        if (mb_strlen($trimmed) < 15) {
+            return true;
+        }
+
+        // systémový obsah vložený harnessom nie je používateľský prompt
+        if (str_starts_with($trimmed, '<') || str_starts_with($trimmed, '[SYSTEM')
+            || str_starts_with($trimmed, '[Image') || str_starts_with($trimmed, 'Caveat:')) {
+            return true;
+        }
+
+        // interpunkciu preč, porovnaj s whitelist-om šumu
+        $bare = mb_strtolower(trim(preg_replace('/[\p{P}\p{S}]+/u', '', $trimmed)));
+
+        return in_array($bare, $this->noiseWords, true);
+    }
+
     protected function extractCommits(string $command, array &$commits): void
     {
         if (! preg_match('/git\s+(-c\s+\S+\s+)*commit/i', $command)) {
@@ -251,14 +288,40 @@ class TranscriptIngestService
         return trim(preg_replace('/[ \t]+/', ' ', $content));
     }
 
-    protected function shortTitle(string $prompt): string
+    /**
+     * Titulok z prvej zmysluplnej prompty: prvá veta, max 60 znakov
+     * bez rozseknutia slova. Fallback: "<projekt> — práca <dátum>".
+     */
+    protected function smartTitle(array $rec): string
     {
-        $first = trim(strtok($prompt, "\n"));
-        if ($first === '') {
-            $first = trim($prompt);
+        $prompt = $rec['prompts'][0] ?? null;
+
+        if (is_string($prompt) && trim($prompt) !== '') {
+            // prvá veta — rozdeľ na . ! ? alebo nový riadok
+            $parts = preg_split('/(?<=[.!?])\s+|\r?\n/u', trim($prompt), 2);
+            $sentence = trim($parts[0] ?? '');
+            $sentence = $this->cleanPrompt($sentence);
+            $sentence = trim(preg_replace('/\s+/u', ' ', $sentence));
+
+            if ($sentence !== '') {
+                if (mb_strlen($sentence) <= 60) {
+                    return $sentence;
+                }
+
+                // skráť na 60 znakov, ale nikdy uprostred slova
+                $cut = mb_substr($sentence, 0, 60);
+                $lastSpace = mb_strrpos($cut, ' ');
+                if ($lastSpace !== false && $lastSpace > 0) {
+                    $cut = mb_substr($cut, 0, $lastSpace);
+                }
+
+                return rtrim($cut, " \t.,;:—-");
+            }
         }
 
-        return Str::limit($first, 70);
+        $date = $rec['started_at'] ? Carbon::parse($rec['started_at'])->format('j.n.Y') : now()->format('j.n.Y');
+
+        return ($rec['project'] ?? 'projekt').' — práca '.$date;
     }
 
     protected function describe(array $rec): string
@@ -289,44 +352,144 @@ class TranscriptIngestService
         return basename(rtrim($cwd, '/')) ?: 'projekt';
     }
 
-    /** @return array{0: ?Area, 1: ?Department} */
-    protected function classify(string $project): array
+    /**
+     * Projekt → oblasť podľa config('hades.project_area_map'); case-insensitive,
+     * skúša aj čiastočnú zhodu (contains oboma smermi). Fallback z configu.
+     */
+    public function resolveArea(?string $project): ?Area
     {
-        $area = Area::where('slug', 'vyvoj-kod')->first() ?? Area::orderBy('id')->first();
+        $map = (array) config('hades.project_area_map', []);
+        $needle = mb_strtolower(trim((string) $project));
+
+        $slug = null;
+        if ($needle !== '') {
+            // presná zhoda (case-insensitive)
+            foreach ($map as $name => $areaSlug) {
+                if (mb_strtolower($name) === $needle) {
+                    $slug = $areaSlug;
+                    break;
+                }
+            }
+            // čiastočná zhoda — názov projektu obsahuje kľúč alebo naopak
+            if ($slug === null) {
+                foreach ($map as $name => $areaSlug) {
+                    $key = mb_strtolower($name);
+                    if (str_contains($needle, $key) || str_contains($key, $needle)) {
+                        $slug = $areaSlug;
+                        break;
+                    }
+                }
+            }
+        }
+
+        $slug ??= (string) config('hades.project_area_fallback', 'vyvoj-kod');
+
+        return Area::where('slug', $slug)->first() ?? Area::orderBy('id')->first();
+    }
+
+    /** @return array{0: ?Area, 1: ?Department} */
+    public function classify(?string $project): array
+    {
+        $area = $this->resolveArea($project);
         if (! $area) {
             return [null, null];
         }
 
+        $project = trim((string) $project) ?: 'projekt';
         $dept = Department::firstOrCreate(
-            ['area_id' => $area->id, 'slug' => Str::slug($project)],
-            ['name' => $project],
+            ['area_id' => $area->id, 'slug' => 'zaznamy-'.Str::slug($project)],
+            ['name' => 'Záznamy — '.$project],
         );
 
         return [$area, $dept];
     }
 
-    protected function linkToProject(Node $node, string $project): void
+    /**
+     * Auto project uzol: firstOrCreate 'project:<slug>' a prepoj záznam naň.
+     * Pri opakovaní sa hrana posilňuje.
+     */
+    protected function linkToProject(Node $node, ?string $project, ?Area $area): void
     {
-        $needle = mb_strtolower(preg_replace('/[^a-z0-9]+/i', '', $project));
-        if ($needle === '') {
+        $project = trim((string) $project);
+        if ($project === '') {
             return;
         }
 
-        $project = Node::where('type', 'project')
-            ->whereNull('source')
-            ->get()
-            ->first(function (Node $p) use ($needle) {
-                $hay = mb_strtolower(preg_replace('/[^a-z0-9]+/i', '', $p->label));
+        $projectNode = Node::firstOrCreate(
+            ['external_key' => 'project:'.Str::slug($project)],
+            [
+                'type' => 'project',
+                'source' => null,
+                'label' => $project,
+                'area_id' => $area?->id,
+                'department_id' => null,
+                'strength' => 2,
+                'last_activated_at' => now(),
+            ],
+        );
 
-                return $hay !== '' && (str_contains($hay, $needle) || str_contains($needle, $hay));
-            });
+        if ($projectNode->id === $node->id) {
+            return;
+        }
 
-        if ($project && $project->id !== $node->id) {
-            [$s, $t] = $node->id < $project->id ? [$node->id, $project->id] : [$project->id, $node->id];
+        [$s, $t] = $node->id < $projectNode->id ? [$node->id, $projectNode->id] : [$projectNode->id, $node->id];
+        $edge = Edge::firstOrCreate(
+            ['source_id' => $s, 'target_id' => $t],
+            ['weight' => 1, 'last_activated_at' => now()],
+        );
+
+        if (! $edge->wasRecentlyCreated) {
+            $edge->increment('weight');
+            $edge->forceFill(['last_activated_at' => now()])->save();
+        }
+    }
+
+    /**
+     * Prepojenie na skill uzly, ktorých label sa spomína v promptoch/finálnom texte.
+     * Max 5 prepojení na záznam.
+     */
+    protected function linkSkillMentions(Node $node, array $rec): void
+    {
+        $text = mb_strtolower(implode(' ', $rec['prompts']).' '.(string) $rec['final']);
+        if (trim($text) === '') {
+            return;
+        }
+
+        $linked = 0;
+        $skills = Node::where('type', 'skill')->get(['id', 'label']);
+
+        foreach ($skills as $skill) {
+            if ($linked >= 5) {
+                break;
+            }
+            if (mb_strlen($skill->label) < 4) {
+                continue;
+            }
+
+            $needles = [mb_strtolower($skill->label)];
+            // "SEO analysis (Ahrefs)" → skús aj "seo analysis"
+            $bare = trim(mb_strtolower(preg_replace('/\s*\([^)]*\)\s*$/u', '', $skill->label)));
+            if ($bare !== '' && $bare !== $needles[0] && mb_strlen($bare) >= 4) {
+                $needles[] = $bare;
+            }
+
+            $hit = false;
+            foreach ($needles as $needle) {
+                if (str_contains($text, $needle)) {
+                    $hit = true;
+                    break;
+                }
+            }
+            if (! $hit || $skill->id === $node->id) {
+                continue;
+            }
+
+            [$s, $t] = $node->id < $skill->id ? [$node->id, $skill->id] : [$skill->id, $node->id];
             Edge::firstOrCreate(
                 ['source_id' => $s, 'target_id' => $t],
                 ['weight' => 1, 'last_activated_at' => now()],
             );
+            $linked++;
         }
     }
 }

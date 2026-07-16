@@ -19,4 +19,14 @@ return [
     // Kde su namountovane Claude Code transcripty (read-only) v kontajneri
     'transcripts_path' => env('HADES_TRANSCRIPTS_PATH', '/transcripts'),
 
+    // Mapovanie projektov (podla nazvu priecinka / cwd) na oblasti mozgu
+    'project_area_map' => [
+        'Šperky Aura app' => 'biznis-projekty',
+        'Banner Gennerator' => 'biznis-projekty',
+        'AI-mind' => 'vyvoj-kod',
+    ],
+
+    // Oblast pre projekty, ktore nie su v mape
+    'project_area_fallback' => 'vyvoj-kod',
+
 ];
