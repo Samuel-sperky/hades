@@ -10,6 +10,49 @@ use Illuminate\Http\Request;
 
 class NodeController extends Controller
 {
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'label' => 'required|string|max:255',
+            'type' => 'sometimes|in:memory,skill,project',
+            'description' => 'nullable|string|max:5000',
+            'area_id' => 'nullable|exists:areas,id',
+            'department_id' => 'nullable|exists:departments,id',
+        ]);
+
+        // oddelenie musí patriť do zvolenej oblasti; bez oblasti sa odvodí z oddelenia
+        if (! empty($validated['department_id'])) {
+            $department = Department::find($validated['department_id']);
+
+            if ($department) {
+                if (! empty($validated['area_id']) && (int) $validated['area_id'] !== (int) $department->area_id) {
+                    return response()->json([
+                        'message' => 'Oddelenie nepatrí do zvolenej oblasti.',
+                    ], 422);
+                }
+
+                if (empty($validated['area_id'])) {
+                    $validated['area_id'] = $department->area_id;
+                }
+            }
+        }
+
+        $node = Node::create([
+            'label' => $validated['label'],
+            'type' => $validated['type'] ?? 'memory',
+            'description' => $validated['description'] ?? null,
+            'area_id' => $validated['area_id'] ?? null,
+            'department_id' => $validated['department_id'] ?? null,
+            'source' => null,
+            'strength' => 1,
+            'last_activated_at' => now(),
+        ]);
+
+        MindPulse::dispatch('node.created', ['node' => $node->toApi()]);
+
+        return response()->json(['node' => $node->toApi()], 201);
+    }
+
     public function show(Node $node): JsonResponse
     {
         $node->load(['area', 'department']);

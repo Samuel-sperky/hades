@@ -262,6 +262,79 @@ label.slider output,
     z-index: var(--z-canvas);
 }
 #mind.dragging { cursor: grabbing; }
+#mind.grabbing { cursor: grabbing; } /* ťahanie uzla (grab & fling) */
+
+/* ---------------------------------------------------------------------------
+   LOCAL GRAPH CHIP (#local-chip) — plávajúci indikátor režimu lokálneho grafu,
+   pod hlavičkou v strede; stavia ho JS (updateLocalChip), toggluje .hidden
+   --------------------------------------------------------------------------- */
+#local-chip {
+    position: fixed;
+    top: 68px; /* app-header: top 16px + výška 44px + 8px odstup */
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: 5px 6px 5px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    box-shadow: var(--elev-1);
+    z-index: var(--z-chrome);
+}
+#local-chip .lc-label {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+#local-chip .lc-depths {
+    display: flex;
+    gap: 2px;
+}
+#local-chip .lc-depth {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#local-chip .lc-depth:hover { background: var(--hover-fill); color: var(--text); }
+#local-chip .lc-depth.active {
+    background: var(--accent-soft);
+    border-color: var(--border-accent);
+    color: var(--accent-600);
+}
+#local-chip .lc-close {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: var(--fs-body);
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#local-chip .lc-close:hover { background: var(--hover-fill); color: var(--text); }
+#local-chip .lc-depth:focus-visible,
+#local-chip .lc-close:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+body.ambient #local-chip { opacity: 0; pointer-events: none; transition: opacity var(--dur-ambient) var(--ease); }
 
 /* ---------------------------------------------------------------------------
    BASE BUTTON + VARIANTS (no transform lift anywhere — chrome recedes)
@@ -1704,6 +1777,146 @@ body.ambient #toasts {
     min-height: 26px;
     padding: 2px 12px;
     font-size: var(--fs-small);
+}
+
+/* ---------------------------------------------------------------------------
+   SIEŤ — FILTER (label.check + .check-cap) — vlastný 18px checkbox, teal check
+   --------------------------------------------------------------------------- */
+.check-cap {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin: var(--sp-2) 0 var(--sp-1);
+}
+
+label.check {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: var(--sp-1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-regular);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+label.check input {
+    position: absolute;
+    opacity: 0;
+    width: 1px; height: 1px;
+    pointer-events: none;
+}
+label.check .box {
+    width: 18px; height: 18px;
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--field-bg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+label.check:hover .box { border-color: var(--accent); }
+label.check input:checked + .box {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+label.check input:checked + .box::after {
+    content: "";
+    width: 9px; height: 5px;
+    border-left: 2px solid var(--on-accent);
+    border-bottom: 2px solid var(--on-accent);
+    transform: translateY(-1px) rotate(-45deg);
+}
+label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
+
+/* ---------------------------------------------------------------------------
+   LEGENDA — klikateľné oblasti (.legend-area) — toggle viditeľnosti na plátne
+   --------------------------------------------------------------------------- */
+#legend-areas .legend-area {
+    width: 100%;
+    min-height: auto;
+    justify-content: flex-start;
+    text-align: left;
+    background: none;
+    border: none;
+    font-family: var(--font);
+    font-weight: var(--fw-regular);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+#legend-areas .legend-area:hover { background: var(--hover-fill); }
+#legend-areas .legend-area:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#legend-areas .legend-area .la-name {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#legend-areas .legend-area .la-eye {
+    font-size: 16px;
+    color: var(--muted);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+#legend-areas .legend-area:hover .la-eye,
+#legend-areas .legend-area:focus-visible .la-eye { opacity: 1; }
+#legend-areas .legend-area.off { opacity: .4; }
+#legend-areas .legend-area.off .la-eye { opacity: 1; }
+
+/* ---------------------------------------------------------------------------
+   CONNECT MODE — kurzor krížika počas ručného prepájania uzlov
+   --------------------------------------------------------------------------- */
+#mind.linking,
+#mind.linking.dragging,
+#mind.linking.grabbing { cursor: crosshair; }
+
+/* ---------------------------------------------------------------------------
+   SUSEDIA V PANELI UZLA (.nb-row) — chip + tiché × na zrušenie spojenia
+   --------------------------------------------------------------------------- */
+#node-neighbors { display: flex; flex-direction: column; gap: 2px; }
+.nb-row { display: flex; align-items: center; gap: var(--sp-0); min-width: 0; }
+.nb-row .chip {
+    flex: 1; min-width: 0;
+    margin: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-align: left;
+}
+.nb-row .nb-del {
+    width: 24px; height: 24px; min-height: 24px;
+    padding: 0;
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+}
+.nb-row:hover .nb-del,
+.nb-row .nb-del:focus-visible { opacity: 1; }
+.nb-row .nb-del:hover { color: var(--danger); background: var(--danger-soft); }
+
+/* Prepojiť s uzlom — štvorcové ghost tlačidlo medzi Upraviť a mazaním */
+#node-connect {
+    flex: 0 0 auto;
+    width: 40px; height: 40px; min-height: 40px;
+    padding: 0;
+    font-size: var(--icon-md);
+}
+
+/* ---------------------------------------------------------------------------
+   NOVÝ UZOL (#btn-new-node) — tichá prerušovaná výzva pod stromom štruktúry
+   --------------------------------------------------------------------------- */
+#btn-new-node {
+    width: 100%;
+    margin-top: var(--sp-2);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-md);
+    color: var(--muted);
+}
+#btn-new-node:hover {
+    background: var(--accent-softer);
+    border-color: var(--border-accent);
+    color: var(--accent-600);
 }
 
 /* ---------------------------------------------------------------------------

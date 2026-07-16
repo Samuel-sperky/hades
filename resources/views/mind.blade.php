@@ -67,6 +67,7 @@
 
         <section id="sec-structure" class="hidden">
             <div id="structure-tree"></div>
+            <button id="btn-new-node" class="ghost" type="button">+ Nový uzol</button>
         </section>
 
         <section id="sec-search" class="hidden">
@@ -105,6 +106,40 @@
             <div class="switch-row">
                 <span id="theme-toggle-label">Tmavý režim</span>
                 <button id="theme-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="theme-toggle-label"></button>
+            </div>
+            <h3>Sieť — filter</h3>
+            <div class="check-cap">Typy</div>
+            <label class="check"><input type="checkbox" data-ftype="memory" checked><span class="box" aria-hidden="true"></span><span>Spomienky</span></label>
+            <label class="check"><input type="checkbox" data-ftype="skill" checked><span class="box" aria-hidden="true"></span><span>Skills</span></label>
+            <label class="check"><input type="checkbox" data-ftype="project" checked><span class="box" aria-hidden="true"></span><span>Projekty</span></label>
+            <div class="check-cap">Zdroje</div>
+            <label class="check"><input type="checkbox" data-fsource="session" checked><span class="box" aria-hidden="true"></span><span>Záznamy</span></label>
+            <label class="check"><input type="checkbox" data-fsource="skill" checked><span class="box" aria-hidden="true"></span><span>Playbooky</span></label>
+            <label class="check"><input type="checkbox" data-fsource="digest" checked><span class="box" aria-hidden="true"></span><span>Súhrny a archívy</span></label>
+            <label class="check"><input type="checkbox" data-fsource="manual" checked><span class="box" aria-hidden="true"></span><span>Ručné</span></label>
+            <h3>Sieť — sily</h3>
+            <label class="slider">Odpudzovanie
+                <input type="range" data-force="charge" min="-240" max="-20" step="1">
+                <output></output>
+            </label>
+            <label class="slider">Vzdialenosť spojení
+                <input type="range" data-force="linkDistance" min="40" max="220" step="1">
+                <output></output>
+            </label>
+            <label class="slider">Sila spojení
+                <input type="range" data-force="linkStrength" min="0.2" max="3" step="0.1">
+                <output></output>
+            </label>
+            <label class="slider">Gravitácia
+                <input type="range" data-force="gravity" min="0.2" max="2" step="0.1">
+                <output></output>
+            </label>
+            <div class="row">
+                <button id="forces-reset" class="ghost" type="button">Obnoviť sily</button>
+            </div>
+            <div class="switch-row">
+                <span id="sizedeg-label">Veľkosť podľa spojení</span>
+                <button id="sizedeg-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="sizedeg-label"></button>
             </div>
             <h3>Priehľadnosť</h3>
             <label class="slider">Panely
@@ -161,12 +196,18 @@
             <div id="node-history"></div>
             <div class="row node-actions">
                 <button id="node-edit" class="primary">Upraviť</button>
+                <button id="node-connect" class="ghost ms" title="Prepojiť s uzlom" aria-label="Prepojiť s uzlom">link</button>
                 <button id="node-delete" class="danger ms" aria-label="Zmazať">delete</button>
             </div>
         </div>
         <div id="node-form" class="hidden">
             <label>Názov<input id="edit-label" maxlength="255"></label>
             <label>Popis<textarea id="edit-desc" rows="5"></textarea></label>
+            <label id="edit-type-row" class="hidden">Typ<select id="edit-type">
+                <option value="memory">Spomienka</option>
+                <option value="skill">Skill</option>
+                <option value="project">Projekt</option>
+            </select></label>
             <label>Oblasť<select id="edit-area"></select></label>
             <label>Oddelenie<select id="edit-dept"></select></label>
             <div class="row">

@@ -36,6 +36,11 @@ const S = {
     focus: { areaId: null, departmentId: null },
     _hlFor: null,
     _hlSet: null,
+    local: null,          // { rootId, depth } — lokálny graf (Obsidian local graph)
+    _localFor: null,
+    _localSet: null,
+    degree: new Map(),    // nodeId → počet hrán, prepočet v buildSim
+    connectFrom: null,    // id zdrojového uzla pri ručnom prepájaní (connect mode)
     awakeUntil: 0,
     awakeMinutes: 5,
     dim: 1,
@@ -56,9 +61,23 @@ const OPT_DEFAULTS = {
     labelAlpha: 1,
     nodeScale: 1,
     labelSize: 1,
+    sizeByDegree: false,
 };
 
 S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.opts') || '{}'));
+
+// Fyzika — null = predvolená hodnota náhľadu; slidery (F2) zapisujú čísla + localStorage
+const FORCE_DEFAULTS = { charge: null, linkDistance: null, linkStrength: null, gravity: null };
+S.forces = Object.assign({}, FORCE_DEFAULTS, JSON.parse(localStorage.getItem('hades.forces') || '{}'));
+
+// Filtre siete (Obsidian filters) — množiny SKRYTÝCH typov / zdrojov / oblastí
+S.filter = { types: new Set(), sources: new Set(), areas: new Set() };
+try {
+    const f = JSON.parse(localStorage.getItem('hades.filter') || '{}');
+    for (const k of ['types', 'sources', 'areas']) {
+        if (Array.isArray(f[k])) S.filter[k] = new Set(f[k]);
+    }
+} catch (e) { /* poškodený filter — čisté predvolené */ }
 
 function setOpt(key, value) {
     S.opts[key] = value;
@@ -78,9 +97,17 @@ function syncSlider(inp) {
     const out = wrap && wrap.querySelector('output');
     if (out) {
         const opt = inp.dataset.opt;
-        out.textContent = (opt === 'nodeScale' || opt === 'labelSize')
-            ? '×' + val.toFixed(2)
-            : Math.round(val * 100) + ' %';
+        const force = inp.dataset.force;
+        if (force) {
+            // sily: multiplikátory ako ×N.N, absolútne hodnoty (charge/distance) surové číslo
+            out.textContent = (force === 'linkStrength' || force === 'gravity')
+                ? '×' + val.toFixed(1)
+                : String(Math.round(val));
+        } else {
+            out.textContent = (opt === 'nodeScale' || opt === 'labelSize')
+                ? '×' + val.toFixed(2)
+                : Math.round(val * 100) + ' %';
+        }
     }
 }
 
@@ -218,6 +245,137 @@ function highlightSet() {
     return S._hlSet;
 }
 
+/* ---------- lokálny graf (Obsidian local graph) ---------- */
+
+// BFS zo S.local.rootId po hĺbku — množina viditeľných uzlov, cache ako _hlSet
+function localSet() {
+    if (!S.local) return null;
+    const key = S.local.rootId + ':' + S.local.depth + ':' + S.edges.length;
+    if (S._localFor !== key) {
+        const adj = new Map();
+        const push = (a, b) => { const l = adj.get(a); if (l) l.push(b); else adj.set(a, [b]); };
+        for (const e of S.edges) { push(e.source_id, e.target_id); push(e.target_id, e.source_id); }
+        const set = new Set([S.local.rootId]);
+        let frontier = [S.local.rootId];
+        for (let d = 0; d < S.local.depth && frontier.length; d++) {
+            const next = [];
+            for (const id of frontier) {
+                for (const m of (adj.get(id) || [])) {
+                    if (!set.has(m)) { set.add(m); next.push(m); }
+                }
+            }
+            frontier = next;
+        }
+        S._localFor = key;
+        S._localSet = set;
+    }
+    return S._localSet;
+}
+
+function setLocal(rootId, depth) {
+    if (!S.byId.has(rootId)) return;
+    S.local = { rootId, depth: Math.min(3, Math.max(1, depth || 1)) };
+    S._localFor = null;
+    updateLocalChip();
+    fitView();
+}
+
+function clearLocal() {
+    if (!S.local) return;
+    S.local = null;
+    S._localFor = null;
+    S._localSet = null;
+    updateLocalChip();
+    fitView();
+}
+
+// Plávajúci čip pod hlavičkou — indikátor režimu + prepínač hĺbky 1/2/3
+let localChip = null;
+function updateLocalChip() {
+    if (!localChip) {
+        localChip = document.createElement('div');
+        localChip.id = 'local-chip';
+        localChip.innerHTML = '<span class="lc-label"></span>'
+            + '<span class="lc-depths">'
+            + [1, 2, 3].map((d) =>
+                '<button type="button" class="lc-depth" data-depth="' + d + '" aria-label="Hĺbka ' + d + '">' + d + '</button>'
+            ).join('')
+            + '</span>'
+            + '<button type="button" class="lc-close" aria-label="Zavrieť lokálny graf">×</button>';
+        document.body.appendChild(localChip);
+        localChip.querySelectorAll('.lc-depth').forEach((b) => {
+            b.onclick = () => { if (S.local) setLocal(S.local.rootId, +b.dataset.depth); };
+        });
+        localChip.querySelector('.lc-close').onclick = () => clearLocal();
+    }
+    if (!S.local) { localChip.classList.add('hidden'); return; }
+    localChip.classList.remove('hidden');
+    localChip.querySelector('.lc-label').textContent = 'Lokálny graf · hĺbka ' + S.local.depth;
+    localChip.querySelectorAll('.lc-depth').forEach((b) =>
+        b.classList.toggle('active', +b.dataset.depth === S.local.depth));
+}
+
+/* ---------- filtre siete (typy / zdroje / oblasti) ---------- */
+
+function filterActive() {
+    return S.filter.types.size > 0 || S.filter.sources.size > 0 || S.filter.areas.size > 0;
+}
+
+// Zdrojový kôš uzla pre filter: session / skill (playbook) / digest+archive / ručné
+function sourceBucket(n) {
+    if (n.source === 'session') return 'session';
+    if (n.source === 'skill') return 'skill';
+    if (n.source === 'digest' || n.source === 'archive') return 'digest';
+    if (!n.source) return 'manual';
+    return null;
+}
+
+// Jadro sa nikdy nefiltruje; skryté typy/zdroje/oblasti uzol vyradia z kreslenia
+function filterPass(n) {
+    if (n.type === 'core') return true;
+    if (S.filter.types.has(n.type)) return false;
+    const b = sourceBucket(n);
+    if (b && S.filter.sources.has(b)) return false;
+    if (n.area_id && S.filter.areas.has(n.area_id)) return false;
+    return true;
+}
+
+// Jediná brána viditeľnosti: aktívny lokálny graf vyhráva (BFS už množinu obmedzil)
+function nodeVisible(n, loc) {
+    if (loc) return loc.has(n.id);
+    return filterPass(n);
+}
+
+function persistFilter() {
+    localStorage.setItem('hades.filter', JSON.stringify({
+        types: [...S.filter.types],
+        sources: [...S.filter.sources],
+        areas: [...S.filter.areas],
+    }));
+}
+
+/* ---------- sily (Obsidian forces) — efektívne predvolené podľa náhľadu ---------- */
+
+function forceDefault(key) {
+    const net = S.view === 'net';
+    return {
+        charge: net ? -120 : -42,
+        linkDistance: net ? 95 : 72,
+        linkStrength: 1,
+        gravity: 1,
+    }[key];
+}
+
+// Slidery síl ukazujú override, alebo efektívnu predvolenú hodnotu aktuálneho náhľadu
+function syncForceSliders() {
+    document.querySelectorAll('input[data-force]').forEach((inp) => {
+        const k = inp.dataset.force;
+        const v = S.forces[k] != null ? S.forces[k] : forceDefault(k);
+        inp.value = v;
+        syncSlider(inp);
+    });
+}
+
 function nodeAlphaMul(n, hl) {
     let mul = 1;
     if (hl && !hl.has(n.id)) mul *= 0.18;
@@ -281,10 +439,16 @@ function drawLayerScaffold(layers) {
 }
 
 function nodeRadius(n) {
-    const base = n.type === 'core'
-        ? (n.label === S.name ? 24 : 14)
-        : Math.min(16, 7 + 2.9 * Math.log2(1 + (n.strength || 1)));
-
+    let base;
+    if (n.type === 'core') {
+        base = n.label === S.name ? 24 : 14;
+    } else if (S.opts && S.opts.sizeByDegree) {
+        // veľkosť podľa počtu spojení (Obsidian) — jadro si drží vlastnú mierku
+        const deg = S.degree.get(n.id) || 0;
+        base = Math.min(16, 6 + 2.2 * Math.log2(1 + deg));
+    } else {
+        base = Math.min(16, 7 + 2.9 * Math.log2(1 + (n.strength || 1)));
+    }
     return base * (S.opts ? S.opts.nodeScale : 1);
 }
 
@@ -421,6 +585,13 @@ function applyViewPins() {
 function buildSim() {
     if (S.sim) S.sim.stop();
 
+    // stupeň uzla (počet hrán) — podklad pre sizeByDegree, prepočet pri každej zmene hrán
+    S.degree = new Map();
+    for (const e of S.edges) {
+        S.degree.set(e.source_id, (S.degree.get(e.source_id) || 0) + 1);
+        S.degree.set(e.target_id, (S.degree.get(e.target_id) || 0) + 1);
+    }
+
     for (const n of S.nodes) {
         if (n.x === undefined) {
             const a = anchorOf(n);
@@ -432,18 +603,25 @@ function buildSim() {
     applyViewPins();
 
     const net = S.view === 'net';
+    // override fyziky zo S.forces (F2 slidery) — null = predvolená hodnota náhľadu
+    const F = S.forces || {};
+    const grav = F.gravity != null ? F.gravity : 1;
+    const linkMul = F.linkStrength != null ? F.linkStrength : 1;
 
     S.sim = d3.forceSimulation(S.nodes)
+        .velocityDecay(0.3)
         .force('x', d3.forceX(d => net ? 0 : anchorOf(d).x)
-            .strength(d => net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)))
+            .strength(d => (net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)) * grav))
         .force('y', d3.forceY(d => net ? 0 : anchorOf(d).y)
-            .strength(d => net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)))
-        .force('charge', d3.forceManyBody().strength(net ? -120 : -42).distanceMax(net ? 520 : 320))
+            .strength(d => (net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)) * grav))
+        .force('charge', d3.forceManyBody()
+            .strength(F.charge != null ? F.charge : (net ? -120 : -42))
+            .distanceMax(net ? 520 : 320))
         .force('collide', d3.forceCollide(d => nodeRadius(d) + 7))
         .force('link', d3.forceLink(S.edges)
             .id(d => d.id)
-            .distance(net ? 95 : 72)
-            .strength(e => Math.min(0.09, 0.025 * (e.weight || 1))))
+            .distance(F.linkDistance != null ? F.linkDistance : (net ? 95 : 72))
+            .strength(e => Math.min(0.09, 0.025 * (e.weight || 1)) * linkMul))
         .alpha(0.9)
         .alphaDecay(0.015)
         .alphaTarget(0.012)
@@ -460,6 +638,7 @@ function setView(view) {
     kickSim(0.6);
     // mapa/sieť: pár tikov, nech bbox sedí na usadených pozíciách; vrstvy sú deterministické (fx/fy)
     if (S.sim && view !== 'layers') S.sim.tick(30);
+    syncForceSliders(); // efektívne predvolené sily sa menia s náhľadom
     fitView();
 }
 
@@ -503,6 +682,8 @@ function draw() {
 
     const hl = highlightSet();
     const hlAnchor = S.hover || S.selected;
+    // lokálny graf: členovia BFS množiny sa kreslia, ostatné sa úplne preskočia
+    const loc = localSet();
 
     const layersView = S.view === 'layers';
     const bgLevel = layersView ? 0 : S.opts.bg;
@@ -527,6 +708,7 @@ function draw() {
         const areaBox = new Map();
         for (const n of S.nodes) {
             if (n.type === 'core' || !n.area_id || !visibleInReplay(n)) continue;
+            if (!nodeVisible(n, loc)) continue;
             const b = areaBox.get(n.area_id);
             if (!b) areaBox.set(n.area_id, { minX: n.x, maxX: n.x, minY: n.y });
             else {
@@ -541,6 +723,8 @@ function draw() {
         ctx.textAlign = 'center';
         for (const area of S.areas.values()) {
             const b = areaBox.get(area.id);
+            if (!loc && S.filter.areas.has(area.id)) continue; // skrytá oblasť — bez captionu
+            if (!b && (loc || filterActive())) continue; // žiadne viditeľné uzly — bez labelu
             const a = areaAnchor(area);
             ctx.fillText(area.name.toUpperCase(), b ? (b.minX + b.maxX) / 2 : a.x, (b ? b.minY : a.y) - 36);
         }
@@ -556,9 +740,9 @@ function draw() {
         ctx.beginPath();
         for (let li = 0; li < layers.length - 1; li++) {
             for (const a of layers[li]) {
-                if (!visibleInReplay(a)) continue;
+                if (!visibleInReplay(a) || !nodeVisible(a, loc)) continue;
                 for (const b of layers[li + 1]) {
-                    if (!visibleInReplay(b)) continue;
+                    if (!visibleInReplay(b) || !nodeVisible(b, loc)) continue;
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(b.x, b.y);
                 }
@@ -569,6 +753,7 @@ function draw() {
         // (2) skutočné spojenia zo S.edges — rovnaké váhové štýlovanie ako mapa/sieť
         for (const e of S.edges) {
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
+            if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
             let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
             alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor);
             ctx.strokeStyle = 'rgba(' + T.edge + ',' + alpha + ')';
@@ -590,6 +775,7 @@ function draw() {
     } else {
         for (const e of S.edges) {
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
+            if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
             // atramentovo-šedé hrany, bez S.dim hmly; podlaha 0.12, potom highlight/focus tlmenie
             let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
             alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor);
@@ -605,6 +791,7 @@ function draw() {
     ctx.globalCompositeOperation = 'source-over';
 
     for (const p of S.pulses) {
+        if (!(nodeVisible(p.from, loc) && nodeVisible(p.to, loc))) continue;
         const x = p.from.x + (p.to.x - p.from.x) * p.t;
         const y = p.from.y + (p.to.y - p.from.y) * p.t;
         ctx.globalAlpha = 0.7 * p.dim * Math.sin(Math.PI * Math.min(p.t, 1));
@@ -618,7 +805,9 @@ function draw() {
     ctx.globalCompositeOperation = 'source-over';
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
-        const r = layersView ? Math.max(6, nodeRadius(n)) * 0.9 : nodeRadius(n);
+        if (!nodeVisible(n, loc)) continue;
+        let r = layersView ? Math.max(6, nodeRadius(n)) * 0.9 : nodeRadius(n);
+        if (S.hover === n) r *= 1.15; // hover zväčšenie (Obsidian)
         const color = nodeColor(n);
         const flash = layersView ? (n.flash || 0) : 0;
         const mul = nodeAlphaMul(n, hl);
@@ -641,14 +830,19 @@ function draw() {
 
     ctx.globalCompositeOperation = 'source-over';
 
-    const showLabels = S.cam.k > 0.5 && S.opts.labelAlpha > 0.02;
+    // zoom fade rampa (Obsidian): labely sa vynárajú medzi k 0.42 a 0.64;
+    // hover/select kotva + jej susedia (highlightSet) ostávajú viditeľní vždy
+    const zoomFade = Math.min(1, Math.max(0, (S.cam.k - 0.42) / 0.22));
+    const showLabels = zoomFade > 0 && S.opts.labelAlpha > 0.02;
     const baseLabelAlpha = Math.min(1, S.opts.labelAlpha);
     const candidates = [];
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
+        if (!nodeVisible(n, loc)) continue;
         const isHover = S.hover === n || S.selected === n;
-        if (!showLabels && !isHover) continue;
-        const alpha = baseLabelAlpha * nodeAlphaMul(n, hl);
+        const inHl = !!(hl && hl.has(n.id));
+        if (!showLabels && !isHover && !inHl) continue;
+        const alpha = baseLabelAlpha * nodeAlphaMul(n, hl) * (isHover || inHl ? 1 : zoomFade);
         // pod prahom čitateľnosti: nekresliť ani nerezervovať obdĺžnik
         if (alpha < 0.12) continue;
         candidates.push({ n, isHover, alpha });
@@ -663,7 +857,8 @@ function draw() {
         const label = truncLabel(n.label);
         ctx.font = (isHover ? '600 ' : '') + fontSize + 'px "Geist", system-ui, sans-serif';
         const w = ctx.measureText(label).width;
-        const y = n.y + nodeRadius(n) + 15 / S.cam.k;
+        // label centrovaný POD uzlom — baseline r + 13/k, hover počíta so zväčšením
+        const y = n.y + nodeRadius(n) * (S.hover === n ? 1.15 : 1) + 13 / S.cam.k;
         const rect = { x: n.x - w / 2, y: y - fontSize, w, h: fontSize * 1.4 };
 
         const collides = taken.some((t) =>
@@ -672,7 +867,7 @@ function draw() {
         if (collides && !isHover) continue;
         taken.push(rect);
 
-        // vždy plne čitateľné — žiadny zoom fade, len highlight/focus tlmenie
+        // alfa nesie zoom fade aj highlight/focus tlmenie
         ctx.globalAlpha = alpha;
         ctx.lineWidth = Math.max(2.5, fontSize * 0.28);
         ctx.lineJoin = 'round';
@@ -795,9 +990,11 @@ function screenToWorld(px, py) {
 
 function pick(px, py) {
     const w = screenToWorld(px, py);
+    const loc = localSet();
     let best = null, bestD = Infinity;
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
+        if (!nodeVisible(n, loc)) continue;
         const d = Math.hypot(n.x - w.x, n.y - w.y);
         if (d < nodeRadius(n) + 8 / S.cam.k && d < bestD) { best = n; bestD = d; }
     }
@@ -806,30 +1003,66 @@ function pick(px, py) {
 
 function setupInput() {
     let dragging = false, moved = false, lx = 0, ly = 0;
+    let dragNode = null; // Obsidian-style grab & fling — ťahanie uzla v mape/sieti
 
     canvas.addEventListener('mousedown', (e) => {
         dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
-        canvas.classList.add('dragging');
+        dragNode = null;
+        canvas.style.cursor = ''; // inline kurzor by prebil .grabbing/.dragging z CSS
+        if (S.view !== 'layers' && !S.connectFrom) { // pri prepájaní je klik čistý výber cieľa
+            const n = pick(e.clientX, e.clientY);
+            if (n) {
+                dragNode = n;
+                n.fx = n.x; n.fy = n.y;
+                if (S.sim) S.sim.alphaTarget(0.3).restart();
+            }
+        }
+        canvas.classList.add(dragNode ? 'grabbing' : 'dragging');
     });
 
     window.addEventListener('mousemove', (e) => {
         if (dragging) {
             const dx = e.clientX - lx, dy = e.clientY - ly;
-            if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-            S.cam.x += dx; S.cam.y += dy;
+            if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+            if (dragNode) {
+                const w = screenToWorld(e.clientX, e.clientY);
+                dragNode.fx = w.x;
+                dragNode.fy = w.y;
+            } else {
+                S.cam.x += dx; S.cam.y += dy;
+            }
             lx = e.clientX; ly = e.clientY;
         } else {
             S.hover = pick(e.clientX, e.clientY);
-            canvas.style.cursor = S.hover ? 'pointer' : 'grab';
+            // nad uzlom 'grab' (mapa/sieť — dá sa ťahať), vrstvy len klik → pointer
+            canvas.style.cursor = S.connectFrom
+                ? 'crosshair'
+                : (S.hover ? (S.view === 'layers' ? 'pointer' : 'grab') : '');
             updateHoverCard(e);
         }
     });
 
     window.addEventListener('mouseup', (e) => {
         canvas.classList.remove('dragging');
+        canvas.classList.remove('grabbing');
+        if (dragNode) {
+            // návrat na ambientný alphaTarget z buildSim (0.012), nie tvrdá nula
+            if (S.sim) S.sim.alphaTarget(0.012);
+            if (dragNode.type === 'core' && dragNode.label === S.name) {
+                dragNode.fx = 0; dragNode.fy = 0; // hlavné jadro ostáva prišpendlené v strede
+            } else {
+                // uvoľnenie: sieť — uzol si nechá rýchlosť (fling); mapa — kotvy ho pritiahnu domov
+                dragNode.fx = null; dragNode.fy = null;
+            }
+            dragNode = null;
+        }
         if (dragging && !moved) {
             const n = pick(e.clientX, e.clientY);
-            if (n) selectNode(n);
+            if (S.connectFrom) {
+                // connect mode: klik na iný uzol prepája, klik do prázdna ruší
+                if (n && n.id !== S.connectFrom) createEdge(S.connectFrom, n.id);
+                else if (!n) cancelConnect();
+            } else if (n) selectNode(n);
             else closeNodePanel();
         }
         dragging = false;
@@ -895,6 +1128,9 @@ function updateHoverCard(e) {
 const $ = (id) => document.getElementById(id);
 
 async function selectNode(n) {
+    // aktívny lokálny graf sa preväzuje na novo zvolený uzol (Obsidian re-root)
+    if (S.local && S.local.rootId !== n.id) setLocal(n.id, S.local.depth);
+    closeCreateMode(); // výber uzla vždy vracia panel do detailného režimu
     S.selected = n;
     $('node-panel').classList.remove('hidden');
     $('node-form').classList.add('hidden');
@@ -920,15 +1156,29 @@ async function selectNode(n) {
         meta.push('sila ' + data.node.strength.toFixed(0));
         $('node-meta').textContent = meta.join(' · ');
 
-        $('node-neighbors').innerHTML = data.neighbors.map(
-            (m) => '<button type="button" class="chip" data-id="' + m.id + '">' + esc(m.label) + '</button>'
-        ).join('') || emptyHtml('hub', 'Bez spojení');
+        // riadok suseda: chip (navigácia) + × (zrušenie spojenia) — edge id z S.edges podľa páru
+        $('node-neighbors').innerHTML = data.neighbors.map((m) => {
+            const edge = S.edges.find((x) =>
+                (x.source_id === n.id && x.target_id === m.id)
+                || (x.source_id === m.id && x.target_id === n.id));
+            return '<div class="nb-row">'
+                + '<button type="button" class="chip" data-id="' + m.id + '">' + esc(m.label) + '</button>'
+                + (edge
+                    ? '<button type="button" class="ghost ms nb-del" data-edge="' + edge.id
+                        + '" title="Zrušiť spojenie" aria-label="Zrušiť spojenie">close</button>'
+                    : '')
+                + '</div>';
+        }).join('') || emptyHtml('hub', 'Bez spojení');
 
         $('node-neighbors').querySelectorAll('.chip').forEach((chip) => {
             chip.onclick = () => {
                 const target = S.byId.get(+chip.dataset.id);
                 if (target) { selectNode(target); focusNode(target); }
             };
+        });
+
+        $('node-neighbors').querySelectorAll('.nb-del').forEach((btn) => {
+            btn.onclick = () => busy(btn, () => deleteEdge(+btn.dataset.edge));
         });
 
         $('node-history').innerHTML = data.activations.map((a) => {
@@ -1027,6 +1277,8 @@ function fitView(pad = 90) {
         if (y > maxY) maxY = y;
     };
 
+    const loc = localSet();
+
     if (S.view === 'layers') {
         // deterministický layout — ciele fx/fy + hlavičky stĺpcov (vždy v zábere)
         const layers = layerColumns();
@@ -1038,11 +1290,13 @@ function fitView(pad = 90) {
         add(LAYER_X[LAYER_X.length - 1], maxHalf);
         for (const n of S.nodes) {
             if (!visibleInReplay(n)) continue;
+            if (!nodeVisible(n, loc)) continue;
             add(n.fx != null ? n.fx : n.x, n.fy != null ? n.fy : n.y);
         }
     } else {
         for (const n of S.nodes) {
             if (!visibleInReplay(n)) continue;
+            if (!nodeVisible(n, loc)) continue;
             add(n.x, n.y);
         }
     }
@@ -1073,10 +1327,31 @@ function buildLegend() {
         (t) => '<div class="legend-row">' + TYPE_GLYPHS[t] + '<span>' + typeNames[t] + '</span></div>'
     ).join('');
 
-    $('legend-areas').innerHTML = [...S.areas.values()].map(
-        (a) => '<div class="legend-row"><span class="swatch" style="background:' + a.color
-            + ';box-shadow:0 0 6px ' + a.color + '"></span><span>' + esc(a.name) + '</span></div>'
-    ).join('');
+    // oblasti sú klikateľné filtre — riadok prepína viditeľnosť oblasti na plátne
+    $('legend-areas').innerHTML = [...S.areas.values()].map((a) => {
+        const off = S.filter.areas.has(a.id);
+        return '<button type="button" class="legend-row legend-area' + (off ? ' off' : '')
+            + '" data-area="' + a.id + '" aria-pressed="' + (off ? 'false' : 'true')
+            + '" title="Prepnúť viditeľnosť oblasti">'
+            + '<span class="swatch" style="background:' + esc(a.color)
+            + ';box-shadow:0 0 6px ' + esc(a.color) + '"></span>'
+            + '<span class="la-name">' + esc(a.name) + '</span>'
+            + '<span class="ms la-eye" aria-hidden="true">' + (off ? 'visibility_off' : 'visibility') + '</span>'
+            + '</button>';
+    }).join('');
+
+    $('legend-areas').querySelectorAll('.legend-area').forEach((row) => {
+        row.onclick = () => {
+            const id = +row.dataset.area;
+            const off = !S.filter.areas.has(id);
+            if (off) S.filter.areas.add(id); else S.filter.areas.delete(id);
+            row.classList.toggle('off', off);
+            row.setAttribute('aria-pressed', off ? 'false' : 'true');
+            row.querySelector('.la-eye').textContent = off ? 'visibility_off' : 'visibility';
+            persistFilter();
+            draw();
+        };
+    });
 
     const strengthEl = $('legend-strength');
     if (strengthEl) {
@@ -1090,7 +1365,149 @@ function buildLegend() {
 
 function closeNodePanel() {
     S.selected = null;
+    createMode = false;
+    $('edit-type-row').classList.add('hidden');
     $('node-panel').classList.add('hidden');
+}
+
+/* ---------- ručné prepájanie (connect mode) + správa hrán ---------- */
+
+function cancelConnect() {
+    S.connectFrom = null;
+    canvas.classList.remove('linking');
+}
+
+async function createEdge(sourceId, targetId) {
+    cancelConnect(); // režim končí prvým platným klikom — žiadne duplicitné POSTy
+    try {
+        const res = await fetch('/api/edges', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_id: sourceId, target_id: targetId }),
+        });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            showToast(d.message || 'Prepojenie sa nepodarilo');
+            return;
+        }
+        const data = await res.json();
+        const e = data.edge;
+        if (!e) return;
+        const existing = S.edges.find((x) => x.id === e.id);
+        if (existing) {
+            // pár už existoval — backend zvýšil váhu (WS echo edge.strengthened je idempotentné)
+            existing.weight = e.weight;
+            spawnPulse(existing.source, existing.target, { speed: 1.4 });
+            showToast('Spojenie posilnené');
+        } else {
+            const src = S.byId.get(e.source_id);
+            const tgt = S.byId.get(e.target_id);
+            if (src && tgt) {
+                S.edges.push({ ...e, source: src, target: tgt });
+                S._localFor = null; // hrany sa zmenili — BFS cache neplatí
+                buildSim();
+                kickSim(0.3);
+                spawnPulse(src, tgt, { speed: 1.2 });
+            }
+            showToast('Prepojené');
+        }
+        updateHeaderMetrics();
+        draw();
+        if (S.selected) selectNode(S.selected); // čerstvý zoznam susedov v paneli
+    } catch (err) {
+        showToast('Prepojenie sa nepodarilo');
+    }
+}
+
+async function deleteEdge(edgeId) {
+    try {
+        const res = await fetch('/api/edges/' + edgeId, { method: 'DELETE' });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            showToast(d.message || 'Zrušenie sa nepodarilo');
+            return;
+        }
+        // optimistické odstránenie — WS echo edge.deleted už hranu nenájde (no-op)
+        const i = S.edges.findIndex((x) => x.id === edgeId);
+        if (i !== -1) S.edges.splice(i, 1);
+        S._localFor = null;
+        buildSim();
+        kickSim(0.2);
+        updateHeaderMetrics();
+        draw();
+        showToast('Spojenie zrušené');
+        if (S.selected) selectNode(S.selected);
+    } catch (err) {
+        showToast('Zrušenie sa nepodarilo');
+    }
+}
+
+/* ---------- nový uzol (create mode v paneli uzla) ---------- */
+
+let createMode = false;
+
+function openCreateNode() {
+    createMode = true;
+    $('node-panel').classList.remove('hidden');
+    $('node-view').classList.add('hidden');
+    $('node-form').classList.remove('hidden');
+    $('node-label').textContent = 'Nový uzol';
+    $('node-panel').style.removeProperty('--node-c');
+    $('edit-label').value = '';
+    $('edit-desc').value = '';
+    $('edit-type').value = 'memory';
+    $('edit-type-row').classList.remove('hidden');
+    fillMoveSelects({ area_id: null, department_id: null });
+    setTimeout(() => $('edit-label').focus(), 60);
+}
+
+function closeCreateMode() {
+    createMode = false;
+    $('edit-type-row').classList.add('hidden');
+}
+
+async function createNode() {
+    const label = $('edit-label').value.trim();
+    if (!label) { showToast('Zadaj názov uzla'); return; }
+    try {
+        const res = await fetch('/api/nodes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                label,
+                type: $('edit-type').value,
+                description: $('edit-desc').value.trim() || null,
+                area_id: $('edit-area').value ? +$('edit-area').value : null,
+                department_id: $('edit-dept').value ? +$('edit-dept').value : null,
+            }),
+        });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            showToast(d.message || 'Vytvorenie sa nepodarilo');
+            return;
+        }
+        const data = await res.json();
+        let n = S.byId.get(data.node.id); // WS echo node.created mohol byť rýchlejší
+        if (!n) {
+            n = { ...data.node };
+            // spawn pri kotve zvolenej oblasti/oddelenia, inak pri strede
+            const a = anchorOf(n);
+            n.x = a.x + (Math.random() - 0.5) * 50;
+            n.y = a.y + (Math.random() - 0.5) * 50;
+            n.flash = 1;
+            S.nodes.push(n);
+            S.byId.set(n.id, n);
+            buildSim();
+            kickSim(0.4);
+        }
+        closeCreateMode();
+        updateHeaderMetrics();
+        draw();
+        selectNode(n);
+        showToast('Uzol vytvorený', n.id);
+    } catch (err) {
+        showToast('Vytvorenie sa nepodarilo');
+    }
 }
 
 // Presun uzla — naplnenie selectov Oblasť / Oddelenie v edit forme
@@ -1329,6 +1746,8 @@ function handlePulse(type, data) {
         S.edges = S.edges.filter((e) => e.source.id !== n.id && e.target.id !== n.id);
         S.byId.delete(n.id);
         if (S.selected === n) closeNodePanel();
+        if (S.local && S.local.rootId === n.id) clearLocal();
+        S._localFor = null; // hrany sa zmenili — BFS cache neplatí
         buildSim();
     }
 
@@ -1342,6 +1761,16 @@ function handlePulse(type, data) {
         kickSim(0.2);
         spawnPulse(src, tgt, { speed: 1.2 });
         blip(660, 0.25, 0.035);
+    }
+
+    if (type === 'edge.deleted') {
+        const i = S.edges.findIndex((e) => e.id === data.id);
+        if (i !== -1) {
+            S.edges.splice(i, 1);
+            S._localFor = null;
+            buildSim();
+            draw();
+        }
     }
 
     if (type === 'edge.strengthened') {
@@ -1540,6 +1969,8 @@ const SHORTCUTS = [
     ['S', 'Prehľad'],
     ['D', 'Denník záznamov'],
     ['L', 'Legenda'],
+    ['G', 'Lokálny graf zvoleného uzla'],
+    ['N', 'Nový uzol'],
     ['T', 'Časová os'],
     ['C', 'Chat s Hadesom'],
     ['+ / −', 'Zoom'],
@@ -1550,6 +1981,7 @@ const SHORTCUTS = [
 
 const MOUSE_HINTS = [
     ['ťahanie', 'Posun plátna'],
+    ['ťahanie uzla', 'Presun uzla (mapa / sieť)'],
     ['koliesko', 'Zoom'],
     ['klik na uzol', 'Detail'],
     ['dvojklik na oblasť', 'Zaostrenie oblasti'],
@@ -1589,6 +2021,7 @@ function setupShortcuts() {
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             // kaskáda — jeden Esc zavrie vždy len najvrchnejšiu vrstvu
+            if (S.connectFrom) { cancelConnect(); showToast('Prepájanie zrušené'); return; }
             if (document.body.classList.contains('ambient')) {
                 document.body.classList.remove('ambient');
                 return;
@@ -1602,6 +2035,7 @@ function setupShortcuts() {
                 collapsePrompt();
                 return;
             }
+            if (S.local) { clearLocal(); return; }
             if (S.focus.areaId) setFocus(null, null);
             return;
         }
@@ -1628,6 +2062,14 @@ function setupShortcuts() {
             case 's': case 'S': openDock('stats'); break;
             case 'd': case 'D': openDock('journal'); break;
             case 'l': case 'L': openDock('legend'); break;
+            case 'g': case 'G':
+                // lokálny graf zvoleného uzla — toggle; hĺbka sa zachováva
+                if (S.selected) {
+                    if (S.local && S.local.rootId === S.selected.id) clearLocal();
+                    else setLocal(S.selected.id, S.local ? S.local.depth : 1);
+                }
+                break;
+            case 'n': case 'N': openCreateNode(); break;
             case 't': case 'T': $('btn-timeline').click(); break;
             case 'c': case 'C':
                 e.preventDefault();
@@ -2025,6 +2467,8 @@ async function reloadGraph() {
 
         if (S.selected && !S.byId.has(S.selected.id)) closeNodePanel();
         if (S.focus.areaId && !S.areas.has(S.focus.areaId)) setFocus(null, null);
+        if (S.local && !S.byId.has(S.local.rootId)) clearLocal();
+        S._localFor = null; // nové hrany — BFS množinu prepočítať
 
         buildSim();
         kickSim(0.3);
@@ -2187,11 +2631,62 @@ function setupControls() {
         inp.oninput = () => { syncSlider(inp); setOpt(inp.dataset.opt, parseFloat(inp.value)); };
     });
 
+    // Filtre typov a zdrojov — checked = viditeľné; S.filter drží skryté hodnoty
+    document.querySelectorAll('input[data-ftype], input[data-fsource]').forEach((inp) => {
+        const key = inp.dataset.ftype ? 'types' : 'sources';
+        const val = inp.dataset.ftype || inp.dataset.fsource;
+        inp.checked = !S.filter[key].has(val);
+        inp.onchange = () => {
+            if (inp.checked) S.filter[key].delete(val);
+            else S.filter[key].add(val);
+            persistFilter();
+            draw();
+        };
+    });
+
+    // Slidery síl — okamžitý zápis do S.forces + rebuild simulácie
+    document.querySelectorAll('input[data-force]').forEach((inp) => {
+        inp.oninput = () => {
+            syncSlider(inp);
+            S.forces[inp.dataset.force] = parseFloat(inp.value);
+            localStorage.setItem('hades.forces', JSON.stringify(S.forces));
+            buildSim();
+            kickSim(0.4);
+            draw();
+        };
+    });
+
+    $('forces-reset').onclick = () => {
+        S.forces = Object.assign({}, FORCE_DEFAULTS);
+        localStorage.removeItem('hades.forces');
+        buildSim();
+        kickSim(0.4);
+        draw();
+        syncForceSliders();
+        showToast('Sily obnovené');
+    };
+
+    // Veľkosť podľa spojení (Obsidian size by degree) — rebuild kvôli collide polomerom
+    const degBtn = $('sizedeg-toggle');
+    const syncDegBtn = () => degBtn.setAttribute('aria-checked', S.opts.sizeByDegree ? 'true' : 'false');
+    syncDegBtn();
+    degBtn.onclick = () => {
+        setOpt('sizeByDegree', !S.opts.sizeByDegree);
+        syncDegBtn();
+        buildSim();
+        kickSim(0.3);
+        draw();
+    };
+
     $('opts-reset').onclick = () => {
         S.opts = Object.assign({}, OPT_DEFAULTS);
         localStorage.setItem('hades.opts', JSON.stringify(S.opts));
         makeStars();
         applyOpts();
+        syncDegBtn(); // reset vráti aj sizeByDegree — prepínač a collide polomery dorovnať
+        buildSim();
+        kickSim(0.3);
+        draw();
         showToast('Predvolené obnovené');
     };
 
@@ -2230,8 +2725,19 @@ function setupControls() {
 
     $('node-close').onclick = closeNodePanel;
 
+    // Ručné prepájanie — klik na 'link' zapne connect mode, cieľ sa vyberá klikom na plátne
+    $('node-connect').onclick = () => {
+        if (!S.selected) return;
+        S.connectFrom = S.selected.id;
+        canvas.classList.add('linking');
+        showToast('Klikni na cieľový uzol — Esc zruší');
+    };
+
+    $('btn-new-node').onclick = openCreateNode;
+
     $('node-edit').onclick = () => {
         if (!S.selected) return;
+        closeCreateMode(); // edit mód — select typu patrí len vytváraniu
         $('edit-label').value = S.selected.label;
         $('edit-desc').value = S.selected.description || '';
         fillMoveSelects(S.selected);
@@ -2242,11 +2748,18 @@ function setupControls() {
     $('edit-area').onchange = () => fillDeptOptions(+$('edit-area').value || null, null);
 
     $('edit-cancel').onclick = () => {
+        if (createMode) {
+            closeCreateMode();
+            if (S.selected) selectNode(S.selected); // návrat na detail predtým zvoleného uzla
+            else closeNodePanel();
+            return;
+        }
         $('node-form').classList.add('hidden');
         $('node-view').classList.remove('hidden');
     };
 
     $('edit-save').onclick = () => busy($('edit-save'), async () => {
+        if (createMode) { await createNode(); return; }
         if (!S.selected) return;
         try {
             const res = await fetch('/api/nodes/' + S.selected.id, {
@@ -2307,6 +2820,8 @@ function setupControls() {
                 S.nodes = S.nodes.filter((m) => m.id !== node.id);
                 S.edges = S.edges.filter((e) => e.source.id !== node.id && e.target.id !== node.id);
                 S.byId.delete(node.id);
+                if (S.local && S.local.rootId === node.id) clearLocal();
+                S._localFor = null;
                 closeNodePanel();
                 buildSim();
                 kickSim(0.3);
@@ -2384,7 +2899,7 @@ async function init() {
     setInterval(dream, 9000 + Math.random() * 6000);
     setInterval(computeReplayBounds, 60000);
 
-    window.HADES = { S, draw, frame, setTheme, setFocus, fitView };
+    window.HADES = { S, draw, frame, setTheme, setFocus, fitView, setLocal, clearLocal };
 
     scheduleFrame();
     document.addEventListener('visibilitychange', () => {
