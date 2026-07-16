@@ -87,7 +87,7 @@ class MindService
      * Najde poznatky relevantne k dopytu. Nezvysuje silu, ale vysle
      * "spomienkovy" pulz do vizualizacie.
      */
-    public function recall(string $query, int $limit = 12): Collection
+    public function recall(string $query, int $limit = 12, ?string $sessionKey = null): Collection
     {
         $terms = collect(preg_split('/[\s,;]+/u', mb_strtolower($query)))
             ->map(fn ($t) => trim($t))
@@ -123,8 +123,10 @@ class MindService
             ->values();
 
         if ($scored->isNotEmpty()) {
+            // session_key sa uloží k aktiváciám — neskoršie learn/activate v tej istej
+            // session sa cez coActivate prepoja aj s vybavenými uzlami
             foreach ($scored as $node) {
-                Activation::record($node, 'recall', null);
+                Activation::record($node, 'recall', $sessionKey);
             }
 
             MindPulse::dispatch('recall', ['node_ids' => $scored->pluck('id')->all()]);

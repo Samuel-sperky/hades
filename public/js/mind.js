@@ -359,6 +359,12 @@ function blip(freq, dur = 0.35, vol = 0.05) {
 
 function spawnPulse(fromNode, toNode, opts = {}) {
     if (!fromNode || !toNode || S.replay.on) return;
+    if (REDUCED_MOTION) {
+        // žiadny cestujúci pulz — cieľový uzol sa staticky zvýrazní cez flash a nechá vyhasnúť
+        toNode.flash = 1;
+        draw();
+        return;
+    }
     S.pulses.push({
         from: fromNode, to: toNode,
         t: 0,
@@ -1235,6 +1241,7 @@ function setupTimeline() {
 
     $('tl-play').addEventListener('click', () => {
         if (S.replay.playing) { stopReplay(); return; }
+        if (REDUCED_MOTION) { stopReplay(); draw(); return; } // bez animácie — rovno koncový stav
         S.replay.on = true;
         S.replay.playing = true;
         S.replay.t = 0;
@@ -1250,6 +1257,8 @@ function computeReplayBounds() {
 
 /* ---------- websocket ---------- */
 
+let wsWasConnected = false;
+
 function connectWs(ws) {
     const pusher = new Pusher(ws.key, {
         wsHost: ws.host,
@@ -1258,6 +1267,13 @@ function connectWs(ws) {
         enabledTransports: ['ws'],
         cluster: 'mt1',
         disableStats: true,
+    });
+
+    // po výpadku spojenia mohli pulzy vypadnúť — pri REconnecte dotiahni stav grafu
+    pusher.connection.bind('state_change', (st) => {
+        if (st.current !== 'connected') return;
+        if (wsWasConnected && S.nodes.length) reloadGraph();
+        wsWasConnected = true;
     });
 
     pusher.subscribe('mind').bind('pulse', (msg) => handlePulse(msg.type, msg.data || {}));
@@ -1985,10 +2001,13 @@ async function deptRequest(deptId, method, body, okMsg) {
 }
 
 // Znovunačítanie grafu bez straty pozícií existujúcich uzlov
+let reloadSeq = 0;
 async function reloadGraph() {
+    const seq = ++reloadSeq;
     try {
         const res = await fetch('/api/mind');
         const data = await res.json();
+        if (seq !== reloadSeq) return; // medzitým beží novší reload — táto odpoveď je zastaraná
 
         S.areas = new Map(data.areas.map((a) => [a.id, a]));
         S.departments = new Map(data.departments.map((d) => [d.id, d]));

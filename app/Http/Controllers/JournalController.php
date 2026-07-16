@@ -42,10 +42,11 @@ class JournalController extends Controller
         });
 
         $projects = Node::where('source', 'session')
+            ->selectRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.project')), 'projekt') as project, COUNT(*) as c")
+            ->groupBy('project')
+            ->orderByDesc('c')
             ->get()
-            ->groupBy(fn (Node $n) => $n->meta['project'] ?? 'projekt')
-            ->map->count()
-            ->sortDesc();
+            ->mapWithKeys(fn ($row) => [$row->project => (int) $row->c]);
 
         return response()->json([
             'records' => $records,

@@ -18,7 +18,8 @@ class MaintenanceController extends Controller
         $pairs = [];
 
         $byType = Node::where('type', '!=', 'core')
-            ->orderBy('id')
+            ->orderByDesc('id')
+            ->limit(500)
             ->get(['id', 'label', 'type', 'strength'])
             ->groupBy('type');
 
@@ -37,10 +38,16 @@ class MaintenanceController extends Controller
                         continue;
                     }
 
+                    // prefilter: pri pomere dĺžok < 0.5 nemôže similar_text dosiahnuť 82 %
+                    // a ani vetva containment + ratio >= 0.6 nemôže prejsť
+                    $ratio = min(mb_strlen($la), mb_strlen($lb)) / max(mb_strlen($la), mb_strlen($lb));
+                    if ($ratio < 0.5) {
+                        continue;
+                    }
+
                     similar_text($la, $lb, $percent);
 
                     $contains = str_contains($la, $lb) || str_contains($lb, $la);
-                    $ratio = min(mb_strlen($la), mb_strlen($lb)) / max(mb_strlen($la), mb_strlen($lb));
 
                     if ($percent >= 82 || ($contains && $ratio >= 0.6)) {
                         $pairs[] = [

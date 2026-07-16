@@ -161,6 +161,7 @@ class McpController extends Controller
                     'properties' => [
                         'query' => ['type' => 'string', 'description' => 'Topic or keywords to remember about'],
                         'limit' => ['type' => 'integer', 'description' => 'Max nodes to return (default 12)'],
+                        'session_key' => $sessionKey,
                     ],
                     'required' => ['query'],
                 ],
@@ -292,6 +293,7 @@ class McpController extends Controller
         $nodes = $mind->recall(
             (string) $args['query'],
             max(1, min((int) ($args['limit'] ?? 12), 30)),
+            isset($args['session_key']) ? (string) $args['session_key'] : null,
         );
 
         return [

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Node;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class SearchController extends Controller
@@ -76,7 +77,7 @@ class SearchController extends Controller
         return $results;
     }
 
-    /** Obsahy playbookov — statická cache len v rámci jedného requestu. */
+    /** Obsahy playbookov — statická cache v rámci requestu + zdieľaná cache podľa mtime. */
     protected function playbookContents(): array
     {
         static $cache = null;
@@ -84,17 +85,23 @@ class SearchController extends Controller
             return $cache;
         }
 
-        $cache = [];
-        foreach (glob(base_path('skills').'/*/*.md') ?: [] as $file) {
-            $content = @file_get_contents($file);
-            if ($content === false) {
-                continue;
-            }
-            $rel = 'skills/'.basename(dirname($file)).'/'.basename($file);
-            $cache[$rel] = $content;
-        }
+        $files = glob(base_path('skills').'/*/*.md') ?: [];
+        $stamp = $files ? (max(array_map('filemtime', $files)) ?: 0) : 0;
+        $key = 'hades.playbooks.'.count($files).'.'.$stamp;
 
-        return $cache;
+        return $cache = Cache::remember($key, 3600, function () use ($files) {
+            $contents = [];
+            foreach ($files as $file) {
+                $content = @file_get_contents($file);
+                if ($content === false) {
+                    continue;
+                }
+                $rel = 'skills/'.basename(dirname($file)).'/'.basename($file);
+                $contents[$rel] = $content;
+            }
+
+            return $contents;
+        });
     }
 
     protected function firstHeading(string $content): ?string

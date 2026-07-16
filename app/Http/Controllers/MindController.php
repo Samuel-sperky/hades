@@ -9,6 +9,7 @@ use App\Models\Edge;
 use App\Models\Node;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class MindController extends Controller
 {
@@ -24,7 +25,15 @@ class MindController extends Controller
             ],
             'areas' => Area::orderBy('angle')->get(),
             'departments' => Department::all(),
-            'nodes' => Node::all()->map->toApi(),
+            // listing nesie skrátený popis — plný text vracia detail /api/nodes/{id}
+            'nodes' => Node::all()->map(function (Node $node) {
+                $api = $node->toApi();
+                $api['description'] = $api['description'] === null
+                    ? null
+                    : Str::limit($api['description'], 200);
+
+                return $api;
+            }),
             'edges' => Edge::all()->map->toApi(),
         ]);
     }
