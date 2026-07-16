@@ -617,33 +617,24 @@ function draw() {
     ctx.globalAlpha = 1;
 }
 
+// Jednotny seriozny tvar: vsetky uzly su ciste kruhy.
+// Jadro dostane jemny sustredny prstenec ako "hub" marker (bez hviezd).
 function drawShape(n, r) {
     const { x, y } = n;
     ctx.beginPath();
-    if (n.type === 'core') {
-        const spikes = 6;
-        for (let i = 0; i < spikes * 2; i++) {
-            const rr = i % 2 === 0 ? r : r * 0.55;
-            const a = (Math.PI * i) / spikes - Math.PI / 2;
-            ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * rr, y + Math.sin(a) * rr);
-        }
-        ctx.closePath();
-    } else if (n.type === 'memory') {
-        ctx.moveTo(x, y - r);
-        ctx.lineTo(x + r, y);
-        ctx.lineTo(x, y + r);
-        ctx.lineTo(x - r, y);
-        ctx.closePath();
-    } else if (n.type === 'project') {
-        for (let i = 0; i < 6; i++) {
-            const a = (Math.PI / 3) * i - Math.PI / 6;
-            ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * r, y + Math.sin(a) * r);
-        }
-        ctx.closePath();
-    } else {
-        ctx.arc(x, y, r, 0, 7);
-    }
+    ctx.arc(x, y, r, 0, 7);
     ctx.fill();
+
+    if (n.type === 'core') {
+        const a = ctx.globalAlpha;
+        ctx.globalAlpha = a * 0.4;
+        ctx.lineWidth = Math.max(1, 1.1 / S.cam.k);
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.55, 0, 7);
+        ctx.stroke();
+        ctx.globalAlpha = a;
+    }
 }
 
 let lastFrame = now();
@@ -854,10 +845,10 @@ function zoomBy(factor) {
 }
 
 const TYPE_GLYPHS = {
-    core: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 0l1.6 4.2L13 3l-2.6 3.5L13 11l-4.4-1.2L7 14l-1.6-4.2L1 11l2.6-4.5L1 3l4.4 1.2z" fill="#b88a3a"/></svg>',
+    core: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" fill="#b88a3a"/><circle cx="7" cy="7" r="6" fill="none" stroke="#b88a3a" stroke-opacity=".5" stroke-width="1"/></svg>',
     skill: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#03797e"/></svg>',
-    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1l6 6-6 6-6-6z" fill="#2f6d8f"/></svg>',
-    project: '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M10.5 1l3 6-3 6h-7l-3-6 3-6z" fill="#c2761c" transform="rotate(90 7 7)"/></svg>',
+    memory: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#2f6d8f"/></svg>',
+    project: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#c2761c"/></svg>',
 };
 
 function buildLegend() {
@@ -1197,8 +1188,8 @@ function showToast(text, nodeId) {
     el.className = 'toast';
     const parts = String(text).split(/:\s(.+)/);
     el.innerHTML = parts.length > 1
-        ? '<span class="ms" aria-hidden="true">auto_awesome</span><span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
-        : '<span class="ms" aria-hidden="true">auto_awesome</span><span>' + esc(text) + '</span>';
+        ? '<span class="ms" aria-hidden="true">hub</span><span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
+        : '<span class="ms" aria-hidden="true">hub</span><span>' + esc(text) + '</span>';
 
     const leave = (node) => {
         node.classList.add('leaving');

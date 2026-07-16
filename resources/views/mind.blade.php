@@ -16,7 +16,8 @@
     <nav id="rail" aria-label="Hlavná navigácia">
         <button id="brand-core" type="button" title="Hades" aria-label="Hades — vycentrovať">
             <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-                <path d="M12 2l2.2 5.8L20 6.4l-3.6 4.9L20 17.6l-6-1.7L12 22l-2-6.1-6 1.7 3.6-6.3L4 6.4l5.8 1.4z" fill="currentColor"/>
+                <circle cx="12" cy="12" r="3.6" fill="currentColor"/>
+                <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-width="1.6"/>
             </svg>
         </button>
 
@@ -144,7 +145,7 @@
     <div id="prompt">
         <div id="chat-log" class="hidden" aria-live="polite"></div>
         <form id="prompt-form">
-            <span class="ms spark" aria-hidden="true">auto_awesome</span>
+            <span class="ms spark" aria-hidden="true">hub</span>
             <input id="prompt-input" placeholder="Opýtaj sa Hadesa…  ( / pre príkazy )" autocomplete="off" aria-label="Správa pre Hadesa">
             <button type="submit" class="ms send-btn" aria-label="Odoslať">send</button>
         </form>
