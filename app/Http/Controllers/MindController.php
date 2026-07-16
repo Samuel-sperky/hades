@@ -58,17 +58,35 @@ class MindController extends Controller
             ->orderBy('day')
             ->get();
 
+        $weekAgo = now()->subDays(7);
+
         return response()->json([
             'state' => $this->state(),
             'totals' => [
                 'nodes' => Node::count(),
                 'edges' => Edge::count(),
                 'activations' => Activation::count(),
+                'skills' => Node::where('type', 'skill')->count(),
+                'sessions' => Node::where('source', 'session')->count(),
+            ],
+            'week' => [
+                'new_nodes' => Node::where('created_at', '>=', $weekAgo)->whereNull('source')->count(),
+                'new_sessions' => Node::where('created_at', '>=', $weekAgo)->where('source', 'session')->count(),
+                'activations' => Activation::where('created_at', '>=', $weekAgo)->count(),
             ],
             'by_type' => $byType,
             'by_area' => $byArea,
             'top_nodes' => $topNodes,
             'growth' => $growth,
+            'recent_records' => Node::where('source', 'session')
+                ->orderByDesc('created_at')->limit(4)
+                ->get()
+                ->map(fn (Node $n) => [
+                    'id' => $n->id,
+                    'label' => $n->label,
+                    'project' => $n->meta['project'] ?? null,
+                    'created_at' => $n->created_at?->toIso8601String(),
+                ]),
         ]);
     }
 

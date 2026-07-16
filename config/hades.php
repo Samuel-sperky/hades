@@ -16,4 +16,7 @@ return [
     // Po kolkych minutach bez aktivity vedomie "zaspi"
     'awake_minutes' => (int) env('HADES_AWAKE_MINUTES', 5),
 
+    // Kde su namountovane Claude Code transcripty (read-only) v kontajneri
+    'transcripts_path' => env('HADES_TRANSCRIPTS_PATH', '/transcripts'),
+
 ];

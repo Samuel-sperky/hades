@@ -6,6 +6,7 @@ x-app: &app
   working_dir: /var/www/html
   volumes:
     - .:/var/www/html
+    - "${CC_TRANSCRIPTS:-C:/Users/Ucet/.claude/projects}:/transcripts:ro"
   depends_on:
     - mariadb
     - redis

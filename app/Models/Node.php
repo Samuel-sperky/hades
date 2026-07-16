@@ -9,12 +9,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Node extends Model
 {
     protected $fillable = [
-        'type', 'area_id', 'department_id', 'label', 'description',
-        'strength', 'last_activated_at',
+        'type', 'source', 'external_key', 'area_id', 'department_id', 'label', 'description',
+        'meta', 'strength', 'last_activated_at',
     ];
 
     protected $casts = [
         'strength' => 'float',
+        'meta' => 'array',
         'last_activated_at' => 'datetime',
     ];
 
@@ -38,6 +39,7 @@ class Node extends Model
         return [
             'id' => $this->id,
             'type' => $this->type,
+            'source' => $this->source,
             'area_id' => $this->area_id,
             'department_id' => $this->department_id,
             'label' => $this->label,
