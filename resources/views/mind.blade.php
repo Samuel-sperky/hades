@@ -23,7 +23,8 @@
 
         <div class="rail-group" role="group" aria-label="Sekcie">
             <button id="btn-search" class="ms" title="Vyhľadať uzol (F)" aria-label="Vyhľadať uzol">search</button>
-            <button id="btn-stats" class="ms" title="Štatistiky (S)" aria-label="Štatistiky">monitoring</button>
+            <button id="btn-stats" class="ms" title="Prehľad (S)" aria-label="Prehľad">monitoring</button>
+            <button id="btn-journal" class="ms" title="Denník záznamov (D)" aria-label="Denník záznamov">receipt_long</button>
             <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
             <button id="btn-timeline" class="ms" title="Časová os (T)" aria-label="Časová os">history</button>
         </div>
@@ -53,13 +54,20 @@
         </section>
 
         <section id="sec-stats" class="hidden">
-            <div id="stats-totals"></div>
+            <div id="stats-cards" class="metric-grid"></div>
             <h3>Oblasti</h3>
             <div id="stats-areas"></div>
             <h3>Najsilnejšie uzly</h3>
             <div id="stats-top"></div>
+            <h3>Posledné záznamy</h3>
+            <div id="stats-recent"></div>
             <h3>Aktivita (30 dní)</h3>
             <canvas id="growth-chart" width="248" height="60"></canvas>
+        </section>
+
+        <section id="sec-journal" class="hidden">
+            <div id="journal-filter"></div>
+            <div id="journal-list"></div>
         </section>
 
         <section id="sec-legend" class="hidden">

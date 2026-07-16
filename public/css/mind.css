@@ -1189,3 +1189,76 @@ body.ambient #toasts {
         scroll-behavior: auto !important;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   DASHBOARD + DENNÍK ZÁZNAMOV (Aura business vrstva)
+   --------------------------------------------------------------------------- */
+.metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-1);
+}
+.metric {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 12px var(--sp-2);
+}
+.metric-val {
+    font-family: var(--serif);
+    font-size: 26px;
+    line-height: 1.1;
+    color: var(--text);
+    font-weight: var(--fw-semibold);
+}
+.metric-label {
+    font-size: var(--fs-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+    margin-top: 2px;
+    font-family: var(--mono);
+}
+.metric-sub { font-size: var(--fs-caption); color: var(--accent); margin-top: 4px; }
+
+#stats-recent, #journal-list { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+.mini-record {
+    display: flex; align-items: center; gap: var(--sp-1);
+    width: 100%; text-align: left;
+    background: none; border: none; border-bottom: 1px solid var(--line-soft);
+    border-radius: 0; padding: var(--sp-1) 2px; min-height: auto;
+    font-size: var(--fs-small); color: var(--text-secondary);
+}
+.mini-record:hover { background: var(--hover-fill); }
+.mini-record .ms { font-size: 15px; color: var(--muted); flex-shrink: 0; }
+.mr-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-time { color: var(--muted); font-family: var(--mono); font-size: var(--fs-caption); flex-shrink: 0; }
+
+.record {
+    display: block; width: 100%; text-align: left;
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent-line);
+    border-radius: var(--r-md);
+    padding: 10px 12px; min-height: auto;
+}
+.record:hover { border-left-color: var(--accent); background: var(--surface-2); }
+.record-head { display: flex; align-items: center; gap: var(--sp-1); }
+.rec-ico { font-size: 16px; color: var(--accent); flex-shrink: 0; }
+.record-title { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.record-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+.record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: 6px; }
+
+.tag {
+    display: inline-flex; align-items: center;
+    font-size: var(--fs-caption); font-family: var(--mono);
+    letter-spacing: var(--ls-mono);
+    padding: 1px 8px; border-radius: var(--r-pill);
+    background: var(--accent-softer); color: var(--accent-ink);
+    border: 1px solid var(--accent-line);
+}
+.tag.muted { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
+
+#journal-filter { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-bottom: var(--sp-2); }

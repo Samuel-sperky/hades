@@ -161,8 +161,8 @@ function drawLayerScaffold(layers) {
 
 function nodeRadius(n) {
     const base = n.type === 'core'
-        ? (n.label === S.name ? 20 : 11)
-        : 5.5 + 2.6 * Math.log2(1 + (n.strength || 1));
+        ? (n.label === S.name ? 24 : 14)
+        : 7 + 2.9 * Math.log2(1 + (n.strength || 1));
 
     return base * (S.opts ? S.opts.nodeScale : 1);
 }
@@ -568,9 +568,9 @@ function draw() {
         drawShape(n, r);
 
         // ink hairline obrys pre cistu "gem" definiciu na papieri
-        ctx.globalAlpha = Math.min(0.9, (0.5 + flash) * S.dim);
-        ctx.lineWidth = Math.max(1, 0.8 / S.cam.k);
-        ctx.strokeStyle = 'rgba(16,29,27,0.22)';
+        ctx.globalAlpha = Math.min(1, (0.6 + flash) * S.dim);
+        ctx.lineWidth = Math.max(1, 0.9 / S.cam.k);
+        ctx.strokeStyle = 'rgba(16,29,27,0.32)';
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, 7);
         ctx.stroke();
@@ -877,8 +877,31 @@ async function refreshStats() {
     const res = await fetch('/api/mind/stats');
     const st = await res.json();
 
-    $('stats-totals').innerHTML =
-        row('uzly', st.totals.nodes) + row('spojenia', st.totals.edges) + row('aktivácie', st.totals.activations);
+    const card = (label, value, sub) =>
+        '<div class="metric"><div class="metric-val">' + value + '</div>'
+        + '<div class="metric-label">' + label + '</div>'
+        + (sub ? '<div class="metric-sub">' + sub + '</div>' : '') + '</div>';
+
+    const w = st.week || {};
+    $('stats-cards').innerHTML =
+        card('uzlov', st.totals.nodes, '+' + (w.new_nodes || 0) + ' tento týždeň')
+        + card('skillov', st.totals.skills || 0, '')
+        + card('záznamov', st.totals.sessions || 0, '+' + (w.new_sessions || 0) + ' tento týždeň')
+        + card('spojení', st.totals.edges, '');
+
+    $('stats-recent').innerHTML = (st.recent_records || []).map((r) =>
+        '<button type="button" class="mini-record" data-id="' + r.id + '">'
+        + '<span class="ms" aria-hidden="true">article</span>'
+        + '<span class="mr-title">' + esc(r.label) + '</span>'
+        + '<span class="mr-time">' + timeAgo(r.created_at) + '</span></button>'
+    ).join('') || '<div class="hist">zatiaľ nič</div>';
+
+    $('stats-recent').querySelectorAll('.mini-record').forEach((el) => {
+        el.onclick = () => {
+            const n = S.byId.get(+el.dataset.id);
+            if (n) { S.cam.k = Math.max(S.cam.k, 1); focusNode(n); selectNode(n); }
+        };
+    });
 
     $('stats-areas').innerHTML = [...S.areas.values()].map((a) =>
         '<div class="stat-row"><span><span class="swatch" style="background:' + a.color + '"></span>'
@@ -1217,7 +1240,8 @@ function showToast(text, nodeId) {
 const SHORTCUTS = [
     ['1 / 2 / 3', 'Náhľad: Mapa / Sieť / Vrstvy'],
     ['F', 'Vyhľadávanie'],
-    ['S', 'Štatistiky'],
+    ['S', 'Prehľad'],
+    ['D', 'Denník záznamov'],
     ['L', 'Legenda'],
     ['T', 'Časová os'],
     ['C', 'Chat s Hadesom'],
@@ -1273,6 +1297,7 @@ function setupShortcuts() {
             case '3': setView('layers'); break;
             case 'f': case 'F': e.preventDefault(); openDock('search'); break;
             case 's': case 'S': openDock('stats'); break;
+            case 'd': case 'D': openDock('journal'); break;
             case 'l': case 'L': openDock('legend'); break;
             case 't': case 'T': $('btn-timeline').click(); break;
             case 'c': case 'C':
@@ -1326,7 +1351,8 @@ function setupHints() {
 
 const DOCK_SECTIONS = {
     search: { title: 'Vyhľadávanie', btn: 'btn-search' },
-    stats: { title: 'Štatistiky', btn: 'btn-stats' },
+    stats: { title: 'Prehľad', btn: 'btn-stats' },
+    journal: { title: 'Denník záznamov', btn: 'btn-journal' },
     legend: { title: 'Legenda', btn: 'btn-legend' },
     settings: { title: 'Zobrazenie', btn: 'btn-settings' },
 };
@@ -1345,9 +1371,55 @@ function openDock(name) {
     }
 
     if (name === 'stats') refreshStats();
+    if (name === 'journal') renderJournal();
     if (name === 'search') {
         renderSearch($('search-input').value);
         setTimeout(() => $('search-input').focus(), 60);
+    }
+}
+
+function timeAgo(iso) {
+    if (!iso) return '';
+    const d = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (d < 3600) return Math.max(1, Math.round(d / 60)) + ' min';
+    if (d < 86400) return Math.round(d / 3600) + ' h';
+    if (d < 604800) return Math.round(d / 86400) + ' d';
+    return new Date(iso).toLocaleDateString('sk', { day: 'numeric', month: 'short' });
+}
+
+async function renderJournal() {
+    const list = $('journal-list');
+    list.innerHTML = '<div class="hist">Načítavam…</div>';
+    try {
+        const data = await (await fetch('/api/journal')).json();
+        if (!data.records.length) {
+            list.innerHTML = '<div class="empty-state"><span class="ms" aria-hidden="true">history_edu</span>'
+                + '<div class="title">Zatiaľ žiadne záznamy</div>'
+                + '<div class="hint">Mozog si sám zapíše každú Claude Code session.</div></div>';
+            return;
+        }
+        list.innerHTML = data.records.map((r) => {
+            const isDigest = r.source === 'digest';
+            const badges = [];
+            if (r.project) badges.push('<span class="tag">' + esc(r.project) + '</span>');
+            if (r.file_count) badges.push('<span class="tag muted">' + r.file_count + ' súb.</span>');
+            if (r.commits && r.commits.length) badges.push('<span class="tag muted">' + r.commits.length + ' commit</span>');
+            return '<button type="button" class="record" data-id="' + r.id + '">'
+                + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
+                + '<span class="record-title">' + esc(r.label) + '</span>'
+                + '<span class="record-time">' + timeAgo(r.created_at) + '</span></div>'
+                + (badges.length ? '<div class="record-tags">' + badges.join('') + '</div>' : '')
+                + '</button>';
+        }).join('');
+
+        list.querySelectorAll('.record').forEach((el) => {
+            el.onclick = () => {
+                const n = S.byId.get(+el.dataset.id);
+                if (n) { S.cam.k = Math.max(S.cam.k, 1); focusNode(n); selectNode(n); }
+            };
+        });
+    } catch (e) {
+        list.innerHTML = '<div class="hist">Denník sa nepodarilo načítať.</div>';
     }
 }
 
@@ -1391,6 +1463,7 @@ function setupControls() {
 
     $('btn-search').onclick = () => openDock('search');
     $('btn-stats').onclick = () => openDock('stats');
+    $('btn-journal').onclick = () => openDock('journal');
     $('btn-legend').onclick = () => openDock('legend');
     $('btn-settings').onclick = () => openDock('settings');
     $('dock-close').onclick = closeDock;
