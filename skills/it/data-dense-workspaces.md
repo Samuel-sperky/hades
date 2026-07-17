@@ -266,6 +266,10 @@ Otestuj:
 
 ## Nadväzujúce playbooky
 
+- `skills/it/advanced-ux-ui-delivery-plan.md` — centrálny router a integrated release gates.
+- `skills/it/search-navigation-discovery.md` — global search, query meaning, relevance a cross-page findability; lokálne table mechanics ostávajú tu.
+- `skills/it/privacy-permissions-trust-ux.md` — selection scope, permission revalidation, bulk risk a receipts.
+- `skills/it/frontend-performance-observability.md` — route/feature budgets, RUM a regression attribution.
 - `skills/it/accessible-interaction-patterns.md` — table/grid semantika, focus a keyboard.
 - `skills/it/resilient-async-ui.md` — request races, partial failure a retry.
 - `skills/it/responsive-adaptive-app-layouts.md` — layout, panely a narrow viewport.

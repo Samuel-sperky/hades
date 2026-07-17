@@ -145,3 +145,10 @@ Cieľom nie je „pekný" jednorazový dizajn, ale **systém, ktorý produkuje p
 - [APCA in a Nutshell — APCA](https://git.apcacontrast.com/documentation/APCA_in_a_Nutshell.html)
 - [Color System WCAG Compliance: 2026 Guide — Digital Heroes](https://digitalheroes.co.in/journal/color-system-wcag-compliance/)
 - [Color considerations — GitHub Primer](https://primer.style/accessibility/design-guidance/color-considerations/)
+
+## Integrácia do pokročilého plánu
+
+- **Central router:** `skills/it/advanced-ux-ui-delivery-plan.md`.
+- **Requires:** UX hierarchy z `skills/it/product-ux-delivery.md` a reálny content/state catalog z `skills/it/ux-content-localization.md`.
+- **Hands off to:** `skills/it/design-system-component-engineering.md` ako tokeny, taxonomy, themes a component inventory.
+- **Tool companion:** `skills/design/figma-mcp-agentic-studio.md` načítaj iba pri Figma MCP práci; backlink je navigačný, nie rekurzívny routing.

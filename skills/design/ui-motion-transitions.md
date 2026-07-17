@@ -275,6 +275,13 @@ Pri najbližšej implementačnej iterácii skontroluj:
 
 ## Zdroje
 
+## Integrácia do pokročilého plánu
+
+- **Central router:** `skills/it/advanced-ux-ui-delivery-plan.md`.
+- **Requires:** stabilné states/layout z `skills/it/responsive-adaptive-app-layouts.md` a focus contract z `skills/it/accessible-interaction-patterns.md`.
+- **Companions:** `skills/it/design-system-component-engineering.md` pre component packaging a `skills/it/canvas-data-visualization-ux.md` pre 2D motion.
+- **Hands off to:** `skills/it/frontend-performance-observability.md` s frame-time, interruption a reduced-motion fixtures.
+
 - [Atlassian Design System — Motion](https://atlassian.design/foundations/motion)
 - [Atlassian Design System — Applying motion](https://atlassian.design/foundations/motion/applying-motion)
 - [Apple Human Interface Guidelines — Motion](https://developer.apple.com/design/human-interface-guidelines/motion)

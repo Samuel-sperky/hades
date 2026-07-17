@@ -225,6 +225,13 @@ Meraj úspech, kritické omyly, čas k prvému správnemu kroku, počet resetov,
 - [ ] Veľké dáta degradujú explicitne a merane.
 - [ ] Kritické úlohy prešli keyboard, 200 % zoom, reduced motion a performance testom.
 
+## Integrácia do pokročilého plánu
+
+- **Central router:** `skills/it/advanced-ux-ui-delivery-plan.md`.
+- **Requires:** používateľskú otázku z `skills/it/product-ux-delivery.md` a tokeny z `skills/design/ui-design-systems.md`.
+- **Companions:** `skills/it/data-dense-workspaces.md` pre tabuľkovú alternatívu, `skills/it/responsive-adaptive-app-layouts.md`, `skills/it/accessible-interaction-patterns.md` a `skills/design/ui-motion-transitions.md`.
+- **Hands off to:** `skills/it/frontend-performance-observability.md` s datasetom, frame/render budgetom a measurement hooks.
+
 ## Zdroje
 
 - [W3C WAI — Canvas accessibility use cases](https://www.w3.org/WAI/PF/HTML/wiki/Canvas_Accessibility_Use_Cases)

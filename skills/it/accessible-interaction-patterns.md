@@ -210,6 +210,13 @@ Automatizácia nájde časť problémov, nie správnosť celej interakcie. Relea
 - [ ] 200 % zoom, forced colors a reduced motion sú použiteľné.
 - [ ] Prebehol manuálny keyboard a screen-reader smoke test.
 
+## Integrácia do pokročilého plánu
+
+- **Central router:** `skills/it/advanced-ux-ui-delivery-plan.md`; accessibility je cross-cutting hard gate.
+- **Requires:** reálny content, states, layout a component contracts, nie prázdny wireframe.
+- **Companions:** `skills/it/design-system-component-engineering.md`, `skills/it/search-navigation-discovery.md`, `skills/it/privacy-permissions-trust-ux.md`, `skills/it/data-dense-workspaces.md` a `skills/it/canvas-data-visualization-ux.md` podľa surface.
+- **Hands off to:** motion/async/implementation ako focus, semantics, keyboard a announcement acceptance criteria.
+
 ## Zdroje
 
 - [W3C — Web Content Accessibility Guidelines 2.2](https://www.w3.org/TR/WCAG22/)

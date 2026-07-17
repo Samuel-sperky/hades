@@ -258,6 +258,13 @@ Pre každú kritickú async operáciu otestuj:
 - [ ] Live oznámenia sú relevantné a nespamujú.
 - [ ] Testy pokrývajú latency, statusy, races, cancel, concurrency a accessibility.
 
+## Integrácia do pokročilého plánu
+
+- **Central router:** `skills/it/advanced-ux-ui-delivery-plan.md`.
+- **Requires:** flow/state matrix z `skills/it/product-ux-delivery.md` a operation boundaries z `skills/it/frontend-component-architecture.md`.
+- **Companions:** `skills/it/search-navigation-discovery.md` pre query races, `skills/it/privacy-permissions-trust-ux.md` pre permission/receipt meaning a `skills/ai-nastroje/ai-product-ux-human-control.md` pre AI streaming.
+- **Hands off to:** `skills/it/frontend-performance-observability.md` s async marks, outcomes a latency segments.
+
 ## Zdroje
 
 - [MDN — AbortController](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)

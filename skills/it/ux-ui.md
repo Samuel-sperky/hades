@@ -182,3 +182,9 @@ Pozn.: **WCAG 3.0** je stále len working draft — pre praktické rozhodovanie 
 - [Style Dictionary — DTCG support](https://styledictionary.com/info/dtcg/)
 - [Usability Testing of Inline Form Validation — Baymard Institute](https://baymard.com/blog/inline-form-validation)
 - [Form Error Message Examples and Best Practices — Ivy Forms](https://ivyforms.com/blog/form-error-message-examples/)
+
+## Integrácia do pokročilého plánu
+
+- **Central router:** `skills/it/advanced-ux-ui-delivery-plan.md`.
+- **Úloha:** rýchly foundation/heuristický audit; nenačítavaj automaticky, ak už existuje úplný kontrakt z `skills/it/product-ux-delivery.md`.
+- **Hands off to:** `skills/it/product-ux-delivery.md` s nálezmi, evidence/assumption rozlíšením a prioritou.

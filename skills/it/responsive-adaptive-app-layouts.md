@@ -210,6 +210,9 @@ Testuj obsah, nie iba rozmery zariadení:
 
 ## Nadväzujúce playbooky
 
+- `skills/it/advanced-ux-ui-delivery-plan.md` — centrálny router a breakpoint/zoom stage gate.
+- `skills/it/design-system-component-engineering.md` — container behavior, density a component fixtures.
+- `skills/it/frontend-performance-observability.md` — CLS, route budgets a viewport-segmentované RUM.
 - `skills/it/accessible-interaction-patterns.md` — focus, modality a reflow accessibility.
 - `skills/design/ui-motion-transitions.md` — enter/exit a reduced motion panelov.
 - `skills/it/canvas-data-visualization-ux.md` — canvas kamera a DOM alternatíva.

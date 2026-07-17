@@ -323,6 +323,13 @@ Reviewer hodnotí význam a task success, nie iba pravopis.
 - [ ] Native reviewer schválil terminológiu, gramatiku a task meaning.
 - [ ] Nie je otvorený P0/P1 localization defect.
 
+## Integrácia do pokročilého plánu
+
+- **Central router:** `skills/it/advanced-ux-ui-delivery-plan.md`.
+- **Requires:** flow/state vocabulary z `skills/it/product-ux-delivery.md`; research materiály podľa potreby z `skills/it/ux-research-operations.md`.
+- **Companions:** `skills/it/search-navigation-discovery.md` pre labels/synonyms, `skills/it/privacy-permissions-trust-ux.md` pre disclosure a `skills/it/accessible-interaction-patterns.md` pre accessible names.
+- **Hands off to:** `skills/design/ui-design-systems.md` a `skills/it/design-system-component-engineering.md` ako glossary, message catalog a expansion/RTL fixtures.
+
 ## Zdroje
 
 - [W3C — Internationalization versus localization](https://www.w3.org/International/questions/qa-i18n)

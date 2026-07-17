@@ -199,7 +199,12 @@ Pre každú udalosť definuj:
 
 ## Nadväzujúce playbooky
 
+- `skills/it/advanced-ux-ui-delivery-plan.md` — centrálny router, stage gates a artifact handoffs.
 - `skills/it/ux-ui.md` — heuristiky, formuláre a základný audit.
+- `skills/it/ux-research-operations.md` — použi, keď rozhodnutie potrebuje nový ľudský dôkaz, recruitment a traceable synthesis.
+- `skills/it/search-navigation-discovery.md` — použi pri findability, navigácii, query modeli alebo relevance.
+- `skills/it/privacy-permissions-trust-ux.md` — použi pri personal data, permissions, share/export/delete alebo consequential action.
+- `skills/it/ux-content-localization.md` — odovzdaj flow, state vocabulary a terminology na content/locale contract.
 - `skills/design/ui-design-systems.md` — tokeny, komponenty a vizuálny systém.
 - `skills/it/accessible-interaction-patterns.md` — keyboard, focus a komplexné widgety.
 - `skills/it/resilient-async-ui.md` — requesty, chyby, retry a súbežnosť.
