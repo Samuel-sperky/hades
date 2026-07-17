@@ -29,7 +29,7 @@ Cieľom nie je „pekný" jednorazový dizajn, ale **systém, ktorý produkuje p
 - **Komponentová knižnica** — sada opakovane použiteľných UI prvkov s definovanými variantmi a stavmi (default, hover, focus, active, disabled, loading, error).
 - **Figma Variables** — natívne premenné vo Figme (color, number, string, boolean) s **modes** (napr. Light/Dark, jazyk, brand). Náhrada za staré „Styles" pre tokeny.
 - **APCA** — *Accessible Perceptual Contrast Algorithm*, kandidát pre WCAG 3. Perceptuálne presnejší najmä pri dark mode. Zatiaľ **nie je** právny štandard.
-- **WCAG 2.2** — aktuálne záväzný štandard kontrastu (4.5:1 normálny text, 3:1 veľký text a UI komponenty). Základ právnej zhody (EAA v EÚ od 2025).
+- **WCAG 2.2** — aktuálny W3C Recommendation a produktový cieľ pre prístupnosť (4.5:1 normálny text, 3:1 veľký text; 3:1 aj pre vizuálnu informáciu potrebnú na identifikáciu UI komponentov a stavov). Právnu zhodu s EAA a národnou transpozíciou posudzuj osobitne; nie je to automatická rovnica „EAA = WCAG 2.2“.
 - **P3 / wide gamut** — širší farebný rozsah moderných displejov; OKLCH umožňuje sýtejšie farby mimo sRGB.
 
 ## Best practices 2025/2026 — aktuálny stav a čo sa zmenilo
@@ -53,7 +53,7 @@ Cieľom nie je „pekný" jednorazový dizajn, ale **systém, ktorý produkuje p
 
 ### Light/Dark a prístupnosť
 - **Dark mode nie je inverzia.** Sémantická vrstva swapuje primitívnu mapu; komponenty ostávajú. V dark mode používaj tmavé neutrály (nie čisto čierne #000 — spôsobuje halo/„smearing"), povrchy odlišuj **eleváciou cez svetlosť** (vyšší prvok = svetlejšia plocha), nie tieňmi.
-- **Kontrast — dvojitý meter:** WCAG 2.2 pre **právnu zhodu** (EAA v EÚ platí od júna 2025, EÚ e‑shopy sú v scope), APCA ako **prísnejšia perceptuálna kontrola** najmä pre dark mode. WCAG 2.x nadhodnocuje kontrast pri tmavých farbách — nespoliehaj sa naň pri dizajne dark mode, over cez APCA.
+- **Kontrast — conformance a doplnkový signál:** WCAG 2.2 používaj ako produktový conformance cieľ; konkrétnu právnu mapu EAA/EN 301 549 over podľa jurisdikcie a aktuálnej harmonizácie. APCA používaj nanajvýš ako experimentálny perceptuálny doplnok pri ladení, nie ako náhradu WCAG testu ani univerzálne „prísnejší“ meter.
 - Cieľové minimá WCAG 2.2: **4.5:1** normálny text, **3:1** veľký text (≥24px alebo ≥18.66px bold) a UI komponenty/ikony.
 
 ### Figma → kód workflow

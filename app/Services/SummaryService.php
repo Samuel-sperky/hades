@@ -43,9 +43,17 @@ class SummaryService
 
         $lines = [];
 
-        // Čo — prvý zmysluplný prompt
-        if (! empty($prompts[0])) {
-            $lines[] = '**Čo:** '.$this->clip($prompts[0], 120);
+        // Čo — prvý zmysluplný prompt (bez úvodného /príkazu a URL)
+        $what = '';
+        foreach ($prompts as $p) {
+            $cleaned = $this->stripLeadNoise($p);
+            if (mb_strlen($cleaned) >= 12) {
+                $what = $cleaned;
+                break;
+            }
+        }
+        if ($what !== '') {
+            $lines[] = '**Čo:** '.$this->clip($what, 120);
         }
 
         // Výsledok — commity, inak posledný finálny blok
@@ -74,6 +82,21 @@ class SummaryService
         }
 
         return implode(' ', $lines);
+    }
+
+    /** Odstráni úvodný /slash-command a vedúce URL, aby zhrnutie nezačínalo šumom. */
+    protected function stripLeadNoise(string $text): string
+    {
+        $t = trim($text);
+        // opakovane zlúp vedúci /príkaz alebo URL
+        do {
+            $before = $t;
+            $t = preg_replace('~^/[\w:.-]+\s*~u', '', $t);
+            $t = preg_replace('~^(https?://\S+|www\.\S+)\s*~iu', '', $t);
+            $t = ltrim($t);
+        } while ($t !== $before);
+
+        return $t;
     }
 
     /**

@@ -38,24 +38,25 @@ Schedule::command('mind:digest')->weeklyOn(0, '04:00');
 // Mesačná archivácia starých session záznamov (starších ako 90 dní)
 Schedule::command('mind:archive-old')->monthlyOn(1, '04:30');
 
-// Nočná údržba vedomia — beží AŽ PO ingeste (03:35 --all). Všetky príkazy zdieľajú
-// jeden mutex ('mind-nightly'), takže sa nikdy neprekryjú a serializujú sa.
+// Nočná údržba vedomia — beží AŽ PO ingeste (03:35 --all). Rozostupy sú široké
+// (15 min), aby ťažký mind:rewire (~O(n²) pri raste siete) stihol dobehnúť pred
+// ďalším jobom. Každý job má VLASTNÝ mutex (withoutOverlapping bráni len prekrytiu
+// SEBA SAMÉHO cez dni ak by zamrzol) — zámerne NEzdieľame mutex, lebo ten by pri
+// dlhom rewire spôsobil PRESKOČENIE decay/cleanup v tú noc, nie ich zaradenie.
 $nightly = fn (string $command, string $at) => Schedule::command($command)
     ->dailyAt($at)
     ->timezone('Europe/Bratislava')
-    ->withoutOverlapping(30)
-    ->createMutexNameUsing(fn () => 'mind-nightly');
+    ->withoutOverlapping(60);
 
-$nightly('mind:rewire', '04:05');         // A3 — backfill similarity synapsií
-$nightly('mind:decay', '04:10');          // D2 — zabúdanie neaktívnych uzlov/hrán
-$nightly('mind:cleanup-edges', '04:15');  // A9 — prerušenie zabudnutých synapsií
-$nightly('mind:automerge', '04:20');      // D5/E7 — zlúčenie takmer identických uzlov
-$nightly('mind:sync-memory', '04:25');    // Claude memory → Hades
-$nightly('mind:export-memory', '04:30');  // Hades → Claude memory
+$nightly('mind:rewire', '04:05');         // A3 — backfill similarity synapsií (najťažší)
+$nightly('mind:decay', '04:20');          // D2 — zabúdanie neaktívnych uzlov/hrán
+$nightly('mind:cleanup-edges', '04:30');  // A9 — prerušenie zabudnutých synapsií
+$nightly('mind:automerge', '04:40');      // D5/E7 — zlúčenie takmer identických uzlov
+$nightly('mind:sync-memory', '04:50');    // Claude memory → Hades
+$nightly('mind:export-memory', '05:00');  // Hades → Claude memory
 
-// Týždenný projektový roll-up (nedeľa), rovnaký mutex ako nočná údržba.
+// Týždenný projektový roll-up (nedeľa), vlastný mutex.
 Schedule::command('mind:rollup')
-    ->weeklyOn(0, '04:40')
+    ->weeklyOn(0, '05:15')
     ->timezone('Europe/Bratislava')
-    ->withoutOverlapping(30)
-    ->createMutexNameUsing(fn () => 'mind-nightly');
+    ->withoutOverlapping(60);

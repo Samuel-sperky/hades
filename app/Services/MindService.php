@@ -300,15 +300,21 @@ class MindService
             return;
         }
 
+        // len najsilnejšie uzly aktivované v session — obmedzuje kvadratický
+        // rast co-aktivačných synapsií (hairball) na max 6 najrelevantnejších peer-ov
         $peerIds = Activation::query()
             ->where('session_key', $sessionKey)
             ->where('node_id', '!=', $node->id)
             ->where('created_at', '>=', now()->subHours(6))
             ->distinct()
-            ->limit(10)
             ->pluck('node_id');
 
-        foreach (Node::whereIn('id', $peerIds)->get() as $peer) {
+        $peers = Node::whereIn('id', $peerIds)
+            ->orderByDesc('strength')
+            ->limit(6)
+            ->get();
+
+        foreach ($peers as $peer) {
             // spoločná aktivita v session → automatická co-aktivačná synapsia
             $this->connect($node, $peer, 'co_activation', true);
         }
@@ -390,6 +396,20 @@ class MindService
             $winner->strength = (float) $winner->strength + (float) $loser->strength;
             $winner->last_activated_at = now();
 
+            $meta = $winner->meta ?? [];
+
+            // audit stopa — pohltený uzol je VŽDY dohľadateľný, aj bez external_key
+            // (ručné skilly/fakty majú external_key = null, ale strata musí byť vidno)
+            $meta['absorbed'] = collect($meta['absorbed'] ?? [])
+                ->push([
+                    'id' => $loser->id,
+                    'label' => $loser->label,
+                    'external_key' => $loser->external_key,
+                    'at' => now()->toIso8601String(),
+                ])
+                ->values()
+                ->all();
+
             // náhrobok — pohltený external_key sa už nikdy nesmie znovu zapísať
             if ($loser->external_key) {
                 Tombstone::firstOrCreate(
@@ -397,15 +417,14 @@ class MindService
                     ['reason' => 'merge', 'created_at' => now()],
                 );
 
-                $meta = $winner->meta ?? [];
                 $meta['absorbed_keys'] = collect($meta['absorbed_keys'] ?? [])
                     ->push($loser->external_key)
                     ->unique()
                     ->values()
                     ->all();
-                $winner->meta = $meta;
             }
 
+            $winner->meta = $meta;
             $winner->save();
 
             // hrany — prepoj na winner, preskoč self a duplicity
