@@ -8,8 +8,8 @@ const AREA_RADIUS = 640;
 // Témy — kontrakt pre canvas literály (idú cez T.*)
 // nodeFloor/edgeFloor: spodná hranica tlmenia (hover × focus), gridAlpha: sila mriežky
 const THEMES = {
-    light: { paper:'#f8f4f7', ink:'#101d1b', inkSoft:'#2d3a38', muted:'#566964', labelHalo:'rgba(248,244,247,0.92)', edge:'45,58,56', gridColor:'3,121,126', outline:'rgba(16,29,27,0.35)', gridAlpha:0.05, nodeFloor:0.30, edgeFloor:0.20 },
-    dark:  { paper:'#0e1413', ink:'#eaf3f1', inkSoft:'#c3d1ce', muted:'#8a9b98', labelHalo:'rgba(14,20,19,0.92)', edge:'195,209,206', gridColor:'5,188,196', outline:'rgba(234,243,241,0.30)', gridAlpha:0.09, nodeFloor:0.35, edgeFloor:0.25 },
+    light: { paper:'#f8f4f7', ink:'#101d1b', inkSoft:'#2d3a38', muted:'#566964', labelHalo:'rgba(248,244,247,0.92)', edge:'45,58,56', gridColor:'3,121,126', accent:'3,121,126', outline:'rgba(16,29,27,0.35)', gridAlpha:0.05, nodeFloor:0.30, edgeFloor:0.20 },
+    dark:  { paper:'#0e1413', ink:'#eaf3f1', inkSoft:'#c3d1ce', muted:'#8a9b98', labelHalo:'rgba(14,20,19,0.92)', edge:'195,209,206', gridColor:'5,188,196', accent:'5,188,196', outline:'rgba(234,243,241,0.30)', gridAlpha:0.09, nodeFloor:0.35, edgeFloor:0.25 },
 };
 let T = THEMES.light;
 function setTheme(name){ T = THEMES[name] || THEMES.light; document.documentElement.dataset.theme = (name === 'dark' ? 'dark' : 'light'); localStorage.setItem('hades.theme', name); }
@@ -49,6 +49,7 @@ const S = {
     sound: localStorage.getItem('hades.sound') !== 'off',
     audio: null,
     view: localStorage.getItem('hades.view') || 'map',
+    minWeight: parseFloat(localStorage.getItem('hades.minWeight')) || 0, // A7: filter slabých spojení
 };
 
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -389,6 +390,16 @@ function edgeAlphaMul(e, hl, anchor) {
     if (hl && !(anchor && (e.source.id === anchor.id || e.target.id === anchor.id))) mul *= 0.18;
     if (!(focusPass(e.source) && focusPass(e.target))) mul *= 0.15;
     return Math.max(T.edgeFloor, mul);
+}
+
+// A10: štýl hrany podľa druhu (jediná ink farba, rozlíšenie čiarkovaním).
+// Vracia násobič alfy (podobnosť je najmäkší signál → ×0.8). Vzory sú v svetových
+// jednotkách (delené k), aby čiarky držali konštantnú veľkosť na obrazovke.
+function applyEdgeKind(kind, k) {
+    if (kind === 'co_activation') { ctx.setLineDash([6 / k, 4 / k]); return 1; }
+    if (kind === 'similarity') { ctx.setLineDash([1.5 / k, 3 / k]); return 0.8; }
+    ctx.setLineDash([]); // manual / skill_mention / neznáme — plná čiara
+    return 1;
 }
 
 const LAYER_X = [-560, -280, 0, 280, 560];
@@ -752,10 +763,12 @@ function draw() {
 
         // (2) skutočné spojenia zo S.edges — rovnaké váhové štýlovanie ako mapa/sieť
         for (const e of S.edges) {
+            if ((e.weight || 1) < S.minWeight) continue; // A7: filter slabých spojení
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
             if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
+            const kindMul = applyEdgeKind(e.kind, S.cam.k); // A10: čiarkovanie podľa druhu
             let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
-            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor);
+            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor) * kindMul;
             ctx.strokeStyle = 'rgba(' + T.edge + ',' + alpha + ')';
             ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
             ctx.beginPath();
@@ -770,15 +783,18 @@ function draw() {
             }
             ctx.stroke();
         }
+        ctx.setLineDash([]); // reset po dávke čiarkovaných hrán
 
         drawLayerScaffold(layers);
     } else {
         for (const e of S.edges) {
+            if ((e.weight || 1) < S.minWeight) continue; // A7: filter slabých spojení
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
             if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
             // atramentovo-šedé hrany, bez S.dim hmly; podlaha 0.12, potom highlight/focus tlmenie
+            const kindMul = applyEdgeKind(e.kind, S.cam.k); // A10: čiarkovanie podľa druhu
             let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
-            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor);
+            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor) * kindMul;
             ctx.strokeStyle = 'rgba(' + T.edge + ',' + alpha + ')';
             ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
             ctx.beginPath();
@@ -786,6 +802,7 @@ function draw() {
             ctx.lineTo(e.target.x, e.target.y);
             ctx.stroke();
         }
+        ctx.setLineDash([]); // reset po dávke čiarkovaných hrán
     }
 
     ctx.globalCompositeOperation = 'source-over';
@@ -812,8 +829,13 @@ function draw() {
         const flash = layersView ? (n.flash || 0) : 0;
         const mul = nodeAlphaMul(n, hl);
 
+        // D3: teplo (0..1, 1 = dnes → 0 pri 30 dňoch). Chýbajúce = plná sýtosť (bezpečné).
+        const heat = typeof n.heat === 'number' ? n.heat : 1;
+        // sýtosť výplne: studené uzly mierne vyblednú, horúce plné (podlaha 0.55, bez zmeny odtieňa)
+        const heatFill = n.type === 'core' ? 1 : (0.55 + 0.45 * heat);
+
         // plne nepriehľadný uzol (žiadne halo) — tlmí sa len highlight/focus násobičom
-        ctx.globalAlpha = Math.min(1, (layersView ? 0.9 + flash * 0.5 : 1)) * mul;
+        ctx.globalAlpha = Math.min(1, (layersView ? 0.9 + flash * 0.5 : 1)) * mul * heatFill;
         drawShape(n, n.x, n.y, r, color);
 
         // ink obrys — silu ovláda slider 'glow' (Obrysy uzlov)
@@ -823,6 +845,16 @@ function draw() {
         ctx.beginPath();
         ctx.arc(n.x, n.y, r, 0, 7);
         ctx.stroke();
+
+        // D3: teal prstenec aktivity pre nedávno použité uzly (heat > 0.6), jadro má vlastný zlatý
+        if (heat > 0.6 && n.type !== 'core') {
+            ctx.globalAlpha = ((heat - 0.6) / 0.4) * 0.5 * mul;
+            ctx.lineWidth = 1.2 / S.cam.k;
+            ctx.strokeStyle = 'rgb(' + T.accent + ')';
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r + 3 / S.cam.k, 0, 7);
+            ctx.stroke();
+        }
 
         if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
     }
@@ -1145,11 +1177,19 @@ async function selectNode(n) {
     $('node-neighbors').innerHTML = '';
     $('node-history').innerHTML = '';
     $('node-record').innerHTML = '';
+    $('node-suggestions').innerHTML = '';
+    $('node-md').classList.add('hidden'); // dokument sa odhalí až po načítaní meta
+
+    renderSuggestions(n); // A8: algoritmické návrhy prepojení (vlastný fetch)
 
     try {
         const res = await fetch('/api/nodes/' + n.id);
         const data = await res.json();
         renderNodeRecord(data.node);
+
+        // C4: tlačidlo dokumentu len ak uzol má markdown zdroj (summary_path / path)
+        const nm = data.node.meta || {};
+        $('node-md').classList.toggle('hidden', !(nm.summary_path || nm.path));
         const meta = [];
         if (data.node.area_name) meta.push(data.node.area_name);
         if (data.node.department_name) meta.push(data.node.department_name);
@@ -1186,6 +1226,87 @@ async function selectNode(n) {
             return '<div class="hist">' + (kinds[a.kind] || a.kind) + ' · ' + new Date(a.created_at).toLocaleString('sk') + '</div>';
         }).join('') || emptyHtml('history', 'Zatiaľ žiadna aktivita');
     } catch (e) { /* offline detail nevadí */ }
+}
+
+// A8: „Možno súvisí" — algoritmické návrhy prepojení pod susedmi
+async function renderSuggestions(n) {
+    const sec = $('node-suggestions-sec');
+    const wrap = $('node-suggestions');
+    if (!sec || !wrap) return;
+    // jadro nikdy nedostáva návrhy — celá sekcia sa skryje
+    if (n.type === 'core') { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+
+    let list = [];
+    try {
+        const res = await fetch('/api/nodes/' + n.id + '/suggestions');
+        const data = await res.json();
+        list = data.suggestions || [];
+    } catch (e) { return; } // offline — sekcia ostáva prázdna, žiadny šum
+
+    if (!S.selected || S.selected.id !== n.id) return; // medzitým iný výber
+
+    if (!list.length) { renderEmpty(wrap, 'hub', 'Žiadne návrhy'); return; }
+
+    wrap.innerHTML = list.map((s) => {
+        const area = S.areas.get(s.area_id);
+        const color = area ? area.color : 'var(--muted)';
+        return '<div class="sug-row" data-id="' + s.id + '">'
+            + '<span class="swatch" style="background:' + esc(color) + '" aria-hidden="true"></span>'
+            + '<span class="sug-label">' + esc(s.label) + '</span>'
+            + '<span class="sug-score">' + esc(Number(s.score).toFixed(2)) + '</span>'
+            + '<button type="button" class="ghost ms sug-add" title="Prepojiť" aria-label="Prepojiť">add_link</button>'
+            + '</div>';
+    }).join('');
+
+    wrap.querySelectorAll('.sug-add').forEach((btn) => {
+        btn.onclick = () => {
+            const row = btn.closest('.sug-row');
+            busy(btn, () => linkSuggestion(n, +row.dataset.id, row));
+        };
+    });
+}
+
+// Prepojenie z návrhu — rovnaká konštrukcia hrany ako createEdge (connect mode)
+async function linkSuggestion(source, targetId, row) {
+    try {
+        const res = await fetch('/api/edges', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_id: source.id, target_id: targetId }),
+        });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            showToast(d.message || 'Prepojenie sa nepodarilo');
+            return;
+        }
+        const data = await res.json();
+        const e = data.edge;
+        if (e) {
+            const existing = S.edges.find((x) => x.id === e.id);
+            if (existing) {
+                existing.weight = e.weight;
+                spawnPulse(existing.source, existing.target, { speed: 1.4 });
+            } else {
+                const src = S.byId.get(e.source_id);
+                const tgt = S.byId.get(e.target_id);
+                if (src && tgt) {
+                    S.edges.push({ ...e, source: src, target: tgt });
+                    S._localFor = null; // hrany sa zmenili — BFS cache neplatí
+                    buildSim();
+                    kickSim(0.3);
+                    spawnPulse(src, tgt, { speed: 1.2 });
+                }
+            }
+            updateHeaderMetrics();
+        }
+        row.remove();
+        draw();
+        showToast('Prepojené');
+        if (S.selected && S.selected.id === source.id) selectNode(S.selected); // čerství susedia + návrhy
+    } catch (err) {
+        showToast('Prepojenie sa nepodarilo');
+    }
 }
 
 // Detail záznamu (session / digest / archive) v paneli uzla — stavia sa z node.meta
@@ -1360,6 +1481,19 @@ function buildLegend() {
                 '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="' + (d / 2) + '" fill="var(--muted)"/></svg>'
             ).join('')
             + '<span class="cap">slabšia → silnejšia</span></div>';
+    }
+
+    // A10: druhy spojení — jedna ink farba, rozlíšenie štýlom čiary (plná / čiarkovaná / bodkovaná)
+    const connEl = $('legend-connections');
+    if (connEl) {
+        const line = (dash) =>
+            '<svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true">'
+            + '<line x1="1" y1="5" x2="25" y2="5" stroke="var(--muted)" stroke-width="1.4"'
+            + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/></svg>';
+        connEl.innerHTML =
+            '<div class="legend-row">' + line('') + '<span>Ručné · silné</span></div>'
+            + '<div class="legend-row">' + line('5 3') + '<span>Spoločná aktivácia</span></div>'
+            + '<div class="legend-row">' + line('1.5 3') + '<span>Podobnosť</span></div>';
     }
 }
 
@@ -1806,9 +1940,243 @@ function handlePulse(type, data) {
     updateHeaderMetrics();
 }
 
+/* ---------- dokument uzla (markdown preview) ---------- */
+
+// Malý čistý markdown → HTML renderer. Zdroj sa najprv escapuje (esc), formátovanie
+// sa aplikuje až na escapovaný text — žiadny HTML injection nie je možný.
+function mdToHtml(src) {
+    src = String(src).replace(/\r\n?/g, '\n');
+
+    // Frontmatter (--- ... ---) na začiatku → kompaktný tlmený meta riadok
+    let front = '';
+    const fm = src.match(/^---\n([\s\S]*?)\n---\n?/);
+    if (fm) {
+        const items = fm[1].split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+            const i = l.indexOf(':');
+            if (i === -1) return esc(l);
+            return '<strong>' + esc(l.slice(0, i).trim()) + '</strong> ' + esc(l.slice(i + 1).trim());
+        });
+        front = '<div class="md-front">' + items.join('<span class="md-front-sep">·</span>') + '</div>';
+        src = src.slice(fm[0].length);
+    }
+
+    const inline = (t) => t
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    const lines = esc(src).split('\n');
+    let html = '';
+    let listOpen = false;
+    let paras = [];
+    let i = 0;
+
+    const flushPara = () => {
+        if (paras.length) { html += '<p>' + inline(paras.join(' ')) + '</p>'; paras = []; }
+    };
+    const closeList = () => { if (listOpen) { html += '</ul>'; listOpen = false; } };
+
+    while (i < lines.length) {
+        const line = lines[i];
+
+        const fence = line.match(/^\s*```/);
+        if (fence) {
+            flushPara(); closeList();
+            const buf = [];
+            i++;
+            while (i < lines.length && !/^\s*```/.test(lines[i])) { buf.push(lines[i]); i++; }
+            i++; // preskoč uzatváraciu ohradu
+            html += '<pre class="md-code"><code>' + buf.join('\n') + '</code></pre>';
+            continue;
+        }
+
+        if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+            flushPara(); closeList();
+            html += '<hr class="md-hr">';
+            i++; continue;
+        }
+
+        const h = line.match(/^\s*(#{1,3})\s+(.*)$/);
+        if (h) {
+            flushPara(); closeList();
+            const lvl = h[1].length;
+            html += '<h' + lvl + ' class="md-h">' + inline(h[2].trim()) + '</h' + lvl + '>';
+            i++; continue;
+        }
+
+        const li = line.match(/^\s*[-*]\s+(.*)$/);
+        if (li) {
+            flushPara();
+            if (!listOpen) { html += '<ul class="md-list">'; listOpen = true; }
+            html += '<li>' + inline(li[1].trim()) + '</li>';
+            i++; continue;
+        }
+
+        if (/^\s*$/.test(line)) {
+            flushPara(); closeList();
+            i++; continue;
+        }
+
+        closeList();
+        paras.push(line.trim());
+        i++;
+    }
+    flushPara(); closeList();
+    return front + html;
+}
+
+let mdReturnFocus = null;
+let mdNodeId = null;
+
+function closeMdOverlay() {
+    $('md-overlay').classList.add('hidden');
+    if (mdReturnFocus) { mdReturnFocus.focus(); mdReturnFocus = null; }
+}
+
+async function openMdOverlay(node) {
+    const overlay = $('md-overlay');
+    mdNodeId = node.id;
+    $('md-title').textContent = node.label;
+    $('md-body').innerHTML = emptyHtml('hourglass_empty', 'Načítavam…');
+    mdReturnFocus = document.activeElement;
+    overlay.classList.remove('hidden');
+    $('md-close').focus();
+    try {
+        const res = await fetch('/api/nodes/' + node.id + '/markdown');
+        const data = await res.json();
+        if (mdNodeId !== node.id) return; // medzitým otvorený iný dokument
+        $('md-body').innerHTML = mdToHtml(data.markdown || '');
+    } catch (e) {
+        if (mdNodeId === node.id) $('md-body').innerHTML = emptyHtml('cloud_off', 'Dokument sa nepodarilo načítať');
+    }
+}
+
 /* ---------- chat ---------- */
 
 const chatHistory = [];
+
+// E3: uzly priložené do kontextu chatu (perzistentné naprieč reloadmi)
+S.chatContext = new Set();
+try {
+    const cc = JSON.parse(localStorage.getItem('hades.chatContext') || '[]');
+    if (Array.isArray(cc)) cc.forEach((id) => S.chatContext.add(+id));
+} catch (e) { /* poškodený kontext — prázdny */ }
+
+function persistChatContext() {
+    localStorage.setItem('hades.chatContext', JSON.stringify([...S.chatContext]));
+}
+
+function addToChatContext(id) {
+    S.chatContext.add(+id);
+    persistChatContext();
+    renderContextChips();
+}
+
+function removeFromChatContext(id) {
+    S.chatContext.delete(+id);
+    persistChatContext();
+    renderContextChips();
+}
+
+// Čipy nad chatom — štítky uzlov v kontexte, × odoberá, „Vyčistiť" zmaže všetky.
+// Mŕtve id (zmazané uzly) sa preskočia a zároveň vyčistia z úložiska.
+function renderContextChips() {
+    const row = $('chat-context');
+    if (!row) return;
+    const ids = [...S.chatContext].filter((id) => S.byId.has(id));
+    if (ids.length !== S.chatContext.size) {
+        S.chatContext = new Set(ids);
+        persistChatContext();
+    }
+    if (!ids.length) { row.classList.add('hidden'); row.innerHTML = ''; return; }
+    row.classList.remove('hidden');
+    row.innerHTML = ids.map((id) => {
+        const n = S.byId.get(id);
+        return '<span class="ctx-chip" data-id="' + id + '">'
+            + '<span class="ctx-label">' + esc(n.label) + '</span>'
+            + '<button type="button" class="ctx-x ms" title="Odobrať z kontextu" aria-label="Odobrať z kontextu">close</button>'
+            + '</span>';
+    }).join('')
+        + '<button type="button" class="ctx-clear" title="Vyčistiť kontext">Vyčistiť</button>';
+    row.querySelectorAll('.ctx-x').forEach((btn) => {
+        btn.onclick = () => removeFromChatContext(+btn.closest('.ctx-chip').dataset.id);
+    });
+    const clr = row.querySelector('.ctx-clear');
+    if (clr) clr.onclick = () => { S.chatContext.clear(); persistChatContext(); renderContextChips(); };
+}
+
+// E2: potvrdzovacia karta „Zapamätať" v chate — vytvorí uzol po úprave a potvrdení
+function renderSuggestCard(sug) {
+    const log = $('chat-log');
+    log.classList.remove('hidden');
+    const card = document.createElement('div');
+    card.className = 'suggest-card';
+    const areaOpts = '<option value="">— bez oblasti —</option>'
+        + [...S.areas.values()].map((a) => '<option value="' + a.id + '">' + esc(a.name) + '</option>').join('');
+    card.innerHTML =
+        '<div class="sc-head"><span class="ms" aria-hidden="true">bookmark_add</span><span>Zapamätať:</span></div>'
+        + '<input class="sc-label" maxlength="255" aria-label="Názov uzla">'
+        + '<div class="sc-row">'
+        +   '<select class="sc-type" aria-label="Typ">'
+        +     '<option value="memory">Spomienka</option>'
+        +     '<option value="skill">Skill</option>'
+        +     '<option value="project">Projekt</option>'
+        +   '</select>'
+        +   '<select class="sc-area" aria-label="Oblasť">' + areaOpts + '</select>'
+        + '</div>'
+        + '<div class="sc-actions">'
+        +   '<button type="button" class="primary sc-save">Uložiť</button>'
+        +   '<button type="button" class="ghost sc-cancel">Zrušiť</button>'
+        + '</div>';
+    log.appendChild(card);
+    card.querySelector('.sc-label').value = sug.label || '';
+    const typeSel = card.querySelector('.sc-type');
+    if (sug.type) typeSel.value = sug.type;
+    log.scrollTop = 1e9;
+
+    card.querySelector('.sc-cancel').onclick = () => card.remove();
+    card.querySelector('.sc-save').onclick = (ev) => busy(ev.currentTarget, async () => {
+        const label = card.querySelector('.sc-label').value.trim();
+        if (!label) { showToast('Zadaj názov uzla'); return; }
+        try {
+            const res = await fetch('/api/nodes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    label,
+                    type: typeSel.value,
+                    description: sug.description || null,
+                    area_id: card.querySelector('.sc-area').value ? +card.querySelector('.sc-area').value : null,
+                }),
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                showToast(d.message || 'Vytvorenie sa nepodarilo');
+                return;
+            }
+            const data = await res.json();
+            let n = S.byId.get(data.node.id); // WS echo node.created mohol byť rýchlejší
+            if (!n) {
+                n = { ...data.node };
+                const a = anchorOf(n);
+                n.x = a.x + (Math.random() - 0.5) * 50;
+                n.y = a.y + (Math.random() - 0.5) * 50;
+                n.flash = 1;
+                S.nodes.push(n);
+                S.byId.set(n.id, n);
+                buildSim();
+                kickSim(0.4);
+            }
+            updateHeaderMetrics();
+            draw();
+            card.remove();
+            showToast('Uzol vytvorený', n.id);
+            selectNode(n);
+        } catch (err) {
+            showToast('Vytvorenie sa nepodarilo');
+        }
+    }, 'Ukladám…');
+}
 
 function addMsg(cls, text) {
     const log = $('chat-log');
@@ -1848,6 +2216,8 @@ function setupPrompt() {
     input.addEventListener('input', syncSend);
     syncSend();
 
+    renderContextChips(); // E3: obnov priložené uzly z úložiska (byId je už naplnené)
+
     const open = () => {
         bar.classList.add('open');
         if ($('chat-log').children.length) $('chat-log').classList.remove('hidden');
@@ -1873,16 +2243,24 @@ function setupPrompt() {
         const thinking = addMsg('hades thinking', '…');
 
         try {
+            // E3: prilož len existujúce uzly (mŕtve id preskoč), backend capuje na 20
+            const ctxIds = [...S.chatContext].filter((id) => S.byId.has(id)).slice(0, 20);
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, history: chatHistory.slice(-12, -1) }),
+                body: JSON.stringify({
+                    message: text,
+                    history: chatHistory.slice(-12, -1),
+                    context_node_ids: ctxIds,
+                }),
             });
             const data = await res.json();
             thinking.remove();
             const reply = data.reply || data.message || 'Hades mlčí.';
             addMsg('hades', reply);
             chatHistory.push({ role: 'assistant', content: reply });
+            // E2: pri remember-intente backend vráti suggested_node → potvrdzovacia karta
+            if (data && data.suggested_node) renderSuggestCard(data.suggested_node);
         } catch (err) {
             thinking.remove();
             addMsg('sys sys--error', 'Spojenie s vedomím zlyhalo.');
@@ -2026,6 +2404,7 @@ function setupShortcuts() {
                 document.body.classList.remove('ambient');
                 return;
             }
+            if (!$('md-overlay').classList.contains('hidden')) { closeMdOverlay(); return; }
             if (!$('help-overlay').classList.contains('hidden')) { toggleHelp(false); return; }
             const deptRow = document.querySelector('#structure-tree .dept-actions');
             if (deptRow) { deptRow.remove(); return; }
@@ -2644,6 +3023,24 @@ function setupControls() {
         };
     });
 
+    // A7: min. váha spojení — samostatný stav (nie data-opt), surová hodnota v odpočte
+    const mw = $('minweight-slider');
+    if (mw) {
+        const syncMw = () => {
+            mw.style.setProperty('--pct', (parseFloat(mw.value) / 5) * 100 + '%');
+            const out = mw.closest('label.slider').querySelector('output');
+            if (out) out.textContent = parseFloat(mw.value).toFixed(1);
+        };
+        mw.value = S.minWeight;
+        syncMw();
+        mw.oninput = () => {
+            S.minWeight = parseFloat(mw.value);
+            localStorage.setItem('hades.minWeight', String(S.minWeight));
+            syncMw();
+            draw();
+        };
+    }
+
     // Slidery síl — okamžitý zápis do S.forces + rebuild simulácie
     document.querySelectorAll('input[data-force]').forEach((inp) => {
         inp.oninput = () => {
@@ -2724,6 +3121,19 @@ function setupControls() {
     });
 
     $('node-close').onclick = closeNodePanel;
+
+    // C4: dokument uzla — overlay s vyrenderovaným markdownom
+    $('node-md').onclick = () => { if (S.selected) openMdOverlay(S.selected); };
+    $('md-close').onclick = closeMdOverlay;
+    $('md-overlay').addEventListener('click', (e) => {
+        if (e.target === $('md-overlay')) closeMdOverlay();
+    });
+    $('md-context').onclick = () => {
+        if (mdNodeId == null) return;
+        addToChatContext(mdNodeId); // E6: uzol do kontextu chatu
+        showToast('Pridané do kontextu');
+        closeMdOverlay();
+    };
 
     // Ručné prepájanie — klik na 'link' zapne connect mode, cieľ sa vyberá klikom na plátne
     $('node-connect').onclick = () => {

@@ -15,6 +15,8 @@ Route::get('/mind/stats', [MindController::class, 'stats']);
 Route::get('/journal', [\App\Http\Controllers\JournalController::class, 'index']);
 
 Route::post('/nodes', [NodeController::class, 'store']);
+Route::get('/nodes/{node}/suggestions', [NodeController::class, 'suggestions']);
+Route::get('/nodes/{node}/markdown', [NodeController::class, 'markdown']);
 Route::get('/nodes/{node}', [NodeController::class, 'show']);
 Route::put('/nodes/{node}', [NodeController::class, 'update']);
 Route::delete('/nodes/{node}', [NodeController::class, 'destroy']);

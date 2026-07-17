@@ -11,7 +11,7 @@ Pre Auru (šperky, e-commerce) to nie je kozmetika, ale priamo peniaze:
 - **Konverzia stojí a padá na použiteľnosti.** Pri šperkoch je nákup emocionálny aj rizikový (cena, "sadne veľkosť?", "je to naozaj striebro?"). Každé trenie — nejasná cena, chýbajúca tabuľka veľkostí, mätúci košík — je dôvod odísť.
 - **Dôvera cez detail.** Kvalitné, konzistentné UI podvedome signalizuje kvalitu produktu. Nedbalý web = lacný dojem = nižšia ochota zaplatiť prémiovú cenu.
 - **Mobil je primárny.** Väčšina traffiku zo sociálnych sietí je mobilná. Ak nefunguje palcom na 375 px širokej obrazovke, nefunguje vôbec.
-- **Prístupnosť = väčší trh + právna povinnosť.** Od **28. júna 2025** platí **European Accessibility Act (EAA)** — e-commerce pre spotrebiteľov v EU musí byť prístupný (de facto WCAG 2.2 AA). Toto sa priamo týka slovenského e-shopu Aura.
+- **Prístupnosť = väčší trh + právna povinnosť.** Od **28. júna 2025** sa uplatňujú požiadavky European Accessibility Act (EAA) aj na služby elektronického obchodu v rozsahu transponovanom do národného práva. Konkrétnu povinnosť, výnimky a použitý harmonizovaný štandard vždy over podľa jurisdikcie; WCAG 2.2 AA používaj ako produktový cieľ, nie ako automatickú právnu skratku.
 
 ## Kľúčové pojmy — glosár
 
@@ -56,7 +56,7 @@ WCAG 2.2 (okt. 2023, od okt. 2025 aj **ISO/IEC 40500:2025**) pridáva k 2.1 dev�
 
 - **2.5.8 Target Size (Minimum, AA):** klikateľné ciele min. **24×24 CSS px** (výnimky: inline odkazy v texte, ekvivalentná alternatíva). Pozor na malé „×" na zatvorenie a hustú filter navigáciu na mobile.
 - **2.4.11 Focus Not Obscured (AA):** prvok s klávesovým focusom nesmie byť úplne zakrytý (sticky hlavička, cookie lišta, chat bublina často porušujú).
-- **2.4.13 Focus Appearance (AA):** viditeľný focus indikátor — min. obvod 2 px hrubý a kontrast 3:1 medzi focus/nefocus stavom. **Nikdy `outline: none` bez náhrady.**
+- **2.4.13 Focus Appearance (AAA):** prísnejšie kritérium pre veľkosť a kontrast focus indikátora. Na úrovni AA stále platia **2.4.7 Focus Visible** a **2.4.11 Focus Not Obscured (Minimum)**. Produktovo mier na viditeľný indikátor aspoň 2 px a kontrast 3:1. **Nikdy `outline: none` bez náhrady.**
 - **3.3.7 Redundant Entry (A):** nepýtaj tú istú informáciu dvakrát (predvyplň/ponúkni „fakturačná = dodacia").
 - **3.3.8 Accessible Authentication (AA):** neblokuj vkladanie hesla, povoľ password managery, žiadne „prepíš skreslené znaky" ako jediný spôsob (CAPTCHA založená na kognitívnom teste je problém).
 - Odstránené: **4.1.1 Parsing** (obsolete) — validita HTML sa už nehodnotí ako samostatné kritérium.

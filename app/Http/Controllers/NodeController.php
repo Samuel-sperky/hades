@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Events\MindPulse;
 use App\Models\Department;
+use App\Models\Edge;
 use App\Models\Node;
+use App\Services\NodeMarkdownResolver;
+use App\Services\SimilarityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -116,6 +119,63 @@ class NodeController extends Controller
         MindPulse::dispatch('node.updated', ['node' => $node->fresh()->toApi()]);
 
         return response()->json(['node' => $node->fresh()->toApi()]);
+    }
+
+    /**
+     * A8 „Možno súvisí" — najpodobnejšie uzly, ktoré ešte NIE sú prepojené
+     * (ani jadro). Deterministické TF-IDF cez SimilarityService.
+     */
+    public function suggestions(Node $node, SimilarityService $similarity): JsonResponse
+    {
+        // ID uzlov už prepojených s týmto uzlom (oba smery hrán)
+        $linkedIds = Edge::query()
+            ->where('source_id', $node->id)
+            ->orWhere('target_id', $node->id)
+            ->get(['source_id', 'target_id'])
+            ->flatMap(fn (Edge $e) => [$e->source_id, $e->target_id])
+            ->reject(fn ($id) => (int) $id === (int) $node->id)
+            ->unique()
+            ->flip();
+
+        // vyhoď už prepojené a jadro
+        $filter = fn (Node $candidate) => $candidate->type !== 'core'
+            && ! $linkedIds->has($candidate->id);
+
+        $top = $similarity->topSimilar($node, 5, 0.20, $filter);
+
+        $suggestions = collect($top)
+            ->map(function (array $row) {
+                $n = Node::find($row['node_id']);
+                if (! $n) {
+                    return null;
+                }
+
+                return [
+                    'id' => $n->id,
+                    'label' => $n->label,
+                    'type' => $n->type,
+                    'area_id' => $n->area_id,
+                    'score' => round((float) $row['score'], 2),
+                ];
+            })
+            ->filter()
+            ->values();
+
+        return response()->json(['suggestions' => $suggestions]);
+    }
+
+    /**
+     * C4/E6 — zdrojový markdown uzla (session/skill/claude-memory summary),
+     * inak fallback na popis. Cesty sú chránené proti path traversal.
+     */
+    public function markdown(Node $node, NodeMarkdownResolver $resolver): JsonResponse
+    {
+        $resolved = $resolver->resolve($node);
+
+        return response()->json([
+            'markdown' => $resolved['markdown'],
+            'source_path' => $resolved['source_path'],
+        ]);
     }
 
     public function destroy(Node $node): JsonResponse

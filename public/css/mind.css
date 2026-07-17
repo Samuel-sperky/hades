@@ -1005,6 +1005,44 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 
 /* ---------------------------------------------------------------------------
+   MOŽNO SÚVISÍ (#node-suggestions) — algoritmické návrhy prepojení (A8)
+   --------------------------------------------------------------------------- */
+#node-suggestions-sec.hidden { display: none; }
+
+.sug-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: var(--sp-1) 0;
+    border-bottom: 1px solid var(--border);
+}
+.sug-row:last-child { border-bottom: none; }
+.sug-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: var(--fs-body);
+}
+.sug-score {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+.sug-add {
+    flex-shrink: 0;
+    width: 28px; height: 28px; min-height: 28px;
+    padding: 0;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: var(--icon-sm);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.sug-add:hover { background: var(--accent-softer); color: var(--accent-600); }
+.sug-add:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sug-add:disabled { opacity: .5; pointer-events: none; }
+
+/* ---------------------------------------------------------------------------
    TIMELINE (#timeline) — kompaktne v hlavičke, pred metrikami
    --------------------------------------------------------------------------- */
 #timeline {
@@ -1214,6 +1252,107 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 
 /* ---------------------------------------------------------------------------
+   CHAT KONTEXT (#chat-context) — priložené uzly nad promptom (E3)
+   --------------------------------------------------------------------------- */
+#chat-context {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0);
+    padding: var(--sp-1) 12px;
+    margin-bottom: var(--sp-1);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-1);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+#chat-context.hidden { display: none; }
+
+.ctx-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-0);
+    max-width: 100%;
+    padding: 2px 4px 2px 10px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+}
+.ctx-label {
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 180px;
+}
+.ctx-x {
+    flex-shrink: 0;
+    width: 18px; height: 18px; min-height: 18px;
+    padding: 0;
+    border-radius: 50%;
+    color: var(--muted);
+    font-size: 14px;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.ctx-x:hover { background: var(--accent-soft); color: var(--accent-600); }
+.ctx-x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ctx-clear {
+    background: none; border: none;
+    color: var(--muted);
+    font-size: var(--fs-small);
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: var(--r-sm);
+    transition: color var(--dur-fast) var(--ease);
+}
+.ctx-clear:hover { color: var(--text); }
+.ctx-clear:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---------------------------------------------------------------------------
+   POTVRDZOVACIA KARTA (.suggest-card) — „Zapamätať" v chate (E2)
+   --------------------------------------------------------------------------- */
+.suggest-card {
+    align-self: stretch;
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-md);
+    box-shadow: var(--elev-1);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+.sc-head {
+    display: flex; align-items: center; gap: var(--sp-1);
+    color: var(--text);
+    font-weight: var(--fw-medium);
+    font-size: var(--fs-body);
+}
+.sc-head .ms { font-size: var(--icon-sm); color: var(--gold-text); }
+.suggest-card .sc-label {
+    width: 100%;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: var(--sp-1) 10px;
+    font-family: var(--font);
+    font-size: var(--fs-base);
+    color: var(--text);
+}
+.suggest-card .sc-label:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+.sc-row { display: flex; gap: var(--sp-1); }
+.suggest-card select {
+    flex: 1;
+    min-width: 0;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: var(--sp-1) 10px;
+    font-family: var(--font);
+    font-size: var(--fs-small);
+    color: var(--text);
+}
+.suggest-card select:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+.sc-actions { display: flex; gap: var(--sp-1); }
+.sc-actions button { flex: 1; }
+
+/* ---------------------------------------------------------------------------
    TOASTS (#toasts) — white glass, inset teal bar, pause-on-hover
    --------------------------------------------------------------------------- */
 #toasts {
@@ -1336,6 +1475,105 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     font-size: var(--fs-small);
 }
 .key-row .sep { color: var(--muted); margin: 0 var(--sp-0); }
+
+/* ---------------------------------------------------------------------------
+   DOKUMENT UZLA (#md-overlay / #md-card / .md-body) — markdown preview (C4/E6)
+   --------------------------------------------------------------------------- */
+#md-overlay {
+    position: fixed; inset: 0;
+    z-index: var(--z-overlay);
+    background: var(--scrim);
+    backdrop-filter: var(--blur-scrim);
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--sp-3);
+    animation: fade-in var(--dur-base) var(--ease);
+}
+#md-overlay.hidden { display: none; }
+
+#md-card {
+    display: flex; flex-direction: column;
+    width: min(720px, 92vw); max-height: 82vh;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    backdrop-filter: var(--blur-3);
+    box-shadow: var(--elev-3);
+    animation: rise-fade var(--dur-base) var(--ease);
+    overflow: hidden;
+}
+#md-card .dock-head { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); }
+#md-card h2 {
+    color: var(--text);
+    font-weight: var(--fw-semibold);
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.md-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--sp-3);
+    user-select: text;
+    color: var(--text-secondary);
+    line-height: var(--lh-prose);
+    font-size: var(--fs-base);
+}
+.md-body .md-front {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0) var(--sp-1);
+    padding-bottom: var(--sp-1);
+    margin-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--line-soft);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+.md-body .md-front strong { color: var(--text-secondary); font-weight: var(--fw-medium); }
+.md-body .md-front-sep { color: var(--border-strong); }
+.md-body h1.md-h { font-size: 1.5rem; }
+.md-body h2.md-h { font-size: 1.25rem; }
+.md-body h3.md-h { font-size: 1.05rem; }
+.md-body .md-h {
+    font-family: var(--font);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+    line-height: var(--lh-body);
+    margin: var(--sp-2) 0 var(--sp-1);
+}
+.md-body .md-h:first-child { margin-top: 0; }
+.md-body p { margin: 0 0 var(--sp-2); }
+.md-body .md-list { margin: 0 0 var(--sp-2); padding-left: var(--sp-3); }
+.md-body .md-list li { margin-bottom: var(--sp-0); }
+.md-body code {
+    font-family: var(--mono);
+    font-size: .9em;
+    letter-spacing: var(--ls-mono);
+    background: var(--surface-subtle);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-sm);
+    padding: 1px 5px;
+}
+.md-body .md-code {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-2);
+    margin: 0 0 var(--sp-2);
+    overflow-x: auto;
+}
+.md-body .md-code code {
+    background: none; border: none; padding: 0;
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+    white-space: pre;
+}
+.md-body .md-hr { border: none; border-top: 1px solid var(--border); margin: var(--sp-2) 0; }
+
+#md-foot {
+    display: flex; justify-content: flex-end;
+    padding: var(--sp-2) var(--sp-3);
+    border-top: 1px solid var(--border);
+}
 
 /* ---------------------------------------------------------------------------
    ONBOARDING HINT (#hint)
@@ -1895,13 +2133,15 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
 .nb-row .nb-del:focus-visible { opacity: 1; }
 .nb-row .nb-del:hover { color: var(--danger); background: var(--danger-soft); }
 
-/* Prepojiť s uzlom — štvorcové ghost tlačidlo medzi Upraviť a mazaním */
-#node-connect {
+/* Prepojiť s uzlom / dokument — štvorcové ghost tlačidlá medzi Upraviť a mazaním */
+#node-connect,
+#node-md {
     flex: 0 0 auto;
     width: 40px; height: 40px; min-height: 40px;
     padding: 0;
     font-size: var(--icon-md);
 }
+#node-md.hidden { display: none; }
 
 /* ---------------------------------------------------------------------------
    NOVÝ UZOL (#btn-new-node) — tichá prerušovaná výzva pod stromom štruktúry

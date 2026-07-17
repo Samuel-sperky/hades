@@ -99,6 +99,8 @@
             <div id="legend-areas"></div>
             <h3>Sila</h3>
             <div id="legend-strength"></div>
+            <h3>Spojenia</h3>
+            <div id="legend-connections"></div>
         </section>
 
         <section id="sec-settings" class="hidden">
@@ -117,6 +119,10 @@
             <label class="check"><input type="checkbox" data-fsource="skill" checked><span class="box" aria-hidden="true"></span><span>Playbooky</span></label>
             <label class="check"><input type="checkbox" data-fsource="digest" checked><span class="box" aria-hidden="true"></span><span>Súhrny a archívy</span></label>
             <label class="check"><input type="checkbox" data-fsource="manual" checked><span class="box" aria-hidden="true"></span><span>Ručné</span></label>
+            <label class="slider">Min. váha spojení
+                <input type="range" id="minweight-slider" min="0" max="5" step="0.5" value="0">
+                <output></output>
+            </label>
             <h3>Sieť — sily</h3>
             <label class="slider">Odpudzovanie
                 <input type="range" data-force="charge" min="-240" max="-20" step="1">
@@ -192,10 +198,15 @@
             <div id="node-record"></div>
             <h3>Spojenia</h3>
             <div id="node-neighbors"></div>
+            <div id="node-suggestions-sec">
+                <h3>Možno súvisí</h3>
+                <div id="node-suggestions"></div>
+            </div>
             <h3>História</h3>
             <div id="node-history"></div>
             <div class="row node-actions">
                 <button id="node-edit" class="primary">Upraviť</button>
+                <button id="node-md" class="ghost ms hidden" title="Zobraziť dokument" aria-label="Zobraziť dokument">description</button>
                 <button id="node-connect" class="ghost ms" title="Prepojiť s uzlom" aria-label="Prepojiť s uzlom">link</button>
                 <button id="node-delete" class="danger ms" aria-label="Zmazať">delete</button>
             </div>
@@ -224,6 +235,7 @@
     </div>
 
     <div id="prompt">
+        <div id="chat-context" class="hidden" aria-label="Kontext chatu"></div>
         <div id="chat-log" class="hidden" aria-live="polite"></div>
         <form id="prompt-form">
             <span class="ms spark" aria-hidden="true">hub</span>
@@ -242,6 +254,19 @@
                 <button class="close ms" id="help-close" aria-label="Zavrieť">close</button>
             </div>
             <div id="help-body"></div>
+        </div>
+    </div>
+
+    <div id="md-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="md-title">
+        <div id="md-card">
+            <div class="dock-head">
+                <h2 id="md-title"></h2>
+                <button class="close ms" id="md-close" aria-label="Zavrieť">close</button>
+            </div>
+            <div id="md-body" class="md-body"></div>
+            <div id="md-foot">
+                <button type="button" class="primary" id="md-context">Do kontextu</button>
+            </div>
         </div>
     </div>
 
