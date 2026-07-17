@@ -109,6 +109,11 @@
                 <span id="theme-toggle-label">Tmavý režim</span>
                 <button id="theme-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="theme-toggle-label"></button>
             </div>
+            <h3>Pohyb</h3>
+            <label class="slider">Animácie
+                <input type="range" data-opt="anim" min="0" max="1" step="0.05">
+                <output></output>
+            </label>
             <h3>Sieť — filter</h3>
             <div class="check-cap">Typy</div>
             <label class="check"><input type="checkbox" data-ftype="memory" checked><span class="box" aria-hidden="true"></span><span>Spomienky</span></label>
@@ -119,8 +124,21 @@
             <label class="check"><input type="checkbox" data-fsource="skill" checked><span class="box" aria-hidden="true"></span><span>Playbooky</span></label>
             <label class="check"><input type="checkbox" data-fsource="digest" checked><span class="box" aria-hidden="true"></span><span>Súhrny a archívy</span></label>
             <label class="check"><input type="checkbox" data-fsource="manual" checked><span class="box" aria-hidden="true"></span><span>Ručné</span></label>
+            <div class="check-cap">Vzťahy</div>
+            <label class="check"><input type="checkbox" data-frel="part_of" checked><span class="box" aria-hidden="true"></span><span>Kostra (part_of)</span></label>
+            <label class="check"><input type="checkbox" data-frel="uses" checked><span class="box" aria-hidden="true"></span><span>Použitia (uses)</span></label>
+            <label class="check"><input type="checkbox" data-frel="similarity" checked><span class="box" aria-hidden="true"></span><span>Podobnosti</span></label>
+            <label class="check"><input type="checkbox" data-frel="co_activation" checked><span class="box" aria-hidden="true"></span><span>Co-aktivácie</span></label>
+            <div class="switch-row">
+                <span id="softhover-label">Spojenia len pri hovere</span>
+                <button id="softhover-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="softhover-label"></button>
+            </div>
+            <div class="switch-row">
+                <span id="skeleton-label">Len kostra</span>
+                <button id="skeleton-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="skeleton-label"></button>
+            </div>
             <label class="slider">Min. váha spojení
-                <input type="range" id="minweight-slider" min="0" max="5" step="0.5" value="0">
+                <input type="range" id="minweight-slider" min="0" max="5" step="0.5" value="1">
                 <output></output>
             </label>
             <h3>Sieť — sily</h3>

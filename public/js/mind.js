@@ -5,6 +5,9 @@
 const CORE_COLOR = '#b88a3a';
 const AREA_RADIUS = 640;
 
+// FÁZA HRANY: základné stlmenie hrán (~40 %) — uzly a popisky vyniknú nad sieťou.
+const EDGE_DIM = 0.6;
+
 // Témy — kontrakt pre canvas literály (idú cez T.*)
 // nodeFloor/edgeFloor: spodná hranica tlmenia (hover × focus), gridAlpha: sila mriežky
 const THEMES = {
@@ -49,7 +52,19 @@ const S = {
     sound: localStorage.getItem('hades.sound') !== 'off',
     audio: null,
     view: localStorage.getItem('hades.view') || 'map',
-    minWeight: parseFloat(localStorage.getItem('hades.minWeight')) || 0, // A7: filter slabých spojení
+    // FÁZA HRANY: default 1.0 (skryje similarity 0.5 + jednorazové co_activation 0.6).
+    // Nový kľúč 'hades.minWeight2', aby sa nový default prejavil aj starým používateľom.
+    minWeight: (() => { const v = localStorage.getItem('hades.minWeight2'); return v == null ? 1.0 : (parseFloat(v) || 0); })(),
+    // FÁZA HRANY: režim kostry — zobraz len najsilnejšiu štruktúru (manual + part_of + skill_mention)
+    skeleton: localStorage.getItem('hades.skeleton') === '1',
+    // FÁZA ANIMÁCIE: stav animačnej vrstvy
+    _flows: [],           // putujúce svetlobody po hranách (event-driven): { from,to,e,t,speed,tone,dim,wait }
+    _morph: null,         // prechod náhľadov: { from:Map, to:Map, t, dur }
+    _clock: 0,            // monotónny animačný čas (s) — fáza pre dýchanie / sínusovky (mrzne pri skrytom tabe)
+    _anim: 0,             // efektívna intenzita animácií tento frame (animLevel(), vrátane ambient boostu)
+    _animBudget: 1,       // auto-strop 0..1 — pri poklese FPS sa znižuje (menej tokov/pulzov)
+    _fps: 60,             // EMA snímkovej frekvencie
+    _interacting: false,  // drag/pan prebieha → dýchanie sa pozastaví
 };
 
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -63,6 +78,8 @@ const OPT_DEFAULTS = {
     nodeScale: 1,
     labelSize: 1,
     sizeByDegree: false,
+    edgeSoftHover: true, // FÁZA HRANY: v pokoji sú hrany jemné, rozsvietia sa pri hover/fokuse uzla
+    anim: 0.5,           // FÁZA ANIMÁCIE: globálna intenzita animácií (0 = vypnuté, 1 = plné)
 };
 
 S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.opts') || '{}'));
@@ -79,6 +96,18 @@ try {
         if (Array.isArray(f[k])) S.filter[k] = new Set(f[k]);
     }
 } catch (e) { /* poškodený filter — čisté predvolené */ }
+
+// FÁZA HRANY: filter kategórií vzťahov (part_of / uses / similarity / co_activation).
+// manual + skill_mention (kategória 'core') je štruktúra a nefiltruje sa. Množina drží SKRYTÉ kategórie.
+S.filter.relations = new Set();
+try {
+    const rf = JSON.parse(localStorage.getItem('hades.relfilter') || '[]');
+    if (Array.isArray(rf)) S.filter.relations = new Set(rf);
+} catch (e) { /* poškodený filter vzťahov — čisté predvolené */ }
+
+function persistRelFilter() {
+    localStorage.setItem('hades.relfilter', JSON.stringify([...S.filter.relations]));
+}
 
 function setOpt(key, value) {
     S.opts[key] = value;
@@ -430,14 +459,37 @@ function edgeAlphaMul(e, hl, anchor, pathSet) {
     return Math.max(T.edgeFloor, mul);
 }
 
-// A10: štýl hrany podľa druhu (jediná ink farba, rozlíšenie čiarkovaním).
-// Vracia násobič alfy (podobnosť je najmäkší signál → ×0.8). Vzory sú v svetových
+// FÁZA HRANY: kategória hrany — relation má prednosť pred kind.
+// manual + skill_mention (bez relation) = štruktúra → 'core' (vždy viditeľné, kostra).
+function edgeCategory(e) {
+    if (e.relation === 'part_of') return 'part_of';
+    if (e.relation === 'uses') return 'uses';
+    if (e.kind === 'co_activation') return 'co_activation';
+    if (e.kind === 'similarity') return 'similarity';
+    return 'core';
+}
+
+// FÁZA HRANY: skrytá hrana? Filter kategórií vzťahov + režim kostry (len 'core' + 'part_of').
+function edgeCategoryHidden(e) {
+    const cat = edgeCategory(e);
+    if (S.filter.relations.has(cat)) return true;
+    if (S.skeleton && cat !== 'core' && cat !== 'part_of') return true;
+    return false;
+}
+
+// A10 + FÁZA HRANY: štýl hrany (jediná ink farba T.edge, rozlíšenie čiarkovaním).
+// Priorita relation nad kind pri voľbe dashu: part_of → plná (kostra), uses → čiarkovaná,
+// inak podľa kind (co_activation čiarkovaná, similarity bodkovaná). Vzory sú v svetových
 // jednotkách (delené k), aby čiarky držali konštantnú veľkosť na obrazovke.
-function applyEdgeKind(kind, k) {
-    if (kind === 'co_activation') { ctx.setLineDash([6 / k, 4 / k]); return 1; }
-    if (kind === 'similarity') { ctx.setLineDash([1.5 / k, 3 / k]); return 0.8; }
-    ctx.setLineDash([]); // manual / skill_mention / neznáme — plná čiara
-    return 1;
+// Vracia { kindMul, kindDim }: kindMul = alfa štýlu (podobnosť ×0.8 najmäkšia),
+// kindDim = útlm podľa dôležitosti druhu (auto šum sa tlmí silnejšie).
+function applyEdgeKind(e, k) {
+    if (e.relation === 'part_of') { ctx.setLineDash([]); return { kindMul: 1, kindDim: 1 }; }
+    if (e.relation === 'uses') { ctx.setLineDash([6 / k, 4 / k]); return { kindMul: 1, kindDim: 1 }; }
+    if (e.kind === 'co_activation') { ctx.setLineDash([6 / k, 4 / k]); return { kindMul: 1, kindDim: 0.6 }; }
+    if (e.kind === 'similarity') { ctx.setLineDash([1.5 / k, 3 / k]); return { kindMul: 0.8, kindDim: 0.5 }; }
+    ctx.setLineDash([]); // manual / skill_mention / neznáme — plná čiara (významné)
+    return { kindMul: 1, kindDim: 1 };
 }
 
 const LAYER_X = [-560, -280, 0, 280, 560];
@@ -793,6 +845,66 @@ function neighborsOf(node) {
     return out;
 }
 
+/* ---------- FÁZA ANIMÁCIE: globálne škálovanie + toky ---------- */
+
+// Efektívna intenzita animácií. REDUCED_MOTION → 0 (statika). Ambient režim zosilní jemné
+// efekty ×1.6, inak držané veľmi jemné. Slider 'anim' (0..1) funguje aj ako vypínač na 0.
+function animLevel() {
+    if (REDUCED_MOTION) return 0;
+    const base = S.opts && S.opts.anim != null ? S.opts.anim : 0.5;
+    if (base <= 0) return 0;
+    return base * (document.body.classList.contains('ambient') ? 1.6 : 1);
+}
+
+// Ease-out (cubic) — zrod uzla; ease-in-out — morph náhľadov.
+const easeOut = (p) => 1 - Math.pow(1 - Math.max(0, Math.min(1, p)), 3);
+const easeInOut = (p) => { p = Math.max(0, Math.min(1, p)); return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; };
+
+// Auto-strop: koľko súbežných tokov je momentálne povolených (klesá s FPS aj s anim=0).
+function flowCap() {
+    return Math.max(0, Math.round(20 * S._animBudget * Math.min(1.2, S._anim)));
+}
+
+// Vyšle putujúce svetlobody po incidentných hranách uzla (len na aktivitu, nie nepretržite).
+// Respektuje filtre hrán, auto-strop aj anim. tone: 'accent' (teal) | 'ink' | hex.
+function emitFlows(node, opts = {}) {
+    if (!node || REDUCED_MOTION || S._anim <= 0 || document.hidden || S.replay.on) return;
+    const cap = flowCap();
+    if (cap <= 0) return;
+    for (const e of S.edges) {
+        if (e.source.id !== node.id && e.target.id !== node.id) continue;
+        if ((e.weight || 1) < S.minWeight) continue;
+        if (edgeCategoryHidden(e)) continue;
+        if (S._flows.length >= cap) break;
+        const to = e.source.id === node.id ? e.target : e.source;
+        S._flows.push({
+            from: node, to, e, t: 0,
+            speed: opts.speed || 0.8 + Math.random() * 0.35,
+            tone: opts.tone || 'accent',
+            dim: opts.dim != null ? opts.dim : 1,
+            wait: opts.wait || 0, // oneskorenie štartu (staggered recall vlna)
+        });
+    }
+}
+
+// Zrod uzla: násobič polomeru 0→1 (~0.5 s, ease-out). anim=0 / REDUCED_MOTION → hneď plný.
+function birthScale(n) {
+    if (n._born == null || S._anim <= 0 || REDUCED_MOTION) return 1;
+    const age = S._clock - n._born;
+    if (age >= 0.5) return 1; // prstenec (do 0.6 s) dobehne a _born vyčistí až sám
+    return easeOut(age / 0.5);
+}
+
+// Idle dýchanie: veľmi jemná sínusová modulácia polomeru (~±3 %, jadro výraznejšie),
+// fázovo rozhodené podľa id, pomalé (~4–6 s). Pozastavené pri hover/drag a keď anim=0.
+function breatheFactor(n) {
+    if (S._anim <= 0 || S.hover || S._interacting) return 1;
+    const core = n.type === 'core';
+    const period = core ? 5.5 : 4 + (n.id % 5) * 0.4;
+    const amp = (core ? 0.05 : 0.03) * Math.min(1.6, S._anim);
+    return 1 + amp * Math.sin(S._clock * (2 * Math.PI / period) + n.id * 1.3);
+}
+
 function dream() {
     if (REDUCED_MOTION || document.hidden || S.replay.on || !S.edges.length) return;
     const e = S.edges[Math.floor(Math.random() * S.edges.length)];
@@ -875,6 +987,11 @@ function buildSim() {
 }
 
 function setView(view) {
+    const prev = S.view;
+    // FÁZA ANIMÁCIE (Q12): morph len pri skutočnej zmene náhľadu; prvé načítanie a REDUCED_MOTION/anim=0 skáču
+    const animate = prev !== view && S.nodes.length > 0 && !REDUCED_MOTION && animLevel() > 0;
+    const from = animate ? new Map(S.nodes.map(n => [n.id, { x: n.x, y: n.y }])) : null;
+
     S.view = view;
     localStorage.setItem('hades.view', view);
     document.querySelectorAll('#view-switch button').forEach((b) => {
@@ -885,7 +1002,21 @@ function setView(view) {
     // mapa/sieť: pár tikov, nech bbox sedí na usadených pozíciách; vrstvy sú deterministické (fx/fy)
     if (S.sim && view !== 'layers') S.sim.tick(30);
     syncForceSliders(); // efektívne predvolené sily sa menia s náhľadom
-    fitView();
+
+    if (!animate) { fitView(); return; }
+
+    // cieľové pozície: layers sú pripnuté (fx/fy) a neťikajú sa, mapa/sieť sú usadené v n.x/n.y
+    const to = new Map(S.nodes.map(n => [n.id, {
+        x: n.fx != null ? n.fx : n.x,
+        y: n.fy != null ? n.fy : n.y,
+    }]));
+    // dočasne posaď uzly na cieľ, nech fitView zaráta kameru na cieľový layout
+    for (const n of S.nodes) { const b = to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } }
+    fitView(); // zaráta kameru na cieľ (a raz vykreslí cieľové pozície)
+    S.sim.stop(); // počas morphu nesmie sim prepisovať pozície
+    for (const n of S.nodes) { const f = from.get(n.id); if (f) { n.x = f.x; n.y = f.y; } }
+    S._morph = { from, to, t: 0, dur: 0.6 };
+    draw(); // prekresli na štartové pozície, nech nebliká cieľ pred prvým rAF framom
 }
 
 function kickSim(alpha = 0.35) {
@@ -935,6 +1066,9 @@ function draw() {
     // vrstvová cesta cez layery (2-skoky VON) — len v náhľade Vrstvy; inde null (staré správanie)
     const pathEdges = layersView ? layerPathSet(hlAnchor) : null;
     const pathNodes = layersView ? S._lpNodes : null;
+    // FÁZA HRANY: soft-hover — v pokoji (žiadny hover/fokus/local) sú hrany extra jemné (×0.35),
+    // spojenia sa vynoria až keď je uzol pod kurzorom / vo fokuse.
+    const softHoverActive = S.opts.edgeSoftHover && !hlAnchor && !S.focus.areaId && !loc;
     const bgLevel = layersView ? 0 : S.opts.bg;
     if (bgLevel > 0.01) {
         const invK = 1 / S.cam.k;
@@ -988,11 +1122,14 @@ function draw() {
         // (2) skutočné spojenia zo S.edges — rovnaké váhové štýlovanie ako mapa/sieť
         for (const e of S.edges) {
             if ((e.weight || 1) < S.minWeight) continue; // A7: filter slabých spojení
+            if (edgeCategoryHidden(e)) continue; // FÁZA HRANY: filter vzťahov + kostra
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
             if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
-            const kindMul = applyEdgeKind(e.kind, S.cam.k); // A10: čiarkovanie podľa druhu
+            const { kindMul, kindDim } = applyEdgeKind(e, S.cam.k); // relation/kind → dash + útlm
             let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
-            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor, pathEdges) * kindMul;
+            // FÁZA HRANY: výsledná alfa = base × hover/focus × kindMul × EDGE_DIM × kindDim (× soft-hover)
+            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor, pathEdges) * kindMul * EDGE_DIM * kindDim;
+            if (softHoverActive) alpha *= 0.35;
             // zvýraznenie toku cez vrstvy: celá cesta kotvy (priame + druhý skok VON) teal-akcentom
             const onPath = pathEdges && pathEdges.has(e);
             ctx.strokeStyle = onPath
@@ -1032,12 +1169,19 @@ function draw() {
     } else {
         for (const e of S.edges) {
             if ((e.weight || 1) < S.minWeight) continue; // A7: filter slabých spojení
+            if (edgeCategoryHidden(e)) continue; // FÁZA HRANY: filter vzťahov + kostra
             if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
             if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
             // atramentovo-šedé hrany, bez S.dim hmly; podlaha 0.12, potom highlight/focus tlmenie
-            const kindMul = applyEdgeKind(e.kind, S.cam.k); // A10: čiarkovanie podľa druhu
+            const { kindMul, kindDim } = applyEdgeKind(e, S.cam.k); // relation/kind → dash + útlm
             let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
-            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor) * kindMul;
+            // FÁZA HRANY: výsledná alfa = base × hover/focus × kindMul × EDGE_DIM × kindDim (× soft-hover)
+            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor) * kindMul * EDGE_DIM * kindDim;
+            if (softHoverActive) alpha *= 0.35;
+            // incidentné hrany kotvy pri hover/fokuse sa mierne rozsvietia
+            else if (hlAnchor && (e.source.id === hlAnchor.id || e.target.id === hlAnchor.id)) {
+                alpha = Math.min(0.75, alpha * 1.25);
+            }
             ctx.strokeStyle = 'rgba(' + T.edge + ',' + alpha + ')';
             ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
             ctx.beginPath();
@@ -1062,12 +1206,36 @@ function draw() {
     }
     ctx.globalAlpha = 1;
 
+    // FÁZA ANIMÁCIE: putujúce svetlobody po hranách (Q10) — malý bod, fade na koncoch.
+    // Kreslené priamočiaro (aj v layers), jemné; alfa nesie anim intenzitu.
+    if (S._anim > 0 && S._flows.length) {
+        const fr = 3 / S.cam.k;
+        for (const f of S._flows) {
+            if (f.wait > 0) continue;
+            if (!(nodeVisible(f.from, loc) && nodeVisible(f.to, loc))) continue;
+            const x = f.from.x + (f.to.x - f.from.x) * f.t;
+            const y = f.from.y + (f.to.y - f.from.y) * f.t;
+            const a = Math.min(0.7, 0.6 * f.dim * Math.min(1.2, S._anim)) * Math.sin(Math.PI * Math.min(f.t, 1));
+            if (a < 0.02) continue;
+            ctx.globalAlpha = a;
+            ctx.fillStyle = f.tone === 'ink' ? 'rgb(' + T.edge + ')'
+                : f.tone === 'accent' ? 'rgb(' + T.accent + ')' : f.tone;
+            ctx.beginPath();
+            ctx.arc(x, y, fr, 0, 7);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    }
+
     ctx.globalCompositeOperation = 'source-over';
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
         if (!nodeVisible(n, loc)) continue;
         let r = layersView ? Math.max(6, nodeRadius(n)) * 0.9 : nodeRadius(n);
         if (S.hover === n) r *= 1.15; // hover zväčšenie (Obsidian)
+        r *= breatheFactor(n) * birthScale(n); // FÁZA ANIMÁCIE: idle dýchanie + zrod uzla
+        // FÁZA ANIMÁCIE: jemný pop pri dobehnutí pulzu/toku (v mape/sieti; layers rieši flash vlastnou alfou)
+        if (!layersView && n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, S._anim);
         const color = nodeColor(n);
         const flash = layersView ? (n.flash || 0) : 0;
         const mul = nodeAlphaMul(n, hl, pathNodes);
@@ -1091,12 +1259,30 @@ function draw() {
 
         // D3: teal prstenec aktivity pre nedávno použité uzly (heat > 0.6), jadro má vlastný zlatý
         if (heat > 0.6 && n.type !== 'core') {
-            ctx.globalAlpha = ((heat - 0.6) / 0.4) * 0.5 * mul;
+            // FÁZA ANIMÁCIE (Q14): prstenec jemne dýcha — pomalá sínusovka alfy (×anim), statický pri anim=0
+            const heatPulse = 1 + 0.3 * S._anim * Math.sin(S._clock * 1.6 + n.id);
+            ctx.globalAlpha = Math.max(0, ((heat - 0.6) / 0.4) * 0.5 * mul * heatPulse);
             ctx.lineWidth = 1.2 / S.cam.k;
             ctx.strokeStyle = 'rgb(' + T.accent + ')';
             ctx.beginPath();
             ctx.arc(n.x, n.y, r + 3 / S.cam.k, 0, 7);
             ctx.stroke();
+        }
+
+        // FÁZA ANIMÁCIE (Q13): zrod uzla — krátky rozpínavý prstenec, ktorý dobehne a zmizne
+        if (n._born != null) {
+            const age = S._clock - n._born;
+            if (age < 0.6 && S._anim > 0 && !REDUCED_MOTION) {
+                const p = age / 0.6;
+                ctx.globalAlpha = (1 - p) * 0.6 * mul;
+                ctx.lineWidth = 1.4 / S.cam.k;
+                ctx.strokeStyle = 'rgb(' + T.accent + ')';
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, r + (3 + p * 14) / S.cam.k, 0, 7);
+                ctx.stroke();
+            } else if (age >= 0.6) {
+                n._born = null; // zrod dobehol — vyčisti časovač
+            }
         }
 
         if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
@@ -1204,11 +1390,51 @@ function frame() {
     const dt = Math.min((now() - lastFrame) / 1000, 0.1);
     lastFrame = now();
 
+    // FÁZA ANIMÁCIE: monotónny čas + efektívna intenzita animácií tohto framu
+    S._clock += dt;
+    S._anim = animLevel();
+
+    // Auto-strop: EMA FPS; pri poklese pod ~45 fps sťahuj rozpočet animácií (menej tokov)
+    const fpsInst = dt > 0 ? 1 / dt : 60;
+    S._fps = S._fps * 0.9 + fpsInst * 0.1;
+    const budgetTarget = S._fps < 45 ? 0.4 : 1;
+    S._animBudget += (budgetTarget - S._animBudget) * 0.05;
+
     for (const p of S.pulses) p.t += dt * p.speed;
     for (let i = S.pulses.length - 1; i >= 0; i--) {
         if (S.pulses[i].t >= 1) {
             S.pulses[i].to.flash = Math.min(1, (S.pulses[i].to.flash || 0) + 0.5 * S.pulses[i].dim);
             S.pulses.splice(i, 1);
+        }
+    }
+
+    // FÁZA ANIMÁCIE: putujúce svetlobody po hranách — po dobehnutí jemne rozsvietia cieľ
+    // (staggered dobeh dáva recall „graph-walk" vlnu). Nad rozpočet sa oreže najstaršie.
+    for (let i = S._flows.length - 1; i >= 0; i--) {
+        const f = S._flows[i];
+        if (f.wait > 0) { f.wait -= dt; continue; }
+        f.t += dt * f.speed;
+        if (f.t >= 1) {
+            if (f.to) f.to.flash = Math.min(1, (f.to.flash || 0) + 0.28 * f.dim);
+            S._flows.splice(i, 1);
+        }
+    }
+    const cap = flowCap();
+    if (S._flows.length > cap) S._flows.splice(0, S._flows.length - cap);
+
+    // FÁZA ANIMÁCIE: morph prechod pozícií medzi náhľadmi (sim je počas neho zastavená)
+    if (S._morph) {
+        const m = S._morph;
+        m.t = Math.min(1, m.t + dt / m.dur);
+        const e = easeInOut(m.t);
+        for (const n of S.nodes) {
+            const a = m.from.get(n.id), b = m.to.get(n.id);
+            if (a && b) { n.x = a.x + (b.x - a.x) * e; n.y = a.y + (b.y - a.y) * e; }
+        }
+        if (m.t >= 1) {
+            for (const n of S.nodes) { const b = m.to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } }
+            S._morph = null;
+            if (S.sim) { if (S.view !== 'layers') S.sim.alpha(0.05).restart(); else S.sim.restart(); }
         }
     }
 
@@ -1280,8 +1506,11 @@ function setupInput() {
     let dragging = false, moved = false, lx = 0, ly = 0;
     let dragNode = null; // Obsidian-style grab & fling — ťahanie uzla v mape/sieti
 
+    let lastHoverId = null; // FÁZA ANIMÁCIE: hover na NOVÝ uzol spustí tok po jeho hranách
+
     canvas.addEventListener('mousedown', (e) => {
         dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
+        S._interacting = true; // pauza idle dýchania počas drag/pan
         dragNode = null;
         canvas.style.cursor = ''; // inline kurzor by prebil .grabbing/.dragging z CSS
         if (S.view !== 'layers' && !S.connectFrom) { // pri prepájaní je klik čistý výber cieľa
@@ -1309,6 +1538,12 @@ function setupInput() {
             lx = e.clientX; ly = e.clientY;
         } else {
             S.hover = pick(e.clientX, e.clientY);
+            // FÁZA ANIMÁCIE (Q10): tok len pri prechode na nový uzol, nie na každý pohyb myšou
+            const hid = S.hover ? S.hover.id : null;
+            if (hid !== lastHoverId) {
+                if (S.hover) emitFlows(S.hover, { tone: 'accent', dim: 0.7, speed: 1.0 });
+                lastHoverId = hid;
+            }
             // nad uzlom 'grab' (mapa/sieť — dá sa ťahať), vrstvy len klik → pointer
             canvas.style.cursor = S.connectFrom
                 ? 'crosshair'
@@ -1318,6 +1553,7 @@ function setupInput() {
     });
 
     window.addEventListener('mouseup', (e) => {
+        S._interacting = false; // koniec drag/pan → idle dýchanie sa môže vrátiť
         canvas.classList.remove('dragging');
         canvas.classList.remove('grabbing');
         if (dragNode) {
@@ -1722,15 +1958,18 @@ function buildLegend() {
             + '<span class="cap">slabšia → silnejšia</span></div>';
     }
 
-    // A10: druhy spojení — jedna ink farba, rozlíšenie štýlom čiary (plná / čiarkovaná / bodkovaná)
+    // A10 + FÁZA HRANY: druhy spojení — jedna ink farba, rozlíšenie štýlom čiary.
+    // relation (part_of kostra, uses) má prednosť pred kind (aktivácia, podobnosť).
     const connEl = $('legend-connections');
     if (connEl) {
-        const line = (dash) =>
+        const line = (dash, w) =>
             '<svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true">'
-            + '<line x1="1" y1="5" x2="25" y2="5" stroke="var(--muted)" stroke-width="1.4"'
+            + '<line x1="1" y1="5" x2="25" y2="5" stroke="var(--muted)" stroke-width="' + (w || 1.4) + '"'
             + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/></svg>';
         connEl.innerHTML =
-            '<div class="legend-row">' + line('') + '<span>Ručné · silné</span></div>'
+            '<div class="legend-row">' + line('', 1) + '<span>Kostra · part_of</span></div>'
+            + '<div class="legend-row">' + line('') + '<span>Ručné · silné</span></div>'
+            + '<div class="legend-row">' + line('6 4') + '<span>Použitie · uses</span></div>'
             + '<div class="legend-row">' + line('5 3') + '<span>Spoločná aktivácia</span></div>'
             + '<div class="legend-row">' + line('1.5 3') + '<span>Podobnosť</span></div>';
     }
@@ -2083,11 +2322,13 @@ function handlePulse(type, data) {
         n.x = a.x + (Math.random() - 0.5) * 40;
         n.y = a.y + (Math.random() - 0.5) * 40;
         n.flash = 1;
+        n._born = S._clock; // FÁZA ANIMÁCIE (Q13): časovač zrodu — polomer 0→plný + prstenec
         S.nodes.push(n);
         S.byId.set(n.id, n);
         buildSim();
         kickSim(0.5);
         spawnPulse(hadesNode(), n, { speed: 1.4 });
+        emitFlows(n, { tone: 'accent', speed: 1.1 }); // tok po nových hranách uzla
         blip(520);
         showToast('Naučil som sa: ' + n.label, n.id);
         if (n.source === 'session') {
@@ -2103,6 +2344,7 @@ function handlePulse(type, data) {
         n.flash = 1;
         const from = neighborsOf(n)[0] || hadesNode();
         spawnPulse(from, n, { speed: 1.6 });
+        emitFlows(n, { tone: 'accent' }); // FÁZA ANIMÁCIE (Q10): tok po incidentných hranách
         kickSim(0.12);
         blip(440);
     }
@@ -2160,9 +2402,15 @@ function handlePulse(type, data) {
     }
 
     if (type === 'recall' && Array.isArray(data.node_ids)) {
+        // FÁZA ANIMÁCIE (Q11): postupné rozliatie od nájdených uzlov k susedom — graph-walk vlna.
+        // Pulz z jadra na uzol, po jeho dobehnutí sa z uzla rozbehnú toky k susedom (staggered).
         data.node_ids.forEach((id, i) => {
             const n = S.byId.get(id);
-            if (n) setTimeout(() => { spawnPulse(hadesNode(), n, { speed: 1.8, dim: 0.8 }); }, i * 120);
+            if (!n) return;
+            setTimeout(() => {
+                spawnPulse(hadesNode(), n, { speed: 1.8, dim: 0.8 });
+                emitFlows(n, { tone: 'accent', dim: 0.85, wait: 0.35 }); // vlna k susedom o skok ďalej
+            }, i * 120);
         });
         blip(392, 0.5, 0.03);
         setTimeout(() => blip(523, 0.5, 0.03), 150);
@@ -3262,7 +3510,37 @@ function setupControls() {
         };
     });
 
-    // A7: min. váha spojení — samostatný stav (nie data-opt), surová hodnota v odpočte
+    // Filter kategórií vzťahov — checked = viditeľné; S.filter.relations drží skryté kategórie
+    document.querySelectorAll('input[data-frel]').forEach((inp) => {
+        const val = inp.dataset.frel;
+        inp.checked = !S.filter.relations.has(val);
+        inp.onchange = () => {
+            if (inp.checked) S.filter.relations.delete(val);
+            else S.filter.relations.add(val);
+            persistRelFilter();
+            draw();
+        };
+    });
+
+    // Soft-hover — spojenia sú v pokoji jemné, rozsvietia sa pri hover/fokuse uzla
+    const shBtn = $('softhover-toggle');
+    const syncShBtn = () => shBtn.setAttribute('aria-checked', S.opts.edgeSoftHover ? 'true' : 'false');
+    syncShBtn();
+    shBtn.onclick = () => { setOpt('edgeSoftHover', !S.opts.edgeSoftHover); syncShBtn(); draw(); };
+
+    // Kostra — zobraz len najsilnejšiu štruktúru (manual + part_of + skill_mention)
+    const skBtn = $('skeleton-toggle');
+    const syncSkBtn = () => skBtn.setAttribute('aria-checked', S.skeleton ? 'true' : 'false');
+    syncSkBtn();
+    skBtn.onclick = () => {
+        S.skeleton = !S.skeleton;
+        localStorage.setItem('hades.skeleton', S.skeleton ? '1' : '0');
+        syncSkBtn();
+        draw();
+        showToast(S.skeleton ? 'Kostra zapnutá' : 'Kostra vypnutá');
+    };
+
+    // A7 + FÁZA HRANY: min. váha spojení — samostatný stav (nie data-opt), surová hodnota v odpočte
     const mw = $('minweight-slider');
     if (mw) {
         const syncMw = () => {
@@ -3274,7 +3552,7 @@ function setupControls() {
         syncMw();
         mw.oninput = () => {
             S.minWeight = parseFloat(mw.value);
-            localStorage.setItem('hades.minWeight', String(S.minWeight));
+            localStorage.setItem('hades.minWeight2', String(S.minWeight));
             syncMw();
             draw();
         };
@@ -3320,6 +3598,7 @@ function setupControls() {
         makeStars();
         applyOpts();
         syncDegBtn(); // reset vráti aj sizeByDegree — prepínač a collide polomery dorovnať
+        syncShBtn();  // reset vráti edgeSoftHover na TRUE — prepínač dorovnať
         buildSim();
         kickSim(0.3);
         draw();
