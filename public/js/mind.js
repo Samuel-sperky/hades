@@ -246,6 +246,40 @@ function highlightSet() {
     return S._hlSet;
 }
 
+// Vrstvová cesta (len náhľad Vrstvy): 2-skokové rozšírenie okolo kotvy, ktoré sleduje
+// tok VON cez vrstvy — vstup→skryté→jadro/výstup. Priame hrany kotvy + druhé hrany,
+// ktoré sa od vrstvy kotvy vzďaľujú (napr. spomienka→skill→projekt). Slúži hlavnému
+// účelu Vrstiev: vidieť, ako spomienka aktivuje skill a ten projekt. Cache na kotvu
+// ako highlightSet; S._lpNodes = id uzlov na ceste (nech ostanú čitateľné, nie stlmené).
+function layerPathSet(anchor) {
+    if (!anchor || anchor._li == null) { S._lpFor = null; S._lpEdges = null; S._lpNodes = null; return null; }
+    if (S._lpFor === anchor && S._lpEdges) return S._lpEdges;
+    const a0 = anchor._li;
+    const edges = new Set();
+    const nodes = new Set([anchor.id]);
+    // 1) priame hrany kotvy
+    for (const e of S.edges) {
+        if (e.source.id === anchor.id) { edges.add(e); nodes.add(e.target.id); }
+        else if (e.target.id === anchor.id) { edges.add(e); nodes.add(e.source.id); }
+    }
+    // 2) druhý skok — pokračovanie toku VON od vrstvy kotvy (menej vizuálneho šumu než plné 2-hop).
+    // hop1 zmrazí prvý okruh, aby sa cesta nerozliala do tretieho skoku počas pridávania.
+    const hop1 = new Set(nodes);
+    for (const e of S.edges) {
+        const s = e.source, t = e.target;
+        if (s._li == null || t._li == null) continue;
+        let via = null, far = null;
+        if (hop1.has(s.id) && s.id !== anchor.id && !hop1.has(t.id)) { via = s; far = t; }
+        else if (hop1.has(t.id) && t.id !== anchor.id && !hop1.has(s.id)) { via = t; far = s; }
+        if (!via) continue;
+        if (Math.abs(far._li - a0) > Math.abs(via._li - a0)) { edges.add(e); nodes.add(far.id); }
+    }
+    S._lpFor = anchor;
+    S._lpEdges = edges;
+    S._lpNodes = nodes;
+    return edges;
+}
+
 /* ---------- lokálny graf (Obsidian local graph) ---------- */
 
 // BFS zo S.local.rootId po hĺbku — množina viditeľných uzlov, cache ako _hlSet
@@ -377,17 +411,21 @@ function syncForceSliders() {
     });
 }
 
-function nodeAlphaMul(n, hl) {
+// pathNodes (voliteľné, len Vrstvy): uzly na vrstvovej ceste sa netlmia ako cudzie
+function nodeAlphaMul(n, hl, pathNodes) {
     let mul = 1;
-    if (hl && !hl.has(n.id)) mul *= 0.18;
+    if (hl && !hl.has(n.id) && !(pathNodes && pathNodes.has(n.id))) mul *= 0.18;
     if (!focusPass(n)) mul *= 0.15;
     // podlaha na SÚČINE (hover × focus) — tlmené uzly ostávajú čitateľné
     return Math.max(T.nodeFloor, mul);
 }
 
-function edgeAlphaMul(e, hl, anchor) {
+// pathSet (voliteľné, len Vrstvy): hrany vrstvovej cesty sa berú ako priame (netlmené)
+function edgeAlphaMul(e, hl, anchor, pathSet) {
     let mul = 1;
-    if (hl && !(anchor && (e.source.id === anchor.id || e.target.id === anchor.id))) mul *= 0.18;
+    const onPath = (anchor && (e.source.id === anchor.id || e.target.id === anchor.id))
+        || (pathSet && pathSet.has(e));
+    if (hl && !onPath) mul *= 0.18;
     if (!(focusPass(e.source) && focusPass(e.target))) mul *= 0.15;
     return Math.max(T.edgeFloor, mul);
 }
@@ -403,43 +441,240 @@ function applyEdgeKind(kind, k) {
 }
 
 const LAYER_X = [-560, -280, 0, 280, 560];
-const LAYER_SPACING = (nodes) => Math.max(48, Math.min(95, 1100 / Math.max(nodes.length, 1)));
 const LAYER_META = [
     { title: 'Vstup', sub: 'Spomienky' },
-    { title: 'Skrytá', sub: 'Skills' },
+    { title: 'Skrytá', sub: 'Skills → spomienky' },
     { title: 'Jadro', sub: 'Osobnosť' },
-    { title: 'Skrytá', sub: 'Skills' },
+    { title: 'Skrytá', sub: 'Skills → projekty' },
     { title: 'Výstup', sub: 'Projekty' },
 ];
 
-function layerColumns() {
-    const mem = [], skillA = [], core = [], skillB = [], proj = [];
-    const skills = S.nodes
-        .filter((n) => n.type === 'skill')
-        .sort((a, b) => a.label.localeCompare(b.label));
-    skills.forEach((n, i) => (i % 2 === 0 ? skillA : skillB).push(n));
-    for (const n of S.nodes) {
-        if (n.type === 'memory') mem.push(n);
-        else if (n.type === 'core') core.push(n);
-        else if (n.type === 'project') proj.push(n);
+// Zaradenie uzla do stĺpca vrstvy. Prednosť má explicitné layer_role (ak backend
+// pole doplní), inak fallback na type. Skills (99) sa ešte rozdelia podľa náklonu,
+// neznámy typ (-1) padá do jadra. Graceful — žiadny uzol vo Vrstvách nezmizne.
+function layerIndexOf(n) {
+    switch (n.layer_role) {
+        case 'input': return 0;
+        case 'hidden_in': return 1;
+        case 'core': return 2;
+        case 'hidden_out': return 3;
+        case 'output': return 4;
     }
-    return [mem, skillA, core, skillB, proj];
+    if (n.type === 'memory') return 0;
+    if (n.type === 'core') return 2;
+    if (n.type === 'project') return 4;
+    if (n.type === 'skill') return 99; // rozdelí sa podľa náklonu väzieb
+    return -1;                         // neznámy typ → jadro (fallback)
 }
 
-function drawLayerScaffold(layers) {
-    let maxHalf = 0;
-    layers.forEach((nodes) => {
-        maxHalf = Math.max(maxHalf, (nodes.length - 1) / 2 * LAYER_SPACING(nodes));
-    });
-    const headerY = -maxHalf - 66;
+function areaKey(n) { return n.area_id == null ? -1 : n.area_id; }
+
+// Počiatočné poradie v stĺpci: podľa oblasti (súvislé farebné pásy), potom label, id.
+function cmpInitial(a, b) {
+    const ka = areaKey(a), kb = areaKey(b);
+    if (ka !== kb) return ka - kb;
+    const la = (a.label || '').toLowerCase(), lb = (b.label || '').toLowerCase();
+    if (la !== lb) return la < lb ? -1 : 1;
+    return a.id - b.id;
+}
+
+// Deterministický layout stĺpcov Vrstvy s barycentrovým usporiadaním (menej kríženia)
+// a zoskupením podľa oblasti. Výsledok sa cachuje (S._layerCache), prepočet len pri
+// štrukturálnej zmene grafu (invalidácia v buildSim).
+function computeLayerColumns() {
+    // plná susednosť z reálnych hrán (objekty uzlov)
+    const nbr = new Map();
+    for (const n of S.nodes) nbr.set(n.id, []);
+    for (const e of S.edges) {
+        const s = e.source, t = e.target;
+        if (!s || !t || !nbr.has(s.id) || !nbr.has(t.id)) continue;
+        nbr.get(s.id).push(t);
+        nbr.get(t.id).push(s);
+    }
+
+    // 1) priradenie stĺpca — skills podľa náklonu (spomienky = ľavá skrytá, jadro/projekty = pravá)
+    const cols = [[], [], [], [], []];
+    const colOf = new Map();
+    for (const n of S.nodes) {
+        let li = layerIndexOf(n);
+        if (li === 99) {
+            let left = 0, right = 0;
+            for (const m of nbr.get(n.id)) {
+                if (m.type === 'memory') left++;
+                else if (m.type === 'core' || m.type === 'project') right++;
+            }
+            li = right > left ? 3 : (left > right ? 1 : (n.id % 2 ? 3 : 1));
+        } else if (li < 0) {
+            li = 2;
+        }
+        cols[li].push(n);
+        colOf.set(n.id, li);
+    }
+
+    // 2) počiatočné poradie podľa oblasti
+    const pos = new Map();
+    for (const arr of cols) {
+        arr.sort(cmpInitial);
+        arr.forEach((n, i) => pos.set(n.id, i));
+    }
+
+    // 3) barycentrové sweepy (tam a späť) — poradie podľa mediánu susedov v susedných
+    //    stĺpcoch; oblasť drží súvislé pásy, barycentrum triedi vnútri pásu aj poradie pásov
+    for (let iter = 0; iter < 4; iter++) {
+        const forward = iter % 2 === 0;
+        for (let s = 0; s < cols.length; s++) {
+            const li = forward ? s : cols.length - 1 - s;
+            const arr = cols[li];
+            if (arr.length < 2) continue;
+            const bary = new Map();
+            for (const n of arr) {
+                let sum = 0, cnt = 0;
+                for (const m of nbr.get(n.id)) {
+                    if (colOf.get(m.id) === li) continue; // vnútrostĺpcové hrany nekrížia
+                    sum += pos.get(m.id); cnt++;
+                }
+                bary.set(n.id, cnt ? sum / cnt : pos.get(n.id));
+            }
+            // poradie oblastí podľa ich priemerného barycentra (pásy zostanú súvislé)
+            const aSum = new Map(), aCnt = new Map();
+            for (const n of arr) {
+                const k = areaKey(n);
+                aSum.set(k, (aSum.get(k) || 0) + bary.get(n.id));
+                aCnt.set(k, (aCnt.get(k) || 0) + 1);
+            }
+            const aRank = new Map();
+            [...aSum.keys()]
+                .sort((x, y) => (aSum.get(x) / aCnt.get(x)) - (aSum.get(y) / aCnt.get(y)) || x - y)
+                .forEach((k, i) => aRank.set(k, i));
+            arr.sort((a, b) => {
+                const ra = aRank.get(areaKey(a)), rb = aRank.get(areaKey(b));
+                if (ra !== rb) return ra - rb;
+                const da = bary.get(a.id), db = bary.get(b.id);
+                if (da !== db) return da - db;
+                return a.id - b.id;
+            });
+            arr.forEach((n, i) => pos.set(n.id, i));
+        }
+    }
+
+    return cols;
+}
+
+// Rozdelenie veľkej vrstvy do sub-stĺpcov: dlhý stĺpec (napr. ~70 skills) je inak
+// ~3300 px vysoký a fitView kvôli nemu stlačí zoom pod prah labelov. Sub-stĺpce
+// znížia výšku a udržia zoom v čitateľnom pásme. Max 3 sub-stĺpce vedľa LAYER_X.
+const SUB_SPLIT_AT = 22; // stĺpec dlhší ako toto sa rozloží
+const SUB_MAX = 4;       // najviac sub-stĺpcov na vrstvu (drží výšku pod prahom labelov)
+const SUB_OFFSET = 62;   // vodorovný rozostup sub-stĺpcov (svetové jednotky)
+
+// Plná geometria Vrstiev — poradie stĺpcov (barycentrum) + konkrétne pozície uzlov
+// vrátane sub-stĺpcov, vodiace línie, farebné pásy oblastí a bbox pre fitView.
+// Jediný zdroj pravdy: applyViewPins, drawLayerBands, drawLayerScaffold aj fitView
+// čítajú z tohto výsledku, takže pin, pás aj rám vždy sedia. Cache invaliduje buildSim.
+function layerLayout() {
+    const sig = S.nodes.length + '|' + S.edges.length;
+    if (S._layerCache && S._layerCache.sig === sig) return S._layerCache;
+    const cols = computeLayerColumns();
+    const posOf = new Map();
+    const guides = [];
+    const bands = [];
+    let maxHalf = 0, minX = Infinity, maxX = -Infinity;
+
+    for (let li = 0; li < cols.length; li++) {
+        const arr = cols[li];
+        const len = arr.length;
+        if (!len) continue;
+        const subCount = Math.min(SUB_MAX, Math.max(1, Math.ceil(len / SUB_SPLIT_AT)));
+        const perSub = Math.ceil(len / subCount);
+        // rozostup podľa najväčšieho sub-stĺpca — uzly sa neprekrývajú, výška ostane rozumná
+        const spacing = Math.max(48, Math.min(95, 1100 / Math.max(perSub, 1)));
+
+        for (let s = 0; s < subCount; s++) {
+            const start = s * perSub;
+            const end = Math.min(len, start + perSub);
+            const subLen = end - start;
+            if (subLen <= 0) continue;
+            const x = LAYER_X[li] + (s - (subCount - 1) / 2) * SUB_OFFSET;
+            const half = (subLen - 1) / 2 * spacing;
+            if (half > maxHalf) maxHalf = half;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            guides.push({ x, half });
+
+            // pozície uzlov (column-major → zachová barycentrové zvislé poradie)
+            for (let k = start; k < end; k++) {
+                const y = (k - start - (subLen - 1) / 2) * spacing;
+                posOf.set(arr[k].id, { x, y, li });
+            }
+
+            // farebné pásy súvislých blokov rovnakej oblasti v tomto sub-stĺpci
+            let i = start;
+            while (i < end) {
+                const aid = arr[i].area_id;
+                let j = i;
+                while (j + 1 < end && arr[j + 1].area_id === aid) j++;
+                const area = aid != null ? S.areas.get(aid) : null;
+                if (area && area.color && arr[i].type !== 'core') {
+                    const y0 = (i - start - (subLen - 1) / 2) * spacing;
+                    const y1 = (j - start - (subLen - 1) / 2) * spacing;
+                    bands.push({ x, y0, y1, color: area.color, single: j === i, spacing });
+                }
+                i = j + 1;
+            }
+        }
+    }
+
+    if (minX === Infinity) { minX = LAYER_X[0]; maxX = LAYER_X[LAYER_X.length - 1]; }
+    const layout = { sig, cols, posOf, guides, bands, maxHalf, minX, maxX };
+    S._layerCache = layout;
+    return layout;
+}
+
+function softRect(x, y, w, h, r) {
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); }
+    else ctx.fillRect(x, y, w, h);
+}
+
+// Pozadie Vrstiev: vodiace línie sub-stĺpcov + jemné farebné pásy oblastí za uzlami.
+// Kreslí sa PRED hranami, nech pásy neprekrývajú spojenia. Číta hotovú geometriu
+// z layerLayout (guides/bands v svetových jednotkách), takže pás sedí presne za blokom.
+function drawLayerBands(lay) {
+    const invK = 1 / S.cam.k;
+
+    // vodiace vertikálne línie sub-stĺpcov (jemná Aura ink)
+    ctx.globalAlpha = 0.5 * S.dim;
+    ctx.strokeStyle = 'rgba(' + T.edge + ',0.06)';
+    ctx.lineWidth = 1 * invK;
+    for (const g of lay.guides) {
+        ctx.beginPath();
+        ctx.moveTo(g.x, -g.half - 26 * invK);
+        ctx.lineTo(g.x, g.half + 26 * invK);
+        ctx.stroke();
+    }
+
+    // farebné pásy súvislých blokov rovnakej oblasti (jadro bez pásu)
+    const bandW = 34 * invK;
+    for (const b of lay.bands) {
+        const pad = b.spacing * 0.42;
+        ctx.globalAlpha = 0.07 * S.dim;
+        ctx.fillStyle = b.color;
+        softRect(b.x - bandW / 2, b.y0 - pad - (b.single ? 2 * invK : 0),
+            bandW, (b.y1 - b.y0) + pad * 2 + (b.single ? 4 * invK : 0), 9 * invK);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function drawLayerScaffold(lay) {
+    const headerY = -lay.maxHalf - 66;
     const invK = 1 / S.cam.k;
 
     ctx.textAlign = 'center';
     for (let i = 0; i < LAYER_X.length; i++) {
+        const count = lay.cols[i] ? lay.cols[i].length : 0;
         ctx.globalAlpha = 0.6 * S.dim;
         ctx.fillStyle = T.inkSoft;
         ctx.font = '600 ' + (12.5 * invK) + 'px "Geist Mono", ui-monospace, monospace';
-        ctx.fillText(LAYER_META[i].title.toUpperCase(), LAYER_X[i], headerY);
+        ctx.fillText(LAYER_META[i].title.toUpperCase() + ' · ' + count, LAYER_X[i], headerY);
 
         ctx.globalAlpha = 0.5 * S.dim;
         ctx.fillStyle = T.muted;
@@ -578,13 +813,12 @@ function dream() {
 
 function applyViewPins() {
     if (S.view === 'layers') {
-        layerColumns().forEach((nodes, li) => {
-            const spacing = LAYER_SPACING(nodes);
-            nodes.forEach((n, i) => {
-                n.fx = LAYER_X[li];
-                n.fy = (i - (nodes.length - 1) / 2) * spacing;
-            });
-        });
+        const lay = layerLayout();
+        for (const n of S.nodes) {
+            const p = lay.posOf.get(n.id);
+            if (p) { n.fx = p.x; n.fy = p.y; n._li = p.li; }
+            else { n.fx = null; n.fy = null; n._li = null; }
+        }
         return;
     }
 
@@ -595,6 +829,7 @@ function applyViewPins() {
 
 function buildSim() {
     if (S.sim) S.sim.stop();
+    S._layerCache = null; // štruktúra grafu sa mohla zmeniť → prepočítaj poradie stĺpcov
 
     // stupeň uzla (počet hrán) — podklad pre sizeByDegree, prepočet pri každej zmene hrán
     S.degree = new Map();
@@ -697,6 +932,9 @@ function draw() {
     const loc = localSet();
 
     const layersView = S.view === 'layers';
+    // vrstvová cesta cez layery (2-skoky VON) — len v náhľade Vrstvy; inde null (staré správanie)
+    const pathEdges = layersView ? layerPathSet(hlAnchor) : null;
+    const pathNodes = layersView ? S._lpNodes : null;
     const bgLevel = layersView ? 0 : S.opts.bg;
     if (bgLevel > 0.01) {
         const invK = 1 / S.cam.k;
@@ -743,23 +981,9 @@ function draw() {
     }
 
     if (layersView) {
-        // (1) tlmená mriežka susedných vrstiev — len pozadie (alpha 0.03)
-        const layers = layerColumns();
-        const invK = 1 / S.cam.k;
-        ctx.lineWidth = 0.5 * invK;
-        ctx.strokeStyle = 'rgba(' + T.edge + ',0.03)';
-        ctx.beginPath();
-        for (let li = 0; li < layers.length - 1; li++) {
-            for (const a of layers[li]) {
-                if (!visibleInReplay(a) || !nodeVisible(a, loc)) continue;
-                for (const b of layers[li + 1]) {
-                    if (!visibleInReplay(b) || !nodeVisible(b, loc)) continue;
-                    ctx.moveTo(a.x, a.y);
-                    ctx.lineTo(b.x, b.y);
-                }
-            }
-        }
-        ctx.stroke();
+        // (1) pozadie: vodiace línie sub-stĺpcov + farebné pásy oblastí (nahradilo O(n²) mriežku)
+        const lay = layerLayout();
+        drawLayerBands(lay);
 
         // (2) skutočné spojenia zo S.edges — rovnaké váhové štýlovanie ako mapa/sieť
         for (const e of S.edges) {
@@ -768,16 +992,35 @@ function draw() {
             if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
             const kindMul = applyEdgeKind(e.kind, S.cam.k); // A10: čiarkovanie podľa druhu
             let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
-            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor) * kindMul;
-            ctx.strokeStyle = 'rgba(' + T.edge + ',' + alpha + ')';
-            ctx.lineWidth = Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1))) / S.cam.k;
+            alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor, pathEdges) * kindMul;
+            // zvýraznenie toku cez vrstvy: celá cesta kotvy (priame + druhý skok VON) teal-akcentom
+            const onPath = pathEdges && pathEdges.has(e);
+            ctx.strokeStyle = onPath
+                ? 'rgba(' + T.accent + ',' + Math.min(0.85, alpha * 2.2) + ')'
+                : 'rgba(' + T.edge + ',' + alpha + ')';
+            ctx.lineWidth = (onPath ? Math.min(2.1, 0.7 + 0.3 * Math.log2(1 + (e.weight || 1)))
+                : Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1)))) / S.cam.k;
             ctx.beginPath();
             ctx.moveTo(e.source.x, e.source.y);
-            const sameCol = e.source.fx != null && e.source.fx === e.target.fx;
-            if (sameCol) {
-                // rovnaký stĺpec: jemný oblúk ~24 px smerom von, nech neprekrýva líniu stĺpca
-                const dir = e.source.fx >= 0 ? 1 : -1;
-                ctx.quadraticCurveTo(e.source.fx + dir * 48, (e.source.y + e.target.y) / 2, e.target.x, e.target.y);
+            // vnútrovrstvová hrana (aj naprieč sub-stĺpcami rovnakej vrstvy) — oblúk von
+            // od osi vrstvy, nech nevyzerá ako priame spojenie medzi vrstvami. Sub-stĺpce
+            // dávajú tým istým skillom rôzne fx, preto sa musí porovnávať _li, nie fx.
+            const sameLayer = e.source._li != null && e.source._li === e.target._li;
+            const span = (e.source._li != null && e.target._li != null)
+                ? Math.abs(e.source._li - e.target._li) : 0;
+            if (sameLayer) {
+                const axis = LAYER_X[e.source._li];
+                const dir = axis >= 0 ? 1 : -1;
+                // dosah oblúka rastie s odstupom sub-stĺpcov, nech je hrana zreteľná a
+                // všetky vnútrovrstvové oblúky jednej vrstvy sa vyduujú na tú istú stranu
+                const reach = 44 + Math.abs((e.source.fx || 0) - (e.target.fx || 0)) * 0.5;
+                ctx.quadraticCurveTo(axis + dir * reach, (e.source.y + e.target.y) / 2, e.target.x, e.target.y);
+            } else if (span >= 2) {
+                // hrana cez ≥2 vrstvy sa oblúkom vyhne medziľahlým stĺpcom (menej kríženia)
+                const midX = (e.source.x + e.target.x) / 2;
+                const midY = (e.source.y + e.target.y) / 2;
+                const bow = (midY >= 0 ? 1 : -1) * Math.min(70, span * 22);
+                ctx.quadraticCurveTo(midX, midY + bow, e.target.x, e.target.y);
             } else {
                 ctx.lineTo(e.target.x, e.target.y);
             }
@@ -785,7 +1028,7 @@ function draw() {
         }
         ctx.setLineDash([]); // reset po dávke čiarkovaných hrán
 
-        drawLayerScaffold(layers);
+        drawLayerScaffold(lay);
     } else {
         for (const e of S.edges) {
             if ((e.weight || 1) < S.minWeight) continue; // A7: filter slabých spojení
@@ -827,7 +1070,7 @@ function draw() {
         if (S.hover === n) r *= 1.15; // hover zväčšenie (Obsidian)
         const color = nodeColor(n);
         const flash = layersView ? (n.flash || 0) : 0;
-        const mul = nodeAlphaMul(n, hl);
+        const mul = nodeAlphaMul(n, hl, pathNodes);
 
         // D3: teplo (0..1, 1 = dnes → 0 pri 30 dňoch). Chýbajúce = plná sýtosť (bezpečné).
         const heat = typeof n.heat === 'number' ? n.heat : 1;
@@ -872,9 +1115,9 @@ function draw() {
         if (!visibleInReplay(n)) continue;
         if (!nodeVisible(n, loc)) continue;
         const isHover = S.hover === n || S.selected === n;
-        const inHl = !!(hl && hl.has(n.id));
+        const inHl = !!(hl && hl.has(n.id)) || !!(pathNodes && pathNodes.has(n.id));
         if (!showLabels && !isHover && !inHl) continue;
-        const alpha = baseLabelAlpha * nodeAlphaMul(n, hl) * (isHover || inHl ? 1 : zoomFade);
+        const alpha = baseLabelAlpha * nodeAlphaMul(n, hl, pathNodes) * (isHover || inHl ? 1 : zoomFade);
         // pod prahom čitateľnosti: nekresliť ani nerezervovať obdĺžnik
         if (alpha < 0.12) continue;
         candidates.push({ n, isHover, alpha });
@@ -1401,14 +1644,10 @@ function fitView(pad = 90) {
     const loc = localSet();
 
     if (S.view === 'layers') {
-        // deterministický layout — ciele fx/fy + hlavičky stĺpcov (vždy v zábere)
-        const layers = layerColumns();
-        let maxHalf = 0;
-        layers.forEach((nodes) => {
-            maxHalf = Math.max(maxHalf, (nodes.length - 1) / 2 * LAYER_SPACING(nodes));
-        });
-        add(LAYER_X[0], -maxHalf - 66);
-        add(LAYER_X[LAYER_X.length - 1], maxHalf);
+        // deterministický layout — bbox sub-stĺpcov + hlavičky (vždy v zábere)
+        const lay = layerLayout();
+        add(lay.minX, -lay.maxHalf - 66);
+        add(lay.maxX, lay.maxHalf);
         for (const n of S.nodes) {
             if (!visibleInReplay(n)) continue;
             if (!nodeVisible(n, loc)) continue;

@@ -31,6 +31,196 @@ class SimilarityService
         'bude', 'budem', 'mam', 'has', 'are', 'was', 'not', 'you', 'all',
     ];
 
+    /**
+     * Doménová normalizácia zložených/pomlčkových variantov. Beží ako
+     * str-nahradenie nad lowercase textom PRED delením na tokeny, takže
+     * zjednotí varianty, ktoré by tokenizér inak roztrhal alebo zahodil
+     * (napr. 'e-shop' → 'eshop', 'ui/ux' → 'uiux'). Kľúče sú ASCII.
+     *
+     * @var array<string, string>
+     */
+    protected array $compounds = [
+        'e-shop' => 'eshop', 'e-shopu' => 'eshop', 'e-shopy' => 'eshop',
+        'e-shope' => 'eshop', 'e-shopoch' => 'eshop', 'e-shopom' => 'eshop',
+        'e-commerce' => 'ecommerce', 'e-mail' => 'email', 'e-maily' => 'email',
+        'ui/ux' => 'uiux', 'ux/ui' => 'uiux', 'ux-ui' => 'uiux', 'ui-ux' => 'uiux',
+        'front-end' => 'frontend', 'back-end' => 'backend',
+        'co-activation' => 'coactivation', 'co-aktivacia' => 'coactivation',
+        'cost-plus' => 'costplus', 'token-based' => 'tokenbased',
+        'full-text' => 'fulltext', 'real-time' => 'realtime',
+        'ci/cd' => 'cicd', 'a/b' => 'ab', 'multi-tenant' => 'multitenant',
+        'multi-tenancy' => 'multitenant', 'drop-shipping' => 'dropshipping',
+    ];
+
+    /**
+     * Kanonizácia tokenov: SK↔EN synonymá + jednoduchá lematizácia
+     * (bežné pádové/číselné tvary → spoločný koreň). Aplikuje sa na
+     * ASCII (bezdiakritický) token pred stopword/dĺžkovým filtrom, takže
+     * dvojjazyčné a skloňované varianty spadnú na ten istý term.
+     *
+     * @var array<string, string>
+     */
+    protected array $canon = [
+        // cenotvorba / pricing
+        'cenotvorba' => 'pricing', 'cenotvorby' => 'pricing', 'cenotvorbu' => 'pricing',
+        'cena' => 'pricing', 'ceny' => 'pricing', 'cenu' => 'pricing', 'cien' => 'pricing',
+        'pricing' => 'pricing', 'price' => 'pricing', 'prices' => 'pricing',
+        // sklad / stock
+        'sklad' => 'stock', 'sklade' => 'stock', 'skladu' => 'stock', 'skladov' => 'stock',
+        'skladom' => 'stock', 'stock' => 'stock', 'inventory' => 'stock',
+        // objednávka / order
+        'objednavka' => 'order', 'objednavky' => 'order', 'objednavku' => 'order',
+        'objednavok' => 'order', 'objednavke' => 'order', 'objednavkam' => 'order',
+        'order' => 'order', 'orders' => 'order',
+        // prepravca / carrier
+        'prepravca' => 'carrier', 'prepravcu' => 'carrier', 'prepravcovia' => 'carrier',
+        'prepravcov' => 'carrier', 'preprava' => 'carrier', 'prepravy' => 'carrier',
+        'carrier' => 'carrier', 'carriers' => 'carrier', 'shipping' => 'carrier',
+        // dizajn / design
+        'dizajn' => 'design', 'dizajnu' => 'design', 'dizajnove' => 'design',
+        'dizajnovy' => 'design', 'dizajnovych' => 'design', 'dizajnovym' => 'design',
+        'design' => 'design',
+        // šperk / jewelry
+        'sperk' => 'jewelry', 'sperky' => 'jewelry', 'sperkov' => 'jewelry',
+        'sperku' => 'jewelry', 'sperkarsky' => 'jewelry', 'jewelry' => 'jewelry',
+        'jewellery' => 'jewelry',
+        // vrstva / layer
+        'vrstva' => 'layer', 'vrstvy' => 'layer', 'vrstvu' => 'layer',
+        'vrstiev' => 'layer', 'vrstvach' => 'layer', 'vrstvove' => 'layer',
+        'layer' => 'layer', 'layers' => 'layer',
+        // prepojenie / hrana / edge
+        'prepojenie' => 'edge', 'prepojenia' => 'edge', 'prepojenim' => 'edge',
+        'hrana' => 'edge', 'hrany' => 'edge', 'hranu' => 'edge', 'hran' => 'edge',
+        'edge' => 'edge', 'edges' => 'edge',
+        // token
+        'token' => 'token', 'tokeny' => 'token', 'tokenov' => 'token',
+        'tokenu' => 'token', 'tokens' => 'token', 'tokenbased' => 'token',
+        // eshop / ecommerce
+        'eshop' => 'eshop', 'eshopu' => 'eshop', 'eshopy' => 'eshop',
+        'ecommerce' => 'eshop',
+        // mapa / ekosystém
+        'mapa' => 'map', 'mapy' => 'map', 'mapu' => 'map', 'map' => 'map',
+        'ekosystem' => 'ecosystem', 'ekosystemu' => 'ecosystem', 'ecosystem' => 'ecosystem',
+        // záloha / backup
+        'zaloha' => 'backup', 'zalohy' => 'backup', 'zalohu' => 'backup',
+        'zaloh' => 'backup', 'zalohovanie' => 'backup', 'zalohovania' => 'backup',
+        'zalohovat' => 'backup', 'backup' => 'backup', 'backups' => 'backup',
+        // reklama / ads
+        'reklama' => 'ads', 'reklamy' => 'ads', 'reklamu' => 'ads', 'reklam' => 'ads',
+        'reklamne' => 'ads', 'reklamny' => 'ads', 'ads' => 'ads', 'advertising' => 'ads',
+        // kampaň / campaign
+        'kampan' => 'campaign', 'kampane' => 'campaign', 'kampani' => 'campaign',
+        'kampanou' => 'campaign', 'kampaniach' => 'campaign',
+        'campaign' => 'campaign', 'campaigns' => 'campaign',
+        // hierarchia / hierarchy
+        'hierarchia' => 'hierarchy', 'hierarchie' => 'hierarchy', 'hierarchiu' => 'hierarchy',
+        'hierarchii' => 'hierarchy', 'hierarchy' => 'hierarchy',
+        // nasadenie / deploy
+        'nasadenie' => 'deploy', 'nasadenia' => 'deploy', 'nasadit' => 'deploy',
+        'nasadime' => 'deploy', 'nasadenom' => 'deploy',
+        'deploy' => 'deploy', 'deployment' => 'deploy', 'deploynut' => 'deploy',
+        // produkt / product
+        'produkt' => 'product', 'produkty' => 'product', 'produktu' => 'product',
+        'produktov' => 'product', 'produktova' => 'product', 'produktove' => 'product',
+        'product' => 'product', 'products' => 'product',
+        // fotografia / photo
+        'fotografia' => 'photo', 'fotografie' => 'photo', 'fotografiu' => 'photo',
+        'foto' => 'photo', 'photo' => 'photo', 'photography' => 'photo', 'photos' => 'photo',
+        // marketing (zjednotenie tvarov)
+        'marketing' => 'marketing', 'marketingu' => 'marketing',
+        'marketingovy' => 'marketing', 'marketingove' => 'marketing',
+        // analytika / analytics
+        'analytika' => 'analytics', 'analytiky' => 'analytics', 'analytiku' => 'analytics',
+        'analytics' => 'analytics', 'analytic' => 'analytics', 'analyza' => 'analytics',
+        'analyzy' => 'analytics', 'analysis' => 'analytics',
+        // email
+        'email' => 'email', 'emaily' => 'email', 'emailu' => 'email', 'emailov' => 'email',
+        'mail' => 'email', 'mails' => 'email',
+        // bezpečnosť / security
+        'bezpecnost' => 'security', 'bezpecnosti' => 'security', 'bezpecny' => 'security',
+        'bezpecne' => 'security', 'security' => 'security', 'secure' => 'security',
+        // databáza / database
+        'databaza' => 'database', 'databazy' => 'database', 'databaze' => 'database',
+        'databazu' => 'database', 'databazach' => 'database',
+        'database' => 'database', 'databases' => 'database', 'databazova' => 'database',
+        // šperkárske atribúty / jewelry attributes
+        'naramok' => 'bracelet', 'naramky' => 'bracelet', 'naramkov' => 'bracelet',
+        'bracelet' => 'bracelet', 'bracelets' => 'bracelet',
+        'nausnice' => 'earring', 'nausnic' => 'earring', 'nausniciam' => 'earring',
+        'earring' => 'earring', 'earrings' => 'earring',
+        'prsten' => 'ring', 'prstene' => 'ring', 'prstenov' => 'ring', 'prsteni' => 'ring',
+        'ring' => 'ring', 'rings' => 'ring',
+        'retiazka' => 'chain', 'retiazky' => 'chain', 'retiazku' => 'chain',
+        'chain' => 'chain', 'chains' => 'chain',
+        'privesok' => 'pendant', 'privesky' => 'pendant', 'pendant' => 'pendant',
+        'striebro' => 'silver', 'striebra' => 'silver', 'strieborny' => 'silver',
+        'strieborne' => 'silver', 'silver' => 'silver',
+        'zlaty' => 'gold', 'zlate' => 'gold', 'zlateho' => 'gold', 'gold' => 'gold',
+        'kamen' => 'stone', 'kamene' => 'stone', 'kamenov' => 'stone', 'stone' => 'stone',
+        'material' => 'material', 'materialu' => 'material', 'materialy' => 'material',
+        'materialov' => 'material', 'materials' => 'material',
+        // platba / payment
+        'platba' => 'payment', 'platby' => 'payment', 'platbu' => 'payment',
+        'platob' => 'payment', 'platobny' => 'payment', 'platobne' => 'payment',
+        'payment' => 'payment', 'payments' => 'payment', 'platit' => 'payment',
+        // košík / cart
+        'kosik' => 'cart', 'kosiku' => 'cart', 'kosika' => 'cart', 'cart' => 'cart',
+        // zákazník / customer
+        'zakaznik' => 'customer', 'zakaznika' => 'customer', 'zakaznici' => 'customer',
+        'zakaznikov' => 'customer', 'zakaznicky' => 'customer',
+        'customer' => 'customer', 'customers' => 'customer',
+        // faktúra / invoice
+        'faktura' => 'invoice', 'faktury' => 'invoice', 'fakturu' => 'invoice',
+        'faktur' => 'invoice', 'fakturacia' => 'invoice',
+        'invoice' => 'invoice', 'invoices' => 'invoice',
+        // zľava / discount
+        'zlava' => 'discount', 'zlavy' => 'discount', 'zlavu' => 'discount',
+        'zliav' => 'discount', 'discount' => 'discount', 'discounts' => 'discount',
+        // doprava (do carrier klastra) / shipping
+        'doprava' => 'carrier', 'dopravy' => 'carrier', 'dopravu' => 'carrier',
+        'dorucenie' => 'carrier', 'dorucenia' => 'carrier',
+        // variant / SKU
+        'variant' => 'variant', 'varianty' => 'variant', 'variantu' => 'variant',
+        'variantov' => 'variant', 'variants' => 'variant', 'variovanie' => 'variant',
+        // migrácia / migration
+        'migracia' => 'migration', 'migracie' => 'migration', 'migraciu' => 'migration',
+        'migracii' => 'migration', 'migration' => 'migration', 'migrations' => 'migration',
+        // fronta / queue
+        'fronta' => 'queue', 'fronty' => 'queue', 'frontu' => 'queue', 'frontou' => 'queue',
+        'queue' => 'queue', 'queues' => 'queue',
+        // kontajner / docker / container
+        'kontajner' => 'container', 'kontajnery' => 'container', 'kontajnera' => 'container',
+        'kontajnerov' => 'container', 'docker' => 'container',
+        'container' => 'container', 'containers' => 'container',
+        // testovanie / test
+        'test' => 'test', 'testy' => 'test', 'testu' => 'test', 'testov' => 'test',
+        'testovanie' => 'test', 'testovania' => 'test', 'testovat' => 'test',
+        'testing' => 'test', 'tests' => 'test',
+        // cache / vyrovnávacia pamäť
+        'cache' => 'cache', 'cachovanie' => 'cache', 'cachovania' => 'cache',
+        'caching' => 'cache', 'redis' => 'cache',
+        // server
+        'server' => 'server', 'servery' => 'server', 'servera' => 'server',
+        'serverov' => 'server', 'serveri' => 'server', 'servers' => 'server',
+        // klient / client
+        'klient' => 'client', 'klienta' => 'client', 'klienti' => 'client',
+        'klientov' => 'client', 'client' => 'client', 'clients' => 'client',
+        // notifikácia / notification
+        'notifikacia' => 'notification', 'notifikacie' => 'notification',
+        'notifikaciu' => 'notification', 'notifikacii' => 'notification',
+        'notification' => 'notification', 'notifications' => 'notification',
+        // pamäť / memory (doména Hades)
+        'pamat' => 'memory', 'pamati' => 'memory', 'pamate' => 'memory',
+        'memory' => 'memory', 'memories' => 'memory', 'spomienka' => 'memory',
+        'spomienky' => 'memory', 'spomienok' => 'memory',
+        // podobnosť / similarity
+        'podobnost' => 'similarity', 'podobnosti' => 'similarity', 'podobny' => 'similarity',
+        'podobne' => 'similarity', 'similarity' => 'similarity', 'similar' => 'similarity',
+    ];
+
+    /** Násobič frekvencie tokenov z labelu oproti description (identita > popis). */
+    protected int $labelWeight = 3;
+
     /** @var array<int, array<string, int>> node_id => term frequency map */
     protected array $corpus = [];
 
@@ -43,22 +233,45 @@ class SimilarityService
     protected bool $warmed = false;
 
     /**
-     * Tokenizuje reťazec: lowercase, bez diakritiky, rozdelí na písmená,
+     * Tokenizuje reťazec: lowercase, doménová normalizácia zložených variantov,
+     * bez diakritiky, rozdelí na písmená/číslice, kanonizuje synonymá/tvary,
      * zahodí tokeny kratšie než 3 znaky a stopslová. Vráti mapu frekvencií.
+     *
+     * Voliteľný $bigrams pridá k unigramom aj susedné bigramy (napr.
+     * 'sku_variant'); používaj len pre krátke identity (label), nie pre
+     * dlhé popisy, aby sa neroznásobil slovník. Kontrakt (return mapy
+     * term→count) ostáva nezmenený, parameter je aditívny s defaultom.
      *
      * @return array<string, int>
      */
-    public function tokenize(string $text): array
+    public function tokenize(string $text, bool $bigrams = false): array
     {
-        $text = strtr(mb_strtolower($text), $this->diacritics);
-        $tokens = preg_split('/[^a-z0-9]+/', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $text = mb_strtolower($text);
+        $text = strtr($text, $this->compounds);
+        $text = strtr($text, $this->diacritics);
+        $raw = preg_split('/[^a-z0-9]+/', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
-        $tf = [];
-        foreach ($tokens as $tok) {
+        // Sekvencia prežitých tokenov (po kanonizácii) — poradie drží bigramy.
+        $seq = [];
+        foreach ($raw as $tok) {
+            $tok = $this->canon[$tok] ?? $tok;
             if (mb_strlen($tok) < 3 || in_array($tok, $this->stop, true)) {
                 continue;
             }
+            $seq[] = $tok;
+        }
+
+        $tf = [];
+        foreach ($seq as $tok) {
             $tf[$tok] = ($tf[$tok] ?? 0) + 1;
+        }
+
+        if ($bigrams) {
+            $count = count($seq);
+            for ($i = 0; $i + 1 < $count; $i++) {
+                $bg = $seq[$i].'_'.$seq[$i + 1];
+                $tf[$bg] = ($tf[$bg] ?? 0) + 1;
+            }
         }
 
         return $tf;
@@ -75,10 +288,9 @@ class SimilarityService
         $docFreq = [];
 
         foreach ($nodes as $node) {
-            $text = $this->nodeText($node);
-            $tf = $this->tokenize($text);
+            $tf = $this->nodeTf($node);
             $this->corpus[$node->id] = $tf;
-            $this->texts[$node->id] = $text;
+            $this->texts[$node->id] = $this->nodeText($node);
 
             foreach (array_keys($tf) as $term) {
                 $docFreq[$term] = ($docFreq[$term] ?? 0) + 1;
@@ -187,13 +399,45 @@ class SimilarityService
     }
 
     /**
+     * TF mapa uzla s vážením polí: label (s bigramami) násobený $labelWeight,
+     * description a meta váhou 1. Tým identita uzla neutopí v dlhom popise.
+     *
+     * @return array<string, int>
+     */
+    protected function nodeTf(Node $node): array
+    {
+        $tf = [];
+
+        // Label — zvýraznená identita + frázové bigramy.
+        foreach ($this->tokenize((string) $node->label, true) as $term => $count) {
+            $tf[$term] = ($tf[$term] ?? 0) + $count * $this->labelWeight;
+        }
+
+        // Description + meta — bežná váha, bez bigramov (drží slovník malý).
+        $body = [(string) $node->description];
+        $meta = is_array($node->meta) ? $node->meta : [];
+        if (! empty($meta['project'])) {
+            $body[] = (string) $meta['project'];
+        }
+        if (! empty($meta['tools']) && is_array($meta['tools'])) {
+            $body[] = implode(' ', array_keys($meta['tools']));
+        }
+
+        foreach ($this->tokenize(implode(' ', $body), false) as $term => $count) {
+            $tf[$term] = ($tf[$term] ?? 0) + $count;
+        }
+
+        return $tf;
+    }
+
+    /**
      * TF mapa uzla z cache, alebo dopočítaná za behu.
      *
      * @return array<string, int>
      */
     protected function tfFor(Node $node): array
     {
-        return $this->corpus[$node->id] ?? $this->tokenize($this->nodeText($node));
+        return $this->corpus[$node->id] ?? $this->nodeTf($node);
     }
 
     /**
