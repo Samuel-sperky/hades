@@ -278,6 +278,54 @@ class SimilarityService
     }
 
     /**
+     * Rozšíri dopytové termy o kanonické a synonymné varianty z doménového
+     * slovníka (compounds + canon). Napr. 'pricing' pridá aj 'cenotvorba',
+     * 'cena', 'price'…; 'objednavka' aj 'order'. Pôvodné termy sa zachovajú,
+     * výsledok je unikátny zoznam malými písmenami. Slúži pre recall(), aby
+     * LIKE dopyt našiel SK aj EN varianty toho istého pojmu. Aditívne — nemení
+     * tokenize()/score() ani ich kontrakt.
+     *
+     * @param  iterable<int, string>  $terms
+     * @return array<int, string>
+     */
+    public function expandTerms(iterable $terms): array
+    {
+        // reverzný index koreň → všetky varianty (postavený raz za volanie)
+        $byRoot = [];
+        foreach ($this->canon as $variant => $root) {
+            $byRoot[$root][] = $variant;
+        }
+
+        $out = [];
+        foreach ($terms as $term) {
+            $term = mb_strtolower(trim((string) $term));
+            if ($term === '') {
+                continue;
+            }
+
+            $out[$term] = true;
+
+            // doménová normalizácia: zložené varianty + bez diakritiky
+            $ascii = strtr($term, $this->compounds);
+            $ascii = strtr($ascii, $this->diacritics);
+            if ($ascii !== $term) {
+                $out[$ascii] = true;
+            }
+
+            // kanonický koreň + všetky jeho synonymá (SK↔EN, pádové tvary)
+            $root = $this->canon[$ascii] ?? null;
+            if ($root !== null) {
+                $out[$root] = true;
+                foreach ($byRoot[$root] ?? [] as $variant) {
+                    $out[$variant] = true;
+                }
+            }
+        }
+
+        return array_keys($out);
+    }
+
+    /**
      * Predpočíta IDF a tokenizovaný korpus zo zadaných uzlov. Zavolaj pred
      * dávkovým behom score()/topSimilar().
      */

@@ -111,6 +111,18 @@ class MindService
             $terms = collect([mb_strtolower(trim($query))])->filter();
         }
 
+        // Rozšír dopyt o kanonické/synonymné varianty PRED LIKE — doménový
+        // slovník (SK↔EN) zo SimilarityService. 'pricing' tak nájde aj
+        // 'Cenotvorba…', 'objednávka' aj 'order' atď. Skóre/limit/graph-walk
+        // ostávajú nezmenené, len term-set je bohatší.
+        $terms = collect(app(SimilarityService::class)->expandTerms($terms->all()))
+            ->filter(fn ($t) => mb_strlen($t) >= 3)
+            ->values();
+
+        if ($terms->isEmpty()) {
+            return collect();
+        }
+
         $nodes = Node::query()
             ->with(['area', 'department'])
             ->where(function ($q) use ($terms) {
@@ -315,8 +327,11 @@ class MindService
             ->get();
 
         foreach ($peers as $peer) {
-            // spoločná aktivita v session → automatická co-aktivačná synapsia
-            $this->connect($node, $peer, 'co_activation', true);
+            // spoločná aktivita v session → automatická co-aktivačná synapsia.
+            // Počiatočná váha 0.6 (nie 1.0): opakovaná co-aktivácia ju cez
+            // increment posilní, jednorazové náhodné spojenia potom decay +
+            // cleanup prirodzene prereže (menej „hairballu“).
+            $this->connect($node, $peer, 'co_activation', true, 0.6);
         }
     }
 

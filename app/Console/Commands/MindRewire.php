@@ -8,6 +8,7 @@ use App\Services\MindService;
 use App\Services\SimilarityService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * A3 — backfill similarity synapsií naprieč celou sieťou (TF-IDF kosínus).
@@ -44,6 +45,14 @@ use Illuminate\Support\Collection;
  * (napr. dept s 0/6 vnútornými hranami) čitateľnou hviezdou namiesto náhodných
  * nití. A5 zámerne preskakuje rovnaké oddelenie — túto medzeru dopĺňa práve A8.
  * Lineárny počet hrán (n-1 na oddelenie), idempotentné, kind 'similarity'.
+ *
+ * A11 — sémantika hrán do stĺpca 'relation' (aditívne, popri kind/weight).
+ * Doplní hranám vzťahové označenie tam, kde ešte nie je nastavené: session
+ * záznam ↔ skill = 'uses' (záznam ten skill použil), člen (skill/project) ↔ jeho
+ * agregačný „mapa/ekosystém/systém" hub = 'part_of'. Mení výhradne stĺpec
+ * relation (nikdy nie kind/weight/auto) a len keď je null (idempotentné). Celý
+ * krok je strážený Schema::hasColumn('edges','relation') — kým stĺpec v schéme
+ * nie je, backfill sa ticho preskočí, takže rewire ostáva spätne kompatibilný.
  */
 class MindRewire extends Command
 {
@@ -168,7 +177,13 @@ class MindRewire extends Command
         // A8: vnútro-oddelenské soft-linky hviezdou (rieši riedke oddelenia)
         $depted = $this->bridgeDepartmentStars($mind, $similarity);
 
-        $this->info("Rewire: {$checked} uzlov · {$simCreated} similarity · {$skillCreated} nových + {$skillPromoted} povýšených skill_mention · {$bridged} cross-domain · {$clustered} klastrových · {$sessioned} projekt · {$depted} oddelenských mostov.");
+        // A11: sémantika hrán do stĺpca 'relation' (uses / part_of), aditívne
+        $relations = $this->backfillRelations($similarity);
+        $relInfo = $relations['skipped']
+            ? 'relácie preskočené (stĺpec chýba)'
+            : "{$relations['uses']} uses + {$relations['part_of']} part_of relácií";
+
+        $this->info("Rewire: {$checked} uzlov · {$simCreated} similarity · {$skillCreated} nových + {$skillPromoted} povýšených skill_mention · {$bridged} cross-domain · {$clustered} klastrových · {$sessioned} projekt · {$depted} oddelenských mostov · {$relInfo}.");
 
         return self::SUCCESS;
     }
@@ -526,6 +541,74 @@ class MindRewire extends Command
         }
 
         return $created;
+    }
+
+    /**
+     * A11 — doplní stĺpec 'relation' (uses / part_of) hranám, kde ešte nie je
+     * nastavený. Vzťahy:
+     *   - session záznam (memory, source=session) ↔ skill  → 'uses'
+     *   - člen (skill/project) ↔ jeho agregačný hub (mapa/ekosystém/systém…
+     *     podľa DEPT_HUB_HINTS) → 'part_of'
+     *
+     * Aditívne a idempotentné: mení VÝHRADNE stĺpec relation cez forceFill (kind,
+     * weight ani auto sa nikdy nedotknú) a len na hranách s relation = null, takže
+     * opakovaný beh nič neprepisuje a nezvyšuje váhy. Celé je strážené existenciou
+     * stĺpca — kým 'relation' v schéme nie je, krok sa ticho preskočí a rewire
+     * ostáva spätne kompatibilný (žiadny zápis na neexistujúci stĺpec).
+     *
+     * @return array{uses: int, part_of: int, skipped: bool}
+     */
+    protected function backfillRelations(SimilarityService $similarity): array
+    {
+        if (! Schema::hasColumn('edges', 'relation')) {
+            return ['uses' => 0, 'part_of' => 0, 'skipped' => true];
+        }
+
+        $nodes = Node::query()->get(['id', 'type', 'source', 'label']);
+
+        $type = [];       // id => type
+        $isSession = [];  // id => bool (memory záznam zo session)
+        $isHub = [];      // id => bool (agregačný „mapa/ekosystém/systém" uzol)
+        foreach ($nodes as $n) {
+            $type[$n->id] = $n->type;
+            $isSession[$n->id] = $n->type === 'memory' && $n->source === 'session';
+            $tokens = array_keys($similarity->tokenize((string) $n->label));
+            $isHub[$n->id] = (bool) array_intersect(self::DEPT_HUB_HINTS, $tokens);
+        }
+
+        $uses = 0;
+        $partOf = 0;
+
+        // len hrany bez relácie — existujúce relácie sa nikdy neprepisujú
+        foreach (Edge::query()->whereNull('relation')->get() as $edge) {
+            $s = $edge->source_id;
+            $t = $edge->target_id;
+            if (! isset($type[$s], $type[$t])) {
+                continue;
+            }
+
+            // session záznam ↔ skill = 'uses'
+            $sessionSkill = ($isSession[$s] && $type[$t] === 'skill')
+                || ($isSession[$t] && $type[$s] === 'skill');
+            if ($sessionSkill) {
+                $edge->forceFill(['relation' => 'uses'])->save();
+                $uses++;
+
+                continue;
+            }
+
+            // člen (skill/project) ↔ agregačný hub = 'part_of'
+            // práve jeden koniec je hub, druhý je (ne-hub) skill/project
+            if ($isHub[$s] !== $isHub[$t]) {
+                $memberId = $isHub[$s] ? $t : $s;
+                if (in_array($type[$memberId], ['skill', 'project'], true)) {
+                    $edge->forceFill(['relation' => 'part_of'])->save();
+                    $partOf++;
+                }
+            }
+        }
+
+        return ['uses' => $uses, 'part_of' => $partOf, 'skipped' => false];
     }
 
     /** Množina existujúcich hrán ako kanonické 'source:target' kľúče. */

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Edge extends Model
 {
-    protected $fillable = ['source_id', 'target_id', 'weight', 'kind', 'auto', 'last_activated_at'];
+    protected $fillable = ['source_id', 'target_id', 'weight', 'kind', 'auto', 'relation', 'last_activated_at'];
 
     protected $casts = [
         'weight' => 'float',
@@ -34,6 +34,8 @@ class Edge extends Model
             'weight' => (float) $this->weight,
             'kind' => $this->kind,
             'auto' => (bool) $this->auto,
+            // sémantický typ vzťahu: 'part_of' | 'uses' | null (nullable, aditívne)
+            'relation' => $this->relation,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
