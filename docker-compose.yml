@@ -7,6 +7,7 @@ x-app: &app
   volumes:
     - .:/var/www/html
     - "${CC_TRANSCRIPTS:-C:/Users/Ucet/.claude/projects}:/transcripts:ro"
+    - "C:/Users/Ucet/.claude/projects/C--Users-Ucet-Desktop-AI-mind/memory:/memory-rw"
   depends_on:
     - mariadb
     - redis

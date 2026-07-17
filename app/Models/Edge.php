@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Edge extends Model
 {
-    protected $fillable = ['source_id', 'target_id', 'weight', 'last_activated_at'];
+    protected $fillable = ['source_id', 'target_id', 'weight', 'kind', 'auto', 'last_activated_at'];
 
     protected $casts = [
         'weight' => 'float',
+        'auto' => 'boolean',
         'last_activated_at' => 'datetime',
     ];
 
@@ -31,6 +32,8 @@ class Edge extends Model
             'source_id' => $this->source_id,
             'target_id' => $this->target_id,
             'weight' => (float) $this->weight,
+            'kind' => $this->kind,
+            'auto' => (bool) $this->auto,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

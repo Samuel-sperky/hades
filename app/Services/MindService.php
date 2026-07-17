@@ -8,11 +8,24 @@ use App\Models\Area;
 use App\Models\Department;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\Tombstone;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class MindService
 {
+    /**
+     * Poradie významu synapsií — silnejší význam nikdy nesmie oslabnúť.
+     * manual (ručne/z chatu) > skill_mention > co_activation > similarity.
+     */
+    protected const KIND_RANK = [
+        'similarity' => 0,
+        'co_activation' => 1,
+        'skill_mention' => 2,
+        'manual' => 3,
+    ];
+
     /**
      * Ulozi novy poznatok. Ak uz podobny uzol existuje, zluci ho (auto-merge)
      * namiesto vytvorenia duplicity.
@@ -122,17 +135,55 @@ class MindService
             ->pluck('node')
             ->values();
 
-        if ($scored->isNotEmpty()) {
-            // session_key sa uloží k aktiváciám — neskoršie learn/activate v tej istej
-            // session sa cez coActivate prepoja aj s vybavenými uzlami
-            foreach ($scored as $node) {
-                Activation::record($node, 'recall', $sessionKey);
-            }
-
-            MindPulse::dispatch('recall', ['node_ids' => $scored->pluck('id')->all()]);
+        if ($scored->isEmpty()) {
+            return $scored;
         }
 
-        return $scored;
+        // Graph-walk hĺbky 1: k primárnym zásahom pridaj ich priamych susedov
+        // (jeden skok po hranách) s polovičnou relevanciou. Primáre si držia
+        // poradie, susedia sa pripoja za ne. Celkový strop = limit + 50 %.
+        $primaryIds = $scored->pluck('id')->all();
+        $overallCap = (int) ceil($limit * 1.5);
+        $neighborSlots = max(0, $overallCap - $scored->count());
+
+        $neighbors = collect();
+        if ($neighborSlots > 0) {
+            $neighborIds = Edge::query()
+                ->where(function ($q) use ($primaryIds) {
+                    $q->whereIn('source_id', $primaryIds)
+                        ->orWhereIn('target_id', $primaryIds);
+                })
+                ->get(['source_id', 'target_id'])
+                ->flatMap(fn (Edge $e) => [$e->source_id, $e->target_id])
+                ->reject(fn ($id) => in_array($id, $primaryIds, true))
+                ->unique()
+                ->values();
+
+            if ($neighborIds->isNotEmpty()) {
+                $neighbors = Node::query()
+                    ->with(['area', 'department'])
+                    ->whereIn('id', $neighborIds->all())
+                    ->orderByDesc('strength')
+                    ->limit($neighborSlots)
+                    ->get();
+            }
+        }
+
+        // session_key sa uloží k aktiváciám — neskoršie learn/activate v tej istej
+        // session sa cez coActivate prepoja aj s vybavenými uzlami
+        foreach ($scored as $node) {
+            Activation::record($node, 'recall', $sessionKey);
+        }
+        foreach ($neighbors as $node) {
+            // ľahšia aktivácia — sused vybavený cez hranu, nie priamou zhodou
+            Activation::record($node, 'recall-neighbor', $sessionKey);
+        }
+
+        $result = $scored->concat($neighbors)->values();
+
+        MindPulse::dispatch('recall', ['node_ids' => $result->pluck('id')->all()]);
+
+        return $result;
     }
 
     /**
@@ -258,12 +309,25 @@ class MindService
             ->pluck('node_id');
 
         foreach (Node::whereIn('id', $peerIds)->get() as $peer) {
-            $this->connect($node, $peer);
+            // spoločná aktivita v session → automatická co-aktivačná synapsia
+            $this->connect($node, $peer, 'co_activation', true);
         }
     }
 
-    public function connect(Node $a, Node $b): Edge
-    {
+    /**
+     * Vytvorí alebo posilní synapsiu medzi dvoma uzlami.
+     *
+     * $kind + $auto určujú typ synapsie; pri posilnení existujúcej hrany sa kind
+     * smie posunúť len k silnejšiemu významu (nikdy sa neoslabí manual → similarity).
+     * $weight je počiatočná váha novej hrany (napr. 0.5 pre similarity).
+     */
+    public function connect(
+        Node $a,
+        Node $b,
+        string $kind = 'manual',
+        bool $auto = false,
+        float $weight = 1.0,
+    ): Edge {
         [$sourceId, $targetId] = $a->id < $b->id ? [$a->id, $b->id] : [$b->id, $a->id];
 
         $edge = Edge::query()
@@ -273,6 +337,15 @@ class MindService
 
         if ($edge) {
             $edge->increment('weight');
+
+            // kind sa smie posilniť len k silnejšiemu významu, nikdy oslabiť
+            $newRank = self::KIND_RANK[$kind] ?? 0;
+            $curRank = self::KIND_RANK[$edge->kind] ?? 0;
+            if ($newRank > $curRank) {
+                $edge->kind = $kind;
+                $edge->auto = $auto;
+            }
+
             $edge->forceFill(['last_activated_at' => now()])->save();
 
             MindPulse::dispatch('edge.strengthened', [
@@ -286,13 +359,88 @@ class MindService
         $edge = Edge::create([
             'source_id' => $sourceId,
             'target_id' => $targetId,
-            'weight' => 1,
+            'weight' => $weight,
+            'kind' => $kind,
+            'auto' => $auto,
             'last_activated_at' => now(),
         ]);
 
         MindPulse::dispatch('edge.created', ['edge' => $edge->toApi()]);
 
         return $edge;
+    }
+
+    /**
+     * Zlúči $loser uzol do $winner uzla: winner pohltí popis, silu, hrany aj
+     * aktivácie; loser dostane náhrobok a zmaže sa. Vráti čerstvý winner.
+     *
+     * Zdieľaná logika pre MaintenanceController::merge (ručné zlúčenie) a
+     * príkaz mind:automerge (automatické zlúčenie takmer identických uzlov).
+     */
+    public function mergeNodes(Node $loser, Node $winner): Node
+    {
+        DB::transaction(function () use ($loser, $winner) {
+            // popis — pripoj len ak nesie novú informáciu
+            $incoming = trim((string) $loser->description);
+            if ($incoming !== ''
+                && ! str_contains(mb_strtolower((string) $winner->description), mb_strtolower($incoming))) {
+                $winner->description = trim($winner->description ? $winner->description."\n".$incoming : $incoming);
+            }
+
+            $winner->strength = (float) $winner->strength + (float) $loser->strength;
+            $winner->last_activated_at = now();
+
+            // náhrobok — pohltený external_key sa už nikdy nesmie znovu zapísať
+            if ($loser->external_key) {
+                Tombstone::firstOrCreate(
+                    ['external_key' => $loser->external_key],
+                    ['reason' => 'merge', 'created_at' => now()],
+                );
+
+                $meta = $winner->meta ?? [];
+                $meta['absorbed_keys'] = collect($meta['absorbed_keys'] ?? [])
+                    ->push($loser->external_key)
+                    ->unique()
+                    ->values()
+                    ->all();
+                $winner->meta = $meta;
+            }
+
+            $winner->save();
+
+            // hrany — prepoj na winner, preskoč self a duplicity
+            $edges = Edge::where('source_id', $loser->id)->orWhere('target_id', $loser->id)->get();
+            foreach ($edges as $edge) {
+                $otherId = $edge->source_id === $loser->id ? $edge->target_id : $edge->source_id;
+
+                if ($otherId === $winner->id) {
+                    $edge->delete(); // hrana loser↔winner by bola self-hrana
+
+                    continue;
+                }
+
+                [$s, $t] = $winner->id < $otherId ? [$winner->id, $otherId] : [$otherId, $winner->id];
+
+                $exists = Edge::where('source_id', $s)->where('target_id', $t)->exists();
+                if ($exists) {
+                    $edge->delete(); // duplicita
+
+                    continue;
+                }
+
+                $edge->forceFill(['source_id' => $s, 'target_id' => $t])->save();
+            }
+
+            // aktivácie prechádzajú na winner
+            Activation::where('node_id', $loser->id)->update(['node_id' => $winner->id]);
+
+            $loser->delete();
+        });
+
+        MindPulse::dispatch('node.deleted', ['node_id' => $loser->id]);
+        MindPulse::dispatch('node.updated', ['node' => $winner->fresh()->toApi()]);
+
+        return $winner->fresh();
     }
 
     protected function resolveArea(string $name): Area

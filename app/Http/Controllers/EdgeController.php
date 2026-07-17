@@ -23,7 +23,7 @@ class EdgeController extends Controller
 
         // MindService::connect normalizuje pár (min, max), posilní existujúcu hranu
         // alebo vytvorí novú a odošle 'edge.strengthened' / 'edge.created' pulse.
-        $edge = $mind->connect($source, $target);
+        $edge = $mind->connect($source, $target, 'manual', false);
 
         return response()->json([
             'edge' => [

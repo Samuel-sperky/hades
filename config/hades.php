@@ -19,6 +19,11 @@ return [
     // Kde su namountovane Claude Code transcripty (read-only) v kontajneri
     'transcripts_path' => env('HADES_TRANSCRIPTS_PATH', '/transcripts'),
 
+    // Zapisovatelny mount pre export vedomia spat do Claude memory (rw).
+    // Ak nie je pripojeny, mind:export-memory sa bez chyby preskoci.
+    'memory_export_path' => env('HADES_MEMORY_EXPORT_PATH', '/memory-rw/hades'),
+    'memory_index_path' => env('HADES_MEMORY_INDEX_PATH', '/memory-rw/MEMORY.md'),
+
     // Mapovanie projektov (podla nazvu priecinka / cwd) na oblasti mozgu
     'project_area_map' => [
         'Šperky Aura app' => 'biznis-projekty',

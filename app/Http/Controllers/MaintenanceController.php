@@ -2,13 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Events\MindPulse;
-use App\Models\Activation;
-use App\Models\Edge;
 use App\Models\Node;
-use App\Models\Tombstone;
+use App\Services\MindService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 
 class MaintenanceController extends Controller
 {
@@ -70,7 +66,7 @@ class MaintenanceController extends Controller
     }
 
     /** Zlúčenie: target pohltí node (popis, silu, hrany aj aktivácie). */
-    public function merge(Node $node, Node $target): JsonResponse
+    public function merge(Node $node, Node $target, MindService $mind): JsonResponse
     {
         if ($node->id === $target->id) {
             return response()->json(['message' => 'Uzol sa nedá zlúčiť sám so sebou.'], 422);
@@ -79,68 +75,10 @@ class MaintenanceController extends Controller
             return response()->json(['message' => 'Jadro vedomia sa nedá pohltiť.'], 422);
         }
 
-        DB::transaction(function () use ($node, $target) {
-            // popis — pripoj len ak nesie novú informáciu
-            $incoming = trim((string) $node->description);
-            if ($incoming !== ''
-                && ! str_contains(mb_strtolower((string) $target->description), mb_strtolower($incoming))) {
-                $target->description = trim($target->description ? $target->description."\n".$incoming : $incoming);
-            }
+        // zdieľaná logika zlúčenia (rovnaká pre automatické mind:automerge)
+        $target = $mind->mergeNodes($node, $target);
 
-            $target->strength = (float) $target->strength + (float) $node->strength;
-            $target->last_activated_at = now();
-
-            // náhrobok — pohltený external_key sa už nikdy nesmie znovu zapísať
-            if ($node->external_key) {
-                Tombstone::firstOrCreate(
-                    ['external_key' => $node->external_key],
-                    ['reason' => 'merge', 'created_at' => now()],
-                );
-
-                $meta = $target->meta ?? [];
-                $meta['absorbed_keys'] = collect($meta['absorbed_keys'] ?? [])
-                    ->push($node->external_key)
-                    ->unique()
-                    ->values()
-                    ->all();
-                $target->meta = $meta;
-            }
-
-            $target->save();
-
-            // hrany — prepoj na target, preskoč self a duplicity
-            $edges = Edge::where('source_id', $node->id)->orWhere('target_id', $node->id)->get();
-            foreach ($edges as $edge) {
-                $otherId = $edge->source_id === $node->id ? $edge->target_id : $edge->source_id;
-
-                if ($otherId === $target->id) {
-                    $edge->delete(); // hrana node↔target by bola self-hrana
-
-                    continue;
-                }
-
-                [$s, $t] = $target->id < $otherId ? [$target->id, $otherId] : [$otherId, $target->id];
-
-                $exists = Edge::where('source_id', $s)->where('target_id', $t)->exists();
-                if ($exists) {
-                    $edge->delete(); // duplicita
-
-                    continue;
-                }
-
-                $edge->forceFill(['source_id' => $s, 'target_id' => $t])->save();
-            }
-
-            // aktivácie prechádzajú na target
-            Activation::where('node_id', $node->id)->update(['node_id' => $target->id]);
-
-            $node->delete();
-        });
-
-        MindPulse::dispatch('node.deleted', ['node_id' => $node->id]);
-        MindPulse::dispatch('node.updated', ['node' => $target->fresh()->toApi()]);
-
-        return response()->json(['node' => $target->fresh()->toApi()]);
+        return response()->json(['node' => $target->toApi()]);
     }
 
     protected function pairNode(Node $node): array

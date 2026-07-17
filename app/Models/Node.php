@@ -10,14 +10,30 @@ class Node extends Model
 {
     protected $fillable = [
         'type', 'source', 'external_key', 'area_id', 'department_id', 'label', 'description',
-        'meta', 'strength', 'last_activated_at',
+        'meta', 'strength', 'pinned', 'last_activated_at',
     ];
 
     protected $casts = [
         'strength' => 'float',
+        'pinned' => 'boolean',
         'meta' => 'array',
         'last_activated_at' => 'datetime',
     ];
+
+    /**
+     * "Teplota" uzla 0..1 podľa poslednej aktivácie: 1 = dnes, 0 = 30+ dní.
+     * Počíta sa za behu, nie je uložená.
+     */
+    public function heat(): float
+    {
+        if (! $this->last_activated_at) {
+            return 0.0;
+        }
+
+        $days = $this->last_activated_at->diffInDays(now());
+
+        return max(0.0, 1.0 - $days / 30);
+    }
 
     public function area(): BelongsTo
     {
@@ -45,6 +61,8 @@ class Node extends Model
             'label' => $this->label,
             'description' => $this->description,
             'strength' => (float) $this->strength,
+            'pinned' => (bool) $this->pinned,
+            'heat' => $this->heat(),
             'last_activated_at' => $this->last_activated_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
