@@ -35,6 +35,19 @@ services:
       - "127.0.0.1:8081:8081"
     command: php artisan reverb:start --host=0.0.0.0 --port=8081
 
+  # Reverzný proxy pre verejný (ngrok) prístup — appka + WebSocket na jednom porte,
+  # chránené basic-auth. Lokálny 127.0.0.1:8080 ostáva priamy (bez hesla, bez proxy).
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "127.0.0.1:8095:8095"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - app
+      - reverb
+
   mariadb:
     image: mariadb:11.4
     restart: always

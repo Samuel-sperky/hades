@@ -1,0 +1,27 @@
+# Caddy reverzný proxy pre verejný (ngrok) prístup k Hadesovi.
+# Zlúči appku (8080) aj Reverb WebSocket (8081) na JEDEN port (8090),
+# takže jeden ngrok tunel prenesie aj HTTP aj živé pulzy. Chránené basic-auth.
+# Lokálny prístup na 127.0.0.1:8080 (priamo appka) toto NEobchádza a nemá heslo.
+{
+	admin off
+	auto_https off
+}
+
+:8095 {
+	# Heslo na verejný prístup (basic-auth). Meno: hades.
+	# Hash je bcrypt hesla "Aura-Hades-4271" — zmeniť = prehashovať a reštartnúť caddy.
+	basic_auth {
+		hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+	}
+
+	# WebSocket (pusher protokol Reverbu beží na ceste /app/<key>) → Reverb
+	@ws path /app /app/*
+	handle @ws {
+		reverse_proxy reverb:8081
+	}
+
+	# Všetko ostatné → Laravel appka
+	handle {
+		reverse_proxy app:8080
+	}
+}

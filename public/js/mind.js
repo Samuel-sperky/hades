@@ -2591,11 +2591,22 @@ function computeReplayBounds() {
 let wsWasConnected = false;
 
 function connectWs(ws) {
+    // Same-origin WS keď je appka servovaná cez proxy/tunel (https, alebo iný port
+    // než priamy 8080) — Caddy routuje /app/* na Reverb, takže pulzy chodia aj cez
+    // ngrok. Priamy lokálny 127.0.0.1:8080 ostáva na ws.host/ws.port (localhost:8081).
+    const tls = location.protocol === 'https:';
+    const proxied = tls || (location.port && location.port !== '8080');
+    const host = proxied ? location.hostname : ws.host;
+    const port = proxied
+        ? (location.port ? Number(location.port) : (tls ? 443 : 80))
+        : ws.port;
+
     const pusher = new Pusher(ws.key, {
-        wsHost: ws.host,
-        wsPort: ws.port,
-        forceTLS: false,
-        enabledTransports: ['ws'],
+        wsHost: host,
+        wsPort: port,
+        wssPort: port,
+        forceTLS: tls,
+        enabledTransports: tls ? ['wss', 'ws'] : ['ws'],
         cluster: 'mt1',
         disableStats: true,
     });
