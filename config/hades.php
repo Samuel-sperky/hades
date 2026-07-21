@@ -34,4 +34,18 @@ return [
     // Oblast pre projekty, ktore nie su v mape
     'project_area_fallback' => 'vyvoj-kod',
 
+    // Kam sa ukladaju poskladane smernice (prompt builder pre Claude)
+    'directives_path' => base_path('directives'),
+
+    // Zname projektove adresare pre 'Suvisiace projekty' v smernici (info-only).
+    // Kluc = label projektoveho uzla (case-insensitive), hodnota = cesta.
+    'project_dirs' => [
+        'AI-mind' => 'C:\\Users\\Ucet\\Desktop\\AI-mind',
+        'Šperky Aura app' => 'C:\\Aura\\sperky-ai',
+        'Banner Studio' => 'C:\\Aura\\aura-banner-studio',
+        'Banner Gennerator' => 'C:\\Aura\\aura-banner-studio',
+        'aura-hr-mapa' => 'C:\\Aura\\aura-hr-mapa',
+        'aura-logistika' => 'C:\\Aura\\aura-logistika',
+    ],
+
 ];

@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActivationController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ContextController;
+use App\Http\Controllers\DirectiveController;
 use App\Http\Controllers\EdgeController;
 use App\Http\Controllers\LibraryController;
 use App\Http\Controllers\MaintenanceController;
@@ -21,6 +22,13 @@ Route::get('/journal', [\App\Http\Controllers\JournalController::class, 'index']
 Route::get('/today', [TodayController::class, 'index']);
 Route::get('/library', [LibraryController::class, 'index']);
 Route::post('/context/pack', [ContextController::class, 'pack']);
+
+// Smernica pre Claude — prompt builder (KDE ČO NÁJDE: skilly, projekty, fakty, pravidlá)
+Route::post('/directive/build', [DirectiveController::class, 'build']);
+Route::post('/directive/save', [DirectiveController::class, 'save']);
+Route::get('/directive/templates', [DirectiveController::class, 'templates']);
+Route::get('/directive/{name}', [DirectiveController::class, 'show']);
+Route::get('/directives', [DirectiveController::class, 'index']);
 
 Route::post('/nodes', [NodeController::class, 'store']);
 Route::get('/nodes/{node}/suggestions', [NodeController::class, 'suggestions']);

@@ -53,7 +53,7 @@ const S = {
     audio: null,
     view: localStorage.getItem('hades.view') || 'map',
     // FÁZA SHELL: aktívna obrazovka (Dnes / Denník / Graf / Knižnica). Plátno (rAF) beží len na 'graf'.
-    screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica'].includes(v) ? v : 'dnes'; })(),
+    screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica', 'smernica'].includes(v) ? v : 'dnes'; })(),
     // FÁZA HRANY: default 1.0 (skryje similarity 0.5 + jednorazové co_activation 0.6).
     // Nový kľúč 'hades.minWeight2', aby sa nový default prejavil aj starým používateľom.
     minWeight: (() => { const v = localStorage.getItem('hades.minWeight2'); return v == null ? 1.0 : (parseFloat(v) || 0); })(),
@@ -66,6 +66,14 @@ const S = {
     _anim: 0,             // efektívna intenzita animácií tento frame (animLevel(), vrátane ambient boostu)
     _interacting: false,  // drag/pan prebieha → dýchanie sa pozastaví
     _labelShown: null,    // FÁZA DE-CLUTTER: id uzlov s viditeľným popiskom minulý frame (stabilita)
+    // FÁZA ANIMÁCIE (Living Hades): ambientný „život" — spojitá jemná slučka na Grafe.
+    _life: 0,             // efektívna intenzita ambientného života tento frame (lifeLevel(), 0 = pokoj)
+    _lifeTier: 0,         // auto-strop: 0 = plný, 1 = redukovaný (bez driftu), 2 = len event-driven
+    _drawMs: 4,           // EMA nákladu draw() (ms) — podklad pre auto-strop (nižší = viac hlavy)
+    _lastAmbient: 0,      // čas posledného ambientného framu (ms) — cap ~30 FPS pre život
+    _nextSynapse: 3,      // _clock, kedy vyšle ďalšiu spontánnu synapsiu („myseľ premýšľa")
+    cursor: { sx: 0, sy: 0, on: false, a: 0 }, // kurzor pre gravitáciu/parallax (screen + aktivácia 0..1)
+    _vp: null,            // svetové hranice viewportu minulý frame — cieľ pre spontánne synapsie
     // FÁZA RENDER PIPELINE: dirty-flag rAF slučka — v pokoji 0 prekreslení (tichý CPU).
     _dirty: true,         // jednorazová požiadavka na prekreslenie (hover, kamera, dáta, filter)
     _settleFrames: 0,     // dobeh po animácii (flash/zrod dohasne, potom sa slučka zastaví)
@@ -83,7 +91,8 @@ const OPT_DEFAULTS = {
     labelSize: 1,
     sizeByDegree: false,
     edgeSoftHover: true, // FÁZA HRANY: v pokoji sú hrany jemné, rozsvietia sa pri hover/fokuse uzla
-    anim: 0.5,           // FÁZA ANIMÁCIE: globálna intenzita animácií (0 = vypnuté, 1 = plné)
+    anim: 0.5,           // FÁZA ANIMÁCIE: intenzita udalostných animácií (toky, zrod, morph; 0 = vyp)
+    life: 0.5,           // FÁZA ANIMÁCIE (Living): intenzita ambientného života (dýchanie, drift, synapsie; 0 = pokoj)
 };
 
 S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.opts') || '{}'));
@@ -1145,6 +1154,27 @@ function animLevel() {
     return base * (document.body.classList.contains('ambient') ? 1.6 : 1);
 }
 
+// FÁZA ANIMÁCIE (Living): intenzita ambientného života (dýchanie / drift / synapsie / gravitácia).
+// REDUCED_MOTION → 0 (žiadny ambient, len event pulzy). Ambient režim vždy žije (floor 0.6) a zosilní
+// ×1.8. Slider 'Život' (0..1) je nezávislý od 'Animácie' a na 0 vráti dirty-only pokoj.
+function lifeLevel() {
+    if (REDUCED_MOTION) return 0;
+    let base = S.opts && S.opts.life != null ? S.opts.life : 0.5;
+    const amb = document.body.classList.contains('ambient');
+    if (amb) base = Math.max(base, 0.6); // ambient režim ožije aj so stiahnutým Životom
+    if (base <= 0) return 0;
+    return base * (amb ? 1.8 : 1);
+}
+
+// Auto-strop: tier z EMA nákladu draw() (S._drawMs). Plynulé, EMA tlmí flikanie na hranici.
+// 0 = plný ambient, 1 = redukovaný (drift von, dýcha len jadro, menej synapsií), 2 = len event-driven.
+function lifeTier() {
+    const ms = S._drawMs;
+    if (ms > 33) return 2; // ~<30 FPS ekvivalent renderu → vypni ambient
+    if (ms > 22) return 1; // ~<45 FPS → redukuj
+    return 0;
+}
+
 // Ease-out (cubic) — zrod uzla; ease-in-out — morph náhľadov.
 const easeOut = (p) => 1 - Math.pow(1 - Math.max(0, Math.min(1, p)), 3);
 const easeInOut = (p) => { p = Math.max(0, Math.min(1, p)); return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; };
@@ -1152,13 +1182,68 @@ const easeInOut = (p) => { p = Math.max(0, Math.min(1, p)); return p < 0.5 ? 4 *
 // Strop súbežných tokov (klesá s anim=0). FÁZA DE-CLUTTER: bez FPS auto-stropu — po
 // optimalizácii pipeline netreba throttlovať, slučka aj tak v pokoji spí.
 function flowCap() {
-    return Math.max(0, Math.round(20 * Math.min(1.2, S._anim)));
+    return Math.max(0, Math.round(20 * Math.min(1.2, Math.max(S._anim, S._life))));
+}
+
+// FÁZA ANIMÁCIE (Living): počet práve bežiacich spontánnych synapsií (flow.spont).
+function synapseCount() {
+    let c = 0;
+    for (const f of S._flows) if (f.spont) c++;
+    return c;
+}
+
+// Vyber náhodnú viditeľnú kostrovú hranu pre spontánnu synapsiu — uprednostni hranu v zábere,
+// nech je „premýšľanie" vidieť. Pár náhodných pokusov (lacné aj pri veľkej sieti).
+function pickSynapseEdge() {
+    if (!S.edges.length) return null;
+    const loc = localSet();
+    const vp = S._vp;
+    let fallback = null;
+    for (let tries = 0; tries < 14; tries++) {
+        const e = S.edges[(Math.random() * S.edges.length) | 0];
+        if (!e || !e.source || !e.target) continue;
+        if ((e.weight || 1) < S.minWeight) continue;
+        if (edgeCategoryHidden(e)) continue;
+        if (!loc && !edgeSkeletal(e)) continue; // v pozadí len kostra (bez hairballu)
+        if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
+        if (!(visibleInReplay(e.source) && visibleInReplay(e.target))) continue;
+        fallback = e;
+        if (!vp) return e;
+        const a = e.source, b = e.target;
+        const inView = !(Math.max(a.x, b.x) < vp.x0 || Math.min(a.x, b.x) > vp.x1
+            || Math.max(a.y, b.y) < vp.y0 || Math.min(a.y, b.y) > vp.y1);
+        if (inView) return e;
+    }
+    return fallback;
+}
+
+// Občas (interval ~2–5 s × 1/život) vyšle slabý svetlobod po náhodnej viditeľnej hrane.
+// Znovupoužíva S._flows (dobeh rozsvieti cieľ). Strop 2–3 súbežné (auto-strop ich stíši).
+function maybeSynapse() {
+    if (S._life <= 0 || S._lifeTier >= 2 || REDUCED_MOTION || document.hidden || S.replay.on) return;
+    if (S._clock < S._nextSynapse) return;
+    const life = Math.min(1.6, S._life);
+    S._nextSynapse = S._clock + (2 + Math.random() * 3) / Math.max(0.2, life);
+    const cap = S._lifeTier === 1 ? 1 : (document.body.classList.contains('ambient') ? 3 : 2);
+    if (synapseCount() >= cap) return;
+    const e = pickSynapseEdge();
+    if (!e) return;
+    const fwd = Math.random() < 0.5;
+    S._flows.push({
+        from: fwd ? e.source : e.target,
+        to: fwd ? e.target : e.source,
+        e, t: 0,
+        speed: 0.5 + Math.random() * 0.35,
+        tone: Math.random() < 0.5 ? 'accent' : 'ink',
+        dim: 0.7, wait: 0, spont: true,
+    });
+    requestDraw();
 }
 
 // Vyšle putujúce svetlobody po incidentných hranách uzla (len na aktivitu, nie nepretržite).
 // Respektuje filtre hrán, auto-strop aj anim. tone: 'accent' (teal) | 'ink' | hex.
 function emitFlows(node, opts = {}) {
-    if (!node || REDUCED_MOTION || S._anim <= 0 || document.hidden || S.replay.on) return;
+    if (!node || REDUCED_MOTION || (S._anim <= 0 && S._life <= 0) || document.hidden || S.replay.on) return;
     const cap = flowCap();
     if (cap <= 0) return;
     for (const e of S.edges) {
@@ -1186,15 +1271,19 @@ function birthScale(n) {
     return easeOut(age / 0.5);
 }
 
-// Idle dýchanie: veľmi jemná sínusová modulácia polomeru (~±3 %, jadro výraznejšie),
-// fázovo rozhodené podľa id, pomalé (~4–6 s). Pozastavené pri hover/drag a keď anim=0.
+// FÁZA ANIMÁCIE (Living): idle dýchanie — jemná sínusová modulácia polomeru viditeľných uzlov
+// (~±2–3 %, jadro výraznejšie ±5 %), fázovo rozhodené podľa id, pomalé (5–8 s). Škáluje Život.
+// Auto-strop tier 1: dýcha len jadro. Zamrzne pri drag/pan, pri oddialení (k<0.5) a keď Život=0.
+// Konkrétny uzol pod kurzorom nedýcha (hover ho drží pevný pre presné čítanie).
 function breatheFactor(n) {
-    // FÁZA DE-CLUTTER: dýcha LEN jadro (4 uzly) — ostatných 546 je statických, nech sa
-    // sieť môže úplne zastaviť (žiadnych 550 sínusov/frame). Jadro dýcha len keď slučka beží.
-    if (n.type !== 'core') return 1;
-    if (S._anim <= 0 || S.hover || S._interacting || S.cam.k < 0.4) return 1;
-    const amp = 0.05 * Math.min(1.6, S._anim);
-    return 1 + amp * Math.sin(S._clock * (2 * Math.PI / 5.5) + n.id * 1.3);
+    if (S._life <= 0 || S._interacting || S.cam.k < 0.5) return 1;
+    const core = n.type === 'core';
+    if (!core && (S._lifeTier >= 1 || n === S.hover)) return 1;
+    if (core && n === S.hover) return 1;
+    const life = Math.min(1.4, S._life);
+    const amp = (core ? 0.05 : 0.025) * life;               // jadro dýcha výraznejšie
+    const period = core ? 5.5 : 6 + (n.id % 5) * 0.5;       // 6–8 s podľa id
+    return 1 + amp * Math.sin(S._clock * (2 * Math.PI / period) + n.id * 1.3);
 }
 
 /* ---------- simulácia ---------- */
@@ -1356,6 +1445,10 @@ function draw() {
     // hrana v zábere? bbox koncov pretína viewport (nezahodí hranu prechádzajúcu cez plochu)
     const edgeInView = (a, b) => !(Math.max(a.x, b.x) < vpX0 || Math.min(a.x, b.x) > vpX1
         || Math.max(a.y, b.y) < vpY0 || Math.min(a.y, b.y) > vpY1);
+    // FÁZA ANIMÁCIE (Living): zapamätaj svetové hranice viewportu pre cielenie spontánnych synapsií.
+    S._vp = { x0: vpX0, y0: vpY0, x1: vpX1, y1: vpY1 };
+    // kurzor v svetových súradniciach (raz za frame) — podklad pre gravitáciu/parallax uzlov
+    const cursorWorld = (S._life > 0 && S.cursor.a > 0.01) ? screenToWorld(S.cursor.sx, S.cursor.sy) : null;
 
     const hl = highlightSet();
     const hlAnchor = S.hover || S.selected;
@@ -1441,14 +1534,15 @@ function draw() {
 
     // FÁZA ANIMÁCIE: putujúce svetlobody po hranách (Q10) — malý bod, fade na koncoch.
     // Kreslené priamočiaro (aj v layers), jemné; alfa nesie anim intenzitu.
-    if (S._anim > 0 && S._flows.length) {
+    const _flowI = Math.max(S._anim, S._life); // toky nesie buď udalostná animácia, alebo ambientný život
+    if (_flowI > 0 && S._flows.length) {
         const fr = 3 / S.cam.k;
         for (const f of S._flows) {
             if (f.wait > 0) continue;
             if (!(nodeVisible(f.from, loc) && nodeVisible(f.to, loc))) continue;
             const x = f.from.x + (f.to.x - f.from.x) * f.t;
             const y = f.from.y + (f.to.y - f.from.y) * f.t;
-            const a = Math.min(0.7, 0.6 * f.dim * Math.min(1.2, S._anim)) * Math.sin(Math.PI * Math.min(f.t, 1));
+            const a = Math.min(0.7, 0.6 * f.dim * Math.min(1.2, _flowI)) * Math.sin(Math.PI * Math.min(f.t, 1));
             if (a < 0.02) continue;
             ctx.globalAlpha = a;
             ctx.fillStyle = f.tone === 'ink' ? 'rgb(' + T.edge + ')'
@@ -1472,20 +1566,54 @@ function draw() {
         if (S.hover === n) r *= 1.15; // hover zväčšenie (Obsidian)
         r *= breatheFactor(n) * birthScale(n); // FÁZA ANIMÁCIE: idle dýchanie + zrod uzla
         // FÁZA ANIMÁCIE: jemný pop pri dobehnutí pulzu/toku (v mape/sieti; layers rieši flash vlastnou alfou)
-        if (!layersView && n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, S._anim);
+        if (!layersView && n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
         const color = nodeColor(n);
         const flash = layersView ? (n.flash || 0) : 0;
         const mul = nodeAlphaMul(n, hl, pathNodes);
 
+        // FÁZA ANIMÁCIE (Living): vizuálny offset — drift („sieť pláva") + kurzorová gravitácia/parallax.
+        // Len pri kreslení; pick()/hover čítajú n.x/n.y, takže presnosť výberu ostáva nedotknutá.
+        // Pinned Vrstvy sa neposúvajú (deterministický layout). n._ox/_oy číta aj slučka popiskov.
+        let ox = 0, oy = 0, gGlow = 0;
+        if (S._life > 0 && !simpleNodes && !layersView) {
+            const lf = Math.min(1.4, S._life);
+            if (S._lifeTier === 0 && n.type !== 'core') {
+                ox += Math.sin(S._clock * 0.6 + n.id * 1.7) * lf;   // ±~1 px mikro-drift (nekumulatívny)
+                oy += Math.cos(S._clock * 0.5 + n.id * 2.3) * lf;
+            }
+            if (cursorWorld && S._lifeTier <= 1) {
+                const dx = cursorWorld.x - n.x, dy = cursorWorld.y - n.y;
+                const dd = Math.hypot(dx, dy);
+                const R = 140 / S.cam.k;
+                if (dd < R && dd > 0.001) {
+                    const ff = 1 - dd / R;
+                    const pull = ff * ff * (6 / S.cam.k) * S.cursor.a * (S._lifeTier === 1 ? 0.5 : 1);
+                    ox += (dx / dd) * pull; oy += (dy / dd) * pull; // max ~6 px prihnutie ku kurzoru
+                    gGlow = ff * S.cursor.a;                        // blízkosť kurzora uzol mierne rozsvieti
+                }
+            }
+        }
+        n._ox = ox; n._oy = oy;
+        const px = n.x + ox, py = n.y + oy;
+
         // FÁZA DE-CLUTTER: bez teplotnej modulácie výplne (heat je konštanta 1, nenesie info).
         // Plná alfa, tlmí sa len highlight/focus násobičom; vo Vrstvách flash pridá jas.
         ctx.globalAlpha = Math.min(1, (layersView ? 0.9 + flash * 0.5 : 1)) * mul;
-        drawShape(n, n.x, n.y, r, color, simpleNodes);
+        drawShape(n, px, py, r, color, simpleNodes);
 
         if (simpleNodes) { if (n.flash) n.flash = Math.max(0, n.flash - 0.02); continue; } // lacný disk, žiadne prstence
 
-        // FÁZA DE-CLUTTER: samostatný ink obrys aj teal teplotný prstenec zrušené —
-        // farebný prstenec vo farbe oblasti z drawShape je jediný obrys uzla (−1100 strokov/frame).
+        // FÁZA ANIMÁCIE (Living): ŽIARA — nedávno aktívne uzly (flash) jemne pulzujú teal, uzol pri
+        // kurzore sa prisvieti. Beží aj pri REDUCED_MOTION (flash je statický event pulz, gGlow=0).
+        const glowA = Math.max((n.flash || 0) * (0.55 + 0.45 * Math.sin(S._clock * 6 + n.id)), gGlow * 0.6);
+        if (glowA > 0.03) {
+            ctx.globalAlpha = Math.min(0.55, glowA) * mul;
+            ctx.lineWidth = 1.4 / S.cam.k;
+            ctx.strokeStyle = 'rgb(' + T.accent + ')';
+            ctx.beginPath();
+            ctx.arc(px, py, r + 3 / S.cam.k, 0, 7);
+            ctx.stroke();
+        }
 
         // FÁZA ANIMÁCIE (Q13): zrod uzla — krátky rozpínavý prstenec, ktorý dobehne a zmizne
         if (n._born != null) {
@@ -1496,7 +1624,7 @@ function draw() {
                 ctx.lineWidth = 1.4 / S.cam.k;
                 ctx.strokeStyle = 'rgb(' + T.accent + ')';
                 ctx.beginPath();
-                ctx.arc(n.x, n.y, r + (3 + p * 14) / S.cam.k, 0, 7);
+                ctx.arc(px, py, r + (3 + p * 14) / S.cam.k, 0, 7);
                 ctx.stroke();
             } else if (age >= 0.6) {
                 n._born = null; // zrod dobehol — vyčisti časovač
@@ -1547,9 +1675,11 @@ function draw() {
     for (const { n, isHover, alpha } of candidates) {
         const label = truncLabel(n.label);
         const w = ctx.measureText(label).width;
+        // FÁZA ANIMÁCIE (Living): popisok sleduje vizuálny offset uzla (drift/gravitácia), nech nedrifuje od bodu
+        const nx = n.x + (n._ox || 0), ny = n.y + (n._oy || 0);
         // label centrovaný POD uzlom — baseline r + 13/k, hover počíta so zväčšením
-        const y = n.y + nodeRadius(n) * (S.hover === n ? 1.15 : 1) + 13 / S.cam.k;
-        const rect = { x: n.x - w / 2, y: y - fontSize, w, h: fontSize * 1.4 };
+        const y = ny + nodeRadius(n) * (S.hover === n ? 1.15 : 1) + 13 / S.cam.k;
+        const rect = { x: nx - w / 2, y: y - fontSize, w, h: fontSize * 1.4 };
 
         const collides = taken.some((t) =>
             rect.x < t.x + t.w && t.x < rect.x + rect.w
@@ -1569,7 +1699,7 @@ function draw() {
         // alfa nesie zoom fade aj highlight/focus tlmenie
         ctx.globalAlpha = alpha;
         ctx.fillStyle = T.ink;
-        ctx.fillText(label, n.x, y);
+        ctx.fillText(label, nx, y);
     }
     S._labelShown = newShown; // FÁZA DE-CLUTTER: zapamätaj vykreslené popisky pre stabilitu
     ctx.globalAlpha = 1;
@@ -1646,12 +1776,20 @@ function frame() {
     framePending = false;
     // FÁZA SHELL: ak sme medzitým opustili Graf, slučka zaparkuje bez kreslenia.
     if (S.screen !== 'graf') return;
-    const dt = Math.min((now() - lastFrame) / 1000, 0.1);
-    lastFrame = now();
+    const nowMs = now();
+    const dt = Math.min((nowMs - lastFrame) / 1000, 0.1);
+    lastFrame = nowMs;
 
     // FÁZA ANIMÁCIE: monotónny čas + efektívna intenzita animácií tohto framu
     S._clock += dt;
     S._anim = animLevel();
+    // FÁZA ANIMÁCIE (Living): auto-strop z EMA nákladu draw(); ambientný život až po tier gate.
+    S._lifeTier = lifeTier();
+    S._life = S._lifeTier >= 2 ? 0 : lifeLevel(); // tier 2 → len event-driven (žiadny ambient)
+    // kurzorová aktivácia — plynulý nábeh/uvoľnenie gravitácie (uvoľní sa keď kurzor odíde/ťaháme)
+    S.cursor.a += ((S.cursor.on ? 1 : 0) - S.cursor.a) * Math.min(1, dt * 10);
+    if (S.cursor.a < 0.005) S.cursor.a = 0;
+    maybeSynapse(); // občasná spontánna synapsia po náhodnej hrane („myseľ premýšľa")
 
     for (const p of S.pulses) p.t += dt * p.speed;
     for (let i = S.pulses.length - 1; i >= 0; i--) {
@@ -1705,21 +1843,30 @@ function frame() {
     }
 
     // FÁZA RENDER PIPELINE: dirty-flag rozhodnutie — prekresli LEN keď je čo animovať alebo je dirty.
-    // active = simulácia beží / prebieha animácia (pulz, tok, morph, replay, dobeh, dim prechod) /
-    //          práve prebieha interakcia (drag/pan). V pokoji: 0 prekreslení, tichý CPU.
+    // responsive = stavy, čo chcú plnú frekvenciu (sim, morph, replay, interakcia, pulzy/toky, dobeh, dim).
+    // ambientLife = spojitý jemný život (dýchanie/drift/gravitácia/synapsie) — throttluje sa na ~30 FPS.
+    // V pokoji (Život=0 a nič sa nedeje): 0 prekreslení, tichý CPU.
     const simActive = S.sim && S.view !== 'layers' && S.sim.alpha() > S.sim.alphaMin();
     const dimTarget = isAwake() ? 1 : 0.5;
     const dimActive = Math.abs(dimTarget - S.dim) > 0.001;
-    // ambient je explicitný „živý" režim — jediný, kde slučka beží nepretržite (dýchanie/showcase).
-    const ambient = S._anim > 0 && document.body.classList.contains('ambient');
-    const active = simActive || !!S._morph || S.replay.playing || S._interacting || ambient
+    const ambientLife = S._life > 0; // už gate-nuté cez tier a screen; ambient režim ho drží nažive
+    const responsive = simActive || !!S._morph || S.replay.playing || S._interacting
         || S.pulses.length > 0 || S._flows.length > 0 || S._settleFrames > 0 || dimActive;
+    const active = responsive || ambientLife;
 
     if (S._settleFrames > 0) S._settleFrames--;
 
-    if (active || S._dirty) {
+    // responzívne / dirty stavy kreslíme okamžite; čistý ambient len keď uplynulo ~33 ms (cap 30 FPS)
+    let doDraw = responsive || S._dirty;
+    if (!doDraw && ambientLife && (nowMs - S._lastAmbient) >= AMBIENT_MS) doDraw = true;
+
+    if (doDraw) {
+        const _t0 = performance.now();
         draw();
+        // EMA nákladu kreslenia — plynulý podklad pre auto-strop (tier), aby na hranici neflikal
+        S._drawMs += (Math.min(60, performance.now() - _t0) - S._drawMs) * 0.1;
         S._dirty = false;
+        if (!responsive) S._lastAmbient = nowMs;
         updateStateUi();
     }
 
@@ -1739,6 +1886,10 @@ function scheduleFrame() {
 // FÁZA RENDER PIPELINE: koľko frameov po dobehnutí animácie ešte kresliť, nech flash/zrod dohasne.
 // flash klesá o 0.02/frame (0.5 → 0 ≈ 25 frameov); 45 dáva rezervu aj pre zrodový prstenec (0.6 s).
 const SETTLE_FRAMES = 45;
+
+// FÁZA ANIMÁCIE (Living): interval čistého ambientného framu (~30 FPS). Responzívne stavy
+// (interakcia, sim, pulzy/toky, morph) idú plnou frekvenciou; ambientný život sa throttluje sem.
+const AMBIENT_MS = 32;
 
 // Jednorazová požiadavka na prekreslenie (hover, kamera, výber, dáta, filter, téma).
 // Nastaví dirty a zobudí uspatú rAF slučku (reset lastFrame, nech prvý dt nevyskočí).
@@ -1814,7 +1965,13 @@ function setupInput() {
         requestDraw(); // začiatok interakcie → zobuď slučku
     });
 
+    // FÁZA ANIMÁCIE (Living): kurzor pre gravitáciu/parallax uzlov. Aktívny len keď NIE je drag/pan
+    // (počas ťahania sa gravitácia uvoľní). mouseleave nižšie ju uvoľní pri odchode z plátna.
+    canvas.addEventListener('mouseleave', () => { S.cursor.on = false; });
+
     window.addEventListener('mousemove', (e) => {
+        S.cursor.sx = e.clientX; S.cursor.sy = e.clientY;
+        S.cursor.on = !dragging;
         if (dragging) {
             const dx = e.clientX - lx, dy = e.clientY - ly;
             if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
@@ -3326,8 +3483,8 @@ function setupHints() {
 
 /* ---------- FÁZA SHELL: obrazovky Dnes / Denník / Graf / Knižnica ---------- */
 
-const SCREENS = ['dnes', 'dennik', 'graf', 'kniznica'];
-const SCREEN_LABELS = { dnes: 'Dnes', dennik: 'Denník', graf: 'Graf', kniznica: 'Knižnica' };
+const SCREENS = ['dnes', 'dennik', 'graf', 'kniznica', 'smernica'];
+const SCREEN_LABELS = { dnes: 'Dnes', dennik: 'Denník', graf: 'Graf', kniznica: 'Knižnica', smernica: 'Smernica' };
 
 function setScreen(name) {
     if (!SCREENS.includes(name)) name = 'dnes';
@@ -3356,6 +3513,8 @@ function setScreen(name) {
         markJournalSeen();
     } else if (name === 'kniznica') {
         renderLibrary();
+    } else if (name === 'smernica') {
+        renderDirective();
     }
     if (changed && name !== 'graf') closeNodePanel();
 }
@@ -3519,6 +3678,323 @@ async function renderLibrary() {
     }
 }
 
+/* ---------- obrazovka Smernica (/api/directive/*) ----------
+   Prompt builder: úloha → Hades poskladá KDE ČO NÁJDE (skilly, projekty,
+   fakty, pravidlá). Návrh je editovateľný checklist; náhľad smernice sa
+   prestavuje klientsky z vybraných položiek (aby unchecked ostalo unchecked).
+   Uloženie zapíše directives/<slug>.md cez /api/directive/save. */
+
+let directiveData = null;         // posledný /build výsledok { task, suggested }
+const directiveSel = new Set();   // node_id zahrnuté v smernici (zaškrtnuté)
+let directiveTemplates = null;    // cache šablón (/api/directive/templates)
+let directiveMarkdown = '';       // aktuálny markdown náhľadu (na copy/save)
+let directiveBuildSeq = 0;        // ochrana proti pretekaniu odpovedí
+
+const DIR_SECTIONS = [
+    { key: 'skills', title: 'Skilly', icon: 'bolt' },
+    { key: 'projects', title: 'Projekty', icon: 'inventory_2' },
+    { key: 'facts', title: 'Fakty', icon: 'psychology' },
+    { key: 'rules', title: 'Pravidlá', icon: 'gavel' },
+];
+
+function renderDirective(prefillTask) {
+    const body = $('directive-body');
+    if (!body) return;
+    body.innerHTML =
+        '<div class="dir-templates" id="dir-templates"></div>'
+        + '<div class="dir-input-row">'
+        + '<input id="dir-task" class="dir-task" placeholder="Na čom pracuješ? Napíš úlohu…" autocomplete="off" aria-label="Úloha">'
+        + '<button type="button" id="dir-build" class="primary">Poskladať</button>'
+        + '</div>'
+        + '<div class="dir-cols">'
+        + '<div class="dir-suggest" id="dir-suggest"></div>'
+        + '<div class="dir-preview-wrap">'
+        + '<div class="dir-preview-head"><h2>Náhľad smernice</h2>'
+        + '<div class="dir-actions">'
+        + '<button type="button" id="dir-copy" class="ghost ms" title="Kopírovať smernicu" aria-label="Kopírovať smernicu">content_copy</button>'
+        + '<button type="button" id="dir-save" class="ghost ms" title="Uložiť ako .md" aria-label="Uložiť ako .md">save</button>'
+        + '</div></div>'
+        + '<div class="dir-preview md-body" id="dir-preview"></div>'
+        + '</div></div>'
+        + '<section class="dir-saved-sec"><h2>Uložené smernice</h2><div class="dir-saved" id="dir-saved"></div></section>';
+
+    const taskInput = $('dir-task');
+    const buildBtn = $('dir-build');
+    if (buildBtn) buildBtn.onclick = () => busy(buildBtn, () => runDirectiveBuild(taskInput ? taskInput.value : ''), 'Skladám…');
+    if (taskInput) taskInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); runDirectiveBuild(taskInput.value); }
+    });
+    const copyBtn = $('dir-copy');
+    if (copyBtn) copyBtn.onclick = copyDirective;
+    const saveBtn = $('dir-save');
+    if (saveBtn) saveBtn.onclick = saveDirective;
+
+    loadDirectiveTemplates();
+    loadDirectiveSaved();
+
+    if (prefillTask != null && taskInput) taskInput.value = prefillTask;
+
+    if (directiveData) {
+        renderDirectiveSuggest();
+        renderDirectivePreview();
+    } else {
+        renderEmpty($('dir-suggest'), 'assignment', 'Vyber šablónu alebo napíš úlohu');
+        renderDirectivePreview();
+    }
+
+    if (prefillTask) runDirectiveBuild(prefillTask);
+}
+
+// Skok na obrazovku Smernica s predvyplneným dopytom (z Cmd-K akcie).
+function gotoDirective(task) {
+    setScreen('smernica');
+    const inp = $('dir-task');
+    if (inp) inp.value = task || '';
+    if (task) runDirectiveBuild(task);
+}
+
+async function loadDirectiveTemplates() {
+    const box = $('dir-templates');
+    if (!box) return;
+    try {
+        if (!directiveTemplates) {
+            const d = await (await fetch('/api/directive/templates')).json();
+            directiveTemplates = d.templates || [];
+        }
+        box.innerHTML = directiveTemplates.map((t, i) =>
+            '<button type="button" class="dir-tpl" data-i="' + i + '" title="' + esc(t.hint || '') + '">'
+            + '<span class="ms" aria-hidden="true">bolt</span>' + esc(t.name) + '</button>'
+        ).join('');
+        box.querySelectorAll('.dir-tpl').forEach((b) => {
+            b.onclick = () => {
+                const t = directiveTemplates[+b.dataset.i];
+                if (!t) return;
+                const inp = $('dir-task');
+                if (inp) inp.value = t.task || '';
+                runDirectiveBuild(t.task || '');
+            };
+        });
+    } catch (e) { box.innerHTML = ''; }
+}
+
+async function runDirectiveBuild(task) {
+    task = (task || '').trim();
+    const suggest = $('dir-suggest');
+    if (task === '') { showToast('Napíš úlohu alebo vyber šablónu'); return; }
+    if (suggest) renderEmpty(suggest, 'hourglass_empty', 'Skladám…');
+    const seq = ++directiveBuildSeq;
+    try {
+        const res = await fetch('/api/directive/build', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task }),
+        });
+        const data = await res.json();
+        if (seq !== directiveBuildSeq) return;
+        directiveData = { task: data.task || task, suggested: data.suggested || {} };
+        directiveSel.clear();
+        for (const sec of DIR_SECTIONS) {
+            for (const it of (directiveData.suggested[sec.key] || [])) directiveSel.add(+it.id);
+        }
+        renderDirectiveSuggest();
+        renderDirectivePreview();
+    } catch (e) {
+        if (seq === directiveBuildSeq && suggest) renderEmpty(suggest, 'cloud_off', 'Nepodarilo sa poskladať');
+    }
+}
+
+function renderDirectiveSuggest() {
+    const wrap = $('dir-suggest');
+    if (!wrap || !directiveData) return;
+    const sug = directiveData.suggested || {};
+    const total = DIR_SECTIONS.reduce((n, s) => n + ((sug[s.key] || []).length), 0);
+    if (!total) { renderEmpty(wrap, 'search_off', 'Nič relevantné sa nenašlo'); return; }
+
+    let h = '';
+    for (const sec of DIR_SECTIONS) {
+        const items = sug[sec.key] || [];
+        if (!items.length) continue;
+        h += '<div class="dir-group"><div class="dir-group-head">'
+            + '<span class="ms" aria-hidden="true">' + sec.icon + '</span>' + esc(sec.title)
+            + '<span class="dir-group-n">' + items.length + '</span></div>'
+            + items.map((it) => dirItem(sec.key, it)).join('')
+            + '</div>';
+    }
+    wrap.innerHTML = h;
+
+    wrap.querySelectorAll('.dir-check input[type="checkbox"]').forEach((cb) => {
+        cb.onchange = () => {
+            const id = +cb.dataset.id;
+            if (cb.checked) directiveSel.add(id); else directiveSel.delete(id);
+            const lab = cb.closest('.dir-check');
+            if (lab) lab.classList.toggle('off', !cb.checked);
+            renderDirectivePreview();
+        };
+    });
+}
+
+function dirItem(key, it) {
+    const id = +it.id;
+    const on = directiveSel.has(id);
+    let sub = '';
+    if (key === 'skills' && it.path) sub = '<code class="dir-path">' + esc(it.path) + '</code>';
+    else if (key === 'projects' && it.info) sub = '<span class="dir-sub">' + esc(it.info) + '</span>';
+    else if (it.snippet) sub = '<span class="dir-sub">' + esc(it.snippet) + '</span>';
+
+    let badge = '';
+    if (key === 'skills') {
+        badge = it.verified
+            ? '<span class="dir-badge ok">overené</span>'
+            : '<span class="dir-badge warn">neoverené</span>';
+    }
+
+    return '<label class="check dir-check' + (on ? '' : ' off') + '">'
+        + '<input type="checkbox" data-id="' + id + '"' + (on ? ' checked' : '') + '>'
+        + '<span class="box" aria-hidden="true"></span>'
+        + '<span class="dir-item-text"><span class="dir-item-label">' + esc(it.label || '') + badge + '</span>'
+        + sub + '</span></label>';
+}
+
+function renderDirectivePreview() {
+    const pv = $('dir-preview');
+    if (!pv) return;
+    if (!directiveData) {
+        directiveMarkdown = '';
+        pv.innerHTML = emptyHtml('description', 'Napíš úlohu a poskladaj smernicu');
+        return;
+    }
+    directiveMarkdown = buildDirectiveMarkdown();
+    pv.innerHTML = mdToHtml(directiveMarkdown);
+}
+
+// Klientsky rebuild markdownu z vybraných položiek — zrkadlí DirectiveController::buildMarkdown.
+function buildDirectiveMarkdown() {
+    const task = (directiveData.task || '').trim();
+    const taskLine = task !== '' ? task : 'Nešpecifikovaná úloha';
+    const skills = dirSelected('skills');
+    const projects = dirSelected('projects');
+    const facts = dirSelected('facts');
+    const rules = dirSelected('rules');
+    const verified = skills.filter((s) => s.verified && s.path);
+
+    const L = [];
+    L.push('# Smernica: ' + taskLine, '');
+    L.push('## Kontext');
+    L.push(dirContextSentence(task, verified, projects), '');
+
+    if (verified.length) {
+        L.push('## Použi tieto skilly');
+        for (const s of verified) L.push('- ' + s.label + ' — `' + s.path + '`');
+        L.push('');
+    }
+    if (projects.length) {
+        L.push('## Súvisiace projekty');
+        for (const p of projects) {
+            const info = String(p.info || '').trim();
+            L.push('- ' + p.label + (info !== '' ? ': ' + info : ''));
+        }
+        L.push('');
+    }
+    if (facts.length) {
+        L.push('## Kľúčové fakty');
+        for (const f of facts) {
+            const s = dirOneLine(f.snippet);
+            L.push('- ' + f.label + (s !== '' ? ': ' + s : ''));
+        }
+        L.push('');
+    }
+    if (rules.length) {
+        L.push('## Pravidlá a preferencie');
+        for (const r of rules) {
+            const s = dirOneLine(r.snippet);
+            L.push('- ' + r.label + (s !== '' ? ': ' + s : ''));
+        }
+        L.push('');
+    }
+
+    const where = [];
+    for (const s of verified) where.push('- ' + s.label + ' → `' + s.path + '`');
+    for (const p of projects) {
+        const info = String(p.info || '').trim();
+        if (info !== '') where.push('- ' + p.label + ' → ' + info);
+    }
+    if (where.length) { L.push('## Kde nájdeš'); for (const w of where) L.push(w); L.push(''); }
+
+    return L.join('\n').replace(/\n+$/, '') + '\n';
+}
+
+function dirSelected(key) {
+    return (directiveData.suggested[key] || []).filter((it) => directiveSel.has(+it.id));
+}
+
+function dirContextSentence(task, verified, projects) {
+    const subject = task !== '' ? '„' + task + '"' : 'túto úlohu';
+    const parts = [];
+    if (verified.length) parts.push(verified.length + '× skill');
+    if (projects.length) parts.push(projects.length + '× projekt');
+    const have = parts.length ? ' Zahŕňa ' + parts.join(' a ') + '.' : '';
+    return 'Táto smernica hovorí, kde v Hadese nájdeš relevantné znalosti pre '
+        + subject + '.' + have + ' Použi uvedené zdroje ako kontext skôr, než začneš.';
+}
+
+function dirOneLine(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    return t.length > 160 ? t.slice(0, 160) + '…' : t;
+}
+
+async function copyDirective() {
+    if (!directiveMarkdown) { showToast('Najprv poskladaj smernicu'); return; }
+    try { await navigator.clipboard.writeText(directiveMarkdown); showToast('Smernica skopírovaná'); }
+    catch (e) { showToast('Kopírovanie zlyhalo'); }
+}
+
+async function saveDirective() {
+    if (!directiveMarkdown || !directiveData) { showToast('Najprv poskladaj smernicu'); return; }
+    const name = (directiveData.task || '').trim() || 'smernica';
+    try {
+        const res = await fetch('/api/directive/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, markdown: directiveMarkdown }),
+        });
+        if (!res.ok) { showToast('Uloženie zlyhalo'); return; }
+        const data = await res.json();
+        showToast('Uložené: ' + (data.path || ''));
+        loadDirectiveSaved();
+    } catch (e) { showToast('Uloženie zlyhalo'); }
+}
+
+async function loadDirectiveSaved() {
+    const box = $('dir-saved');
+    if (!box) return;
+    try {
+        const d = await (await fetch('/api/directives')).json();
+        const items = d.directives || [];
+        if (!items.length) { renderEmpty(box, 'folder_open', 'Zatiaľ žiadne uložené smernice'); return; }
+        box.innerHTML = items.map((it) =>
+            '<button type="button" class="dir-saved-item" data-name="' + esc(it.name) + '">'
+            + '<span class="ms" aria-hidden="true">description</span>'
+            + '<span class="dsi-text"><span class="dsi-title">' + esc(it.title || it.name) + '</span>'
+            + '<span class="dsi-path">' + esc(it.path) + '</span></span></button>'
+        ).join('');
+        box.querySelectorAll('.dir-saved-item').forEach((b) => {
+            b.onclick = () => openSavedDirective(b.dataset.name);
+        });
+    } catch (e) { renderEmpty(box, 'cloud_off', 'Nepodarilo sa načítať'); }
+}
+
+async function openSavedDirective(name) {
+    try {
+        const d = await (await fetch('/api/directive/' + encodeURIComponent(name))).json();
+        if (!d || !d.markdown) { showToast('Smernica sa nenašla'); return; }
+        directiveMarkdown = d.markdown;
+        const pv = $('dir-preview');
+        if (pv) pv.innerHTML = mdToHtml(d.markdown);
+        try { await navigator.clipboard.writeText(d.markdown); showToast('Smernica skopírovaná'); }
+        catch (e) { showToast('Smernica otvorená'); }
+    } catch (e) { showToast('Nepodarilo sa načítať'); }
+}
+
 /* ---------- Cmd-K paleta (zjednotené hľadanie + navigácia) ---------- */
 
 const CMDK_NAV = [
@@ -3526,6 +4002,7 @@ const CMDK_NAV = [
     { screen: 'dennik', label: 'Denník', icon: 'receipt_long' },
     { screen: 'graf', label: 'Graf', icon: 'hub' },
     { screen: 'kniznica', label: 'Knižnica', icon: 'menu_book' },
+    { screen: 'smernica', label: 'Smernica', icon: 'assignment' },
 ];
 let cmdkTimer = null, cmdkSeq = 0;
 
@@ -3575,6 +4052,13 @@ function bindCmdkItems(root) {
             }
         };
     });
+    root.querySelectorAll('.cmdk-item[data-action="directive"]').forEach((el) => {
+        el.onclick = () => {
+            const q = ($('cmdk-input').value || '').trim();
+            closeCmdk();
+            gotoDirective(q);
+        };
+    });
 }
 
 const CMDK_TYPE_NAMES = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
@@ -3594,6 +4078,12 @@ function renderCmdk(q) {
                 + '<span class="ms" aria-hidden="true">' + n.icon + '</span>'
                 + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label) + '</span></span></button>').join('');
     }
+    // Akcia: poskladať smernicu z aktuálneho dopytu (skočí na obrazovku Smernica)
+    html += cmdkGroup('Akcia')
+        + '<button type="button" class="cmdk-item" data-action="directive">'
+        + '<span class="ms" aria-hidden="true">assignment</span>'
+        + '<span class="cmdk-text"><span class="cmdk-title">Vytvor smernicu' + (query ? ': ' + esc(query) : '…') + '</span>'
+        + '<span class="cmdk-sub">Poskladá kontext pre Claude Code</span></span></button>';
     html += '<div id="cmdk-remote"></div>';
     wrap.innerHTML = html;
     bindCmdkItems(wrap);

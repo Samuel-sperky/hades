@@ -66,6 +66,9 @@
             <button class="dest" data-screen="kniznica" type="button" aria-label="Knižnica">
                 <span class="ms" aria-hidden="true">menu_book</span><span class="lbl">Knižnica</span>
             </button>
+            <button class="dest" data-screen="smernica" type="button" aria-label="Smernica">
+                <span class="ms" aria-hidden="true">assignment</span><span class="lbl">Smernica</span>
+            </button>
         </div>
 
         <div class="rail-group bottom" role="group" aria-label="Systém">
@@ -103,6 +106,14 @@
                 <input id="library-search" placeholder="Filtrovať skills…" autocomplete="off" aria-label="Filtrovať skills">
             </header>
             <div id="library-body"></div>
+        </section>
+
+        <section class="screen" id="screen-smernica">
+            <header class="screen-head">
+                <h1>Smernica</h1>
+                <p class="screen-sub">Povedz Hadesovi na čom robíš — poskladá kontext pre Claude Code</p>
+            </header>
+            <div id="directive-body"></div>
         </section>
     </main>
 
@@ -158,6 +169,10 @@
                 <button id="btn-ambient" class="ghost" type="button">Ambient režim (celá obrazovka)</button>
             </div>
             <h3>Pohyb</h3>
+            <label class="slider">Život
+                <input type="range" data-opt="life" min="0" max="1" step="0.05">
+                <output></output>
+            </label>
             <label class="slider">Animácie
                 <input type="range" data-opt="anim" min="0" max="1" step="0.05">
                 <output></output>
