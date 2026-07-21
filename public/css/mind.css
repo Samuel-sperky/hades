@@ -413,10 +413,11 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     width: 56px;
     display: flex; flex-direction: column; align-items: center;
     padding: var(--sp-1) 0; gap: var(--sp-1);
-    background: var(--panel);
+    /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur — GPU nerozmazáva pozadie
+       každý frame (plynulejšie), rail je čitateľnejší. Blur ostáva len na plávajúcich kartách. */
+    background: var(--panel-solid);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
-    backdrop-filter: var(--blur-1);
     box-shadow: var(--elev-1);
     z-index: var(--z-chrome);
 }
@@ -509,10 +510,10 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     height: 44px;
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
-    background: var(--panel);
+    /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur (viď #rail). */
+    background: var(--panel-solid);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
-    backdrop-filter: var(--blur-1);
     box-shadow: var(--elev-1);
     z-index: calc(var(--z-panel) - 1);
 }
