@@ -47,7 +47,12 @@ class MindExportMemory extends Command
         // exportovateľné: jadro (osobnosť/hodnoty), projekty, pripnuté uzly a
         // manuálne fakty (source null, ne-skill) so silou > 1. ŽIADNE skilly ani
         // session záznamy. Zoradené podľa sily, max 25.
+        //
+        // origin='session' (R3): exportujeme LEN DB-first uzly. origin=brain uzly
+        // majú vlastný .md zdroj — export by inak spustil export↔index slučku
+        // (brain-sync by ich videl ako mirror a znovu indexoval).
         $nodes = Node::query()
+            ->where('origin', 'session')
             ->where(function ($q) {
                 $q->where('type', 'core')
                     ->orWhere('type', 'project')
@@ -101,18 +106,41 @@ class MindExportMemory extends Command
      * Zmaže staré .md súbory v exporte, ktoré už nie sú medzi aktuálnymi (napr.
      * skilly z predošlej verzie, ktorá exportovala stovky súborov).
      *
+     * BEZPEČNOSTNÁ POISTKA (R3): maže LEN súbory s `source: hades` vo frontmatteri
+     * — teda VÝHRADNE vlastné exporty Hadesa. Používateľove ručne písané `.md`
+     * (bez tohto markera) v priečinku ostávajú nedotknuté, aj keď nie sú v $keep.
+     *
      * @param  array<string, bool>  $keep
      */
     protected function pruneStale(string $exportPath, array $keep): int
     {
         $pruned = 0;
         foreach (glob($exportPath.'/*.md') ?: [] as $path) {
-            if (! isset($keep[basename($path)])) {
-                @unlink($path) && $pruned++;
+            if (isset($keep[basename($path)])) {
+                continue;
             }
+            if (! $this->isHadesExport($path)) {
+                continue; // cudzí .md — nikdy nemažeme
+            }
+            @unlink($path) && $pruned++;
         }
 
         return $pruned;
+    }
+
+    /** Má súbor `source: hades` vo frontmatteri? (len taký smie prune zmazať) */
+    protected function isHadesExport(string $path): bool
+    {
+        $raw = @file_get_contents($path);
+        if ($raw === false) {
+            return false;
+        }
+        $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw) ?? $raw;
+        if (! preg_match('/^---\r?\n(.*?)\r?\n---/s', $raw, $m)) {
+            return false;
+        }
+
+        return (bool) preg_match('/^\s*source:\s*hades\s*$/mi', $m[1]);
     }
 
     /** .md dokument uzla s frontmatterom (name, description, source, node_id). */

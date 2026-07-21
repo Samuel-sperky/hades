@@ -66,6 +66,12 @@
             <button class="dest" data-screen="kniznica" type="button" aria-label="Knižnica">
                 <span class="ms" aria-hidden="true">menu_book</span><span class="lbl">Knižnica</span>
             </button>
+            <button class="dest" data-screen="rozhodnutia" type="button" aria-label="Rozhodnutia">
+                <span class="ms" aria-hidden="true">gavel</span><span class="lbl">Rozhodnutia</span>
+            </button>
+            <button id="dest-kontrola" class="dest" data-screen="kontrola" type="button" aria-label="Kontrola">
+                <span class="ms" aria-hidden="true">fact_check</span><span class="lbl">Kontrola</span>
+            </button>
             <button class="dest" data-screen="smernica" type="button" aria-label="Smernica">
                 <span class="ms" aria-hidden="true">assignment</span><span class="lbl">Smernica</span>
             </button>
@@ -106,6 +112,22 @@
                 <input id="library-search" placeholder="Filtrovať skills…" autocomplete="off" aria-label="Filtrovať skills">
             </header>
             <div id="library-body"></div>
+        </section>
+
+        <section class="screen" id="screen-rozhodnutia">
+            <header class="screen-head">
+                <h1>Rozhodnutia</h1>
+                <p class="screen-sub">Časová os rozhodnutí naprieč projektami</p>
+            </header>
+            <div id="rozhodnutia-body"></div>
+        </section>
+
+        <section class="screen" id="screen-kontrola">
+            <header class="screen-head">
+                <h1>Kontrola</h1>
+                <p class="screen-sub">Fronta poznatkov čakajúcich na overenie</p>
+            </header>
+            <div id="kontrola-body"></div>
         </section>
 
         <section class="screen" id="screen-smernica">
@@ -389,6 +411,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8/dist/web/pusher.min.js"></script>
+    <script src="/js/charts.js"></script>
     <script src="/js/mind.js"></script>
 </body>
 </html>

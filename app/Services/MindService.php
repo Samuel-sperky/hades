@@ -23,7 +23,8 @@ class MindService
         'similarity' => 0,
         'co_activation' => 1,
         'skill_mention' => 2,
-        'manual' => 3,
+        'wiki' => 3,
+        'manual' => 4,
     ];
 
     /**
@@ -51,6 +52,8 @@ class MindService
         ?string $departmentName = null,
         array $connections = [],
         ?string $sessionKey = null,
+        ?string $certainty = null,
+        array $tags = [],
     ): array {
         $existing = $this->findByLabel($label, $type);
 
@@ -58,6 +61,13 @@ class MindService
             $merged = $this->mergeInto($existing, $description, $sessionKey);
             $this->connectByLabels($existing, $connections, $sessionKey);
             $this->coActivate($existing, $sessionKey);
+
+            // certainty/tagy sa aplikujú len keď sú zadané — bez zmeny
+            // existujúceho správania pri holom mind_learn
+            if ($certainty !== null) {
+                $merged->forceFill(['certainty' => $certainty])->save();
+            }
+            $this->syncTags($merged, $tags);
 
             return ['action' => 'merged', 'node' => $merged->fresh()->toApi()];
         }
@@ -71,9 +81,12 @@ class MindService
             'department_id' => $department?->id,
             'label' => trim($label),
             'description' => $description,
+            'certainty' => $certainty,
             'strength' => 1,
             'last_activated_at' => now(),
         ]);
+
+        $this->syncTags($node, $tags);
 
         Activation::record($node, 'learn', $sessionKey);
         MindPulse::dispatch('node.created', ['node' => $node->toApi()]);
@@ -82,6 +95,26 @@ class MindService
         $this->coActivate($node, $sessionKey);
 
         return ['action' => 'created', 'node' => $node->fresh()->toApi()];
+    }
+
+    /**
+     * Pripojí tagy na uzol (M:N). Neexistujúce tagy vytvorí, existujúce
+     * neduplikuje. Prázdny zoznam = no-op (bez zmeny správania).
+     */
+    protected function syncTags(Node $node, array $tags): void
+    {
+        $ids = [];
+        foreach ($tags as $name) {
+            $name = trim((string) $name);
+            if ($name === '') {
+                continue;
+            }
+            $ids[] = \App\Models\Tag::firstOrCreate(['name' => $name])->id;
+        }
+
+        if ($ids) {
+            $node->tags()->syncWithoutDetaching($ids);
+        }
     }
 
     /**

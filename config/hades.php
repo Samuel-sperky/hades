@@ -5,6 +5,40 @@ return [
     // Meno vedomia
     'name' => 'Hades',
 
+    // Verzia znalostného modelu / API kontraktu (mirror do /api/v1/health)
+    'version' => '1.0.0',
+
+    // Bearer token pre externé /api/v1/* (fail-closed: prázdny = nikto neprejde).
+    // Interné /api/* (SPA) token nedrží.
+    'api_token' => env('HADES_API_TOKEN'),
+
+    // Brain-write guard — zápis do ľudsky písaných .md „mozgov".
+    // Default OFF (fail-safe): brain-write endpointy vracajú 403, .md sa nemení.
+    'allow_brain_write' => (bool) env('HADES_ALLOW_BRAIN_WRITE', false),
+
+    // Register zdrojov .md „mozgov" indexovaných do siete (origin=brain).
+    // BrainSourceRegistry (B2) toto zlúči s DB tabuľkou brain_sources a .env cestami.
+    'brain_sources' => [
+        'skills' => [
+            'type' => 'skills',
+            'path' => base_path('skills'),
+            'label' => 'Skills',
+            'writable' => false,
+        ],
+        'memory' => [
+            'type' => 'claude-memory',
+            'path' => env('HADES_MEMORY_EXPORT_PATH', '/memory-rw/hades'),
+            'label' => 'Claude memory',
+            'writable' => false,
+        ],
+    ],
+
+    // Externé .md cesty (';' oddelené) — indexované ako origin=brain.
+    'brain_paths' => array_values(array_filter(array_map(
+        'trim',
+        explode(';', (string) env('HADES_BRAIN_PATHS', '')),
+    ))),
+
     // Anthropic API pre chat s vedomim
     'anthropic_api_key' => env('ANTHROPIC_API_KEY'),
     'chat_model' => env('HADES_CHAT_MODEL', 'claude-opus-4-8'),

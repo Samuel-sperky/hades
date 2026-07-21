@@ -53,7 +53,21 @@ class NodeMarkdownResolver
             }
         }
 
-        // 4) fallback — popis uzla ako markdown
+        // 4) externý brain uzol (origin=brain, source=brain) → súbor pod koreňom
+        //    zdroja (meta.root), cesta v meta.path (relatívna) alebo source_file.
+        if ($node->source === 'brain') {
+            $meta = is_array($node->meta) ? $node->meta : [];
+            $root = $meta['root'] ?? null;
+            $path = $meta['path'] ?? $node->source_file;
+            if (is_string($root) && $root !== '' && is_string($path) && $path !== '') {
+                $md = $this->readInside($root, $path);
+                if ($md !== null) {
+                    return ['markdown' => $md, 'source_path' => $path];
+                }
+            }
+        }
+
+        // 5) fallback — popis uzla ako markdown
         return ['markdown' => (string) ($node->description ?? ''), 'source_path' => null];
     }
 

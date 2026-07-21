@@ -16,7 +16,8 @@ class LibraryController extends Controller
      * Voliteľný ?q= filtruje cez ten istý SK-aware engine (stemované korene),
      * aby slovenské skloňovanie fungovalo aj tu.
      *
-     * Tvar: { areas: [ { name, color, skills: [ { id, label, path, snippet } ] } ] }
+     * Tvar: { areas: [ { name, color, skills: [ { id, label, path, snippet,
+     *         origin, certainty, tags[] } ] } ] }
      * Oblasti sú zoradené podľa uhla (angle), prázdne sa vynechajú.
      */
     public function index(Request $request, MindService $mind): JsonResponse
@@ -26,9 +27,11 @@ class LibraryController extends Controller
 
         $areas = Area::orderBy('angle')->get()->keyBy('id');
 
+        // eager-load tags → žiadny N+1 pri mapovaní na chipy v Knižnici (F4)
         $skills = Node::where('type', 'skill')
+            ->with('tags:id,name')
             ->orderBy('label')
-            ->get(['id', 'label', 'area_id', 'description', 'meta', 'external_key']);
+            ->get(['id', 'label', 'area_id', 'description', 'meta', 'external_key', 'origin', 'certainty']);
 
         if ($roots->isNotEmpty()) {
             $skills = $skills->filter(function (Node $n) use ($roots, $mind) {
@@ -58,6 +61,9 @@ class LibraryController extends Controller
                         'snippet' => $n->description
                             ? Str::limit(trim(preg_replace('/\s+/u', ' ', $n->description)), 120)
                             : null,
+                        'origin' => $n->origin,
+                        'certainty' => $n->certainty,
+                        'tags' => $n->tags->pluck('name')->all(),
                     ])->values()->all(),
                 ];
             })

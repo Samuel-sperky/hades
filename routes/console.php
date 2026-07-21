@@ -31,6 +31,21 @@ Schedule::command('mind:ingest --all')
     ->withoutOverlapping(30)
     ->createMutexNameUsing(fn () => 'mind-ingest');
 
+// Brain-indexer: indexuje ľudsky písané .md „mozgy" (skills/memory/externé) do
+// siete ako origin=brain uzly. Priebežne kazdych 10 minut (withoutOverlapping
+// bráni prekrytiu SEBA SAMÉHO), plný nocný prechod o 03:25 (PRED mind:ingest --all
+// o 03:35). Zdieľa zámok 'brain-sync' cez BrainSyncService (UI/API/writer sa serializujú).
+Schedule::command('mind:brain-sync')
+    ->everyTenMinutes()
+    ->name('mind-brain-sync')
+    ->withoutOverlapping(30)
+    ->createMutexNameUsing(fn () => 'mind-brain-sync');
+Schedule::command('mind:brain-sync')
+    ->dailyAt('03:25')
+    ->name('mind-brain-sync')
+    ->withoutOverlapping(30)
+    ->createMutexNameUsing(fn () => 'mind-brain-sync');
+
 // Nocna reorganizacia štruktúry, tyzdenny suhrn v nedelu.
 Schedule::command('mind:reorganize')->dailyAt('03:50');
 Schedule::command('mind:digest')->weeklyOn(0, '04:00');

@@ -20,7 +20,10 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Bearer-token guard pre externé /api/v1/* (fail-closed).
+        $middleware->alias([
+            'auth.token' => App\Http\Middleware\AuthenticateApiToken::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

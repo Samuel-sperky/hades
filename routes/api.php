@@ -1,6 +1,14 @@
 <?php
 
 use App\Http\Controllers\ActivationController;
+use App\Http\Controllers\Api\DecisionController;
+use App\Http\Controllers\Api\GraphController as ApiGraphController;
+use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\KnowledgeController;
+use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\SearchController as ApiSearchController;
+use App\Http\Controllers\Api\StatsController;
+use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ContextController;
 use App\Http\Controllers\DirectiveController;
@@ -55,3 +63,48 @@ Route::get('/search', [SearchController::class, 'index']);
 // Údržba — duplicity a zlučovanie uzlov
 Route::get('/duplicates', [MaintenanceController::class, 'duplicates']);
 Route::post('/nodes/{node}/merge/{target}', [MaintenanceController::class, 'merge']);
+
+// ---------------------------------------------------------------------------
+// Interné /api/* pre SPA (same-origin, BEZ Bearer tokenu) — §4.3.
+// Zdieľané controllery s v1: SPA nikdy nedrží token.
+// ---------------------------------------------------------------------------
+Route::get('/dashboard', [StatsController::class, 'index']);       // = /api/v1/stats
+Route::post('/sync', [SyncController::class, 'store']);            // lock → 423
+Route::get('/decisions', [DecisionController::class, 'index']);
+Route::post('/decisions', [DecisionController::class, 'store']);   // §4.7 aj pri guard OFF
+Route::get('/tags', [KnowledgeController::class, 'tags']);
+
+// Kontrola — verify/review fronta (B5). Interné /api/* bez tokenu (SPA).
+Route::get('/review/queue', [ReviewController::class, 'queue']);
+Route::post('/nodes/{node}/verify', [ReviewController::class, 'verify']);
+Route::post('/nodes/{node}/resolve-review', [ReviewController::class, 'resolveReview']);
+
+// ---------------------------------------------------------------------------
+// Externé /api/v1/* — programatický mirror. Health bez tokenu, zvyšok
+// auth.token (Bearer, fail-closed). Rovnaké controllery ako interné.
+// ---------------------------------------------------------------------------
+Route::prefix('v1')->group(function (): void {
+    Route::get('/health', [HealthController::class, 'index']);
+
+    Route::middleware('auth.token')->group(function (): void {
+        Route::get('/knowledge', [KnowledgeController::class, 'index']);
+        Route::post('/knowledge', [KnowledgeController::class, 'store']);
+        Route::get('/knowledge/{node}', [KnowledgeController::class, 'show']);
+        Route::put('/knowledge/{node}', [KnowledgeController::class, 'update']);
+        Route::delete('/knowledge/{node}', [KnowledgeController::class, 'destroy']);
+
+        Route::get('/graph', [ApiGraphController::class, 'index']);
+        Route::get('/search', [ApiSearchController::class, 'index']);
+        Route::get('/stats', [StatsController::class, 'index']);
+        Route::post('/sync', [SyncController::class, 'store']);
+
+        Route::get('/decisions', [DecisionController::class, 'index']);
+        Route::post('/decisions', [DecisionController::class, 'store']);
+        Route::get('/tags', [KnowledgeController::class, 'tags']);
+
+        // Kontrola — verify/review fronta (B5), externý mirror.
+        Route::get('/review/queue', [ReviewController::class, 'queue']);
+        Route::post('/nodes/{node}/verify', [ReviewController::class, 'verify']);
+        Route::post('/nodes/{node}/resolve-review', [ReviewController::class, 'resolveReview']);
+    });
+});

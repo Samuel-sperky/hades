@@ -1,19 +1,19 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use App\Services\SearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * GET /api/v1/search — externý mirror fulltextu (Bearer token). Tenký wrapper
+ * nad SearchService (tá istá služba obsluhuje interné /api/search), aby sa
+ * SK-aware engine NEDUPLIKOVAL.
+ */
 class SearchController extends Controller
 {
-    /**
-     * Fulltext naprieč uzlami a playbook súbormi (skills/<oblast>/<slug>.md).
-     * Tenký wrapper — logika žije v SearchService (zdieľaná s /api/v1/search).
-     * Uzly aj playbooky bežia cez TEN ISTÝ SK-aware engine (stemované korene +
-     * doménová expanzia), takže slovenské skloňovanie funguje na oboch vstupoch.
-     */
     public function index(Request $request, SearchService $search): JsonResponse
     {
         $validated = $request->validate([

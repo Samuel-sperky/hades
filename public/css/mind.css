@@ -145,6 +145,44 @@
     --z-toast: 30;
     --z-tooltip: 40;
     --z-overlay: 50;
+
+    /* ======================================================================
+       APOLLO INTEGRATION — brain-indexer tokens (Apollo discipline, Aura hue).
+       Layered neutral surfaces, certainty ramp, teal heat ramp, dashboard type.
+       Light values here; dark override mirrors them in :root[data-theme="dark"].
+       ====================================================================== */
+
+    /* ---- layered neutral surfaces (one step above paper/white) ---- */
+    --surface-raised: #f1ebef;            /* fill above white panels: kpi inner, shimmer base */
+    --track: #ece4ea;                     /* inset track for dbar / progress (neutral, de-tealed) */
+
+    /* ---- certainty ramp (semantic, reads >=4.5:1 on paper AND white)
+           overene 4.88 · hypoteza 5.30 · pasca 4.98 · none 5.35 on paper ---- */
+    --cert-overene: #1f7a4d;              /* ✅ overené — deep green */
+    --cert-hypoteza: #8f5a12;             /* 🧪 hypotéza — deep amber */
+    --cert-pasca: #c0392f;                /* ⚠️ pasca — deep red */
+    --cert-none: #566964;                 /* structured, no certainty — muted ink */
+    /* soft badge fills — low-alpha hue washes, text color stays the cert-* above */
+    --cert-overene-soft: rgba(31, 122, 77, .12);
+    --cert-hypoteza-soft: rgba(143, 90, 18, .12);
+    --cert-pasca-soft: rgba(192, 57, 47, .12);
+    --cert-none-soft: rgba(86, 105, 100, .10);
+
+    /* ---- activity heat ramp (0 = empty neutral, 1..4 = teal saturation climb) ---- */
+    --heat-0: #e9f1f1;                    /* empty cell — neutral-teal whisper */
+    --heat-1: #b6e0e1;
+    --heat-2: #6fc3c5;
+    --heat-3: #189aa0;
+    --heat-4: #036d72;                    /* densest — deep accent teal (5.61:1 on paper) */
+
+    /* ---- dashboard type scale ---- */
+    --fs-kpi: 30px;   --lh-kpi: 1;        /* big mono KPI readouts */
+    --fs-h1: 28px;                        /* screen title (serif) */
+    --fs-h2: 16px;                        /* dashboard block / section heading */
+
+    /* ---- spacing extras ---- */
+    --sp-2h: 12px;                        /* half-step between sp-1(8) and sp-2(16) */
+    --gutter: 20px;                       /* dashboard grid gutter */
 }
 
 /* Dark theme — tokens are the only switch point, no selector renames.
@@ -196,6 +234,27 @@
     --elev-2: 0 1px 2px rgba(0, 0, 0, .40), 0 8px 24px -14px rgba(0, 0, 0, .50), inset 0 1px 0 var(--top-rim);
     --elev-3: 0 2px 4px rgba(0, 0, 0, .45), 0 24px 56px -22px rgba(0, 0, 0, .60), inset 0 1px 0 var(--top-rim);
     --elev-tooltip: 0 2px 4px rgba(0, 0, 0, .45), 0 12px 28px -16px rgba(0, 0, 0, .55), inset 0 1px 0 var(--top-rim);
+
+    /* ---- APOLLO INTEGRATION tokens — dark mirror ---- */
+    --surface-raised: #1a2322;            /* one step above panel #131b1a */
+    --track: rgba(255, 255, 255, .08);
+
+    /* certainty ramp — lighter tints, read 5.7–9.2:1 on dark panel/surface */
+    --cert-overene: #5cc48d;              /* 8.12 on panel */
+    --cert-hypoteza: #d8b878;             /* 9.21 on panel */
+    --cert-pasca: #f07575;                /* 6.26 on panel */
+    --cert-none: #9aa1ad;                 /* 6.73 on panel */
+    --cert-overene-soft: rgba(92, 196, 141, .16);
+    --cert-hypoteza-soft: rgba(216, 184, 120, .16);
+    --cert-pasca-soft: rgba(240, 117, 117, .16);
+    --cert-none-soft: rgba(154, 161, 173, .14);
+
+    /* heat ramp — dark cells climb from a low neutral to bright accent cyan */
+    --heat-0: #1c2726;
+    --heat-1: #26504f;
+    --heat-2: #2f7d7f;
+    --heat-3: #3aa7ab;
+    --heat-4: #4fd0d4;                    /* 9.43 on panel */
 }
 
 /* ---------------------------------------------------------------------------
@@ -1786,13 +1845,20 @@ body.ambient #toasts {
 .record-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
 .record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: 6px; }
 
+/* .tag — NEUTRAL at rest (business-clean); teal only as --accent / active.
+   Contract §4.5: .tag / .tag--accent own tag styling (aliases .tag-chip NOT used). */
 .tag {
     display: inline-flex; align-items: center;
     font-size: var(--fs-caption); font-family: var(--mono);
     letter-spacing: var(--ls-mono);
     padding: 1px 8px; border-radius: var(--r-pill);
-    background: var(--accent-softer); color: var(--accent-600);
-    border: 1px solid var(--border-accent);
+    background: var(--surface-2); color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+/* Teal accent variant — active filter / selected tag */
+.tag--accent, .tag.active {
+    background: var(--accent-soft); color: var(--accent-600);
+    border-color: var(--border-accent);
 }
 .tag.muted { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
 
@@ -2762,4 +2828,513 @@ label.check.dir-check.off { opacity: .5; }
 @media (max-width: 860px) {
     .dir-cols { grid-template-columns: 1fr; }
     .dir-preview-wrap { position: static; }
+}
+
+/* ###########################################################################
+   APOLLO INTEGRATION — component library (Agent D1)
+   Business-clean: layered neutral surfaces, flat resting cards, one teal accent.
+   Consumed by charts.js (F1), renderToday (F2), Rozhodnutia/Kontrola (F3),
+   canvas + library + panel (F4). Contract §4.5 class names are binding.
+   ########################################################################### */
+
+/* ---------------------------------------------------------------------------
+   TOAST VARIANTS (E7) — recolor the inset bar + icon; base .toast unchanged
+   --------------------------------------------------------------------------- */
+.toast.success::before { background: var(--success); }
+.toast.success .ms { color: var(--success); }
+.toast.warn::before { background: var(--warn); }
+.toast.warn .ms { color: var(--warn); }
+.toast.error::before { background: var(--danger); }
+.toast.error .ms { color: var(--danger); }
+.toast.error { border-color: var(--danger-border); }
+/* Undo affordance inside a toast (F3 delete/skip) */
+.toast .toast-undo {
+    margin-left: var(--sp-1);
+    min-height: 24px; padding: 2px 10px;
+    font-size: var(--fs-small); font-weight: var(--fw-medium);
+    border-radius: var(--r-sm);
+    flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   SHIMMER SKELETON (E8) — neutral raised base + single ink sweep
+   Size it with inline width/height or utility spans; respects reduced-motion.
+   --------------------------------------------------------------------------- */
+@keyframes hades-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.shimmer {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--r-sm);
+    background: var(--surface-raised);
+    color: transparent !important;
+    user-select: none;
+    pointer-events: none;
+}
+.shimmer::after {
+    content: "";
+    position: absolute; inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent,
+        rgba(16, 29, 27, .06), transparent);
+    animation: hades-shimmer 1.4s var(--ease) infinite;
+}
+:root[data-theme="dark"] .shimmer::after {
+    background: linear-gradient(90deg, transparent,
+        rgba(255, 255, 255, .07), transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+    .shimmer::after { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   FIELD HEIGHT (C2) — unify text inputs / selects to a 34px field rhythm
+   (range sliders + textareas keep their own sizing)
+   --------------------------------------------------------------------------- */
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+select {
+    min-height: 34px;
+}
+
+/* ---------------------------------------------------------------------------
+   DASHBOARD CARD (.dash-card) + grid — flat at rest (B6), hairline lift on hover
+   --------------------------------------------------------------------------- */
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--gutter);
+    margin-bottom: var(--gutter);
+    align-items: start;
+}
+.dash-card {
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: none;                     /* flattened resting card */
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.dash-card.span-2 { grid-column: span 2; }
+.dash-card > .dash-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-1);
+}
+.dash-card .dash-title {
+    font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text);
+    line-height: var(--lh-title);
+}
+.dash-card .dash-note {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+/* Flatten the older resting cards too (B6) — border-defined, no ambient shadow */
+.today-card, .today-search, .today-card-link, .dir-group, .dir-preview-wrap, .dir-saved-item {
+    box-shadow: none;
+}
+
+/* ---------------------------------------------------------------------------
+   KPI GRID (.kpi-*) — compact mono readouts, one row across the dashboard top
+   --------------------------------------------------------------------------- */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--sp-1);
+    margin-bottom: var(--gutter);
+}
+.kpi-card {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+}
+.kpi-label {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+    order: 2;
+}
+.kpi-val {
+    font-family: var(--mono);
+    font-size: var(--fs-kpi); line-height: var(--lh-kpi);
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    order: 1;
+}
+.kpi-suffix {
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin-left: 3px;
+}
+
+/* ---------------------------------------------------------------------------
+   HEATMAP (.heat*) — 365-day activity grid, teal ramp, horizontal scroll
+   DOM (built by charts.js): .heat > .heat-grid > .heat-cell[.l1..l4|.out]
+   .heat is the overflow viewport so the page body never scrolls sideways.
+   --------------------------------------------------------------------------- */
+.heat { overflow-x: auto; padding-bottom: var(--sp-0); }
+.heat-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, 12px);
+    gap: 3px;
+    width: max-content;
+}
+.heat-cell {
+    width: 12px; height: 12px;
+    border-radius: 2.5px;
+    background: var(--heat-0);
+}
+.heat-cell.l1 { background: var(--heat-1); }
+.heat-cell.l2 { background: var(--heat-2); }
+.heat-cell.l3 { background: var(--heat-3); }
+.heat-cell.l4 { background: var(--heat-4); }
+.heat-cell.out { background: transparent; }  /* cell outside the date range — no silent zero */
+.heat-cell[data-tip]:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* Month labels row above the grid */
+.heat-months {
+    display: grid;
+    grid-auto-flow: column;
+    gap: 3px;
+    margin-bottom: var(--sp-0);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+    width: max-content;
+}
+/* less --- more legend */
+.heat-legend {
+    display: flex; align-items: center; gap: var(--sp-0);
+    margin-top: var(--sp-1);
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+.heat-legend .heat-cell { pointer-events: none; }
+
+/* ---------------------------------------------------------------------------
+   DONUT (.donut*) — certainty split ring (SVG from charts.js) + centre total
+   --------------------------------------------------------------------------- */
+.donut {
+    position: relative;
+    width: fit-content;
+    margin: 0 auto;
+    flex-shrink: 0;
+}
+.donut svg { display: block; }
+.donut-total {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: none;
+}
+.donut-total .dt-num {
+    font-family: var(--mono);
+    font-size: var(--fs-display); line-height: 1;
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+}
+.donut-total .dt-lbl {
+    font-family: var(--mono);
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+    margin-top: 2px;
+}
+/* Certainty legend — swatch + name + count; colors pulled from --cert-* */
+.cert-legend { display: flex; flex-direction: column; gap: var(--sp-0); }
+.cert-legend .cl-row {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-size: var(--fs-small); color: var(--text-secondary);
+}
+.cert-legend .cl-sw {
+    width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0;
+    background: var(--cl-c, var(--muted));
+}
+.cert-legend .cl-name { flex: 1; min-width: 0; }
+.cert-legend .cl-n {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    letter-spacing: var(--ls-mono); color: var(--muted); flex-shrink: 0;
+}
+.cert-legend .cl-row[data-cert="overene"] .cl-sw { --cl-c: var(--cert-overene); }
+.cert-legend .cl-row[data-cert="hypoteza"] .cl-sw { --cl-c: var(--cert-hypoteza); }
+.cert-legend .cl-row[data-cert="pasca"] .cl-sw { --cl-c: var(--cert-pasca); }
+.cert-legend .cl-row[data-cert="bez"] .cl-sw,
+.cert-legend .cl-row[data-cert="none"] .cl-sw { --cl-c: var(--cert-none); }
+
+/* ---------------------------------------------------------------------------
+   DBAR (.dbar*) — horizontal per-area knowledge bar; area hue via inline --lobe
+   --------------------------------------------------------------------------- */
+.dbar { display: flex; flex-direction: column; gap: 5px; margin-bottom: var(--sp-1); }
+.dbar-head {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-size: var(--fs-small); color: var(--text-secondary);
+}
+.dbar-head .db-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--lobe, var(--accent)); }
+.dbar-head .db-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbar-head .db-n {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    letter-spacing: var(--ls-mono); color: var(--muted); flex-shrink: 0;
+}
+.dbar-track {
+    height: 10px;
+    background: var(--track);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+}
+.dbar-fill {
+    height: 100%;
+    border-radius: var(--r-pill);
+    background: var(--lobe, var(--accent));
+    min-width: 2px;
+    transition: width var(--dur-slow) var(--ease);
+}
+
+/* ---------------------------------------------------------------------------
+   CERT BADGE (.cert) — certainty pill; double-encoded (icon + color).
+   data-cert = overene | hypoteza | pasca | bez | none | pending
+   .cert--icon = icon-only variant (dense contexts: library rows, panels)
+   --------------------------------------------------------------------------- */
+.cert {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 1px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid transparent;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    white-space: nowrap;
+    color: var(--cert-none);
+    background: var(--cert-none-soft);
+}
+.cert .ms { font-size: 14px; line-height: 1; }
+.cert[data-cert="overene"] { color: var(--cert-overene); background: var(--cert-overene-soft); }
+.cert[data-cert="hypoteza"] { color: var(--cert-hypoteza); background: var(--cert-hypoteza-soft); }
+.cert[data-cert="pasca"] { color: var(--cert-pasca); background: var(--cert-pasca-soft); }
+.cert[data-cert="bez"],
+.cert[data-cert="none"],
+.cert[data-cert="pending"] { color: var(--cert-none); background: var(--cert-none-soft); }
+/* Icon-only — strips the pill, keeps just the colored glyph */
+.cert.cert--icon {
+    padding: 0; gap: 0;
+    background: none; border: none;
+}
+.cert.cert--icon .ms { font-size: var(--icon-sm); }
+
+/* ---------------------------------------------------------------------------
+   ORIGIN BADGE (.origin) — brain (.md) vs session (DB) provenance, monochrome.
+   §4.8 icons: menu_book (brain) / bolt (session).
+   --------------------------------------------------------------------------- */
+.origin {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 1px 8px;
+    border-radius: var(--r-pill);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    white-space: nowrap;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+.origin .ms { font-size: 14px; line-height: 1; }
+/* brain reads a touch stronger (indexed source of truth) */
+.origin[data-origin="brain"] {
+    color: var(--text-secondary);
+    border-color: var(--border-strong);
+}
+.origin[data-origin="session"] { color: var(--muted); }
+
+/* ---------------------------------------------------------------------------
+   DECISIONS TIMELINE (.dtl*) — grouped-by-month rail with dot + card
+   --------------------------------------------------------------------------- */
+.dtl { position: relative; }
+.dtl-month {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin: var(--sp-3) 0 var(--sp-1);
+}
+.dtl-month::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.dtl > .dtl-month:first-child { margin-top: 0; }
+.dtl-item {
+    position: relative;
+    padding-left: var(--sp-3);
+    padding-bottom: var(--sp-2);
+}
+/* continuous rail behind the dots */
+.dtl-item::before {
+    content: "";
+    position: absolute;
+    left: 5px; top: 4px; bottom: -4px;
+    width: 2px;
+    background: var(--border);
+}
+.dtl-item:last-child::before { bottom: auto; height: 14px; }
+.dtl-dot {
+    position: absolute;
+    left: 0; top: 3px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+    z-index: 1;
+}
+.dtl-dot[data-origin="brain"] { background: var(--node-memory); }
+.dtl-card {
+    display: flex; flex-direction: column; gap: var(--sp-0);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 10px 12px;
+    text-align: left; width: 100%;
+    transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.dtl-card:hover, .dtl-card:focus-visible {
+    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+}
+.dtl-card .dtl-head {
+    display: flex; align-items: baseline; gap: var(--sp-1);
+}
+.dtl-card .dtl-date {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted); flex-shrink: 0;
+}
+.dtl-card .dtl-text {
+    font-size: var(--fs-body); color: var(--text); line-height: var(--lh-body);
+}
+.dtl-card .dtl-reason {
+    font-size: var(--fs-small); color: var(--muted); line-height: var(--lh-body);
+    white-space: pre-wrap;
+}
+.dtl-card .dtl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0); margin-top: 2px; }
+
+/* Period / area filter chips row (reuses .chip; this just gives it air) */
+.dtl-filter { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-bottom: var(--sp-2); }
+
+/* ---------------------------------------------------------------------------
+   KONTROLA QUEUE (.queue*) — verify/review list, keyboard-driven (j/k/Enter/v/r)
+   --------------------------------------------------------------------------- */
+.queue { display: flex; flex-direction: column; gap: var(--sp-1); }
+.queue-item {
+    display: flex; align-items: flex-start; gap: var(--sp-2);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--border-strong);
+    border-radius: var(--r-md);
+    transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+                box-shadow var(--dur-fast) var(--ease);
+}
+.queue-item:hover { background: var(--surface-2); }
+/* keyboard cursor (j/k) — teal left edge + ring, no layout shift */
+.queue-item.selected {
+    border-left-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+    background: var(--accent-softer);
+}
+.queue-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.queue-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
+.queue-meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0) var(--sp-1);
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+.queue-text {
+    font-size: var(--fs-body); color: var(--text); line-height: var(--lh-body);
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.queue-actions { display: flex; align-items: center; gap: var(--sp-0); flex-shrink: 0; }
+.queue-actions button {
+    width: 32px; height: 32px; min-height: 32px;
+    padding: 0; font-size: var(--icon-sm);
+    color: var(--muted);
+    background: none; border: 1px solid transparent;
+    border-radius: var(--r-sm);
+}
+.queue-actions button:hover { background: var(--hover-fill); color: var(--text); }
+.queue-actions button.act-verify:hover { color: var(--cert-overene); background: var(--cert-overene-soft); }
+.queue-actions button.act-resolve:hover { color: var(--accent-600); background: var(--accent-softer); }
+.queue-actions button.act-skip:hover { color: var(--danger); background: var(--danger-soft); }
+.queue-actions button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* armed inline (Preskočiť / Delete) — no native confirm() */
+.queue-actions button.armed {
+    width: auto; padding: 0 10px;
+    font-family: var(--font); font-size: var(--fs-small); font-weight: var(--fw-medium);
+    color: var(--danger);
+    border-color: var(--danger-border-hover); background: var(--danger-soft);
+}
+
+/* ---------------------------------------------------------------------------
+   KEYBOARD HINTS (.kbd-hints) — footer strip of shortcut legends (Kontrola)
+   --------------------------------------------------------------------------- */
+.kbd-hints {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2);
+    margin-top: var(--sp-3);
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--border);
+    font-size: var(--fs-small); color: var(--muted);
+}
+.kbd-hints .kh { display: inline-flex; align-items: center; gap: var(--sp-0); }
+.kbd-hints kbd {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 20px; height: 20px; padding: 0 5px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    font-family: var(--mono); font-size: var(--fs-caption);
+    color: var(--text);
+}
+
+/* ---------------------------------------------------------------------------
+   RAIL BADGE COUNT — #dest-kontrola .count (review-queue size on the nav dest)
+   --------------------------------------------------------------------------- */
+#rail .rail-group button.dest .count {
+    position: absolute;
+    top: 4px; right: 8px;
+    min-width: 16px; height: 16px;
+    padding: 0 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent);
+    color: var(--on-accent);
+    border-radius: var(--r-pill);
+    font-family: var(--mono);
+    font-size: 10px; font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+#rail .rail-group button.dest .count:empty,
+#rail .rail-group button.dest .count[data-count="0"] { display: none; }
+
+/* ---------------------------------------------------------------------------
+   SYNC STATUS DOT (.status-dot) — shared indicator for the Dnes Sync card
+   data-status = ok | partial | error | running
+   --------------------------------------------------------------------------- */
+.status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; background: var(--muted);
+}
+.status-dot[data-status="ok"] { background: var(--success); }
+.status-dot[data-status="partial"] { background: var(--warn); }
+.status-dot[data-status="error"] { background: var(--danger); }
+.status-dot[data-status="running"] {
+    background: var(--accent);
+    animation: sync-pulse 1.2s var(--ease) infinite;
+}
+@keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+    .status-dot[data-status="running"] { animation: none; }
 }

@@ -3,10 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Activation;
-use App\Models\Area;
-use App\Models\Department;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Services\GraphService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,156 +20,13 @@ class MindController extends Controller
      *   - 'all' — všetky uzly (spätná kompatibilita).
      * Hrany sa vždy vracajú len medzi vrátenými uzlami. Listing NEnesie popis
      * (detail ho dotiahne cez /api/nodes/{id}) — menší payload.
-     */
-    public function graph(Request $request): JsonResponse
-    {
-        $scope = $request->query('scope', 'live') === 'all' ? 'all' : 'live';
-
-        if ($scope === 'all') {
-            $nodes = Node::all();
-        } else {
-            $usedSkillIds = Activation::query()
-                ->whereIn('kind', ['activate', 'skill-used'])
-                ->distinct()
-                ->pluck('node_id')
-                ->all();
-
-            // (type != skill) OR (skill, ktorý sa reálne použil)
-            $nodes = Node::query()
-                ->where(function ($q) use ($usedSkillIds) {
-                    $q->where('type', '!=', 'skill')
-                        ->orWhereIn('id', $usedSkillIds);
-                })
-                ->get();
-        }
-
-        $nodeIds = $nodes->pluck('id')->flip();
-
-        // hrany len medzi vrátenými uzlami
-        $edges = Edge::all()->filter(
-            fn (Edge $e) => $nodeIds->has($e->source_id) && $nodeIds->has($e->target_id)
-        )->values();
-
-        // Spresnenie vrstvy pre skills: hidden → hidden_in / hidden_out podľa
-        // váženého náklonu väzieb. Počíta sa tu, lebo len controller má naraz
-        // uzly aj hrany; Node::layerRole() ostáva coarse fallback.
-        $hiddenSplit = $this->deriveHiddenSplit($nodes, $edges);
-
-        return response()->json([
-            'name' => config('hades.name'),
-            'scope' => $scope,
-            'state' => $this->state(),
-            'ws' => [
-                'key' => config('broadcasting.connections.reverb.key'),
-                'host' => config('hades.public_ws_host'),
-                'port' => config('hades.public_ws_port'),
-            ],
-            'areas' => Area::orderBy('angle')->get(),
-            'departments' => Department::all(),
-            // listing bez popisu — plný text vracia detail /api/nodes/{id}
-            'nodes' => $nodes->map(function (Node $node) use ($hiddenSplit) {
-                $api = $node->toApi();
-                if (isset($hiddenSplit[$node->id])) {
-                    $api['layer_role'] = $hiddenSplit[$node->id];
-                }
-                $api['description'] = null;
-
-                return $api;
-            }),
-            'edges' => $edges->map->toApi(),
-        ]);
-    }
-
-    /**
-     * Spresní vrstvovú rolu skill-uzlov z coarse 'hidden' na 'hidden_in' /
-     * 'hidden_out' podľa VÁŽENÉHO náklonu ich väzieb: prevaha spojení na spomienky
-     * (memory) = ľavá skrytá vrstva (hidden_in), prevaha na jadro/projekty = pravá
-     * (hidden_out). Semantika zhodná s JS fallbackom v mind.js, no váhovo citlivá.
      *
-     * Zahŕňa len uzly, ktorých Node::layerRole() je práve 'hidden' (t.j. skills bez
-     * explicitného override cez stĺpec/meta). Náklon sa rozhoduje trojstupňovo:
-     *   1. vážený súčet väzieb (memory vs core/project),
-     *   2. pri váhovej remíze počet susedov daného druhu (neváž.),
-     *   3. pri úplnej remíze (vrátane izolovaných 0/0) deterministické vyvážené
-     *      striedanie podľa zoradeného id.
-     * Tým dostane KAŽDÝ skrytý skill autoritatívnu rolu už z backendu a dva skryté
-     * stĺpce ostanú vyvážené — frontend nemusí siahať po náhodnom parity delení.
-     * Čisto aditívne a spätne kompatibilné: keď pole chýba, mind.js číta type.
-     *
-     * @param  \Illuminate\Support\Collection<int, Node>  $nodes
-     * @param  \Illuminate\Support\Collection<int, Edge>  $edges
-     * @return array<int, string>  node_id → 'hidden_in' | 'hidden_out'
+     * Logika žije v GraphService — zdieľaná s externým /api/v1/graph, aby sa
+     * scope/hrany/hidden-split NEDUPLIKOVALI (payload je bit-za-bit ten istý).
      */
-    private function deriveHiddenSplit($nodes, $edges): array
+    public function graph(Request $request, GraphService $graph): JsonResponse
     {
-        $typeOf = [];
-        foreach ($nodes as $node) {
-            $typeOf[$node->id] = $node->type;
-        }
-
-        // kandidáti = skills bez explicitného override (coarse 'hidden')
-        $inW = [];   // vážený náklon k spomienkam
-        $outW = [];  // vážený náklon k jadru/projektom
-        $inC = [];   // počet susedov typu memory (neváž.)
-        $outC = [];  // počet susedov typu core/project (neváž.)
-        foreach ($nodes as $node) {
-            if ($node->layerRole() === 'hidden') {
-                $inW[$node->id] = 0.0;
-                $outW[$node->id] = 0.0;
-                $inC[$node->id] = 0;
-                $outC[$node->id] = 0;
-            }
-        }
-
-        if ($inW === []) {
-            return [];
-        }
-
-        foreach ($edges as $edge) {
-            $weight = (float) $edge->weight;
-            // pripočítaj náklon z pohľadu oboch koncov (ak je kandidátom)
-            foreach ([[$edge->source_id, $edge->target_id], [$edge->target_id, $edge->source_id]] as [$self, $other]) {
-                if (! array_key_exists($self, $inW)) {
-                    continue;
-                }
-                $otherType = $typeOf[$other] ?? null;
-                if ($otherType === 'memory') {
-                    $inW[$self] += $weight;
-                    $inC[$self]++;
-                } elseif ($otherType === 'core' || $otherType === 'project') {
-                    $outW[$self] += $weight;
-                    $outC[$self]++;
-                }
-            }
-        }
-
-        $roles = [];
-        $unresolved = [];  // úplné remízy (vrátane izolovaných 0/0)
-        foreach ($inW as $id => $in) {
-            $out = $outW[$id];
-            if ($in > $out) {
-                $roles[$id] = 'hidden_in';
-            } elseif ($out > $in) {
-                $roles[$id] = 'hidden_out';
-            } elseif ($inC[$id] > $outC[$id]) {
-                // váhová remíza → rozhodne počet susedov
-                $roles[$id] = 'hidden_in';
-            } elseif ($outC[$id] > $inC[$id]) {
-                $roles[$id] = 'hidden_out';
-            } else {
-                $unresolved[] = $id;
-            }
-        }
-
-        // Zvyšné čisté remízy rozdeľ deterministicky a vyvážene: zoraď podľa id
-        // a striedaj. Reprodukovateľné a stabilné naprieč načítaniami; nahrádza
-        // inak náhodné parity delenie na frontende jediným zdrojom pravdy.
-        sort($unresolved);
-        foreach ($unresolved as $i => $id) {
-            $roles[$id] = ($i % 2 === 0) ? 'hidden_in' : 'hidden_out';
-        }
-
-        return $roles;
+        return response()->json($graph->payload((string) $request->query('scope', 'live')));
     }
 
     public function stats(): JsonResponse

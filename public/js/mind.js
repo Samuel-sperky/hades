@@ -15,7 +15,7 @@ const THEMES = {
     dark:  { paper:'#0e1413', ink:'#eaf3f1', inkSoft:'#c3d1ce', muted:'#8a9b98', labelHalo:'rgba(14,20,19,0.92)', edge:'195,209,206', gridColor:'5,188,196', accent:'5,188,196', outline:'rgba(234,243,241,0.30)', gridAlpha:0.09, nodeFloor:0.35, edgeFloor:0.25 },
 };
 let T = THEMES.light;
-function setTheme(name){ T = THEMES[name] || THEMES.light; document.documentElement.dataset.theme = (name === 'dark' ? 'dark' : 'light'); localStorage.setItem('hades.theme', name); }
+function setTheme(name){ T = THEMES[name] || THEMES.light; document.documentElement.dataset.theme = (name === 'dark' ? 'dark' : 'light'); localStorage.setItem('hades.theme', name); invalidateCertColors(); }
 
 const DEPT_RADIUS = 170;
 
@@ -53,7 +53,7 @@ const S = {
     audio: null,
     view: localStorage.getItem('hades.view') || 'map',
     // FÁZA SHELL: aktívna obrazovka (Dnes / Denník / Graf / Knižnica). Plátno (rAF) beží len na 'graf'.
-    screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica', 'smernica'].includes(v) ? v : 'dnes'; })(),
+    screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica', 'rozhodnutia', 'kontrola', 'smernica'].includes(v) ? v : 'dnes'; })(),
     // FÁZA HRANY: default 1.0 (skryje similarity 0.5 + jednorazové co_activation 0.6).
     // Nový kľúč 'hades.minWeight2', aby sa nový default prejavil aj starým používateľom.
     minWeight: (() => { const v = localStorage.getItem('hades.minWeight2'); return v == null ? 1.0 : (parseFloat(v) || 0); })(),
@@ -101,14 +101,20 @@ S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.
 const FORCE_DEFAULTS = { charge: null, linkDistance: null, linkStrength: null, gravity: null };
 S.forces = Object.assign({}, FORCE_DEFAULTS, JSON.parse(localStorage.getItem('hades.forces') || '{}'));
 
-// Filtre siete (Obsidian filters) — množiny SKRYTÝCH typov / zdrojov / oblastí
-S.filter = { types: new Set(), sources: new Set(), areas: new Set() };
+// Filtre siete (Obsidian filters) — množiny SKRYTÝCH typov / zdrojov / oblastí.
+// tags je POZITÍVNY filter (F4): množina VYBRANÝCH značiek — prázdna = bez filtra,
+// inak sa zobrazia len uzly nesúce aspoň jednu vybranú značku (jadro vždy prejde).
+S.filter = { types: new Set(), sources: new Set(), areas: new Set(), tags: new Set() };
 try {
     const f = JSON.parse(localStorage.getItem('hades.filter') || '{}');
-    for (const k of ['types', 'sources', 'areas']) {
+    for (const k of ['types', 'sources', 'areas', 'tags']) {
         if (Array.isArray(f[k])) S.filter[k] = new Set(f[k]);
     }
 } catch (e) { /* poškodený filter — čisté predvolené */ }
+
+// FÁZA CERTAINTY (F4, §4.6): značky istoty na canvase (prstenec + dash encoding).
+// Default ON, prepínateľné v Nastaveniach („Značky istoty"). Perzistuje 'hades.certRings'.
+S.certRings = localStorage.getItem('hades.certRings') !== '0';
 
 // FÁZA HRANY: filter kategórií vzťahov (part_of / uses / similarity / co_activation).
 // manual + skill_mention (kategória 'core') je štruktúra a nefiltruje sa. Množina drží SKRYTÉ kategórie.
@@ -572,7 +578,8 @@ function updateLocalChip() {
 /* ---------- filtre siete (typy / zdroje / oblasti) ---------- */
 
 function filterActive() {
-    return S.filter.types.size > 0 || S.filter.sources.size > 0 || S.filter.areas.size > 0;
+    return S.filter.types.size > 0 || S.filter.sources.size > 0
+        || S.filter.areas.size > 0 || S.filter.tags.size > 0;
 }
 
 // Zdrojový kôš uzla pre filter: session / skill (playbook) / digest+archive / ručné
@@ -591,6 +598,12 @@ function filterPass(n) {
     const b = sourceBucket(n);
     if (b && S.filter.sources.has(b)) return false;
     if (n.area_id && S.filter.areas.has(n.area_id)) return false;
+    // pozitívny filter značiek: aktívny len keď je niečo vybrané; uzol musí niesť
+    // aspoň jednu vybranú značku (uzly bez značiek pri aktívnom filtri vypadnú)
+    if (S.filter.tags.size > 0) {
+        const tags = n.tags;
+        if (!Array.isArray(tags) || !tags.some((t) => S.filter.tags.has(t))) return false;
+    }
     return true;
 }
 
@@ -605,6 +618,7 @@ function persistFilter() {
         types: [...S.filter.types],
         sources: [...S.filter.sources],
         areas: [...S.filter.areas],
+        tags: [...S.filter.tags],
     }));
 }
 
@@ -1711,6 +1725,28 @@ function truncLabel(s) {
     return chars.length > 24 ? chars.slice(0, 23).join('').trimEnd() + '…' : s;
 }
 
+// FÁZA CERTAINTY (F4, §4.6): mapovanie istoty → štýl prstenca (CVD-safe double-encoding).
+// overené = plný prstenec, hypotéza = čiarkovaný, pasca = plný + výstražný pip.
+// bez/null → žiadny prstenec. Hue istotu NEkóduje (kolízia s farbou oblasti/typu).
+const CERT_RING = { overene: 'solid', hypoteza: 'dashed', pasca: 'pip' };
+
+// Farby istoty z --cert-* + --border-strong (theme-aware) — čítané raz cez getComputedStyle
+// a cache-nuté; setTheme cache invaliduje, aby prstence sadli na light/dark paletu.
+let _certColorCache = null;
+function certColors() {
+    if (_certColorCache) return _certColorCache;
+    const cs = getComputedStyle(document.documentElement);
+    const get = (v, fb) => ((cs.getPropertyValue(v) || '').trim() || fb);
+    _certColorCache = {
+        overene: get('--cert-overene', '#1f7a4d'),
+        hypoteza: get('--cert-hypoteza', '#8f5a12'),
+        pasca: get('--cert-pasca', '#c0392f'),
+        borderStrong: get('--border-strong', '#d9ced6'),
+    };
+    return _certColorCache;
+}
+function invalidateCertColors() { _certColorCache = null; }
+
 // FÁZA DE-CLUTTER: uzol = biela/papierová výplň + farebný prstenec vo farbe oblasti (vzdušné,
 // nie plná farebná placka). Jadro ostáva zlaté a výrazné (plná zlatá výplň + zlatý prstenec).
 // Typ uzla sa rozlíši JEMNE cez hrúbku/štýl prstenca, NIE plnou farbou: spomienka tenký prstenec,
@@ -1767,6 +1803,49 @@ function drawShape(n, x, y, r, color, simple) {
         ctx.arc(x, y, r + 3.5 / k, 0, 7);
         ctx.stroke();
         ctx.globalAlpha = a;
+    }
+
+    // FÁZA CERTAINTY (F4, §4.6): značky istoty + brain-origin rim — LEN nad zoom prahom
+    // k>0.8 (v hustom oddialenom grafe by pridávali šum). Subtílne, dvojkanálové, CVD-safe.
+    if (k > 0.8) {
+        const cc = certColors();
+
+        // brain-origin uzly: jemný vnútorný rim (--border-strong) — ľudsky-písané „mozgy"
+        // sa nenápadne odlíšia od session uzlov (nezávisí od prepínača istoty).
+        if (n.origin === 'brain') {
+            ctx.globalAlpha = a * 0.45;
+            ctx.lineWidth = 1 / k;
+            ctx.strokeStyle = cc.borderStrong;
+            ctx.beginPath();
+            ctx.arc(x, y, Math.max(0.5, r - lw - 1.2 / k), 0, 7);
+            ctx.stroke();
+            ctx.globalAlpha = a;
+        }
+
+        // certainty prstenec za uzlom — prepínateľný („Značky istoty", default ON)
+        const mode = S.certRings ? CERT_RING[n.certainty] : null;
+        if (mode) {
+            const rr = r + 3.2 / k;
+            const col = cc[n.certainty];
+            ctx.save();
+            ctx.globalAlpha = a * 0.8;
+            ctx.lineWidth = 1.6 / k;
+            ctx.strokeStyle = col;
+            if (mode === 'dashed') ctx.setLineDash([3 / k, 2.4 / k]);
+            ctx.beginPath();
+            ctx.arc(x, y, rr, 0, 7);
+            ctx.stroke();
+            if (mode === 'pip') {
+                // výstražný pip navrchu prstenca — druhý (tvarový) kanál pre pascu
+                ctx.setLineDash([]);
+                ctx.globalAlpha = a;
+                ctx.fillStyle = col;
+                ctx.beginPath();
+                ctx.arc(x, y - rr, 1.9 / k, 0, 7);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
     }
 }
 
@@ -2107,6 +2186,8 @@ async function selectNode(n) {
     $('node-label').textContent = n.label;
     $('node-desc').textContent = n.description || '';
     $('node-meta').textContent = 'sila ' + (n.strength || 1).toFixed(0);
+    renderNodeBadges(n); // F4: origin + cert + značky
+
     $('node-neighbors').innerHTML = '';
     $('node-history').innerHTML = '';
     $('node-record').innerHTML = '';
@@ -3280,17 +3361,19 @@ function handleCommand(text) {
 
 /* ---------- toasty, pomocnik, hinty ---------- */
 
-function showToast(text, nodeId) {
+function showToast(text, nodeId, variant) {
     const wrap = $('toasts');
     // button — prístupné z klávesnice, klik naviguje na uzol
     const el = document.createElement('button');
     el.type = 'button';
     el.setAttribute('role', 'status');
-    el.className = 'toast';
+    el.className = 'toast' + (variant ? ' ' + variant : '');
+    // variantná ikona (success/warn/error); default hub
+    const icon = { success: 'check_circle', warn: 'warning', error: 'error' }[variant] || 'hub';
     const parts = String(text).split(/:\s(.+)/);
     el.innerHTML = parts.length > 1
-        ? '<span class="ms" aria-hidden="true">hub</span><span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
-        : '<span class="ms" aria-hidden="true">hub</span><span>' + esc(text) + '</span>';
+        ? '<span class="ms" aria-hidden="true">' + icon + '</span><span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
+        : '<span class="ms" aria-hidden="true">' + icon + '</span><span>' + esc(text) + '</span>';
 
     const leave = (node) => {
         node.classList.add('leaving');
@@ -3382,6 +3465,10 @@ function setupShortcuts() {
             if (cmdkOpen()) { closeCmdk(); return; }
             if (packDrawerOpen()) { closePackDrawer(); return; }
             if (S.connectFrom) { cancelConnect(); showToast('Prepájanie zrušené'); return; }
+            if (S.screen === 'kontrola') {
+                const armed = document.querySelector('#kontrola-body .act-skip.armed');
+                if (armed) { disarmKontrolaBtn(armed); return; }
+            }
             if (document.body.classList.contains('ambient')) {
                 document.body.classList.remove('ambient');
                 return;
@@ -3403,6 +3490,22 @@ function setupShortcuts() {
 
         const tag = (document.activeElement && document.activeElement.tagName) || '';
         if (/INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable)) return;
+
+        // Obrazovka Kontrola — klávesová fronta (skratky NEstrieľajú mimo nej)
+        if (S.screen === 'kontrola' && kontrolaState.items.length) {
+            const cur = kontrolaState.items[kontrolaState.idx];
+            let handled = true;
+            switch (e.key) {
+                case 'j': case 'ArrowDown': kontrolaMove(1); break;
+                case 'k': case 'ArrowUp': kontrolaMove(-1); break;
+                case 'Enter': if (cur) openNodeFromAnywhere(kontrolaNodeRef(cur.id)); break;
+                case 'v': case 'V': if (cur) kontrolaVerify(cur.id); break;
+                case 'r': case 'R': if (cur) kontrolaResolve(cur.id); break;
+                case 'Delete': case 'Backspace': if (cur) armKontrolaAction(kontrolaBtn(cur.id, 'skip'), cur.id, 'delete'); break;
+                default: handled = false;
+            }
+            if (handled) { e.preventDefault(); return; }
+        }
 
         // SK klávesnica: fyzické kódy číslic fungujú nezávisle od rozloženia
         switch (e.code) {
@@ -3483,8 +3586,8 @@ function setupHints() {
 
 /* ---------- FÁZA SHELL: obrazovky Dnes / Denník / Graf / Knižnica ---------- */
 
-const SCREENS = ['dnes', 'dennik', 'graf', 'kniznica', 'smernica'];
-const SCREEN_LABELS = { dnes: 'Dnes', dennik: 'Denník', graf: 'Graf', kniznica: 'Knižnica', smernica: 'Smernica' };
+const SCREENS = ['dnes', 'dennik', 'graf', 'kniznica', 'rozhodnutia', 'kontrola', 'smernica'];
+const SCREEN_LABELS = { dnes: 'Dnes', dennik: 'Denník', graf: 'Graf', kniznica: 'Knižnica', rozhodnutia: 'Rozhodnutia', kontrola: 'Kontrola', smernica: 'Smernica' };
 
 function setScreen(name) {
     if (!SCREENS.includes(name)) name = 'dnes';
@@ -3513,6 +3616,10 @@ function setScreen(name) {
         markJournalSeen();
     } else if (name === 'kniznica') {
         renderLibrary();
+    } else if (name === 'rozhodnutia') {
+        renderDecisions();
+    } else if (name === 'kontrola') {
+        renderKontrola();
     } else if (name === 'smernica') {
         renderDirective();
     }
@@ -3550,59 +3657,263 @@ function openNodeFromAnywhere(ref) {
     }
 }
 
-/* ---------- obrazovka Dnes (/api/today) ---------- */
+/* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
+
+// Origin badge — brain (.md, zdroj pravdy) vs session (DB). §4.8 ikony menu_book/bolt.
+function originBadge(origin) {
+    const o = origin === 'brain' ? 'brain' : 'session';
+    const icon = o === 'brain' ? 'menu_book' : 'bolt';
+    return '<span class="origin" data-origin="' + o + '">'
+        + '<span class="ms" aria-hidden="true">' + icon + '</span>' + o + '</span>';
+}
+
+// Shimmer skeleton počas načítania dashboardu (loading stav)
+function todaySkeleton() {
+    const bar = (w, h) => '<div class="shimmer" style="width:' + w + ';height:' + h + ';border-radius:var(--r-md);"></div>';
+    return '<div style="display:flex;flex-direction:column;gap:var(--gutter);">'
+        + bar('100%', '46px')
+        + '<div class="kpi-grid">' + [0, 0, 0, 0].map(() => bar('100%', '58px')).join('') + '</div>'
+        + '<div class="dash-grid">' + bar('100%', '160px') + bar('100%', '160px') + '</div>'
+        + '</div>';
+}
 
 async function renderToday() {
     const body = $('dnes-body');
     if (!body) return;
-    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
-    try {
-        const d = await (await fetch('/api/today')).json();
-        const wb = d.week_added || {};
+    // Dashboard potrebuje viac miesta než 920px čítacia šírka ostatných obrazoviek.
+    const screen = $('screen-dnes');
+    if (screen) screen.style.maxWidth = '1120px';
+    body.innerHTML = todaySkeleton();
 
-        // Veľké hľadacie pole — primárny prvok obrazovky (otvorí Cmd-K paletu)
-        let h = '<button type="button" id="today-search" class="today-search">'
-            + '<span class="ms" aria-hidden="true">search</span>'
-            + '<span class="ts-text">Hľadaj vo vedomí — skilly, záznamy, projekty…</span>'
-            + '<kbd>Ctrl K</kbd></button>';
+    // /api/today je ľahký (sessions/records/projekty); ťažké agregáty sú v /api/dashboard (§4.1).
+    const [todayRes, dashRes] = await Promise.allSettled([
+        fetch('/api/today').then((r) => r.json()),
+        fetch('/api/dashboard').then((r) => r.json()),
+    ]);
 
-        h += '<p class="today-line">Tento týždeň pribudlo <strong>' + esc(String(wb.nodes ?? 0))
-            + '</strong> ' + plural(wb.nodes ?? 0, 'poznatok', 'poznatky', 'poznatkov')
-            + ', <strong>' + esc(String(wb.sessions ?? 0)) + '</strong> '
-            + plural(wb.sessions ?? 0, 'záznam', 'záznamy', 'záznamov') + '.</p>';
-
-        const sessions = d.recent_sessions || [];
-        if (sessions.length) {
-            h += '<section class="today-sec"><h2>Naposledy si robil na…</h2><div class="today-grid">'
-                + sessions.slice(0, 6).map((s) => todaySessionCard(s)).join('')
-                + '</div></section>';
-        }
-
-        const records = d.recent_records || [];
-        if (records.length) {
-            h += '<section class="today-sec"><h2>Posledné záznamy</h2><div class="today-list">'
-                + records.map((r) => todayRow('article', r.id, r.label, r.project, r.snippet, r.created_at)).join('')
-                + '</div></section>';
-        }
-
-        const projects = d.top_projects || [];
-        if (projects.length) {
-            h += '<section class="today-sec"><h2>Aktívne projekty</h2><div class="today-chips">'
-                + projects.map((p) => '<span class="today-chip">' + esc(p.project)
-                    + '<span class="n">' + (p.count || 0) + '</span></span>').join('')
-                + '</div></section>';
-        }
-
-        body.innerHTML = h;
-        const searchBtn = $('today-search');
-        if (searchBtn) searchBtn.onclick = openCmdk;
-        body.querySelectorAll('.today-item[data-id], .today-card-link[data-id]').forEach((el) => {
-            el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
-        });
-        bindPackButtons(body);
-    } catch (e) {
+    if (todayRes.status !== 'fulfilled') {
         renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+        return;
     }
+    const d = todayRes.value;
+    const dash = dashRes.status === 'fulfilled' ? dashRes.value : null;
+    const wb = d.week_added || {};
+
+    // Veľké hľadacie pole — primárny prvok obrazovky (otvorí Cmd-K paletu)
+    let h = '<button type="button" id="today-search" class="today-search">'
+        + '<span class="ms" aria-hidden="true">search</span>'
+        + '<span class="ts-text">Hľadaj vo vedomí — skilly, záznamy, projekty…</span>'
+        + '<kbd>Ctrl K</kbd></button>';
+
+    h += '<p class="today-line">Tento týždeň pribudlo <strong>' + esc(String(wb.nodes ?? 0))
+        + '</strong> ' + plural(wb.nodes ?? 0, 'poznatok', 'poznatky', 'poznatkov')
+        + ', <strong>' + esc(String(wb.sessions ?? 0)) + '</strong> '
+        + plural(wb.sessions ?? 0, 'záznam', 'záznamy', 'záznamov') + '.</p>';
+
+    // ---- Dashboard agregáty (KPI + charty + Sync) z /api/dashboard ----
+    if (dash) h += dashboardHtml(dash);
+
+    // ---- Naposledy / záznamy / projekty (z /api/today) ----
+    const sessions = d.recent_sessions || [];
+    if (sessions.length) {
+        h += '<section class="today-sec"><h2>Naposledy si robil na…</h2><div class="today-grid">'
+            + sessions.slice(0, 6).map((s) => todaySessionCard(s)).join('')
+            + '</div></section>';
+    }
+
+    const records = d.recent_records || [];
+    if (records.length) {
+        h += '<section class="today-sec"><h2>Posledné záznamy</h2><div class="today-list">'
+            + records.map((r) => todayRow('article', r.id, r.label, r.project, r.snippet, r.created_at)).join('')
+            + '</div></section>';
+    }
+
+    const projects = d.top_projects || [];
+    if (projects.length) {
+        h += '<section class="today-sec"><h2>Aktívne projekty</h2><div class="today-chips">'
+            + projects.map((p) => '<span class="today-chip">' + esc(p.project)
+                + '<span class="n">' + (p.count || 0) + '</span></span>').join('')
+            + '</div></section>';
+    }
+
+    body.innerHTML = h;
+
+    // Charty + Sync wiring — kontajnery sú už v DOM po nastavení innerHTML.
+    if (dash) renderDashboardBlocks(dash);
+
+    const searchBtn = $('today-search');
+    if (searchBtn) searchBtn.onclick = openCmdk;
+    body.querySelectorAll('.today-item[data-id], .today-card-link[data-id]').forEach((el) => {
+        el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
+    });
+    bindPackButtons(body);
+}
+
+// Statický HTML dashboardu — KPI rad + grid kariet s prázdnymi kontajnermi pre charty (charts.js).
+function dashboardHtml(dash) {
+    const counts = dash.counts || {};
+    const cert = dash.certainty || {};
+    const num = (n) => esc(String(n ?? 0));
+
+    const kpi = (val, label, suffix) =>
+        '<div class="kpi-card"><div class="kpi-val">' + num(val)
+        + (suffix ? '<span class="kpi-suffix">' + esc(suffix) + '</span>' : '')
+        + '</div><div class="kpi-label">' + esc(label) + '</div></div>';
+
+    let h = '<div class="kpi-grid">'
+        + kpi(counts.nodes, 'uzlov')
+        + kpi(counts.edges, 'spojení')
+        + kpi(counts.brain, 'brain')
+        + kpi(counts.session, 'session')
+        + kpi(counts.decisions, 'rozhodnutí')
+        + kpi(cert.needs_review, 'na overenie')
+        + '</div>';
+
+    h += '<div class="dash-grid">';
+
+    // Heatmapa aktivity — cez 2 stĺpce; .heat sám skroluje horizontálne.
+    h += '<div class="dash-card span-2"><div class="dash-head">'
+        + '<span class="dash-title">Aktivita</span>'
+        + '<span class="dash-note">' + num((dash.heatmap || {}).total) + ' za rok</span>'
+        + '</div><div id="dash-heat"></div></div>';
+
+    // Donut istoty + legenda
+    h += '<div class="dash-card"><div class="dash-head"><span class="dash-title">Istota</span></div>'
+        + '<div style="display:flex;flex-direction:column;gap:var(--sp-2);align-items:center;">'
+        + '<div id="dash-donut"></div>'
+        + certLegend(cert)
+        + '</div></div>';
+
+    // Kumulatívny rast siete
+    h += '<div class="dash-card"><div class="dash-head"><span class="dash-title">Rast siete</span>'
+        + '<span class="dash-note">kumulatívne</span></div>'
+        + '<div id="dash-growth"></div></div>';
+
+    // Bary per oblasť
+    h += '<div class="dash-card"><div class="dash-head"><span class="dash-title">Podľa oblasti</span></div>'
+        + perAreaHtml(dash.per_area || []) + '</div>';
+
+    // Sync karta
+    h += syncCardHtml(dash);
+
+    h += '</div>';
+    return h;
+}
+
+// Legenda istoty — swatch + názov + počet; farby berie CSS z data-cert.
+function certLegend(cert) {
+    const rows = [
+        ['overene', 'overené', cert.overene],
+        ['hypoteza', 'hypotéza', cert.hypoteza],
+        ['pasca', 'pasca', cert.pasca],
+        ['bez', 'bez značky', cert.bez],
+    ];
+    return '<div class="cert-legend">'
+        + rows.map((r) =>
+            '<div class="cl-row" data-cert="' + r[0] + '">'
+            + '<span class="cl-sw"></span>'
+            + '<span class="cl-name">' + esc(r[1]) + '</span>'
+            + '<span class="cl-n">' + esc(String(r[2] ?? 0)) + '</span></div>').join('')
+        + '</div>';
+}
+
+// Bary per oblasť — farba oblasti cez inline --lobe (dedí sa na dot aj fill).
+function perAreaHtml(areas) {
+    if (!areas.length) return emptyHtml('category', 'Žiadne oblasti');
+    const max = Math.max.apply(null, areas.map((a) => +a.count || 0).concat([1]));
+    return areas.map((a) => {
+        const pct = Math.round(((+a.count || 0) / max) * 100);
+        const color = a.color || 'var(--accent)';
+        return '<div class="dbar" style="--lobe:' + esc(color) + ';">'
+            + '<div class="dbar-head"><span class="db-dot"></span>'
+            + '<span class="db-name">' + esc(a.name || a.slug || '') + '</span>'
+            + '<span class="db-n">' + esc(String(a.count || 0)) + '</span></div>'
+            + '<div class="dbar-track"><div class="dbar-fill" style="width:' + pct + '%;"></div></div></div>';
+    }).join('');
+}
+
+// Sync karta — stav (status-dot), štatistiky posledného behu, brain-write guard, „Sync teraz".
+function syncCardHtml(dash) {
+    const sync = dash.sync || {};
+    const status = ['ok', 'partial', 'error', 'running'].includes(sync.status) ? sync.status : 'ok';
+    const statusLabel = { ok: 'v poriadku', partial: 'čiastočne', error: 'chyba', running: 'prebieha' }[status];
+    const guardOn = !!(dash.brain_write_enabled != null ? dash.brain_write_enabled : sync.brain_write_enabled);
+
+    const rowStyle = 'display:flex;align-items:center;gap:var(--sp-1);';
+    const bits = [
+        ['+' + (sync.created ?? 0), 'nových'],
+        ['~' + (sync.updated ?? 0), 'zmien'],
+        ['−' + (sync.deleted ?? 0), 'zmazaných'],
+        ['»' + (sync.skipped ?? 0), 'preskočených'],
+    ];
+    const stats = '<div style="display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);'
+        + 'font-family:var(--mono);font-size:var(--fs-small);color:var(--muted);">'
+        + bits.map((b) => '<span><strong style="color:var(--text-secondary);">' + esc(b[0]) + '</strong> '
+            + esc(b[1]) + '</span>').join('') + '</div>';
+
+    return '<div class="dash-card"><div class="dash-head">'
+        + '<span class="dash-title">Synchronizácia</span>'
+        + '<span class="dash-note">' + (sync.finished_at ? esc(timeAgo(sync.finished_at)) : '—') + '</span>'
+        + '</div>'
+        + '<div style="' + rowStyle + 'font-size:var(--fs-small);color:var(--text-secondary);">'
+        + '<span class="status-dot" data-status="' + status + '"></span><span>' + esc(statusLabel) + '</span></div>'
+        + (sync.message ? '<p style="font-size:var(--fs-small);color:var(--muted);margin:0;">' + esc(sync.message) + '</p>' : '')
+        + stats
+        + '<div style="' + rowStyle + 'font-family:var(--mono);font-size:var(--fs-caption);color:var(--muted);">'
+        + '<span class="ms" aria-hidden="true" style="font-size:var(--icon-sm);">' + (guardOn ? 'lock_open' : 'lock') + '</span>'
+        + 'Zápis do brain: <strong style="color:var(--text-secondary);">' + (guardOn ? 'zapnutý' : 'vypnutý') + '</strong></div>'
+        + '<button type="button" id="sync-now" class="primary" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;">'
+        + '<span class="ms" aria-hidden="true">sync</span> Sync teraz</button>'
+        + '</div>';
+}
+
+// Napojenie chartov (charts.js) a Sync tlačidla na existujúce DOM kontajnery.
+function renderDashboardBlocks(dash) {
+    if (!window.HadesCharts) return;
+
+    const heat = $('dash-heat');
+    if (heat) HadesCharts.heatmap(heat, dash.heatmap || {});
+
+    const donutEl = $('dash-donut');
+    if (donutEl) {
+        const c = dash.certainty || {};
+        HadesCharts.donut(donutEl, [
+            { cert: 'overene', value: c.overene || 0 },
+            { cert: 'hypoteza', value: c.hypoteza || 0 },
+            { cert: 'pasca', value: c.pasca || 0 },
+            { cert: 'bez', value: c.bez || 0 },
+        ], { total: c.total || 0, centerLabel: 'uzlov' });
+    }
+
+    const growth = $('dash-growth');
+    if (growth) HadesCharts.growthLine(growth, dash.growth || {});
+
+    const syncBtn = $('sync-now');
+    if (syncBtn) syncBtn.onclick = () => doSync(syncBtn);
+}
+
+// „Sync teraz" → POST /api/sync; 423 = lock (už beží). Po úspechu toast + refresh dashboardu.
+async function doSync(btn) {
+    await busy(btn, async () => {
+        let res;
+        try {
+            res = await fetch('/api/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+            });
+        } catch (e) {
+            showToast('Sync zlyhal', null, 'error');
+            return;
+        }
+        if (res.status === 423) { showToast('Sync už prebieha', null, 'warn'); return; }
+        let j = {};
+        try { j = await res.json(); } catch (e) { /* prázdna odpoveď */ }
+        if (!res.ok) { showToast(j.message || j.error || 'Sync zlyhal', null, 'error'); return; }
+        const st = j.stats || j.sync || j.run || j;
+        showToast('Sync hotový: +' + (st.created ?? 0) + ' / ~' + (st.updated ?? 0), null, 'success');
+        renderToday();
+    }, 'Sync…');
 }
 
 // SK plurál 1 / 2-4 / 5+ (a 0)
@@ -3637,9 +3948,484 @@ function todayRow(icon, id, label, project, snippet, iso) {
         + packBtn(id, label) + '</div>';
 }
 
+/* ---------- certainty badge (.cert) — zdieľaný helper (F3; F4 ho reuse-uje) ----
+   §4.5/§4.8: data-cert="overene|hypoteza|pasca|bez|pending"; ikony
+   verified/science/warning/radio_button_unchecked/pending. iconOnly = .cert--icon. */
+const CERT_META = {
+    overene: ['verified', 'Overené'],
+    hypoteza: ['science', 'Hypotéza'],
+    pasca: ['warning', 'Pasca'],
+    pending: ['pending', 'Neštruktúrované'],
+    bez: ['radio_button_unchecked', 'Bez istoty'],
+};
+
+function certBadge(cert, iconOnly) {
+    const key = CERT_META[cert] ? cert : 'bez';
+    const meta = CERT_META[key];
+    return '<span class="cert' + (iconOnly ? ' cert--icon' : '') + '" data-cert="' + key + '"'
+        + (iconOnly ? ' title="' + esc(meta[1]) + '"' : '') + '>'
+        + '<span class="ms" aria-hidden="true">' + meta[0] + '</span>'
+        + (iconOnly ? '' : esc(meta[1])) + '</span>';
+}
+
+// F4: badge riadok v detaile uzla — origin + cert + needs_review + značky (chipy).
+// Injektovaný do #node-view za #node-type (blade patrí F1). n má polia z toApi().
+function renderNodeBadges(n) {
+    const view = $('node-view');
+    if (!view) return;
+    let row = $('node-badges');
+    if (!row) {
+        row = document.createElement('div');
+        row.id = 'node-badges';
+        row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 2px;';
+        const anchor = $('node-type');
+        if (anchor) anchor.insertAdjacentElement('afterend', row);
+        else view.insertBefore(row, view.firstChild);
+    }
+    const tags = Array.isArray(n.tags) ? n.tags : [];
+    const chips = tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('');
+    row.innerHTML = originBadge(n.origin)
+        + (n.certainty ? certBadge(n.certainty) : '')
+        + (n.needs_review ? certBadge('pending', true) : '')
+        + chips;
+}
+
+// Undo toast — variant success s tlačidlom „Späť" (armed-inline akcie: skip). Na
+// rozdiel od showToast (button) je to div, aby sme mohli vnoriť undo tlačidlo.
+function showUndoToast(text, onUndo) {
+    const wrap = $('toasts');
+    const el = document.createElement('div');
+    el.className = 'toast success';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="ms" aria-hidden="true">check_circle</span><span>' + esc(text) + '</span>';
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'toast-undo chip';
+    undo.textContent = 'Späť';
+    el.appendChild(undo);
+
+    const leave = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), REDUCED_MOTION ? 0 : 200); };
+    let t = setTimeout(leave, REDUCED_MOTION ? 0 : 6000);
+    undo.onclick = () => { clearTimeout(t); leave(); if (onUndo) onUndo(); };
+    el.addEventListener('mouseenter', () => clearTimeout(t));
+    el.addEventListener('mouseleave', () => { t = setTimeout(leave, REDUCED_MOTION ? 0 : 2500); });
+
+    wrap.appendChild(el);
+    while (wrap.children.length > 3) wrap.firstChild.remove();
+}
+
+/* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
+   Časová os rozhodnutí zoskupená po mesiacoch (.dtl*), filtre obdobie/oblasť
+   (reuse .chip v .dtl-filter, filtrovanie klientsky nad jedným fetchom),
+   detail/expand dôvodu klikom na kartu a manuálne pridanie → POST /api/decisions. */
+
+const decisionsState = { all: [], year: null, areaId: null, adding: false };
+
+async function renderDecisions() {
+    const body = $('rozhodnutia-body');
+    if (!body) return;
+    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
+    try {
+        const d = await (await fetch('/api/decisions')).json();
+        decisionsState.all = d.decisions || [];
+        // filtre, ktoré prestali existovať, vynuluj
+        renderDecisionsView();
+    } catch (e) {
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+    }
+}
+
+function decChip(label, active, attrs) {
+    return '<button type="button" class="chip' + (active ? ' active' : '') + '" ' + attrs + '>' + esc(label) + '</button>';
+}
+
+function renderDecisionsView() {
+    const body = $('rozhodnutia-body');
+    if (!body) return;
+    const all = decisionsState.all;
+
+    const years = [...new Set(all.map((x) => (x.decided_on || '').slice(0, 4)).filter(Boolean))].sort().reverse();
+    const areaIds = [...new Set(all.map((x) => x.area_id).filter((v) => v != null))];
+
+    // Toolbar + manuálne pridanie
+    let h = '<div class="dec-toolbar" style="display:flex;justify-content:flex-end;margin-bottom:var(--sp-2);">'
+        + '<button type="button" id="dec-add-toggle" class="chip">'
+        + '<span class="ms" aria-hidden="true">' + (decisionsState.adding ? 'close' : 'add') + '</span>'
+        + (decisionsState.adding ? 'Zrušiť' : 'Pridať rozhodnutie') + '</button></div>';
+    if (decisionsState.adding) h += decAddFormHtml();
+
+    // Filtre obdobie / oblasť
+    if (years.length > 1) {
+        h += '<div class="dtl-filter">'
+            + decChip('Celé obdobie', decisionsState.year === null, 'data-year=""')
+            + years.map((y) => decChip(y, decisionsState.year === y, 'data-year="' + y + '"')).join('')
+            + '</div>';
+    }
+    if (areaIds.length > 1) {
+        h += '<div class="dtl-filter">'
+            + decChip('Všetky oblasti', decisionsState.areaId === null, 'data-area=""')
+            + areaIds.map((aid) => {
+                const a = S.areas.get(aid);
+                return decChip(a ? a.name : ('#' + aid), decisionsState.areaId === aid, 'data-area="' + aid + '"');
+            }).join('')
+            + '</div>';
+    }
+
+    const list = all.filter((x) => {
+        if (decisionsState.year !== null && (x.decided_on || '').slice(0, 4) !== decisionsState.year) return false;
+        if (decisionsState.areaId !== null && x.area_id !== decisionsState.areaId) return false;
+        return true;
+    });
+
+    if (!list.length) {
+        h += emptyHtml('gavel', all.length ? 'Žiadne rozhodnutia pre tento filter' : 'Zatiaľ žiadne rozhodnutia');
+    } else {
+        h += decisionsTimelineHtml(list);
+    }
+
+    body.innerHTML = h;
+    wireDecisions(body);
+}
+
+function decAddFormHtml() {
+    const areaOpts = '<option value="">— oblasť (voliteľné) —</option>'
+        + [...S.areas.values()].map((a) => '<option value="' + a.id + '">' + esc(a.name) + '</option>').join('');
+    const today = new Date().toISOString().slice(0, 10);
+    return '<div class="dec-add" style="display:flex;flex-direction:column;gap:var(--sp-1);'
+        + 'background:var(--panel-solid);border:1px solid var(--border);border-radius:var(--r-md);'
+        + 'padding:var(--sp-2);margin-bottom:var(--sp-2);">'
+        + '<input id="dec-text" placeholder="Čo si rozhodol?" autocomplete="off" maxlength="5000" aria-label="Text rozhodnutia">'
+        + '<textarea id="dec-reason" rows="2" placeholder="Dôvod (voliteľné)" maxlength="5000" aria-label="Dôvod"></textarea>'
+        + '<div style="display:flex;gap:var(--sp-1);flex-wrap:wrap;align-items:center;">'
+        + '<select id="dec-area" aria-label="Oblasť" style="flex:1;min-width:160px;">' + areaOpts + '</select>'
+        + '<input id="dec-date" type="date" value="' + today + '" aria-label="Dátum" style="flex:0 0 auto;">'
+        + '<button type="button" id="dec-save" class="primary">Uložiť</button>'
+        + '</div></div>';
+}
+
+function decisionsTimelineHtml(list) {
+    const sorted = [...list].sort((a, b) => (b.decided_on || '').localeCompare(a.decided_on || ''));
+    let out = '<div class="dtl">';
+    let curMonth = '';
+    for (const dec of sorted) {
+        const ym = (dec.decided_on || '').slice(0, 7);
+        if (ym !== curMonth) { curMonth = ym; out += '<div class="dtl-month">' + esc(monthLabel(ym)) + '</div>'; }
+        out += decisionCardHtml(dec);
+    }
+    return out + '</div>';
+}
+
+function monthLabel(ym) {
+    if (!ym) return 'Bez dátumu';
+    const parts = ym.split('-');
+    const dt = new Date(+parts[0], (+parts[1] || 1) - 1, 1);
+    return dt.toLocaleDateString('sk', { month: 'long', year: 'numeric' });
+}
+
+function fmtDecDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso + 'T00:00:00').toLocaleDateString('sk', { day: 'numeric', month: 'short' });
+}
+
+function decisionCardHtml(dec) {
+    const area = dec.area_id != null ? S.areas.get(dec.area_id) : null;
+    const hasReason = !!(dec.reason && String(dec.reason).trim());
+    return '<div class="dtl-item">'
+        + '<span class="dtl-dot" data-origin="' + (dec.origin === 'brain' ? 'brain' : 'session') + '" aria-hidden="true"></span>'
+        + '<button type="button" class="dtl-card" data-id="' + dec.id + '"'
+        + (dec.node_id != null ? ' data-node="' + dec.node_id + '"' : '')
+        + (hasReason ? ' data-reason="1"' : '') + '>'
+        + '<div class="dtl-head"><span class="dtl-date">' + esc(fmtDecDate(dec.decided_on)) + '</span>'
+        + '<span class="dtl-text">' + esc(dec.text) + '</span></div>'
+        + (hasReason ? '<div class="dtl-reason hidden">' + esc(dec.reason) + '</div>' : '')
+        + '<div class="dtl-meta">' + originBadge(dec.origin)
+        + (area ? '<span class="tag">' + esc(area.name) + '</span>' : '')
+        + (dec.node_id != null ? '<span class="tag muted">uzol #' + dec.node_id + '</span>' : '')
+        + (hasReason ? '<span class="tag muted">dôvod ▾</span>' : '')
+        + '</div></button></div>';
+}
+
+function wireDecisions(body) {
+    const toggle = $('dec-add-toggle');
+    if (toggle) toggle.onclick = () => { decisionsState.adding = !decisionsState.adding; renderDecisionsView(); if (decisionsState.adding) { const t = $('dec-text'); if (t) t.focus(); } };
+
+    const saveBtn = $('dec-save');
+    if (saveBtn) saveBtn.onclick = () => saveDecision(saveBtn);
+
+    body.querySelectorAll('.dtl-filter [data-year]').forEach((c) => {
+        c.onclick = () => { decisionsState.year = c.dataset.year || null; renderDecisionsView(); };
+    });
+    body.querySelectorAll('.dtl-filter [data-area]').forEach((c) => {
+        c.onclick = () => { decisionsState.areaId = c.dataset.area ? +c.dataset.area : null; renderDecisionsView(); };
+    });
+
+    body.querySelectorAll('.dtl-card').forEach((card) => {
+        card.onclick = () => {
+            const reason = card.querySelector('.dtl-reason');
+            if (card.dataset.reason && reason) {
+                reason.classList.toggle('hidden');
+            } else if (card.dataset.node) {
+                openNodeFromAnywhere({ id: +card.dataset.node });
+            }
+        };
+    });
+}
+
+async function saveDecision(btn) {
+    const text = ($('dec-text').value || '').trim();
+    if (!text) { showToast('Napíš text rozhodnutia'); $('dec-text').focus(); return; }
+    const reason = ($('dec-reason').value || '').trim();
+    const areaVal = $('dec-area').value;
+    const dateVal = $('dec-date').value;
+    const payload = { text };
+    if (reason) payload.reason = reason;
+    if (areaVal) payload.area = areaVal;
+    if (dateVal) payload.decided_on = dateVal;
+
+    await busy(btn, async () => {
+        try {
+            const res = await fetch('/api/decisions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(j.message || j.error || 'Uloženie zlyhalo', null, 'error');
+                return;
+            }
+            decisionsState.adding = false;
+            showToast('Rozhodnutie uložené', null, 'success');
+            renderDecisions();
+        } catch (e) {
+            showToast('Uloženie zlyhalo', null, 'error');
+        }
+    }, 'Ukladám…');
+}
+
+/* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
+   Fronta needs_review uzlov (.queue*), klávesnica j/k/Enter/v/r/Delete (len na
+   tejto obrazovke, viď setupShortcuts). Akcie: Overiť (verify), Vyriešiť
+   (resolve-review), Preskočiť (lokálne, s undo). Rail badge cez setRailBadge. */
+
+const kontrolaState = { items: [], idx: 0, total: 0 };
+
+async function renderKontrola() {
+    const body = $('kontrola-body');
+    if (!body) return;
+    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
+    try {
+        const d = await (await fetch('/api/review/queue')).json();
+        kontrolaState.items = d.queue || [];
+        kontrolaState.total = d.total != null ? d.total : kontrolaState.items.length;
+        kontrolaState.idx = 0;
+        rerenderKontrola();
+    } catch (e) {
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+    }
+}
+
+function rerenderKontrola() {
+    const body = $('kontrola-body');
+    if (!body) return;
+    setRailBadge('kontrola', kontrolaState.total);
+    const items = kontrolaState.items;
+    if (!items.length) {
+        renderEmpty(body, 'fact_check', 'Fronta na overenie je prázdna');
+        return;
+    }
+    kontrolaState.idx = Math.max(0, Math.min(kontrolaState.idx, items.length - 1));
+    body.innerHTML = '<div class="queue">'
+        + items.map((n, i) => queueItemHtml(n, i)).join('')
+        + '</div>' + kontrolaHintsHtml();
+    wireKontrola(body);
+}
+
+function queueItemHtml(n, i) {
+    const desc = n.description ? String(n.description).replace(/\s+/g, ' ').trim() : '';
+    return '<div class="queue-item' + (i === kontrolaState.idx ? ' selected' : '') + '"'
+        + ' data-id="' + n.id + '" data-idx="' + i + '" tabindex="-1">'
+        + '<div class="queue-body">'
+        + '<div class="queue-meta">'
+        + '<span>' + esc(n.type || 'uzol') + '</span>'
+        + originBadge(n.origin) + certBadge(n.certainty)
+        + (n.created_at ? '<span>' + esc(timeAgo(n.created_at)) + '</span>' : '')
+        + '</div>'
+        + '<div class="queue-text"><strong>' + esc(n.label || '') + '</strong>'
+        + (desc ? ' — ' + esc(desc) : '') + '</div>'
+        + '</div>'
+        + '<div class="queue-actions">'
+        + '<button type="button" class="act-verify ms" data-act="verify" title="Overiť (v)" aria-label="Overiť">verified</button>'
+        + '<button type="button" class="act-resolve ms" data-act="resolve" title="Vyriešiť (r)" aria-label="Vyriešiť">done_all</button>'
+        + '<button type="button" class="act-skip ms" data-act="skip" title="Preskočiť" aria-label="Preskočiť">redo</button>'
+        + '</div></div>';
+}
+
+function kontrolaHintsHtml() {
+    const kh = (keys, label) => '<span class="kh">'
+        + keys.map((k) => '<kbd>' + esc(k) + '</kbd>').join('') + ' ' + esc(label) + '</span>';
+    return '<div class="kbd-hints">'
+        + kh(['j', 'k'], 'posun')
+        + kh(['Enter'], 'detail')
+        + kh(['v'], 'overiť')
+        + kh(['r'], 'vyriešiť')
+        + kh(['Del'], 'zmazať uzol')
+        + '</div>';
+}
+
+function kontrolaNodeRef(id) {
+    const n = kontrolaState.items.find((x) => x.id === id);
+    return n ? { id: n.id, label: n.label, type: n.type, area_id: n.area_id } : { id };
+}
+
+function kontrolaBtn(id, act) {
+    return document.querySelector('#kontrola-body .queue-item[data-id="' + id + '"] .act-' + act);
+}
+
+function wireKontrola(body) {
+    body.querySelectorAll('.queue-item').forEach((item) => {
+        const id = +item.dataset.id;
+        const idx = +item.dataset.idx;
+        item.addEventListener('mousedown', () => { kontrolaState.idx = idx; markKontrolaSelected(); });
+        const bodyEl = item.querySelector('.queue-body');
+        if (bodyEl) bodyEl.onclick = () => { kontrolaState.idx = idx; openNodeFromAnywhere(kontrolaNodeRef(id)); };
+        const v = item.querySelector('.act-verify');
+        if (v) v.onclick = (e) => { e.stopPropagation(); kontrolaVerify(id); };
+        const r = item.querySelector('.act-resolve');
+        if (r) r.onclick = (e) => { e.stopPropagation(); kontrolaResolve(id); };
+        const s = item.querySelector('.act-skip');
+        if (s) s.onclick = (e) => { e.stopPropagation(); armKontrolaAction(s, id, 'skip'); };
+    });
+}
+
+function markKontrolaSelected() {
+    const items = document.querySelectorAll('#kontrola-body .queue-item');
+    items.forEach((el, i) => el.classList.toggle('selected', i === kontrolaState.idx));
+    const cur = items[kontrolaState.idx];
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
+}
+
+function kontrolaMove(delta) {
+    if (!kontrolaState.items.length) return;
+    const n = kontrolaState.items.length;
+    kontrolaState.idx = (kontrolaState.idx + delta + n) % n;
+    markKontrolaSelected();
+}
+
+// Odober položku z fronty; decBadge=true znižuje rail počítadlo (server-affecting).
+function removeKontrolaItem(id, decBadge) {
+    const i = kontrolaState.items.findIndex((n) => n.id === id);
+    if (i < 0) return;
+    kontrolaState.items.splice(i, 1);
+    if (decBadge) kontrolaState.total = Math.max(0, kontrolaState.total - 1);
+    if (kontrolaState.idx > i) kontrolaState.idx--;
+    rerenderKontrola();
+}
+
+async function kontrolaVerify(id) {
+    const btn = kontrolaBtn(id, 'verify') || document.createElement('button');
+    await busy(btn, async () => {
+        try {
+            const res = await fetch('/api/nodes/' + id + '/verify', { method: 'POST' });
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast(j.message || j.error || 'Overenie zlyhalo', null, 'error'); return; }
+            removeKontrolaItem(id, true);
+            const warns = j.warnings || [];
+            showToast(warns.length ? ('Overené — ' + warns[0]) : 'Overené', null, 'success');
+        } catch (e) { showToast('Overenie zlyhalo', null, 'error'); }
+    }, '…');
+}
+
+async function kontrolaResolve(id) {
+    const btn = kontrolaBtn(id, 'resolve') || document.createElement('button');
+    await busy(btn, async () => {
+        try {
+            const res = await fetch('/api/nodes/' + id + '/resolve-review', { method: 'POST' });
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast(j.message || j.error || 'Akcia zlyhala', null, 'error'); return; }
+            removeKontrolaItem(id, true);
+            showToast('Vyriešené', null, 'success');
+        } catch (e) { showToast('Akcia zlyhala', null, 'error'); }
+    }, '…');
+}
+
+// Armed-inline (žiadny natívny confirm): 1. akcia ozbrojí tlačidlo, 2. potvrdí.
+// kind='skip' (lokálne preskočenie + undo) alebo 'delete' (DELETE uzla).
+function disarmKontrolaBtn(btn) {
+    clearTimeout(btn._disarm);
+    btn.classList.remove('armed');
+    btn.classList.add('ms');
+    btn.textContent = 'redo';
+    delete btn.dataset.armKind;
+}
+
+function armKontrolaAction(btn, id, kind) {
+    if (!btn) return;
+    if (btn.classList.contains('armed') && btn.dataset.armKind === kind) {
+        disarmKontrolaBtn(btn);
+        if (kind === 'delete') kontrolaDelete(id); else kontrolaSkip(id);
+        return;
+    }
+    document.querySelectorAll('#kontrola-body .act-skip.armed').forEach(disarmKontrolaBtn);
+    btn.classList.add('armed');
+    btn.classList.remove('ms');
+    btn.dataset.armKind = kind;
+    btn.textContent = kind === 'delete' ? 'Zmazať uzol?' : 'Preskočiť?';
+    btn._disarm = setTimeout(() => { if (btn.isConnected) disarmKontrolaBtn(btn); }, 3000);
+}
+
+function kontrolaSkip(id) {
+    const i = kontrolaState.items.findIndex((n) => n.id === id);
+    if (i < 0) return;
+    const [removed] = kontrolaState.items.splice(i, 1);
+    if (kontrolaState.idx > i || kontrolaState.idx >= kontrolaState.items.length) {
+        kontrolaState.idx = Math.max(0, kontrolaState.idx - (kontrolaState.idx > i ? 1 : 0));
+    }
+    rerenderKontrola();
+    // preskočenie je len lokálne (uzol ostáva v serverovej fronte) → total badge nemeníme
+    showUndoToast('Preskočené', () => {
+        kontrolaState.items.splice(Math.min(i, kontrolaState.items.length), 0, removed);
+        kontrolaState.idx = i;
+        rerenderKontrola();
+    });
+}
+
+async function kontrolaDelete(id) {
+    const node = kontrolaState.items.find((n) => n.id === id);
+    try {
+        const res = await fetch('/api/nodes/' + id, { method: 'DELETE' });
+        if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            showToast(j.message || 'Nepodarilo sa zmazať', null, 'error');
+            return;
+        }
+        // dorovnaj aj graf, ak je uzol načítaný (rovnako ako node-panel delete)
+        if (node && S.byId.has(id)) {
+            S.nodes = S.nodes.filter((m) => m.id !== id);
+            S.edges = S.edges.filter((e) => e.source.id !== id && e.target.id !== id);
+            S.byId.delete(id);
+            if (S.local && S.local.rootId === id) clearLocal();
+        }
+        removeKontrolaItem(id, true);
+        showToast('Uzol zmazaný', null, 'success');
+    } catch (e) {
+        showToast('Nepodarilo sa zmazať', null, 'error');
+    }
+}
+
 /* ---------- obrazovka Knižnica (/api/library) ---------- */
 
 let libraryTimer = null;
+
+// F4: meta riadok skillu v Knižnici — origin + cert (icon) + značky (chipy).
+function libMeta(s) {
+    const tags = Array.isArray(s.tags) ? s.tags : [];
+    const chips = tags.slice(0, 5).map((t) => '<span class="tag">' + esc(t) + '</span>').join('');
+    const cert = s.certainty ? certBadge(s.certainty, true) : '';
+    const parts = originBadge(s.origin) + cert + chips;
+    return '<span class="lib-skill-meta" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;">'
+        + parts + '</span>';
+}
 
 async function renderLibrary() {
     const body = $('library-body');
@@ -3665,6 +4451,7 @@ async function renderLibrary() {
                 + (s.path ? ' data-path="' + esc(s.path) + '"' : '') + '>'
                 + '<span class="lib-skill-label">' + esc(s.label) + '</span>'
                 + (s.snippet ? '<span class="lib-skill-snip">' + esc(s.snippet) + '</span>' : '')
+                + libMeta(s)
                 + '</button>'
                 + packBtn(s.id, s.label) + '</div>').join('')
             + '</div></section>'
@@ -4002,6 +4789,8 @@ const CMDK_NAV = [
     { screen: 'dennik', label: 'Denník', icon: 'receipt_long' },
     { screen: 'graf', label: 'Graf', icon: 'hub' },
     { screen: 'kniznica', label: 'Knižnica', icon: 'menu_book' },
+    { screen: 'rozhodnutia', label: 'Rozhodnutia', icon: 'gavel' },
+    { screen: 'kontrola', label: 'Kontrola', icon: 'fact_check' },
     { screen: 'smernica', label: 'Smernica', icon: 'assignment' },
 ];
 let cmdkTimer = null, cmdkSeq = 0;
@@ -4104,12 +4893,17 @@ function renderCmdk(q) {
             const nodes = data.nodes || [];
             const books = data.playbooks || [];
             let h = '';
-            if (nodes.length) {
+            const pf = parseQueryFilter(query);
+            const filtered = (pf.cert || pf.tag)
+                ? nodes.filter((n) => certTagMatch(n, pf))
+                : nodes;
+            if (filtered.length) {
                 h += cmdkGroup('Uzly')
-                    + nodes.map((n) => '<button type="button" class="cmdk-item" data-id="' + n.id + '"'
+                    + filtered.map((n) => '<button type="button" class="cmdk-item" data-id="' + n.id + '"'
                         + ' data-label="' + esc(n.label || '') + '" data-type="' + esc(n.type || 'skill') + '">'
                         + '<span class="ms" aria-hidden="true">' + (CMDK_TYPE_ICO[n.type] || 'circle') + '</span>'
-                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label) + '</span>'
+                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label)
+                        + (n.certainty ? ' ' + certBadge(n.certainty, true) : '') + '</span>'
                         + '<span class="cmdk-sub">' + (n.snippet ? esc(n.snippet) : (CMDK_TYPE_NAMES[n.type] || esc(n.type || ''))) + '</span>'
                         + '</span></button>').join('');
             }
@@ -4121,7 +4915,7 @@ function renderCmdk(q) {
                         + (b.snippet ? '<span class="cmdk-sub">' + esc(b.snippet) + '</span>' : '')
                         + '</span></button>').join('');
             }
-            if (!nodes.length && !books.length) h = emptyHtml('search_off', 'Nič sa nenašlo');
+            if (!filtered.length && !books.length) h = emptyHtml('search_off', 'Nič sa nenašlo');
             box.innerHTML = h;
             box._books = books;
             bindCmdkItems(box);
@@ -4153,6 +4947,7 @@ function openDock(name) {
 
     if (name === 'structure') renderStructure();
     if (name === 'stats') refreshStats();
+    if (name === 'settings') loadTagFilter(); // F4: obnov značky (mohli pribudnúť brain-syncom)
 }
 
 function timeAgo(iso) {
@@ -4164,18 +4959,44 @@ function timeAgo(iso) {
     return new Date(iso).toLocaleDateString('sk', { day: 'numeric', month: 'short' });
 }
 
-// Denník — neprečítané záznamy (teal bodka na destinácii Denník)
-function setJournalDot(show) {
-    const btn = document.querySelector('#rail .dest[data-screen="dennik"]');
+// Rail badge — jeden generický indikátor na destinácii v ľavom rely.
+// Boolean → teal bodka (.dot, neprečítané, napr. Denník); číslo → číselný pill
+// (.count, napr. fronta Kontroly). Spätne kompatibilné so setJournalDot.
+function setRailBadge(screen, count) {
+    const btn = document.querySelector('#rail .dest[data-screen="' + screen + '"]');
     if (!btn) return;
-    let dot = btn.querySelector('.dot');
-    if (show && !dot) {
-        dot = document.createElement('span');
-        dot.className = 'dot';
-        dot.setAttribute('aria-hidden', 'true');
-        btn.appendChild(dot);
+
+    // Boolean režim — bodka neprečítaného
+    if (count === true || count === false) {
+        let dot = btn.querySelector('.dot');
+        if (count && !dot) {
+            dot = document.createElement('span');
+            dot.className = 'dot';
+            dot.setAttribute('aria-hidden', 'true');
+            btn.appendChild(dot);
+        }
+        if (!count && dot) dot.remove();
+        return;
     }
-    if (!show && dot) dot.remove();
+
+    // Číselný režim — pill (skryje sa cez CSS pri data-count="0")
+    const n = Math.max(0, +count || 0);
+    let pill = btn.querySelector('.count');
+    if (n > 0 && !pill) {
+        pill = document.createElement('span');
+        pill.className = 'count';
+        pill.setAttribute('aria-hidden', 'true');
+        btn.appendChild(pill);
+    }
+    if (pill) {
+        pill.dataset.count = String(n);
+        pill.textContent = n > 99 ? '99+' : String(n);
+    }
+}
+
+// Denník — neprečítané záznamy (teal bodka na destinácii Denník). Tenký wrapper.
+function setJournalDot(show) {
+    setRailBadge('dennik', !!show);
 }
 
 function markJournalSeen() {
@@ -4493,22 +5314,28 @@ let searchTimer = null;
 let searchSeq = 0;
 
 function renderSearch(q) {
-    const query = (q || '').trim().toLowerCase();
+    // F4: voliteľný cert:/tag: prefix — pf.text ide do fulltextu, cert/tag filtruje lokálne
+    const pf = parseQueryFilter(q);
+    const query = pf.text.toLowerCase();
+    const hasCertTag = !!(pf.cert || pf.tag);
     const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
     const wrap = $('search-results');
 
     // Lokálne uzly — okamžité výsledky bez čakania na server
-    const matches = !query ? [] : S.nodes
-        .filter((n) => (n.label + ' ' + (n.description || '')).toLowerCase().includes(query))
+    const matches = (!query && !hasCertTag) ? [] : S.nodes
+        .filter((n) => !query || (n.label + ' ' + (n.description || '')).toLowerCase().includes(query))
+        .filter((n) => certTagMatch(n, pf))
         .sort((a, b) => (b.strength || 0) - (a.strength || 0))
         .slice(0, 8);
 
     const local = matches.map((n) =>
         '<button type="button" class="search-item" data-id="' + n.id + '"><span>' + esc(n.label)
-        + '</span><span class="sub">' + typeNames[n.type] + '</span></button>'
+        + '</span><span class="sub">' + typeNames[n.type]
+        + (n.certainty ? ' ' + certBadge(n.certainty, true) : '')
+        + ' ' + originBadge(n.origin) + '</span></button>'
     ).join('');
 
-    wrap.innerHTML = (local || (query ? emptyHtml('search_off', 'Nič sa nenašlo') : ''))
+    wrap.innerHTML = (local || ((query || hasCertTag) ? emptyHtml('search_off', 'Nič sa nenašlo') : ''))
         + '<div id="search-playbooks"></div>';
 
     wrap.querySelectorAll('.search-item').forEach((el) => {
@@ -4603,6 +5430,109 @@ async function findDuplicates() {
     }
 }
 
+/* ---------- F4: prepínač Značky istoty + filter podľa značiek ----------
+   Blade patrí F1, preto obidve UI injektujem z JS do existujúceho #sec-settings.
+   Prepínač riadi S.certRings (canvas prstence); filter značiek plní S.filter.tags
+   dynamickými checkboxami z /api/tags (pozitívny filter, perzistuje v hades.filter). */
+function setupCertTagFilter() {
+    const sec = $('sec-settings');
+    if (!sec) return;
+
+    // prepínač „Značky istoty" — za prepínačom „Len kostra"
+    if (!$('certrings-toggle')) {
+        const skRow = $('skeleton-toggle') ? $('skeleton-toggle').closest('.switch-row') : null;
+        const row = document.createElement('div');
+        row.className = 'switch-row';
+        row.innerHTML = '<span id="certrings-label">Značky istoty</span>'
+            + '<button id="certrings-toggle" class="switch" type="button" role="switch" aria-checked="'
+            + (S.certRings ? 'true' : 'false') + '" aria-labelledby="certrings-label"></button>';
+        if (skRow) skRow.insertAdjacentElement('afterend', row); else sec.appendChild(row);
+        const btn = $('certrings-toggle');
+        btn.onclick = () => {
+            S.certRings = !S.certRings;
+            localStorage.setItem('hades.certRings', S.certRings ? '1' : '0');
+            btn.setAttribute('aria-checked', S.certRings ? 'true' : 'false');
+            draw();
+            showToast(S.certRings ? 'Značky istoty zapnuté' : 'Značky istoty vypnuté');
+        };
+    }
+
+    // filter podľa značiek — kontajner pred prepínačom „Spojenia len pri hovere"
+    if (!$('filter-tags')) {
+        const cap = document.createElement('div');
+        cap.className = 'check-cap';
+        cap.id = 'filter-tags-cap';
+        cap.textContent = 'Značky';
+        const box = document.createElement('div');
+        box.id = 'filter-tags';
+        const shRow = $('softhover-toggle') ? $('softhover-toggle').closest('.switch-row') : null;
+        if (shRow) { shRow.insertAdjacentElement('beforebegin', box); box.insertAdjacentElement('beforebegin', cap); }
+        else { sec.appendChild(cap); sec.appendChild(box); }
+    }
+    loadTagFilter();
+}
+
+async function loadTagFilter() {
+    const box = $('filter-tags');
+    const cap = $('filter-tags-cap');
+    if (!box) return;
+    let tags = [];
+    try {
+        const d = await (await fetch('/api/tags')).json();
+        tags = d.tags || [];
+    } catch (e) { /* offline — bez značiek */ }
+
+    if (!tags.length) {
+        // žiadne značky → sekcia sa nezobrazí (žiadny prázdny caption)
+        box.style.display = 'none';
+        if (cap) cap.style.display = 'none';
+        return;
+    }
+    box.style.display = '';
+    if (cap) cap.style.display = '';
+
+    box.innerHTML = tags.map((t) =>
+        '<label class="check"><input type="checkbox" data-ftag="' + esc(t.name) + '"'
+        + (S.filter.tags.has(t.name) ? ' checked' : '') + '>'
+        + '<span class="box" aria-hidden="true"></span>'
+        + '<span>' + esc(t.name) + (t.count != null ? ' <span class="tag-n">' + t.count + '</span>' : '') + '</span></label>'
+    ).join('');
+
+    box.querySelectorAll('input[data-ftag]').forEach((inp) => {
+        inp.onchange = () => {
+            const val = inp.dataset.ftag;
+            if (inp.checked) S.filter.tags.add(val); else S.filter.tags.delete(val);
+            persistFilter();
+            draw();
+        };
+    });
+}
+
+// Voliteľný cert:/tag: prefix vo vyhľadávaní — „cert:overene", „tag:docker".
+// Vráti { text, cert, tag }; cert 'bez'/'none' → null certainty.
+function parseQueryFilter(q) {
+    const out = { text: String(q || ''), cert: null, tag: null };
+    out.text = out.text.replace(/\b(cert|tag):(\S+)/gi, (m, k, v) => {
+        if (k.toLowerCase() === 'cert') out.cert = v.toLowerCase();
+        else out.tag = v.toLowerCase();
+        return '';
+    }).trim();
+    return out;
+}
+
+// Zhoda uzla na voliteľný cert:/tag: filter (client-side, nad S.nodes).
+function certTagMatch(n, pf) {
+    if (pf.cert) {
+        const want = (pf.cert === 'bez' || pf.cert === 'none') ? null : pf.cert;
+        if ((n.certainty || null) !== want) return false;
+    }
+    if (pf.tag) {
+        const tags = Array.isArray(n.tags) ? n.tags : [];
+        if (!tags.some((t) => String(t).toLowerCase().includes(pf.tag))) return false;
+    }
+    return true;
+}
+
 function setupControls() {
     document.querySelectorAll('#view-switch button').forEach((b) => {
         b.onclick = () => setView(b.dataset.view);
@@ -4648,6 +5578,9 @@ function setupControls() {
             draw();
         };
     });
+
+    // F4: prepínač Značky istoty + dynamický filter podľa značiek (injektované do #sec-settings)
+    setupCertTagFilter();
 
     // Filter kategórií vzťahov — checked = viditeľné; S.filter.relations drží skryté kategórie
     document.querySelectorAll('input[data-frel]').forEach((inp) => {

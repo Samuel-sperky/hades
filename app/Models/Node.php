@@ -4,12 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Node extends Model
 {
     protected $fillable = [
-        'type', 'layer_role', 'source', 'external_key', 'area_id', 'department_id', 'label', 'description',
+        'type', 'layer_role', 'source', 'origin', 'external_key', 'area_id', 'department_id', 'label', 'description',
+        'certainty', 'needs_review', 'verified_at', 'source_file', 'source_line', 'content_hash',
         'meta', 'strength', 'pinned', 'last_activated_at',
     ];
 
@@ -24,8 +26,10 @@ class Node extends Model
     protected $casts = [
         'strength' => 'float',
         'pinned' => 'boolean',
+        'needs_review' => 'boolean',
         'meta' => 'array',
         'last_activated_at' => 'datetime',
+        'verified_at' => 'datetime',
     ];
 
     /**
@@ -77,6 +81,16 @@ class Node extends Model
         return $this->hasMany(Activation::class);
     }
 
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class, 'node_tag');
+    }
+
+    public function decisions(): HasMany
+    {
+        return $this->hasMany(Decision::class);
+    }
+
     public function toApi(): array
     {
         return [
@@ -84,10 +98,18 @@ class Node extends Model
             'type' => $this->type,
             'layer_role' => $this->layerRole(),
             'source' => $this->source,
+            'origin' => $this->origin,
             'area_id' => $this->area_id,
             'department_id' => $this->department_id,
             'label' => $this->label,
             'description' => $this->description,
+            'certainty' => $this->certainty,
+            'needs_review' => (bool) $this->needs_review,
+            'verified_at' => $this->verified_at?->toIso8601String(),
+            'source_file' => $this->source_file,
+            'tags' => $this->relationLoaded('tags')
+                ? $this->tags->pluck('name')->values()->all()
+                : $this->tags()->pluck('name')->all(),
             'strength' => (float) $this->strength,
             'pinned' => (bool) $this->pinned,
             'heat' => $this->heat(),

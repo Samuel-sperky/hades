@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Area;
+use App\Models\Decision;
+use App\Models\Node;
+use App\Services\Brain\SecretScanner;
 use App\Services\MindService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -14,6 +19,10 @@ use Throwable;
 class McpController extends Controller
 {
     protected const PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18'];
+
+    public function __construct(
+        protected SecretScanner $secrets = new SecretScanner,
+    ) {}
 
     public function __invoke(Request $request, MindService $mind): Response
     {
@@ -146,6 +155,17 @@ class McpController extends Controller
                             'items' => ['type' => 'string'],
                             'description' => 'Labels of related existing nodes to connect to',
                         ],
+                        'certainty' => [
+                            'type' => 'string',
+                            'enum' => ['overene', 'hypoteza', 'pasca'],
+                            'description' => 'Confidence level: overene = verified/proven, '
+                                .'hypoteza = hypothesis to confirm, pasca = pitfall/gotcha to avoid',
+                        ],
+                        'tags' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Free-form tags (many-to-many) to categorise the node',
+                        ],
                         'session_key' => $sessionKey,
                     ],
                     'required' => ['type', 'label', 'area'],
@@ -189,6 +209,28 @@ class McpController extends Controller
                     'properties' => (object) [],
                 ],
             ],
+            [
+                'name' => 'mind_decision',
+                'description' => 'Record a decision on the mind\'s timeline: a choice made and (optionally) '
+                    .'why. Stored as a session decision (origin=session) — works regardless of the '
+                    .'brain-write guard. Use Slovak for the decision text. Never store secrets.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'text' => ['type' => 'string', 'description' => 'What was decided (one to three sentences)'],
+                        'reason' => ['type' => 'string', 'description' => 'Why — the rationale behind the decision'],
+                        'area' => [
+                            'type' => 'string',
+                            'description' => 'Target area name — one of the areas returned by mind_overview',
+                        ],
+                        'decided_on' => [
+                            'type' => 'string',
+                            'description' => 'Decision date (YYYY-MM-DD); defaults to today when omitted',
+                        ],
+                    ],
+                    'required' => ['text'],
+                ],
+            ],
         ];
     }
 
@@ -202,7 +244,8 @@ class McpController extends Controller
                 'mind_learn' => $this->toolLearn($args, $mind),
                 'mind_recall' => $this->toolRecall($args, $mind),
                 'mind_activate' => $this->toolActivate($args, $mind),
-                'mind_overview' => $mind->overview(),
+                'mind_overview' => $this->toolOverview($mind),
+                'mind_decision' => $this->toolDecision($args),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {
@@ -258,30 +301,22 @@ class McpController extends Controller
             departmentName: isset($args['department']) ? (string) $args['department'] : null,
             connections: array_values((array) ($args['connections'] ?? [])),
             sessionKey: isset($args['session_key']) ? (string) $args['session_key'] : null,
+            certainty: isset($args['certainty']) && $args['certainty'] !== '' ? (string) $args['certainty'] : null,
+            tags: array_values(array_filter(array_map(
+                fn ($t) => trim((string) $t),
+                (array) ($args['tags'] ?? []),
+            ), fn (string $t): bool => $t !== '')),
         );
     }
 
-    /** Heuristika na heslá, API kľúče a tokeny — nič z toho do vedomia nepatrí. */
+    /**
+     * Heuristika na heslá, API kľúče a tokeny — nič z toho do vedomia nepatrí.
+     * Deleguje na {@see SecretScanner} (jediný zdroj pravdy pre detekciu tajomstiev,
+     * zdieľaný s brain-write). Vracia len áno/nie, nikdy matched hodnotu.
+     */
     protected function looksLikeSecret(string $text): bool
     {
-        $patterns = [
-            '/-----BEGIN [A-Z ]*PRIVATE KEY/',                                  // PEM privátny kľúč
-            '/\bAKIA[0-9A-Z]{16}\b/',                                           // AWS access key
-            '/\bsk-[A-Za-z0-9_-]{20,}\b/',                                      // OpenAI/Anthropic style key
-            '/\bghp_[A-Za-z0-9]{36}\b/',                                        // GitHub PAT
-            '/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/',                               // Slack token
-            '/\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\./',                  // JWT
-            '/\b[0-9a-f]{40,}\b/i',                                             // dlhý hex (SHA/API kľúč)
-            '/(password|heslo|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S{6,}/i', // "heslo: ..."
-        ];
-
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $text)) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->secrets->looksLikeSecret($text);
     }
 
     protected function toolRecall(array $args, MindService $mind): array
@@ -304,6 +339,10 @@ class McpController extends Controller
                 'area' => $node->area?->name,
                 'department' => $node->department?->name,
                 'strength' => (float) $node->strength,
+                'certainty' => $node->certainty,
+                'tags' => $node->tags()->pluck('name')->all(),
+                'verified' => $node->verified_at !== null,
+                'origin' => $node->origin,
                 'description' => $node->description,
             ])->all(),
         ];
@@ -329,6 +368,71 @@ class McpController extends Controller
         }
 
         return ['action' => 'activated', 'node' => $node];
+    }
+
+    /**
+     * Štruktúra vedomia + počet uzlov čakajúcich na kontrolu (needs_review),
+     * aby Claude vedel, koľko brain-indexed poznatkov treba ešte overiť.
+     */
+    protected function toolOverview(MindService $mind): array
+    {
+        $data = $mind->overview();
+        $data['totals']['needs_review'] = (int) Node::where('needs_review', true)->count();
+
+        return $data;
+    }
+
+    /**
+     * Zaznamená rozhodnutie do časovej osi ako DB záznam origin=session. Funguje
+     * bez ohľadu na brain-write guard (§4.7). Markdown zrkadlo sa z MCP NEpíše —
+     * na to slúži REST DecisionController pri guard ON.
+     */
+    protected function toolDecision(array $args): array
+    {
+        if (blank($args['text'] ?? null)) {
+            throw new \InvalidArgumentException('Missing required argument: text');
+        }
+
+        $text = trim((string) $args['text']);
+        $reason = isset($args['reason']) && trim((string) $args['reason']) !== ''
+            ? trim((string) $args['reason'])
+            : null;
+
+        // serverová poistka blacklistu — rozhodnutie nesmie niesť heslo/kľúč/token
+        if ($this->looksLikeSecret($text) || ($reason !== null && $this->looksLikeSecret($reason))) {
+            return [
+                'content' => [[
+                    'type' => 'text',
+                    'text' => 'Odmietnuté: rozhodnutie vyzerá ako heslo/API kľúč/token — to do vedomia nepatrí (pravidlo blacklistu).',
+                ]],
+                'isError' => true,
+            ];
+        }
+
+        $decidedOn = ! empty($args['decided_on']) ? (string) $args['decided_on'] : now()->toDateString();
+        $areaId = ! empty($args['area']) ? $this->resolveAreaId((string) $args['area']) : null;
+
+        $decision = Decision::create([
+            'area_id' => $areaId,
+            'decided_on' => $decidedOn,
+            'text' => $text,
+            'reason' => $reason,
+            'origin' => 'session',
+        ]);
+
+        return ['action' => 'decided', 'decision' => $decision->toApi()];
+    }
+
+    /** Oblasť podľa id (numerické) alebo slug/mena → area_id alebo null. */
+    protected function resolveAreaId(string $area): ?int
+    {
+        if (ctype_digit($area)) {
+            return Area::whereKey((int) $area)->value('id');
+        }
+
+        return Area::where('slug', Str::slug($area))
+            ->orWhereRaw('LOWER(name) = ?', [mb_strtolower(trim($area))])
+            ->value('id');
     }
 
     protected function error(mixed $id, int $code, string $message): array
