@@ -197,22 +197,26 @@ class MindService
 
         // SQL relevancia (label=2, description=1 za koreň) drží top kandidátov —
         // silné, ale nezhodné uzly už NEvytláčajú slabšie skutočné zhody.
+        // COLLATE utf8mb4_unicode_ci = accent-insensitive: ASCII koreň 'sperk'
+        // tak v SQL trafí aj diakritický 'Šperky' (a naopak). Ako poistka aj
+        // OR bez collate pre prípad odlišnej kolácie stĺpca.
+        $col = ' COLLATE utf8mb4_unicode_ci';
         $orderCases = [];
         $orderBindings = [];
         foreach ($roots as $root) {
-            $orderCases[] = '(CASE WHEN label LIKE ? THEN 2 ELSE 0 END)';
+            $orderCases[] = '(CASE WHEN label LIKE ?'.$col.' THEN 2 ELSE 0 END)';
             $orderBindings[] = '%'.$root.'%';
-            $orderCases[] = '(CASE WHEN description LIKE ? THEN 1 ELSE 0 END)';
+            $orderCases[] = '(CASE WHEN description LIKE ?'.$col.' THEN 1 ELSE 0 END)';
             $orderBindings[] = '%'.$root.'%';
         }
 
         $nodes = Node::query()
             ->with(['area', 'department'])
-            ->where(function ($q) use ($roots) {
+            ->where(function ($q) use ($roots, $col) {
                 foreach ($roots as $root) {
                     $like = '%'.$root.'%';
-                    $q->orWhere('label', 'like', $like)
-                        ->orWhere('description', 'like', $like);
+                    $q->orWhereRaw('label LIKE ?'.$col, [$like])
+                        ->orWhereRaw('description LIKE ?'.$col, [$like]);
                 }
             })
             ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
@@ -222,7 +226,9 @@ class MindService
 
         return $nodes
             ->map(function (Node $node) use ($concepts, $roots) {
-                $hay = ' '.mb_strtolower(trim($node->label.' '.(string) $node->description)).' ';
+                // fold haystack — korene sú už foldnuté v queryConcepts, takže
+                // tvrdý prah je tiež necitlivý na diakritiku
+                $hay = ' '.$this->fold(trim($node->label.' '.(string) $node->description)).' ';
 
                 // koncept je zhoda, ak ho trafí aspoň jeden jeho koreň
                 $score = $concepts->filter(
@@ -271,12 +277,26 @@ class MindService
 
         return $terms
             ->map(fn ($term) => collect($sim->expandTerms([$term]))
-                ->map(fn ($t) => $this->skStem((string) $t))
+                ->map(fn ($t) => $this->fold($this->skStem((string) $t)))
                 ->filter(fn ($root) => mb_strlen($root) >= 3)
                 ->unique()
                 ->values())
             ->filter(fn (Collection $roots) => $roots->isNotEmpty())
             ->values();
+    }
+
+    /**
+     * ASCII-fold slovenskej diakritiky (á→a, š→s, ž→z…). Vďaka nemu je hľadanie
+     * necitlivé na diakritiku: 'sperky' nájde 'šperky', 'marza' nájde 'maržu'.
+     * Fold je 1:1 znak → znak, takže znakové offsety ostávajú platné aj v origináli.
+     */
+    public function fold(string $s): string
+    {
+        return strtr(mb_strtolower($s), [
+            'á' => 'a', 'ä' => 'a', 'č' => 'c', 'ď' => 'd', 'é' => 'e', 'í' => 'i',
+            'ĺ' => 'l', 'ľ' => 'l', 'ň' => 'n', 'ó' => 'o', 'ô' => 'o', 'ŕ' => 'r',
+            'š' => 's', 'ť' => 't', 'ú' => 'u', 'ý' => 'y', 'ž' => 'z',
+        ]);
     }
 
     /**
@@ -341,7 +361,9 @@ class MindService
             return null;
         }
 
-        $lower = mb_strtolower($text);
+        // fold text aj hľadanie — korene sú foldnuté, fold je 1:1 znak, takže
+        // nájdený offset platí aj v origináli (necitlivé na diakritiku)
+        $lower = $this->fold($text);
         $pos = null;
         foreach ($roots as $root) {
             $p = mb_strpos($lower, $root);

@@ -30,7 +30,7 @@ class SearchController extends Controller
         return response()->json([
             'query' => $q,
             'nodes' => $this->searchNodes($mind, $q),
-            'playbooks' => $this->searchPlaybooks($q, $roots),
+            'playbooks' => $this->searchPlaybooks($mind, $q, $roots),
         ]);
     }
 
@@ -52,10 +52,11 @@ class SearchController extends Controller
     /**
      * @param  Collection<int, string>  $roots  stemované korene z toho istého enginu
      */
-    protected function searchPlaybooks(string $q, Collection $roots): array
+    protected function searchPlaybooks(MindService $mind, string $q, Collection $roots): array
     {
-        // hľadaj podľa koreňov (SK skloňovanie) + surového dopytu ako fallback
-        $needles = $roots->push(mb_strtolower($q))
+        // hľadaj podľa koreňov (SK skloňovanie) + surového dopytu ako fallback;
+        // korene sú foldnuté (bez diakritiky), tak fold aj obsah playbookov
+        $needles = $roots->push($mind->fold($q))
             ->map(fn ($n) => trim((string) $n))
             ->filter(fn ($n) => $n !== '')
             ->unique()
@@ -68,8 +69,8 @@ class SearchController extends Controller
                 break;
             }
 
-            $lowerContent = mb_strtolower($content);
-            $lowerName = mb_strtolower(basename($relPath));
+            $lowerContent = $mind->fold($content);
+            $lowerName = $mind->fold(basename($relPath));
 
             $pos = null;
             $inName = false;

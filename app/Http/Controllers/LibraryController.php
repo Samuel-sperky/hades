@@ -31,8 +31,9 @@ class LibraryController extends Controller
             ->get(['id', 'label', 'area_id', 'description', 'meta', 'external_key']);
 
         if ($roots->isNotEmpty()) {
-            $skills = $skills->filter(function (Node $n) use ($roots) {
-                $hay = mb_strtolower($n->label.' '.(string) $n->description);
+            $skills = $skills->filter(function (Node $n) use ($roots, $mind) {
+                // korene sú foldnuté (bez diakritiky) → fold aj obsah skillu
+                $hay = $mind->fold($n->label.' '.(string) $n->description);
 
                 return $roots->contains(fn ($root) => mb_strpos($hay, $root) !== false);
             });
