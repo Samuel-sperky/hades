@@ -3,54 +3,64 @@
 namespace App\Http\Controllers;
 
 use App\Models\Node;
+use App\Services\MindService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class SearchController extends Controller
 {
-    /** Fulltext naprieč uzlami a playbook súbormi (skills/<oblast>/<slug>.md). */
-    public function index(Request $request): JsonResponse
+    /**
+     * Fulltext naprieč uzlami a playbook súbormi (skills/<oblast>/<slug>.md).
+     * Uzly aj playbooky bežia cez TEN ISTÝ SK-aware engine (MindService:
+     * stemované korene + doménová expanzia), takže slovenské skloňovanie
+     * ('maržu' → 'marža') funguje rovnako na webe aj v recall.
+     */
+    public function index(Request $request, MindService $mind): JsonResponse
     {
         $validated = $request->validate([
             'q' => 'required|string|min:2',
         ]);
 
         $q = trim($validated['q']);
+        $roots = $mind->queryRoots($q);
 
         return response()->json([
             'query' => $q,
-            'nodes' => $this->searchNodes($q),
-            'playbooks' => $this->searchPlaybooks($q),
+            'nodes' => $this->searchNodes($mind, $q),
+            'playbooks' => $this->searchPlaybooks($q, $roots),
         ]);
     }
 
-    protected function searchNodes(string $q): array
+    protected function searchNodes(MindService $mind, string $q): array
     {
-        $like = '%'.$q.'%';
-
-        return Node::query()
-            ->where(fn ($w) => $w->where('label', 'like', $like)->orWhere('description', 'like', $like))
-            ->orderByRaw("CASE WHEN type = 'core' THEN 1 ELSE 0 END")
-            ->orderByDesc('strength')
-            ->limit(10)
-            ->get()
-            ->map(fn (Node $n) => [
+        return $mind->searchNodes($q, 10)
+            ->map(fn (array $row) => [
                 'kind' => 'node',
-                'id' => $n->id,
-                'label' => $n->label,
-                'type' => $n->type,
-                'source' => $n->source,
-                'area_id' => $n->area_id,
-                'snippet' => $n->description ? Str::limit(trim(preg_replace('/\s+/', ' ', $n->description)), 90) : null,
+                'id' => $row['node']->id,
+                'label' => $row['node']->label,
+                'type' => $row['node']->type,
+                'source' => $row['node']->source,
+                'area_id' => $row['node']->area_id,
+                'snippet' => $row['snippet'],
             ])
-            ->values()
             ->all();
     }
 
-    protected function searchPlaybooks(string $q): array
+    /**
+     * @param  Collection<int, string>  $roots  stemované korene z toho istého enginu
+     */
+    protected function searchPlaybooks(string $q, Collection $roots): array
     {
+        // hľadaj podľa koreňov (SK skloňovanie) + surového dopytu ako fallback
+        $needles = $roots->push(mb_strtolower($q))
+            ->map(fn ($n) => trim((string) $n))
+            ->filter(fn ($n) => $n !== '')
+            ->unique()
+            ->values();
+
         $results = [];
 
         foreach ($this->playbookContents() as $relPath => $content) {
@@ -58,10 +68,22 @@ class SearchController extends Controller
                 break;
             }
 
-            $inName = stripos(basename($relPath), $q) !== false;
-            $pos = stripos($content, $q);
+            $lowerContent = mb_strtolower($content);
+            $lowerName = mb_strtolower(basename($relPath));
 
-            if (! $inName && $pos === false) {
+            $pos = null;
+            $inName = false;
+            foreach ($needles as $needle) {
+                if (! $inName && mb_strpos($lowerName, $needle) !== false) {
+                    $inName = true;
+                }
+                $p = mb_strpos($lowerContent, $needle);
+                if ($p !== false) {
+                    $pos = $pos === null ? $p : min($pos, $p);
+                }
+            }
+
+            if (! $inName && $pos === null) {
                 continue;
             }
 
@@ -69,7 +91,7 @@ class SearchController extends Controller
                 'kind' => 'playbook',
                 'path' => $relPath,
                 'title' => $this->firstHeading($content) ?? Str::headline(pathinfo($relPath, PATHINFO_FILENAME)),
-                'snippet' => $this->snippetAround($content, $pos === false ? 0 : $pos, $q),
+                'snippet' => $this->snippetAround($content, $pos ?? 0, $q),
                 'node_id' => $this->playbookNodeId($relPath),
             ];
         }
@@ -113,15 +135,14 @@ class SearchController extends Controller
         return null;
     }
 
-    /** ±90 znakov okolo prvého výskytu, zbalené na jeden riadok. */
-    protected function snippetAround(string $content, int $pos, string $q): string
+    /** ±90 znakov okolo prvého výskytu (znakový offset), zbalené na jeden riadok. */
+    protected function snippetAround(string $content, int $charPos, string $q): string
     {
-        // $pos je bajtový offset zo stripos — preveď na znakový, aby mb_substr nerozsekol diakritiku
-        $charPos = mb_strlen(substr($content, 0, $pos));
+        // $charPos je ZNAKOVÝ offset (z mb_strpos) — priamo použiteľný pre mb_substr
         $start = max(0, $charPos - 90);
         $chunk = mb_substr($content, $start, 180 + mb_strlen($q));
 
-        return trim(preg_replace('/\s+/', ' ', $chunk));
+        return trim(preg_replace('/\s+/u', ' ', $chunk));
     }
 
     /** ID skill uzla podľa external_key 'skill:<oblast>/<slug>' (bez N+1). */

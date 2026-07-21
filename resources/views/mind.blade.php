@@ -16,48 +16,95 @@
     <header id="app-header">
         <div class="h-left">
             <span id="brand-name">Hades</span>
-            <nav id="breadcrumb" aria-label="Aktuálny fokus"></nav>
+            <nav id="breadcrumb" aria-label="Aktuálny kontext"></nav>
             <span id="status-chip" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="txt">spí</span></span>
         </div>
         <div class="h-center">
+            <div id="graph-tools" role="group" aria-label="Nástroje grafu">
+                <button id="btn-structure" class="ms" title="Štruktúra (R)" aria-label="Štruktúra">account_tree</button>
+                <button id="btn-stats" class="ms" title="Prehľad (S)" aria-label="Prehľad">monitoring</button>
+                <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
+            </div>
             <div id="view-switch" role="group" aria-label="Náhľad siete">
                 <button data-view="map">Mapa</button>
                 <button data-view="net">Sieť</button>
                 <button data-view="layers">Vrstvy</button>
             </div>
+            <div id="header-metrics" aria-live="polite"></div>
         </div>
-        <div id="timeline" class="hidden">
-            <button id="tl-play" class="ms primary" title="Prehrať rast vedomia" aria-label="Prehrať rast vedomia">play_arrow</button>
-            <input type="range" id="tl-range" min="0" max="1000" value="1000" aria-label="Časová os">
-            <span id="tl-label">teraz</span>
+        <div class="h-right">
+            <button id="pack-trigger" type="button" class="hidden" aria-label="Balík pre Claude Code">
+                <span class="ms" aria-hidden="true">inventory_2</span>
+                <span id="pack-count">0</span>
+            </button>
+            <button id="cmdk-trigger" type="button" aria-label="Hľadať (Ctrl+K)">
+                <span class="ms" aria-hidden="true">search</span>
+                <span class="cmdk-hint">Hľadať</span>
+                <kbd>Ctrl K</kbd>
+            </button>
         </div>
-        <div id="header-metrics" aria-live="polite"></div>
     </header>
 
     <nav id="rail" aria-label="Hlavná navigácia">
-        <button id="brand-core" type="button" title="Hades" aria-label="Hades — vycentrovať">
+        <button id="brand-core" type="button" title="Hades — vycentrovať graf" aria-label="Hades — vycentrovať graf">
             <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
                 <circle cx="12" cy="12" r="3.6" fill="currentColor"/>
                 <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-width="1.6"/>
             </svg>
         </button>
 
-        <div class="rail-group" role="group" aria-label="Sekcie">
-            <button id="btn-structure" class="ms" title="Štruktúra (R)" aria-label="Štruktúra">account_tree</button>
-            <button id="btn-search" class="ms" title="Vyhľadať uzol (F)" aria-label="Vyhľadať uzol">search</button>
-            <button id="btn-stats" class="ms" title="Prehľad (S)" aria-label="Prehľad">monitoring</button>
-            <button id="btn-journal" class="ms" title="Denník záznamov (D)" aria-label="Denník záznamov">receipt_long</button>
-            <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
-            <button id="btn-timeline" class="ms" title="Časová os (T)" aria-label="Časová os">history</button>
+        <div class="rail-group" role="group" aria-label="Obrazovky">
+            <button class="dest" data-screen="dnes" type="button" aria-label="Dnes">
+                <span class="ms" aria-hidden="true">wb_sunny</span><span class="lbl">Dnes</span>
+            </button>
+            <button class="dest" data-screen="dennik" type="button" aria-label="Denník">
+                <span class="ms" aria-hidden="true">receipt_long</span><span class="lbl">Denník</span>
+            </button>
+            <button class="dest" data-screen="graf" type="button" aria-label="Graf">
+                <span class="ms" aria-hidden="true">hub</span><span class="lbl">Graf</span>
+            </button>
+            <button class="dest" data-screen="kniznica" type="button" aria-label="Knižnica">
+                <span class="ms" aria-hidden="true">menu_book</span><span class="lbl">Knižnica</span>
+            </button>
         </div>
 
         <div class="rail-group bottom" role="group" aria-label="Systém">
-            <button id="btn-sound" class="ms" title="Zvuk" aria-label="Zvuk">volume_up</button>
-            <button id="btn-ambient" class="ms" title="Ambient režim" aria-label="Ambient režim">fullscreen</button>
-            <button id="btn-help" class="ms" title="Pomocník (?)" aria-label="Pomocník">help</button>
-            <button id="btn-settings" class="ms" title="Nastavenia zobrazenia" aria-label="Nastavenia zobrazenia">tune</button>
+            <button id="btn-settings" class="dest" type="button" aria-label="Nastavenia">
+                <span class="ms" aria-hidden="true">tune</span><span class="lbl">Nastavenia</span>
+            </button>
+            <button id="btn-help" class="dest" type="button" aria-label="Pomocník">
+                <span class="ms" aria-hidden="true">help</span><span class="lbl">Pomoc</span>
+            </button>
         </div>
     </nav>
+
+    <main id="screens">
+        <section class="screen" id="screen-dnes">
+            <header class="screen-head">
+                <h1>Dnes</h1>
+                <p class="screen-sub">Čo sa práve deje vo vedomí</p>
+            </header>
+            <div id="dnes-body"></div>
+        </section>
+
+        <section class="screen" id="screen-dennik">
+            <header class="screen-head">
+                <h1>Denník</h1>
+                <p class="screen-sub">Záznamy zo sessions po dňoch</p>
+            </header>
+            <div id="journal-filter"></div>
+            <div id="journal-list"></div>
+        </section>
+
+        <section class="screen" id="screen-kniznica">
+            <header class="screen-head">
+                <h1>Knižnica</h1>
+                <p class="screen-sub">Skills usporiadané podľa oblastí</p>
+                <input id="library-search" placeholder="Filtrovať skills…" autocomplete="off" aria-label="Filtrovať skills">
+            </header>
+            <div id="library-body"></div>
+        </section>
+    </main>
 
     <aside id="dock" class="hidden" aria-label="Bočný panel">
         <div class="dock-head">
@@ -70,11 +117,6 @@
             <button id="btn-new-node" class="ghost" type="button">+ Nový uzol</button>
         </section>
 
-        <section id="sec-search" class="hidden">
-            <input id="search-input" placeholder="Hľadať uzol…" autocomplete="off">
-            <div id="search-results"></div>
-        </section>
-
         <section id="sec-stats" class="hidden">
             <div id="stats-cards" class="metric-grid"></div>
             <h3>Oblasti</h3>
@@ -85,11 +127,6 @@
             <div id="stats-recent"></div>
             <h3>Aktivita (30 dní)</h3>
             <canvas id="growth-chart" width="248" height="60"></canvas>
-        </section>
-
-        <section id="sec-journal" class="hidden">
-            <div id="journal-filter"></div>
-            <div id="journal-list"></div>
         </section>
 
         <section id="sec-legend" class="hidden">
@@ -109,12 +146,27 @@
                 <span id="theme-toggle-label">Tmavý režim</span>
                 <button id="theme-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="theme-toggle-label"></button>
             </div>
+            <div class="switch-row">
+                <span id="chat-toggle-label">Chat s Hadesom (potrebuje API kľúč)</span>
+                <button id="chat-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="chat-toggle-label"></button>
+            </div>
+            <div class="switch-row">
+                <span id="sound-toggle-label">Zvuk</span>
+                <button id="btn-sound" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="sound-toggle-label"></button>
+            </div>
+            <div class="row">
+                <button id="btn-ambient" class="ghost" type="button">Ambient režim (celá obrazovka)</button>
+            </div>
             <h3>Pohyb</h3>
             <label class="slider">Animácie
                 <input type="range" data-opt="anim" min="0" max="1" step="0.05">
                 <output></output>
             </label>
             <h3>Sieť — filter</h3>
+            <div class="switch-row">
+                <span id="scope-label">Zobraziť knižnicu v grafe</span>
+                <button id="scope-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="scope-label"></button>
+            </div>
             <div class="check-cap">Typy</div>
             <label class="check"><input type="checkbox" data-ftype="memory" checked><span class="box" aria-hidden="true"></span><span>Spomienky</span></label>
             <label class="check"><input type="checkbox" data-ftype="skill" checked><span class="box" aria-hidden="true"></span><span>Skills</span></label>
@@ -198,9 +250,6 @@
             <div class="row">
                 <button id="opts-reset">Obnoviť predvolené</button>
             </div>
-            <h3>Údržba</h3>
-            <button id="btn-duplicates" class="ghost" type="button">Nájsť duplicity</button>
-            <div id="dup-list"></div>
         </section>
     </aside>
 
@@ -224,6 +273,7 @@
             <div id="node-history"></div>
             <div class="row node-actions">
                 <button id="node-edit" class="primary">Upraviť</button>
+                <button id="node-pack" class="ghost ms" title="Do balíka" aria-label="Do balíka" aria-pressed="false">library_add</button>
                 <button id="node-md" class="ghost ms hidden" title="Zobraziť dokument" aria-label="Zobraziť dokument">description</button>
                 <button id="node-connect" class="ghost ms" title="Prepojiť s uzlom" aria-label="Prepojiť s uzlom">link</button>
                 <button id="node-delete" class="danger ms" aria-label="Zmazať">delete</button>
@@ -246,6 +296,19 @@
         </div>
     </aside>
 
+    <aside id="pack-drawer" class="hidden" aria-label="Balík pre Claude Code">
+        <div class="dock-head">
+            <h2>Balík pre Claude Code</h2>
+            <button class="close ms" id="pack-close" aria-label="Zavrieť">close</button>
+        </div>
+        <p class="pack-hint">Vybrané uzly skopíruješ ako markdown a vložíš do Claude Code.</p>
+        <div id="pack-list"></div>
+        <div class="row pack-actions">
+            <button id="pack-copy" class="primary" type="button">Kopírovať pre Claude Code</button>
+            <button id="pack-clear" class="ghost" type="button">Vyprázdniť</button>
+        </div>
+    </aside>
+
     <div id="zoomctl" role="group" aria-label="Ovládanie kamery">
         <button id="zoom-in" class="ms" title="Priblížiť (+)" aria-label="Priblížiť">add</button>
         <button id="zoom-out" class="ms" title="Oddialiť (−)" aria-label="Oddialiť">remove</button>
@@ -265,6 +328,17 @@
     <div id="toasts" aria-live="polite"></div>
     <div id="hover-card" class="hidden" role="tooltip"></div>
 
+    <div id="cmdk" class="hidden" role="dialog" aria-modal="true" aria-label="Hľadať">
+        <div id="cmdk-card">
+            <div class="cmdk-input-row">
+                <span class="ms" aria-hidden="true">search</span>
+                <input id="cmdk-input" placeholder="Hľadať uzly, playbooky, obrazovky…" autocomplete="off" aria-label="Hľadať">
+                <kbd>esc</kbd>
+            </div>
+            <div id="cmdk-results"></div>
+        </div>
+    </div>
+
     <div id="help-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Klávesové skratky">
         <div id="help-card">
             <div class="dock-head">
@@ -283,7 +357,8 @@
             </div>
             <div id="md-body" class="md-body"></div>
             <div id="md-foot">
-                <button type="button" class="primary" id="md-context">Do kontextu</button>
+                <button type="button" class="ghost hidden" id="md-copypath">Kopírovať cestu</button>
+                <button type="button" class="primary" id="md-pack">Do balíka</button>
             </div>
         </div>
     </div>

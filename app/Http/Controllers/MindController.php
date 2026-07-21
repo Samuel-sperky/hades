@@ -8,15 +8,48 @@ use App\Models\Department;
 use App\Models\Edge;
 use App\Models\Node;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class MindController extends Controller
 {
-    public function graph(): JsonResponse
+    /**
+     * Graf vedomia. ?scope určuje rozsah:
+     *   - 'live' (default) — len „živé" uzly: jadro + projekty + spomienky PLUS
+     *     skilly, ktoré sa reálne použili (majú aktiváciu 'activate'/'skill-used').
+     *     Typicky ~80–120 uzlov namiesto vyše 550 → čitateľný denný pohľad.
+     *   - 'all' — všetky uzly (spätná kompatibilita).
+     * Hrany sa vždy vracajú len medzi vrátenými uzlami. Listing NEnesie popis
+     * (detail ho dotiahne cez /api/nodes/{id}) — menší payload.
+     */
+    public function graph(Request $request): JsonResponse
     {
-        $nodes = Node::all();
-        $edges = Edge::all();
+        $scope = $request->query('scope', 'live') === 'all' ? 'all' : 'live';
+
+        if ($scope === 'all') {
+            $nodes = Node::all();
+        } else {
+            $usedSkillIds = Activation::query()
+                ->whereIn('kind', ['activate', 'skill-used'])
+                ->distinct()
+                ->pluck('node_id')
+                ->all();
+
+            // (type != skill) OR (skill, ktorý sa reálne použil)
+            $nodes = Node::query()
+                ->where(function ($q) use ($usedSkillIds) {
+                    $q->where('type', '!=', 'skill')
+                        ->orWhereIn('id', $usedSkillIds);
+                })
+                ->get();
+        }
+
+        $nodeIds = $nodes->pluck('id')->flip();
+
+        // hrany len medzi vrátenými uzlami
+        $edges = Edge::all()->filter(
+            fn (Edge $e) => $nodeIds->has($e->source_id) && $nodeIds->has($e->target_id)
+        )->values();
 
         // Spresnenie vrstvy pre skills: hidden → hidden_in / hidden_out podľa
         // váženého náklonu väzieb. Počíta sa tu, lebo len controller má naraz
@@ -25,6 +58,7 @@ class MindController extends Controller
 
         return response()->json([
             'name' => config('hades.name'),
+            'scope' => $scope,
             'state' => $this->state(),
             'ws' => [
                 'key' => config('broadcasting.connections.reverb.key'),
@@ -33,15 +67,13 @@ class MindController extends Controller
             ],
             'areas' => Area::orderBy('angle')->get(),
             'departments' => Department::all(),
-            // listing nesie skrátený popis — plný text vracia detail /api/nodes/{id}
+            // listing bez popisu — plný text vracia detail /api/nodes/{id}
             'nodes' => $nodes->map(function (Node $node) use ($hiddenSplit) {
                 $api = $node->toApi();
                 if (isset($hiddenSplit[$node->id])) {
                     $api['layer_role'] = $hiddenSplit[$node->id];
                 }
-                $api['description'] = $api['description'] === null
-                    ? null
-                    : Str::limit($api['description'], 200);
+                $api['description'] = null;
 
                 return $api;
             }),

@@ -27,6 +27,19 @@ class MindService
     ];
 
     /**
+     * Slovenské + anglické funkčné slová, ktoré v dopyte nič zmysluplné
+     * nehľadajú. Odhadzujú sa PRED stemmingom — bránia tomu, aby '%ako%' a
+     * spol. našli skoro každý uzol a zhodili relevanciu na strength.
+     */
+    protected const STOP = [
+        'ako', 'aby', 'ale', 'alebo', 'ani', 'and', 'the', 'pre', 'pri', 'pro',
+        'cez', 'som', 'byť', 'bez', 'tak', 'len', 'už', 'kto', 'čo', 'že', 'či',
+        'aj', 'nie', 'áno', 'ešte', 'for', 'with', 'from', 'you', 'this', 'that',
+        'not', 'sme', 'ste', 'sú', 'bol', 'bola', 'boli', 'mať', 'ten', 'tej',
+        'táto', 'tento', 'toto', 'sem', 'tam', 'kde', 'keď', 'pod', 'nad', 'ich',
+    ];
+
+    /**
      * Ulozi novy poznatok. Ak uz podobny uzol existuje, zluci ho (auto-merge)
      * namiesto vytvorenia duplicity.
      */
@@ -102,54 +115,15 @@ class MindService
      */
     public function recall(string $query, int $limit = 12, ?string $sessionKey = null): Collection
     {
-        $terms = collect(preg_split('/[\s,;]+/u', mb_strtolower($query)))
-            ->map(fn ($t) => trim($t))
-            ->filter(fn ($t) => mb_strlen($t) >= 3)
-            ->take(8);
+        // Jeden zdroj pravdy: stemovaný SK-aware engine s tvrdým prahom.
+        // recall() pridáva navrch len graph-walk + „spomienkový" pulz.
+        $matches = $this->searchNodes($query, $limit);
 
-        if ($terms->isEmpty()) {
-            $terms = collect([mb_strtolower(trim($query))])->filter();
-        }
-
-        // Rozšír dopyt o kanonické/synonymné varianty PRED LIKE — doménový
-        // slovník (SK↔EN) zo SimilarityService. 'pricing' tak nájde aj
-        // 'Cenotvorba…', 'objednávka' aj 'order' atď. Skóre/limit/graph-walk
-        // ostávajú nezmenené, len term-set je bohatší.
-        $terms = collect(app(SimilarityService::class)->expandTerms($terms->all()))
-            ->filter(fn ($t) => mb_strlen($t) >= 3)
-            ->values();
-
-        if ($terms->isEmpty()) {
+        if ($matches->isEmpty()) {
             return collect();
         }
 
-        $nodes = Node::query()
-            ->with(['area', 'department'])
-            ->where(function ($q) use ($terms) {
-                foreach ($terms as $term) {
-                    $like = '%'.$term.'%';
-                    $q->orWhere('label', 'like', $like)
-                        ->orWhere('description', 'like', $like);
-                }
-            })
-            ->orderByDesc('strength')
-            ->limit($limit * 3)
-            ->get();
-
-        $scored = $nodes->map(function (Node $node) use ($terms) {
-            $haystack = mb_strtolower($node->label.' '.$node->description);
-            $hits = $terms->filter(fn ($t) => str_contains($haystack, $t))->count();
-
-            return ['node' => $node, 'score' => $hits * 10 + min((float) $node->strength, 20)];
-        })
-            ->sortByDesc('score')
-            ->take($limit)
-            ->pluck('node')
-            ->values();
-
-        if ($scored->isEmpty()) {
-            return $scored;
-        }
+        $scored = $matches->pluck('node')->values();
 
         // Graph-walk hĺbky 1: k primárnym zásahom pridaj ich priamych susedov
         // (jeden skok po hranách) s polovičnou relevanciou. Primáre si držia
@@ -196,6 +170,194 @@ class MindService
         MindPulse::dispatch('recall', ['node_ids' => $result->pluck('id')->all()]);
 
         return $result;
+    }
+
+    /**
+     * Jediný fulltextový engine nad uzlami — zdroj pravdy pre recall() aj
+     * webové /api/search. Dopyt sa rozloží na stemované SK korene + doménovú
+     * expanziu (SimilarityService), hľadá sa cez LIKE %koreň% v labeli aj
+     * popise. TVRDÝ PRAH: uzol bez jediného skutočného term-hitu sa NIKDY
+     * nevráti. Skóre = počet reálnych hitov; strength je len tie-break.
+     *
+     * @return Collection<int, array{node: Node, score: int, snippet: ?string}>
+     */
+    public function searchNodes(string $query, int $limit = 12): Collection
+    {
+        // Koncepty = pôvodné dopytové slová, každé so svojou skupinou koreňov
+        // (synonymá + pádové tvary). Skóre počíta ZHODNÉ KONCEPTY, nie korene —
+        // uzol bohatý na jeden pojem (napr. 5× „šperk/jewelry") tak nedostane
+        // umelo vyššie skóre než uzol, ktorý trafí dva rôzne pojmy.
+        $concepts = $this->queryConcepts($query);
+
+        if ($concepts->isEmpty()) {
+            return collect();
+        }
+
+        $roots = $concepts->flatten()->unique()->values();
+
+        // SQL relevancia (label=2, description=1 za koreň) drží top kandidátov —
+        // silné, ale nezhodné uzly už NEvytláčajú slabšie skutočné zhody.
+        $orderCases = [];
+        $orderBindings = [];
+        foreach ($roots as $root) {
+            $orderCases[] = '(CASE WHEN label LIKE ? THEN 2 ELSE 0 END)';
+            $orderBindings[] = '%'.$root.'%';
+            $orderCases[] = '(CASE WHEN description LIKE ? THEN 1 ELSE 0 END)';
+            $orderBindings[] = '%'.$root.'%';
+        }
+
+        $nodes = Node::query()
+            ->with(['area', 'department'])
+            ->where(function ($q) use ($roots) {
+                foreach ($roots as $root) {
+                    $like = '%'.$root.'%';
+                    $q->orWhere('label', 'like', $like)
+                        ->orWhere('description', 'like', $like);
+                }
+            })
+            ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
+            ->orderByDesc('strength')
+            ->limit(max($limit * 5, 60))
+            ->get();
+
+        return $nodes
+            ->map(function (Node $node) use ($concepts, $roots) {
+                $hay = ' '.mb_strtolower(trim($node->label.' '.(string) $node->description)).' ';
+
+                // koncept je zhoda, ak ho trafí aspoň jeden jeho koreň
+                $score = $concepts->filter(
+                    fn (Collection $conceptRoots) => $conceptRoots->contains(
+                        fn ($root) => mb_strpos($hay, $root) !== false
+                    )
+                )->count();
+
+                return [
+                    'node' => $node,
+                    'score' => $score,
+                    'snippet' => $this->snippetFor((string) $node->description, $roots),
+                ];
+            })
+            ->filter(fn ($row) => $row['score'] > 0)   // tvrdý prah — 0 zhodných konceptov = von
+            ->sortByDesc(fn ($row) => $row['score'] * 1000 + min((float) $row['node']->strength, 999))
+            ->take($limit)
+            ->values();
+    }
+
+    /**
+     * Dopyt → koncepty. Každý pôvodný (nestopový, ≥3 znaky) token sa samostatne
+     * rozšíri doménovým slovníkom (SK↔EN synonymá, SimilarityService::expandTerms)
+     * a stemuje (skStem) do skupiny koreňov. Skupinovanie drží pojmy oddelené,
+     * aby skóre v searchNodes vedelo počítať zhodné POJMY, nie surové korene.
+     *
+     * @return Collection<int, Collection<int, string>>
+     */
+    public function queryConcepts(string $query): Collection
+    {
+        $terms = collect(preg_split('/[\s,;.!?:()\/"]+/u', mb_strtolower($query)))
+            ->map(fn ($t) => trim($t))
+            ->filter(fn ($t) => mb_strlen($t) >= 3 && ! in_array($t, self::STOP, true))
+            ->take(12)
+            ->values();
+
+        if ($terms->isEmpty()) {
+            $bare = mb_strtolower(trim($query));
+            if ($bare === '') {
+                return collect();
+            }
+            $terms = collect([$bare]);
+        }
+
+        $sim = app(SimilarityService::class);
+
+        return $terms
+            ->map(fn ($term) => collect($sim->expandTerms([$term]))
+                ->map(fn ($t) => $this->skStem((string) $t))
+                ->filter(fn ($root) => mb_strlen($root) >= 3)
+                ->unique()
+                ->values())
+            ->filter(fn (Collection $roots) => $roots->isNotEmpty())
+            ->values();
+    }
+
+    /**
+     * Dopyt → plochá množina unikátnych koreňov pre LIKE %koreň% (playbooky,
+     * knižnica). Odvodené z queryConcepts, takže engine má jeden zdroj koreňov.
+     *
+     * @return Collection<int, string>
+     */
+    public function queryRoots(string $query): Collection
+    {
+        return $this->queryConcepts($query)->flatten()->unique()->values();
+    }
+
+    /**
+     * Lacný slovenský stemmer: orezáva bežné pádové/číselné (a pár slovesných)
+     * koncoviek na koreň. Orezáva NAJVIAC jednu koncovku a len ak koreň ostane
+     * aspoň 3 znaky; slová do 4 znakov nechá tak. Funguje na diakritickom aj
+     * bezdiakritickom tvare: 'maržu'→'marž', 'šperky'→'šperk',
+     * 'objednávok'→'objednáv'. 'docker'/'banner'/'order' ostávajú nedotknuté
+     * (ich koncovky v zozname nie sú), takže engine nezačne matchovať šum.
+     */
+    public function skStem(string $word): string
+    {
+        $w = mb_strtolower(trim($word));
+        $len = mb_strlen($w);
+
+        if ($len <= 4) {
+            return $w;
+        }
+
+        // koncovky zoradené od najdlhších — orež prvú, ktorá sedí
+        static $suffixes = [
+            'ejšieho', 'ejšiemu', 'ejších', 'ejšie', 'ejší',
+            'ovanie', 'ovania', 'ovať', 'ávať',
+            'ých', 'ého', 'ému', 'ími', 'emi', 'ami', 'ach', 'ách', 'iam', 'iach',
+            'ové', 'ová', 'ovi', 'och', 'iu', 'ie', 'ým', 'om', 'em', 'im',
+            'ou', 'ám', 'ov', 'mi',
+            'ať', 'iť', 'yť',
+            'a', 'e', 'i', 'o', 'u', 'y', 'á', 'é', 'í', 'ý', 'ú', 'ô', 'ä',
+        ];
+
+        foreach ($suffixes as $sfx) {
+            $sl = mb_strlen($sfx);
+            if ($len - $sl >= 3 && mb_substr($w, -$sl) === $sfx) {
+                return mb_substr($w, 0, $len - $sl);
+            }
+        }
+
+        return $w;
+    }
+
+    /**
+     * Úryvok ~140 znakov okolo prvého výskytu ktoréhokoľvek koreňa v popise
+     * (zbalený na jeden riadok) — hľadanie tak ukáže, KDE sa zhoda našla.
+     *
+     * @param  Collection<int, string>  $roots
+     */
+    protected function snippetFor(string $description, Collection $roots): ?string
+    {
+        $text = trim(preg_replace('/\s+/u', ' ', $description));
+        if ($text === '') {
+            return null;
+        }
+
+        $lower = mb_strtolower($text);
+        $pos = null;
+        foreach ($roots as $root) {
+            $p = mb_strpos($lower, $root);
+            if ($p !== false) {
+                $pos = $pos === null ? $p : min($pos, $p);
+            }
+        }
+
+        if ($pos === null) {
+            return mb_substr($text, 0, 140);
+        }
+
+        $start = max(0, $pos - 50);
+        $snippet = mb_substr($text, $start, 160);
+
+        return ($start > 0 ? '…' : '').$snippet.(mb_strlen($text) > $start + 160 ? '…' : '');
     }
 
     /**

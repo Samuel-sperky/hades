@@ -410,7 +410,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 #rail {
     position: fixed;
     top: var(--edge); left: var(--edge); bottom: var(--edge);
-    width: 56px;
+    width: 72px;
     display: flex; flex-direction: column; align-items: center;
     padding: var(--sp-1) 0; gap: var(--sp-1);
     /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur — GPU nerozmazáva pozadie
@@ -500,13 +500,43 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     background: var(--accent);
 }
 
+/* FÁZA SHELL: pomenované destinácie — ikona + text pod ňou */
+#rail .rail-group button.dest {
+    width: 60px; height: auto; min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: var(--sp-1) 2px;
+    border-radius: var(--r-md);
+}
+#rail .rail-group button.dest .ms { font-size: 22px; line-height: 1; }
+#rail .rail-group button.dest .lbl {
+    font-size: 10px;
+    font-weight: var(--fw-medium);
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+    text-align: center;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* denník unread dot — small teal marker on the destination */
+#rail .rail-group button.dest .dot {
+    position: absolute;
+    top: 6px; right: 10px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
 /* ---------------------------------------------------------------------------
    APP HEADER (#app-header) — fixed top bar past the rail; hosts brand,
    breadcrumb, view switch and the mono mini-metrics
    --------------------------------------------------------------------------- */
 #app-header {
     position: fixed;
-    top: var(--edge); left: 88px; right: var(--edge);
+    top: var(--edge); left: 104px; right: var(--edge);
     height: 44px;
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
@@ -628,7 +658,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     padding: var(--sp-2);
     overflow-y: auto;
 }
-#dock { left: 88px; animation: panel-in-l var(--dur-slow) var(--ease); }
+#dock { left: 104px; animation: panel-in-l var(--dur-slow) var(--ease); }
 #node-panel {
     right: var(--edge);
     animation: panel-in-r var(--dur-slow) var(--ease);
@@ -2134,15 +2164,17 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
 .nb-row .nb-del:focus-visible { opacity: 1; }
 .nb-row .nb-del:hover { color: var(--danger); background: var(--danger-soft); }
 
-/* Prepojiť s uzlom / dokument — štvorcové ghost tlačidlá medzi Upraviť a mazaním */
+/* Prepojiť s uzlom / dokument / do balíka — štvorcové ghost tlačidlá medzi Upraviť a mazaním */
 #node-connect,
-#node-md {
+#node-md,
+#node-pack {
     flex: 0 0 auto;
     width: 40px; height: 40px; min-height: 40px;
     padding: 0;
     font-size: var(--icon-md);
 }
 #node-md.hidden { display: none; }
+#node-pack.in-pack { color: var(--accent-600); background: var(--accent-soft); }
 
 /* ---------------------------------------------------------------------------
    NOVÝ UZOL (#btn-new-node) — tichá prerušovaná výzva pod stromom štruktúry
@@ -2160,6 +2192,407 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
     color: var(--accent-600);
 }
 
+/* ===========================================================================
+   FÁZA SHELL — obrazovky Dnes / Denník / Graf / Knižnica
+   Plátno (Graf) je hrdina len na svojej obrazovke; ostatné sú DOM na papieri.
+   =========================================================================== */
+
+/* Plátno + jeho chrome žijú len na obrazovke Graf */
+body:not([data-screen="graf"]) #mind { visibility: hidden; }
+body:not([data-screen="graf"]) #zoomctl,
+body:not([data-screen="graf"]) #view-switch,
+body:not([data-screen="graf"]) #graph-tools,
+body:not([data-screen="graf"]) #header-metrics,
+body:not([data-screen="graf"]) #local-chip { display: none !important; }
+
+/* Chat je schovaný, kým ho v Nastaveniach nezapneš (nefunguje bez API kľúča) */
+body:not(.chat-on) #prompt { display: none !important; }
+
+/* Kontajner obrazoviek — obsahová plocha za railom, pod hlavičkou */
+#screens {
+    position: fixed;
+    left: 104px; right: var(--edge);
+    top: calc(var(--edge) + 44px + var(--sp-1));
+    bottom: var(--edge);
+    overflow-y: auto;
+    z-index: var(--z-panel);
+}
+body[data-screen="graf"] #screens { display: none; }
+
+.screen { display: none; max-width: 920px; padding-right: var(--sp-1); }
+.screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
+
+.screen-head { margin-bottom: var(--sp-3); }
+.screen-head h1 {
+    font-family: var(--serif);
+    font-size: 28px; font-weight: 600;
+    color: var(--text); line-height: 1.2;
+}
+.screen-head .screen-sub {
+    margin-top: var(--sp-0);
+    color: var(--muted);
+    font-size: var(--fs-base);
+}
+#library-search {
+    display: block;
+    margin-top: var(--sp-2);
+    width: 100%; max-width: 420px;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--fs-base);
+    font-family: var(--font);
+    color: var(--text);
+}
+#library-search:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+
+/* Denník obrazovka — filter dostane vzduch nad zoznamom */
+#screen-dennik #journal-filter { margin-bottom: var(--sp-2); }
+
+/* ---- graph-tools (v hlavičke, len na Grafe) ---- */
+#graph-tools { display: flex; gap: var(--sp-0); }
+#app-header .h-center { display: flex; align-items: center; gap: var(--sp-2); }
+#header-metrics { flex: 0 0 auto; text-align: right; }
+#graph-tools button {
+    background: none; border: none;
+    color: var(--muted);
+    width: 32px; height: 32px; min-height: 32px;
+    border-radius: var(--r-sm);
+    font-size: var(--icon-sm);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#graph-tools button:hover { background: var(--hover-fill); color: var(--text); }
+#graph-tools button.active {
+    background: var(--accent-soft); color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+}
+#graph-tools button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---- Cmd-K trigger v hlavičke ---- */
+#app-header .h-right { flex: 0 0 auto; display: flex; align-items: center; }
+#cmdk-trigger {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: var(--r-md);
+    padding: 5px 10px; min-height: 32px;
+    font-size: var(--fs-body);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease);
+}
+#cmdk-trigger:hover { border-color: var(--border-accent); color: var(--text); background: var(--accent-softer); }
+#cmdk-trigger:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#cmdk-trigger .ms { font-size: var(--icon-sm); }
+#cmdk-trigger kbd {
+    font-family: var(--mono); font-size: 10px;
+    padding: 1px 5px;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    color: var(--muted); background: var(--panel-solid);
+}
+
+/* ---- Cmd-K paleta (overlay) ---- */
+#cmdk {
+    position: fixed; inset: 0;
+    z-index: var(--z-overlay);
+    background: var(--scrim);
+    backdrop-filter: var(--blur-1);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding-top: 12vh;
+}
+#cmdk-card {
+    width: min(600px, 92vw);
+    max-height: 70vh;
+    display: flex; flex-direction: column;
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-3);
+    overflow: hidden;
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+.cmdk-input-row {
+    display: flex; align-items: center; gap: var(--sp-1);
+    padding: var(--sp-2);
+    border-bottom: 1px solid var(--border);
+}
+.cmdk-input-row .ms { color: var(--muted); }
+#cmdk-input {
+    flex: 1;
+    background: none; border: none;
+    font-size: var(--fs-title);
+    font-family: var(--font);
+    color: var(--text);
+}
+#cmdk-input::placeholder { color: var(--muted); }
+#cmdk-input:focus { outline: none; }
+.cmdk-input-row kbd {
+    font-family: var(--mono); font-size: 10px;
+    padding: 1px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    color: var(--muted); background: var(--surface-2);
+}
+#cmdk-results { overflow-y: auto; padding: var(--sp-1); }
+.cmdk-group {
+    font-size: var(--fs-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-caps);
+    color: var(--muted);
+    padding: var(--sp-1) var(--sp-1) var(--sp-0);
+}
+.cmdk-item {
+    display: flex; align-items: center; gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-1);
+    border: none; background: none;
+    border-radius: var(--r-md);
+    text-align: left; color: var(--text);
+}
+.cmdk-item:hover, .cmdk-item:focus-visible { background: var(--accent-softer); outline: none; }
+.cmdk-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.cmdk-text { display: flex; flex-direction: column; min-width: 0; }
+.cmdk-title { font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmdk-sub { font-size: var(--fs-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmdk-hint-row { padding: var(--sp-2); font-size: var(--fs-small); color: var(--muted); text-align: center; }
+
+/* ---- obrazovka Dnes ---- */
+.today-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+}
+.today-card {
+    display: flex; flex-direction: column; gap: var(--sp-0);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+}
+.tc-val {
+    font-family: var(--mono); font-size: 30px; font-weight: 600;
+    color: var(--text); font-variant-numeric: tabular-nums; line-height: 1;
+}
+.tc-label { font-size: var(--fs-small); color: var(--muted); }
+.today-sec { margin-bottom: var(--sp-3); }
+.today-sec h2 { font-size: var(--fs-title); color: var(--text); margin-bottom: var(--sp-1); }
+.today-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.today-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    padding: 4px 10px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-small); color: var(--text-secondary);
+}
+.today-chip .n { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.today-list { display: flex; flex-direction: column; gap: 2px; }
+.today-item {
+    display: flex; align-items: center; gap: var(--sp-2);
+    width: 100%; text-align: left;
+    padding: var(--sp-1);
+    background: none; border: none;
+    border-radius: var(--r-md); color: var(--text);
+}
+.today-item:hover, .today-item:focus-visible { background: var(--accent-softer); outline: none; }
+.ti-ico { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.ti-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ti-title { font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ti-snip { font-size: var(--fs-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ti-tag {
+    font-size: var(--fs-caption); color: var(--muted);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    padding: 1px 8px; flex-shrink: 0;
+}
+.ti-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+
+/* ---- obrazovka Knižnica ---- */
+.lib-area { margin-bottom: var(--sp-3); }
+.lib-area h2 {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-size: var(--fs-title); color: var(--text);
+    margin-bottom: var(--sp-2);
+}
+.lib-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.lib-count { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
+.lib-skills {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--sp-1);
+}
+.lib-skill {
+    display: flex; flex-direction: column; gap: 2px;
+    text-align: left;
+    padding: var(--sp-1) var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    color: var(--text);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.lib-skill:hover, .lib-skill:focus-visible {
+    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+}
+.lib-skill-label { font-size: var(--fs-body); font-weight: var(--fw-medium); }
+.lib-skill-snip {
+    font-size: var(--fs-small); color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
+/* ===========================================================================
+   FÁZA OBRAZOVKY — obsah Dnes / Denník / Knižnica + balík pre Claude Code
+   =========================================================================== */
+
+/* ---- Dnes: veľké hľadacie pole (primárny prvok) + jednoriadok ---- */
+.today-search {
+    display: flex; align-items: center; gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2);
+    margin-bottom: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+    color: var(--muted); text-align: left;
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.today-search:hover, .today-search:focus-visible {
+    border-color: var(--border-accent); box-shadow: var(--focus-ring); outline: none;
+}
+.today-search .ms { font-size: var(--icon-md); color: var(--accent); flex-shrink: 0; }
+.ts-text {
+    flex: 1; min-width: 0;
+    font-size: var(--fs-title); color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.today-search kbd {
+    font-family: var(--mono); font-size: 10px;
+    padding: 2px 6px; flex-shrink: 0;
+    border: 1px solid var(--border-strong); border-radius: 5px;
+    color: var(--muted); background: var(--surface-2);
+}
+.today-line { margin-bottom: var(--sp-3); color: var(--text-secondary); font-size: var(--fs-base); }
+.today-line strong { color: var(--text); font-family: var(--mono); font-weight: 600; }
+
+/* Dnes: "Naposledy si robil na…" — karty sessions */
+.today-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--sp-1);
+}
+.today-card-wrap { display: flex; align-items: stretch; gap: 2px; }
+.today-card-link {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    text-align: left;
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    color: var(--text);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.today-card-link:hover, .today-card-link:focus-visible {
+    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+}
+.tcl-title {
+    font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text);
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.tcl-meta { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.tcl-proj {
+    font-size: var(--fs-caption); color: var(--muted);
+    background: var(--surface-subtle); border: 1px solid var(--border);
+    border-radius: var(--r-pill); padding: 1px 8px;
+    max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tcl-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+
+/* ---- Riadok zoznamu s pack tlačidlom (Dnes / Denník / Knižnica) ---- */
+.li-wrap { display: flex; align-items: stretch; gap: 2px; }
+.li-wrap > .today-item,
+.li-wrap > .record,
+.li-wrap > .lib-skill { flex: 1 1 auto; min-width: 0; width: auto; }
+
+.pack-btn {
+    flex: 0 0 auto; align-self: center;
+    width: 34px; min-height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: none; border: none;
+    border-radius: var(--r-sm);
+    color: var(--muted); font-size: 18px;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+}
+.li-wrap:hover .pack-btn,
+.today-card-wrap:hover .pack-btn,
+.pack-btn:focus-visible,
+.pack-btn.in-pack { opacity: 1; }
+.pack-btn:hover { background: var(--accent-softer); color: var(--accent-600); }
+.pack-btn.in-pack { color: var(--accent-600); }
+
+/* ---- Pack indikátor v hlavičke ---- */
+#pack-trigger {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-right: var(--sp-1);
+    background: var(--accent-soft);
+    border: 1px solid var(--border-accent);
+    color: var(--accent-600);
+    border-radius: var(--r-md);
+    padding: 5px 10px; min-height: 32px;
+    font-family: var(--mono); font-size: var(--fs-body); font-weight: 600;
+    transition: background var(--dur-fast) var(--ease);
+}
+#pack-trigger:hover { background: var(--accent-softer); }
+#pack-trigger:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#pack-trigger .ms { font-size: var(--icon-sm); }
+#pack-count { font-variant-numeric: tabular-nums; }
+
+/* ---- Zásuvka balíka (export pre Claude Code) ---- */
+#pack-drawer {
+    position: fixed;
+    top: calc(var(--edge) + 44px + var(--sp-1)); bottom: var(--edge);
+    right: var(--edge);
+    width: 320px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    z-index: calc(var(--z-panel) + 1);
+    padding: var(--sp-2);
+    display: flex; flex-direction: column;
+    animation: panel-in-r var(--dur-slow) var(--ease);
+}
+.pack-hint { font-size: var(--fs-small); color: var(--muted); margin-bottom: var(--sp-2); }
+#pack-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.pack-row {
+    display: flex; align-items: center; gap: var(--sp-1);
+    padding: var(--sp-1); border-radius: var(--r-sm);
+}
+.pack-row:hover { background: var(--hover-fill); }
+.pack-row-label {
+    flex: 1; min-width: 0;
+    font-size: var(--fs-body); color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pack-row-del { flex: 0 0 auto; width: 28px; min-height: 28px; padding: 0; font-size: 15px; }
+.pack-actions { margin-top: var(--sp-2); }
+
+/* ---- Čítačka: pätička s viacerými akciami ---- */
+#md-foot { gap: var(--sp-1); align-items: center; }
+#md-copypath { margin-right: auto; }
+#md-pack.in-pack { background: var(--accent-softer); color: var(--accent-600); border-color: var(--border-accent); }
+
 /* ---------------------------------------------------------------------------
    RESPONSIVE — užšie panely a redukovaná hlavička na menších oknách
    --------------------------------------------------------------------------- */
@@ -2176,6 +2609,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
         width: min(340px, calc(100vw - 104px));
         z-index: var(--z-panel);
     }
-    #tl-range { width: 100px; }
     #brand-name { display: none; }
+    #cmdk-trigger .cmdk-hint,
+    #cmdk-trigger kbd { display: none; }
 }

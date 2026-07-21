@@ -52,6 +52,8 @@ const S = {
     sound: localStorage.getItem('hades.sound') !== 'off',
     audio: null,
     view: localStorage.getItem('hades.view') || 'map',
+    // FÁZA SHELL: aktívna obrazovka (Dnes / Denník / Graf / Knižnica). Plátno (rAF) beží len na 'graf'.
+    screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica'].includes(v) ? v : 'dnes'; })(),
     // FÁZA HRANY: default 1.0 (skryje similarity 0.5 + jednorazové co_activation 0.6).
     // Nový kľúč 'hades.minWeight2', aby sa nový default prejavil aj starým používateľom.
     minWeight: (() => { const v = localStorage.getItem('hades.minWeight2'); return v == null ? 1.0 : (parseFloat(v) || 0); })(),
@@ -109,6 +111,182 @@ try {
 
 function persistRelFilter() {
     localStorage.setItem('hades.relfilter', JSON.stringify([...S.filter.relations]));
+}
+
+// FÁZA OBRAZOVKY: rozsah grafu — 'live' (jadro + projekty + spomienky + aktívne skilly)
+// alebo 'all' (celá sieť vrátane knižnice). Perzistuje 'hades.graphScope', default 'live'.
+S.graphScope = localStorage.getItem('hades.graphScope') === 'all' ? 'all' : 'live';
+
+// FÁZA OBRAZOVKY: balík uzlov na export do Claude Code — Map(id → label). Persist 'hades.pack'.
+// Prvé miesto v appke, odkiaľ sa dá poznatok dostať von (POST /api/context/pack → schránka).
+S.pack = new Map();
+try {
+    const p = JSON.parse(localStorage.getItem('hades.pack') || '[]');
+    if (Array.isArray(p)) for (const it of p) { if (it && it.id != null) S.pack.set(+it.id, it.label || ('#' + it.id)); }
+} catch (e) { /* poškodený balík — prázdny */ }
+
+function persistPack() {
+    localStorage.setItem('hades.pack', JSON.stringify([...S.pack].map(([id, label]) => ({ id, label }))));
+}
+function packHas(id) { return S.pack.has(+id); }
+function togglePack(id, label) {
+    id = +id;
+    if (S.pack.has(id)) S.pack.delete(id); else S.pack.set(id, label || ('#' + id));
+    persistPack();
+    updatePackUi();
+    return S.pack.has(id);
+}
+function addToPack(id, label) {
+    id = +id;
+    if (S.pack.has(id)) return false;
+    S.pack.set(id, label || ('#' + id));
+    persistPack();
+    updatePackUi();
+    return true;
+}
+
+// HTML pack-toggle tlačidla pre riadky zoznamov (Dnes / Denník / Knižnica).
+// Konštantná ikona, aktívny stav farbí .in-pack (žiadny reflow pri prepnutí).
+function packBtn(id, label) {
+    const on = packHas(id);
+    return '<button type="button" class="pack-btn ms' + (on ? ' in-pack' : '') + '"'
+        + ' data-pack-id="' + esc(String(id)) + '" data-pack-label="' + esc(label || '') + '"'
+        + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
+        + ' title="' + (on ? 'V balíku — klikni pre odobratie' : 'Do balíka') + '">library_add</button>';
+}
+
+// Naviaž pack-toggle tlačidlá v podstrome (stopPropagation, aby klik neotvoril aj riadok).
+function bindPackButtons(root) {
+    root.querySelectorAll('.pack-btn[data-pack-id]').forEach((b) => {
+        b.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const on = togglePack(b.dataset.packId, b.dataset.packLabel);
+            showToast(on ? 'Pridané do balíka' : 'Odobraté z balíka');
+        };
+    });
+}
+
+// Zosúlaď celé pack UI so stavom S.pack — počet v hlavičke, všetky tlačidlá, detail, zásuvka.
+function updatePackUi() {
+    const n = S.pack.size;
+    const trig = $('pack-trigger');
+    if (trig) {
+        trig.classList.toggle('hidden', n === 0);
+        const c = $('pack-count');
+        if (c) c.textContent = String(n);
+    }
+    document.querySelectorAll('.pack-btn[data-pack-id]').forEach((b) => {
+        const on = packHas(b.dataset.packId);
+        b.classList.toggle('in-pack', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.title = on ? 'V balíku — klikni pre odobratie' : 'Do balíka';
+    });
+    const npk = $('node-pack');
+    if (npk) {
+        const on = S.selected ? packHas(S.selected.id) : false;
+        npk.classList.toggle('in-pack', on);
+        npk.setAttribute('aria-pressed', on ? 'true' : 'false');
+        npk.title = on ? 'V balíku — klikni pre odobratie' : 'Do balíka';
+    }
+    if (packDrawerOpen()) renderPackList();
+}
+
+/* ---------- zásuvka balíka (export pre Claude Code) ---------- */
+
+function packDrawerOpen() {
+    const d = $('pack-drawer');
+    return d ? !d.classList.contains('hidden') : false;
+}
+function openPackDrawer() { const d = $('pack-drawer'); if (d) { d.classList.remove('hidden'); renderPackList(); } }
+function closePackDrawer() { const d = $('pack-drawer'); if (d) d.classList.add('hidden'); }
+
+function renderPackList() {
+    const list = $('pack-list');
+    if (!list) return;
+    if (!S.pack.size) { renderEmpty(list, 'inventory_2', 'Balík je prázdny'); return; }
+    list.innerHTML = [...S.pack].map(([id, label]) =>
+        '<div class="pack-row">'
+        + '<span class="pack-row-label" title="' + esc(label) + '">' + esc(label) + '</span>'
+        + '<button type="button" class="ghost ms pack-row-del" data-id="' + id
+        + '" title="Odobrať" aria-label="Odobrať z balíka">close</button>'
+        + '</div>'
+    ).join('');
+    list.querySelectorAll('.pack-row-del').forEach((b) => {
+        b.onclick = () => { togglePack(b.dataset.id); };
+    });
+}
+
+async function copyPack() {
+    if (!S.pack.size) { showToast('Balík je prázdny'); return; }
+    const ids = [...S.pack.keys()].slice(0, 50);
+    try {
+        const res = await fetch('/api/context/pack', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ node_ids: ids }),
+        });
+        if (!res.ok) { showToast('Kopírovanie zlyhalo'); return; }
+        const data = await res.json();
+        await navigator.clipboard.writeText(data.markdown || '');
+        showToast('Skopírované pre Claude Code');
+    } catch (e) {
+        showToast('Kopírovanie zlyhalo');
+    }
+}
+
+// Naviazanie všetkých pack ovládačov + prepínača rozsahu grafu. Volá sa raz z init().
+function setupPack() {
+    const trig = $('pack-trigger');
+    if (trig) trig.onclick = openPackDrawer;
+    const pc = $('pack-close');
+    if (pc) pc.onclick = closePackDrawer;
+    const copyBtn = $('pack-copy');
+    if (copyBtn) copyBtn.onclick = () => busy(copyBtn, copyPack, 'Kopírujem…');
+    const clearBtn = $('pack-clear');
+    if (clearBtn) clearBtn.onclick = () => {
+        S.pack.clear();
+        persistPack();
+        updatePackUi();
+        showToast('Balík vyprázdnený');
+    };
+
+    // Detail uzla — Do balíka
+    const npk = $('node-pack');
+    if (npk) npk.onclick = () => {
+        if (!S.selected) return;
+        togglePack(S.selected.id, S.selected.label);
+    };
+
+    // Čítačka — Do balíka + Kopírovať cestu
+    const mpk = $('md-pack');
+    if (mpk) mpk.onclick = () => {
+        if (mdNodeId == null) return;
+        togglePack(mdNodeId, mdLabel);
+        syncMdFoot();
+    };
+    const mcp = $('md-copypath');
+    if (mcp) mcp.onclick = async () => {
+        if (!mdPath) return;
+        try { await navigator.clipboard.writeText(mdPath); showToast('Cesta skopírovaná'); }
+        catch (e) { showToast('Kopírovanie zlyhalo'); }
+    };
+
+    // Prepínač rozsahu grafu — 'live' (default) vs 'all' (celá knižnica v grafe)
+    const scopeBtn = $('scope-toggle');
+    if (scopeBtn) {
+        const sync = () => scopeBtn.setAttribute('aria-checked', S.graphScope === 'all' ? 'true' : 'false');
+        sync();
+        scopeBtn.onclick = () => {
+            S.graphScope = S.graphScope === 'all' ? 'live' : 'all';
+            localStorage.setItem('hades.graphScope', S.graphScope);
+            sync();
+            showToast(S.graphScope === 'all' ? 'Graf: celá knižnica' : 'Graf: len živé uzly');
+            reloadGraph();
+        };
+    }
+
+    updatePackUi();
 }
 
 function setOpt(key, value) {
@@ -1466,6 +1644,8 @@ let lastFrame = now();
 let framePending = false;
 function frame() {
     framePending = false;
+    // FÁZA SHELL: ak sme medzitým opustili Graf, slučka zaparkuje bez kreslenia.
+    if (S.screen !== 'graf') return;
     const dt = Math.min((now() - lastFrame) / 1000, 0.1);
     lastFrame = now();
 
@@ -1548,6 +1728,9 @@ function frame() {
 }
 
 function scheduleFrame() {
+    // FÁZA SHELL: mimo obrazovky Graf sa plátno nekreslí vôbec — slučka zaparkuje (tichý CPU).
+    // setScreen('graf') ju znovu naštartuje.
+    if (S.screen !== 'graf') return;
     if (framePending) return;
     framePending = true;
     requestAnimationFrame(frame);
@@ -1756,6 +1939,7 @@ async function selectNode(n) {
     closeCreateMode(); // výber uzla vždy vracia panel do detailného režimu
     S.selected = n;
     requestDraw(); // nový výber → prekresli zvýraznenie (slučka mohla spať)
+    updatePackUi(); // node-pack tlačidlo odzrkadlí stav balíka pre tento uzol
     $('node-panel').classList.remove('hidden');
     $('node-form').classList.add('hidden');
     $('node-view').classList.remove('hidden');
@@ -2450,7 +2634,7 @@ function handlePulse(type, data) {
         blip(520);
         showToast('Naučil som sa: ' + n.label, n.id);
         if (n.source === 'session') {
-            if (dockOpen === 'journal') { renderJournal(); markJournalSeen(); }
+            if (S.screen === 'dennik') { renderJournal(); markJournalSeen(); }
             else setJournalDot(true);
         }
     }
@@ -2632,17 +2816,24 @@ function mdToHtml(src) {
 
 let mdReturnFocus = null;
 let mdNodeId = null;
+let mdLabel = null;
+let mdPath = null;
 
 function closeMdOverlay() {
     $('md-overlay').classList.add('hidden');
     if (mdReturnFocus) { mdReturnFocus.focus(); mdReturnFocus = null; }
 }
 
+// Markdown čítačka (skill / summary). node = { id, label, path? }.
+// Pätička ponúka Do balíka a Kopírovať cestu (ak je cesta známa).
 async function openMdOverlay(node) {
     const overlay = $('md-overlay');
     mdNodeId = node.id;
-    $('md-title').textContent = node.label;
+    mdLabel = node.label || '';
+    mdPath = node.path || null;
+    $('md-title').textContent = mdLabel;
     $('md-body').innerHTML = emptyHtml('hourglass_empty', 'Načítavam…');
+    syncMdFoot();
     mdReturnFocus = document.activeElement;
     overlay.classList.remove('hidden');
     $('md-close').focus();
@@ -2654,6 +2845,18 @@ async function openMdOverlay(node) {
     } catch (e) {
         if (mdNodeId === node.id) $('md-body').innerHTML = emptyHtml('cloud_off', 'Dokument sa nepodarilo načítať');
     }
+}
+
+// Stav pätičky čítačky — pack tlačidlo podľa balíka, cesta len ak je známa
+function syncMdFoot() {
+    const pk = $('md-pack');
+    if (pk) {
+        const on = mdNodeId != null && packHas(mdNodeId);
+        pk.classList.toggle('in-pack', on);
+        pk.textContent = on ? 'V balíku' : 'Do balíka';
+    }
+    const cp = $('md-copypath');
+    if (cp) cp.classList.toggle('hidden', !mdPath);
 }
 
 /* ---------- chat ---------- */
@@ -2888,10 +3091,10 @@ function handleCommand(text) {
             break;
         }
         case 'najdi': case 'find':
-            openDock('search');
-            $('search-input').value = arg;
-            renderSearch(arg);
-            sys(arg ? 'Hľadám: ' + arg : 'Otvoril som vyhľadávanie.');
+            closeCmdk();
+            openCmdk();
+            if (arg) { $('cmdk-input').value = arg; renderCmdk(arg); }
+            sys(arg ? 'Hľadám: ' + arg : 'Otvoril som hľadanie.');
             break;
         case 'zoom':
             if (arg === 'in') zoomBy(1.3);
@@ -2901,10 +3104,9 @@ function handleCommand(text) {
             break;
         case 'legenda': openDock('legend'); sys('Legenda otvorená.'); break;
         case 'statistiky': case 'stats': openDock('stats'); sys('Štatistiky otvorené.'); break;
-        case 'os': case 'replay': $('btn-timeline').click(); sys('Časová os prepnutá.'); break;
         case 'pomoc': case 'help': toggleHelp(true); break;
         default:
-            sys('Neznámy príkaz. Skús /nahlad, /najdi, /zoom, /legenda, /statistiky, /os, /pomoc');
+            sys('Neznámy príkaz. Skús /nahlad, /najdi, /zoom, /legenda, /statistiky, /pomoc');
     }
 }
 
@@ -2946,16 +3148,14 @@ function showToast(text, nodeId) {
 }
 
 const SHORTCUTS = [
-    ['1 / 2 / 3', 'Náhľad: Mapa / Sieť / Vrstvy'],
-    ['F', 'Vyhľadávanie'],
+    ['Ctrl K / F / /', 'Hľadať (paleta)'],
+    ['1 / 2 / 3', 'Náhľad grafu: Mapa / Sieť / Vrstvy'],
+    ['D', 'Denník'],
     ['R', 'Štruktúra'],
     ['S', 'Prehľad'],
-    ['D', 'Denník záznamov'],
     ['L', 'Legenda'],
     ['G', 'Lokálny graf zvoleného uzla'],
     ['N', 'Nový uzol'],
-    ['T', 'Časová os'],
-    ['C', 'Chat s Hadesom'],
     ['+ / −', 'Zoom'],
     ['0', 'Vycentrovať'],
     ['?', 'Tento pomocník'],
@@ -3002,8 +3202,17 @@ function setupShortcuts() {
     });
 
     window.addEventListener('keydown', (e) => {
+        // FÁZA SHELL: Cmd/Ctrl+K → globálna paleta (hľadanie + navigácia), toggle
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+            e.preventDefault();
+            if (cmdkOpen()) closeCmdk(); else openCmdk();
+            return;
+        }
+
         if (e.key === 'Escape') {
             // kaskáda — jeden Esc zavrie vždy len najvrchnejšiu vrstvu
+            if (cmdkOpen()) { closeCmdk(); return; }
+            if (packDrawerOpen()) { closePackDrawer(); return; }
             if (S.connectFrom) { cancelConnect(); showToast('Prepájanie zrušené'); return; }
             if (document.body.classList.contains('ambient')) {
                 document.body.classList.remove('ambient');
@@ -3041,10 +3250,10 @@ function setupShortcuts() {
             case '1': setView('map'); break;
             case '2': setView('net'); break;
             case '3': setView('layers'); break;
-            case 'f': case 'F': e.preventDefault(); openDock('search'); break;
+            case '/': case 'f': case 'F': e.preventDefault(); openCmdk(); break;
             case 'r': case 'R': openDock('structure'); break;
             case 's': case 'S': openDock('stats'); break;
-            case 'd': case 'D': openDock('journal'); break;
+            case 'd': case 'D': setScreen('dennik'); break;
             case 'l': case 'L': openDock('legend'); break;
             case 'g': case 'G':
                 // lokálny graf zvoleného uzla — toggle; hĺbka sa zachováva
@@ -3054,11 +3263,12 @@ function setupShortcuts() {
                 }
                 break;
             case 'n': case 'N': openCreateNode(); break;
-            case 't': case 'T': $('btn-timeline').click(); break;
             case 'c': case 'C':
-                e.preventDefault();
-                $('prompt').classList.add('open');
-                $('prompt-input').focus();
+                if (document.body.classList.contains('chat-on')) {
+                    e.preventDefault();
+                    $('prompt').classList.add('open');
+                    $('prompt-input').focus();
+                }
                 break;
             case '+': case '=': zoomBy(1.3); break;
             case '-': zoomBy(1 / 1.3); break;
@@ -3069,11 +3279,10 @@ function setupShortcuts() {
 }
 
 const HINTS = [
-    { pos: { left: '88px', top: '120px' }, text: 'V ľavej lište sú sekcie — Štruktúra (R), Vyhľadávanie (F), Prehľad (S), Denník (D) a Legenda (L).' },
-    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore prepínaš náhľady — Mapa, Sieť a Vrstvy (klávesy 1, 2, 3). Nulou vycentruješ celú sieť.' },
-    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Klik na uzol otvorí detail. Dvojklik na oblasť ju zaostrí — Esc zaostrenie zruší.' },
-    { pos: { left: '50%', bottom: '84px', transform: 'translateX(-50%)' }, text: 'Sem napíš otázku pre Hadesa. Príkazy začínajú lomkou — skús /pomoc.' },
-    { pos: { left: '88px', bottom: '24px' }, text: 'Dole na lište nájdeš pomocníka a nastavenia — tmavý režim aj priehľadnosti siete.' },
+    { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš obrazovky — Dnes, Denník, Graf a Knižnica. Hades sa otvorí na Dnes.' },
+    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
+    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Na obrazovke Graf klik na uzol otvorí detail. Dvojklik na oblasť ju zaostrí — Esc zaostrenie zruší.' },
+    { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, sieť, chat) a Pomocníka.' },
 ];
 
 function setupHints() {
@@ -3104,13 +3313,326 @@ function setupHints() {
     show();
 }
 
+/* ---------- FÁZA SHELL: obrazovky Dnes / Denník / Graf / Knižnica ---------- */
+
+const SCREENS = ['dnes', 'dennik', 'graf', 'kniznica'];
+const SCREEN_LABELS = { dnes: 'Dnes', dennik: 'Denník', graf: 'Graf', kniznica: 'Knižnica' };
+
+function setScreen(name) {
+    if (!SCREENS.includes(name)) name = 'dnes';
+    const changed = S.screen !== name;
+    S.screen = name;
+    localStorage.setItem('hades.screen', name);
+    document.body.dataset.screen = name;
+
+    document.querySelectorAll('#rail .dest[data-screen]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.screen === name);
+    });
+    document.querySelectorAll('#screens .screen').forEach((s) => {
+        s.classList.toggle('active', s.id === 'screen-' + name);
+    });
+
+    renderScreenBreadcrumb(name);
+
+    if (name === 'graf') {
+        // plátno je hotové z kola 1 — len prebuď slučku (dirty + scheduleFrame)
+        requestDraw();
+        scheduleFrame();
+    } else if (name === 'dnes') {
+        renderToday();
+    } else if (name === 'dennik') {
+        renderJournal();
+        markJournalSeen();
+    } else if (name === 'kniznica') {
+        renderLibrary();
+    }
+    if (changed && name !== 'graf') closeNodePanel();
+}
+
+function renderScreenBreadcrumb(name) {
+    if (name === 'graf') { renderBreadcrumb(); return; }
+    const bc = $('breadcrumb');
+    if (bc) bc.innerHTML = '<span class="current">' + esc(SCREEN_LABELS[name]) + '</span>';
+}
+
+// Uzol otvorený z ktorejkoľvek obrazovky (Denník/Knižnica/Dnes/Cmd-K) → skoč na Graf a otvor detail.
+// ref môže byť plný načítaný uzol, alebo odľahčený {id,label,type,area_id} z hľadania/knižnice.
+// Graf beží v scope=live (nie všetky uzly sú na plátne) — ak uzol nie je načítaný, otvor aspoň
+// jeho detail (selectNode si dotiahne /api/nodes/{id}), len bez kamerového zaostrenia.
+function openNodeFromAnywhere(ref) {
+    if (!ref || ref.id == null) return;
+    const id = +ref.id;
+    const loaded = S.byId.get(id);
+    setScreen('graf');
+    if (loaded) {
+        S.cam.k = Math.max(S.cam.k, 1.1);
+        focusNode(loaded);
+        selectNode(loaded);
+    } else {
+        selectNode({
+            id,
+            label: ref.label || '',
+            type: ref.type || 'skill',
+            description: '',
+            strength: ref.strength || 1,
+            area_id: ref.area_id != null ? ref.area_id : null,
+        });
+    }
+}
+
+/* ---------- obrazovka Dnes (/api/today) ---------- */
+
+async function renderToday() {
+    const body = $('dnes-body');
+    if (!body) return;
+    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
+    try {
+        const d = await (await fetch('/api/today')).json();
+        const wb = d.week_added || {};
+
+        // Veľké hľadacie pole — primárny prvok obrazovky (otvorí Cmd-K paletu)
+        let h = '<button type="button" id="today-search" class="today-search">'
+            + '<span class="ms" aria-hidden="true">search</span>'
+            + '<span class="ts-text">Hľadaj vo vedomí — skilly, záznamy, projekty…</span>'
+            + '<kbd>Ctrl K</kbd></button>';
+
+        h += '<p class="today-line">Tento týždeň pribudlo <strong>' + esc(String(wb.nodes ?? 0))
+            + '</strong> ' + plural(wb.nodes ?? 0, 'poznatok', 'poznatky', 'poznatkov')
+            + ', <strong>' + esc(String(wb.sessions ?? 0)) + '</strong> '
+            + plural(wb.sessions ?? 0, 'záznam', 'záznamy', 'záznamov') + '.</p>';
+
+        const sessions = d.recent_sessions || [];
+        if (sessions.length) {
+            h += '<section class="today-sec"><h2>Naposledy si robil na…</h2><div class="today-grid">'
+                + sessions.slice(0, 6).map((s) => todaySessionCard(s)).join('')
+                + '</div></section>';
+        }
+
+        const records = d.recent_records || [];
+        if (records.length) {
+            h += '<section class="today-sec"><h2>Posledné záznamy</h2><div class="today-list">'
+                + records.map((r) => todayRow('article', r.id, r.label, r.project, r.snippet, r.created_at)).join('')
+                + '</div></section>';
+        }
+
+        const projects = d.top_projects || [];
+        if (projects.length) {
+            h += '<section class="today-sec"><h2>Aktívne projekty</h2><div class="today-chips">'
+                + projects.map((p) => '<span class="today-chip">' + esc(p.project)
+                    + '<span class="n">' + (p.count || 0) + '</span></span>').join('')
+                + '</div></section>';
+        }
+
+        body.innerHTML = h;
+        const searchBtn = $('today-search');
+        if (searchBtn) searchBtn.onclick = openCmdk;
+        body.querySelectorAll('.today-item[data-id], .today-card-link[data-id]').forEach((el) => {
+            el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
+        });
+        bindPackButtons(body);
+    } catch (e) {
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+    }
+}
+
+// SK plurál 1 / 2-4 / 5+ (a 0)
+function plural(n, one, few, many) {
+    n = Math.abs(+n) || 0;
+    if (n === 1) return one;
+    if (n >= 2 && n <= 4) return few;
+    return many;
+}
+
+function todaySessionCard(s) {
+    return '<div class="today-card-wrap">'
+        + '<button type="button" class="today-card-link" data-id="' + s.id + '" data-label="' + esc(s.label || '') + '">'
+        + '<span class="tcl-title">' + esc(s.label || '') + '</span>'
+        + '<span class="tcl-meta">'
+        + (s.project ? '<span class="tcl-proj">' + esc(s.project) + '</span>' : '')
+        + (s.created_at ? '<span class="tcl-time">' + esc(timeAgo(s.created_at)) + '</span>' : '')
+        + '</span></button>'
+        + packBtn(s.id, s.label) + '</div>';
+}
+
+function todayRow(icon, id, label, project, snippet, iso) {
+    return '<div class="li-wrap">'
+        + '<button type="button" class="today-item" data-id="' + id + '" data-label="' + esc(label || '') + '">'
+        + '<span class="ms ti-ico" aria-hidden="true">' + icon + '</span>'
+        + '<span class="ti-text"><span class="ti-title">' + esc(label || '') + '</span>'
+        + (snippet ? '<span class="ti-snip">' + esc(snippet) + '</span>' : '')
+        + '</span>'
+        + (project ? '<span class="ti-tag">' + esc(project) + '</span>' : '')
+        + (iso ? '<span class="ti-time">' + esc(timeAgo(iso)) + '</span>' : '')
+        + '</button>'
+        + packBtn(id, label) + '</div>';
+}
+
+/* ---------- obrazovka Knižnica (/api/library) ---------- */
+
+let libraryTimer = null;
+
+async function renderLibrary() {
+    const body = $('library-body');
+    if (!body) return;
+    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
+    const q = ($('library-search').value || '').trim();
+    try {
+        const url = '/api/library' + (q ? ('?q=' + encodeURIComponent(q)) : '');
+        const d = await (await fetch(url)).json();
+        const areas = d.areas || [];
+        if (!areas.length) {
+            renderEmpty(body, 'menu_book', q ? 'Nič sa nenašlo' : 'Prázdna knižnica');
+            return;
+        }
+        body.innerHTML = areas.map((a) =>
+            '<section class="lib-area"><h2>'
+            + '<span class="lib-dot" style="background:' + esc(a.color || 'var(--muted)') + '"></span>'
+            + esc(a.name) + '<span class="lib-count">' + (a.skills ? a.skills.length : 0) + '</span></h2>'
+            + '<div class="lib-skills">'
+            + (a.skills || []).map((s) =>
+                '<div class="li-wrap lib-wrap">'
+                + '<button type="button" class="lib-skill" data-id="' + s.id + '" data-label="' + esc(s.label) + '"'
+                + (s.path ? ' data-path="' + esc(s.path) + '"' : '') + '>'
+                + '<span class="lib-skill-label">' + esc(s.label) + '</span>'
+                + (s.snippet ? '<span class="lib-skill-snip">' + esc(s.snippet) + '</span>' : '')
+                + '</button>'
+                + packBtn(s.id, s.label) + '</div>').join('')
+            + '</div></section>'
+        ).join('');
+        body.querySelectorAll('.lib-skill[data-id]').forEach((el) => {
+            el.onclick = () => openMdOverlay({ id: +el.dataset.id, label: el.dataset.label, path: el.dataset.path || null });
+        });
+        bindPackButtons(body);
+    } catch (e) {
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+    }
+}
+
+/* ---------- Cmd-K paleta (zjednotené hľadanie + navigácia) ---------- */
+
+const CMDK_NAV = [
+    { screen: 'dnes', label: 'Dnes', icon: 'wb_sunny' },
+    { screen: 'dennik', label: 'Denník', icon: 'receipt_long' },
+    { screen: 'graf', label: 'Graf', icon: 'hub' },
+    { screen: 'kniznica', label: 'Knižnica', icon: 'menu_book' },
+];
+let cmdkTimer = null, cmdkSeq = 0;
+
+function openCmdk() {
+    const overlay = $('cmdk');
+    overlay.classList.remove('hidden');
+    const input = $('cmdk-input');
+    input.value = '';
+    renderCmdk('');
+    setTimeout(() => input.focus(), 30);
+}
+function closeCmdk() { $('cmdk').classList.add('hidden'); }
+function cmdkOpen() { return !$('cmdk').classList.contains('hidden'); }
+
+function setupCmdk() {
+    $('cmdk-trigger').onclick = openCmdk;
+    const overlay = $('cmdk');
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeCmdk(); });
+    const input = $('cmdk-input');
+    input.addEventListener('input', () => renderCmdk(input.value));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const first = overlay.querySelector('.cmdk-item');
+            if (first) { e.preventDefault(); first.click(); }
+        }
+    });
+}
+
+function bindCmdkItems(root) {
+    root.querySelectorAll('.cmdk-item[data-nav]').forEach((el) => {
+        el.onclick = () => { closeCmdk(); setScreen(el.dataset.nav); };
+    });
+    root.querySelectorAll('.cmdk-item[data-id]').forEach((el) => {
+        el.onclick = () => {
+            closeCmdk();
+            openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: el.dataset.type });
+        };
+    });
+    root.querySelectorAll('.cmdk-item[data-pb]').forEach((el) => {
+        el.onclick = () => {
+            const holder = el.closest('#cmdk-remote');
+            const books = (holder && holder._books) || [];
+            const b = books[+el.dataset.pb];
+            if (b && b.node_id != null) {
+                closeCmdk();
+                openNodeFromAnywhere({ id: b.node_id, label: b.title || b.path, type: 'skill' });
+            }
+        };
+    });
+}
+
+const CMDK_TYPE_NAMES = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+const CMDK_TYPE_ICO = { core: 'brightness_7', skill: 'bolt', memory: 'psychology', project: 'inventory_2' };
+const cmdkGroup = (t) => '<div class="cmdk-group">' + t + '</div>';
+
+function renderCmdk(q) {
+    const query = (q || '').trim();
+    const ql = query.toLowerCase();
+    const wrap = $('cmdk-results');
+
+    const nav = CMDK_NAV.filter((n) => !ql || n.label.toLowerCase().includes(ql));
+    let html = '';
+    if (nav.length) {
+        html += cmdkGroup('Prejsť na')
+            + nav.map((n) => '<button type="button" class="cmdk-item" data-nav="' + n.screen + '">'
+                + '<span class="ms" aria-hidden="true">' + n.icon + '</span>'
+                + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label) + '</span></span></button>').join('');
+    }
+    html += '<div id="cmdk-remote"></div>';
+    wrap.innerHTML = html;
+    bindCmdkItems(wrap);
+
+    // vzdialené hľadanie — jeden zdroj pravdy: SK-aware /api/search (uzly + playbooky).
+    // Debounce 180 ms, od 2 znakov; nav ostáva okamžitá.
+    clearTimeout(cmdkTimer);
+    const seq = ++cmdkSeq;
+    if (query.length < 2) return;
+    const remote = $('cmdk-remote');
+    if (remote) remote.innerHTML = '<div class="cmdk-hint-row">Hľadám…</div>';
+    cmdkTimer = setTimeout(async () => {
+        try {
+            const data = await (await fetch('/api/search?q=' + encodeURIComponent(query))).json();
+            if (seq !== cmdkSeq) return;
+            const box = $('cmdk-remote');
+            if (!box) return;
+            const nodes = data.nodes || [];
+            const books = data.playbooks || [];
+            let h = '';
+            if (nodes.length) {
+                h += cmdkGroup('Uzly')
+                    + nodes.map((n) => '<button type="button" class="cmdk-item" data-id="' + n.id + '"'
+                        + ' data-label="' + esc(n.label || '') + '" data-type="' + esc(n.type || 'skill') + '">'
+                        + '<span class="ms" aria-hidden="true">' + (CMDK_TYPE_ICO[n.type] || 'circle') + '</span>'
+                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label) + '</span>'
+                        + '<span class="cmdk-sub">' + (n.snippet ? esc(n.snippet) : (CMDK_TYPE_NAMES[n.type] || esc(n.type || ''))) + '</span>'
+                        + '</span></button>').join('');
+            }
+            if (books.length) {
+                h += cmdkGroup('Playbooky')
+                    + books.map((b, i) => '<button type="button" class="cmdk-item" data-pb="' + i + '">'
+                        + '<span class="ms" aria-hidden="true">menu_book</span>'
+                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(b.title || b.path || '') + '</span>'
+                        + (b.snippet ? '<span class="cmdk-sub">' + esc(b.snippet) + '</span>' : '')
+                        + '</span></button>').join('');
+            }
+            if (!nodes.length && !books.length) h = emptyHtml('search_off', 'Nič sa nenašlo');
+            box.innerHTML = h;
+            box._books = books;
+            bindCmdkItems(box);
+        } catch (e) { /* offline nevadí */ }
+    }, 180);
+}
+
 /* ---------- ovládanie ---------- */
 
 const DOCK_SECTIONS = {
     structure: { title: 'Štruktúra', btn: 'btn-structure' },
-    search: { title: 'Vyhľadávanie', btn: 'btn-search' },
     stats: { title: 'Prehľad', btn: 'btn-stats' },
-    journal: { title: 'Denník záznamov', btn: 'btn-journal' },
     legend: { title: 'Legenda', btn: 'btn-legend' },
     settings: { title: 'Zobrazenie', btn: 'btn-settings' },
 };
@@ -3130,11 +3652,6 @@ function openDock(name) {
 
     if (name === 'structure') renderStructure();
     if (name === 'stats') refreshStats();
-    if (name === 'journal') { renderJournal(); markJournalSeen(); }
-    if (name === 'search') {
-        renderSearch($('search-input').value);
-        setTimeout(() => $('search-input').focus(), 60);
-    }
 }
 
 function timeAgo(iso) {
@@ -3146,9 +3663,10 @@ function timeAgo(iso) {
     return new Date(iso).toLocaleDateString('sk', { day: 'numeric', month: 'short' });
 }
 
-// Denník — neprečítané záznamy (teal bodka na tlačidle denníka)
+// Denník — neprečítané záznamy (teal bodka na destinácii Denník)
 function setJournalDot(show) {
-    const btn = $('btn-journal');
+    const btn = document.querySelector('#rail .dest[data-screen="dennik"]');
+    if (!btn) return;
     let dot = btn.querySelector('.dot');
     if (show && !dot) {
         dot = document.createElement('span');
@@ -3262,21 +3780,21 @@ function renderJournalList() {
             const word = c === 1 ? 'commit' : (c >= 2 && c <= 4 ? 'commity' : 'commitov');
             badges.push('<span class="tag muted">' + c + ' ' + word + '</span>');
         }
-        html += '<button type="button" class="record" data-id="' + r.id + '">'
+        html += '<div class="li-wrap rec-wrap">'
+            + '<button type="button" class="record" data-id="' + r.id + '" data-label="' + esc(r.label) + '">'
             + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
             + '<span class="record-title">' + esc(r.label) + '</span>'
             + '<span class="record-time">' + timeHM(r.created_at) + '</span></div>'
             + (badges.length ? '<div class="record-tags">' + badges.join('') + '</div>' : '')
-            + '</button>';
+            + '</button>'
+            + packBtn(r.id, r.label) + '</div>';
     }
     list.innerHTML = html;
 
     list.querySelectorAll('.record').forEach((el) => {
-        el.onclick = () => {
-            const n = S.byId.get(+el.dataset.id);
-            if (n) { S.cam.k = Math.max(S.cam.k, 1); focusNode(n); selectNode(n); }
-        };
+        el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
     });
+    bindPackButtons(list);
 }
 
 /* ---------- štruktúra (oblasti a oddelenia) ---------- */
@@ -3431,7 +3949,7 @@ let reloadSeq = 0;
 async function reloadGraph() {
     const seq = ++reloadSeq;
     try {
-        const res = await fetch('/api/mind');
+        const res = await fetch('/api/mind?scope=' + S.graphScope);
         const data = await res.json();
         if (seq !== reloadSeq) return; // medzitým beží novší reload — táto odpoveď je zastaraná
 
@@ -3589,21 +4107,23 @@ function setupControls() {
         b.onclick = () => setView(b.dataset.view);
     });
 
+    // FÁZA SHELL: hlavná navigácia — 4 pomenované obrazovky
+    document.querySelectorAll('#rail .dest[data-screen]').forEach((b) => {
+        b.onclick = () => setScreen(b.dataset.screen);
+    });
+
+    // graph-tools (v hlavičke, viditeľné len na Grafe) + systém (rail)
     $('btn-structure').onclick = () => openDock('structure');
-    $('btn-search').onclick = () => openDock('search');
     $('btn-stats').onclick = () => openDock('stats');
-    $('btn-journal').onclick = () => openDock('journal');
     $('btn-legend').onclick = () => openDock('legend');
     $('btn-help').onclick = () => toggleHelp(true);
     $('btn-settings').onclick = () => openDock('settings');
     $('dock-close').onclick = closeDock;
 
-    $('search-input').oninput = () => renderSearch($('search-input').value);
-
-    $('btn-timeline').onclick = () => {
-        const shown = !$('timeline').classList.toggle('hidden');
-        $('btn-timeline').classList.toggle('active', shown);
-        if (!shown) stopReplay();
+    // Knižnica — filter skillov (debounce)
+    $('library-search').oninput = () => {
+        clearTimeout(libraryTimer);
+        libraryTimer = setTimeout(renderLibrary, 220);
     };
 
     $('zoom-in').onclick = () => zoomBy(1.3);
@@ -3734,14 +4254,25 @@ function setupControls() {
         draw();
     };
 
-    $('btn-duplicates').onclick = findDuplicates;
+    // FÁZA SHELL: chat je schovaný (nefunguje bez API kľúča) — prepínač ho vráti
+    const chatBtn = $('chat-toggle');
+    const chatOn = localStorage.getItem('hades.chat') === '1';
+    document.body.classList.toggle('chat-on', chatOn);
+    chatBtn.setAttribute('aria-checked', chatOn ? 'true' : 'false');
+    chatBtn.onclick = () => {
+        const on = !document.body.classList.contains('chat-on');
+        document.body.classList.toggle('chat-on', on);
+        localStorage.setItem('hades.chat', on ? '1' : '0');
+        chatBtn.setAttribute('aria-checked', on ? 'true' : 'false');
+    };
 
+    // Zvuk — prepínač v nastaveniach
     const soundBtn = $('btn-sound');
-    soundBtn.textContent = S.sound ? 'volume_up' : 'volume_off';
+    soundBtn.setAttribute('aria-checked', S.sound ? 'true' : 'false');
     soundBtn.onclick = () => {
         S.sound = !S.sound;
         localStorage.setItem('hades.sound', S.sound ? 'on' : 'off');
-        soundBtn.textContent = S.sound ? 'volume_up' : 'volume_off';
+        soundBtn.setAttribute('aria-checked', S.sound ? 'true' : 'false');
         if (S.sound) blip(523);
     };
 
@@ -3765,12 +4296,7 @@ function setupControls() {
     $('md-overlay').addEventListener('click', (e) => {
         if (e.target === $('md-overlay')) closeMdOverlay();
     });
-    $('md-context').onclick = () => {
-        if (mdNodeId == null) return;
-        addToChatContext(mdNodeId); // E6: uzol do kontextu chatu
-        showToast('Pridané do kontextu');
-        closeMdOverlay();
-    };
+    // Pätička čítačky (md-pack / md-copypath) sa naväzuje v setupPack().
 
     // Ručné prepájanie — klik na 'link' zapne connect mode, cieľ sa vyberá klikom na plátne
     $('node-connect').onclick = () => {
@@ -3904,7 +4430,7 @@ async function init() {
 
     let data;
     try {
-        const res = await fetch('/api/mind');
+        const res = await fetch('/api/mind?scope=' + S.graphScope);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         data = await res.json();
     } catch (e) {
@@ -3937,11 +4463,16 @@ async function init() {
     setView(S.view);
     // prvé načítanie: nechaj simuláciu usadiť (~150 tikov spolu so setView) a fitni znova
     if (S.sim && S.view !== 'layers') { S.sim.tick(120); fitView(); }
-    setupTimeline();
+    setupCmdk();
+    setupPack();
     setupPrompt();
     setupHints();
     connectWs(data.ws);
     checkJournalUnread();
+
+    // FÁZA SHELL: aktivuj uloženú obrazovku (default 'dnes'). Na 'graf' prebudí slučku,
+    // inak vyrenderuje príslušnú DOM obrazovku a plátno ostane zaparkované.
+    setScreen(S.screen);
 
     // FÁZA DE-CLUTTER: dream() náhodné pulzy zrušené — sieť v pokoji nič nebudí, spí ticho.
     setInterval(computeReplayBounds, 60000);

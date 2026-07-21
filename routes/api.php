@@ -2,17 +2,25 @@
 
 use App\Http\Controllers\ActivationController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ContextController;
 use App\Http\Controllers\EdgeController;
+use App\Http\Controllers\LibraryController;
 use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\MindController;
 use App\Http\Controllers\NodeController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StructureController;
+use App\Http\Controllers\TodayController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/mind', [MindController::class, 'graph']);
 Route::get('/mind/stats', [MindController::class, 'stats']);
 Route::get('/journal', [\App\Http\Controllers\JournalController::class, 'index']);
+
+// Obrazovky redizajnu: Dnes / Knižnica + export balíka do schránky
+Route::get('/today', [TodayController::class, 'index']);
+Route::get('/library', [LibraryController::class, 'index']);
+Route::post('/context/pack', [ContextController::class, 'pack']);
 
 Route::post('/nodes', [NodeController::class, 'store']);
 Route::get('/nodes/{node}/suggestions', [NodeController::class, 'suggestions']);
