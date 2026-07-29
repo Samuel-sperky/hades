@@ -170,23 +170,40 @@ class TranscriptIngestService
         if (! $existing) {
             [$area, $department] = $this->classify($rec['project']);
 
-            $node = Node::create([
-                'external_key' => $key,
-                'type' => 'memory',
-                'source' => 'session',
-                'area_id' => $area?->id,
-                'department_id' => $department?->id,
-                'label' => $this->smartTitle($rec),
-                'description' => $this->describe($rec),
-                'meta' => $meta,
-                'strength' => 1,
-                'last_activated_at' => $lastActivatedAt,
-            ]);
-            $created = true;
+            // firstOrCreate, NIE create: medzi SELECT-om vyššie a týmto zápisom môže ten
+            // istý kľúč vložiť iný beh — 10-minútový mind:ingest vs nočný --all, alebo dve
+            // súbežné Claude Code sessions píšuce do práve prebiehajúceho transcriptu.
+            // Check-then-act tu padal na nodes_external_key_unique (SQLSTATE[23000]),
+            // doložené 3× v laravel.log za 13 dní.
+            $node = Node::firstOrCreate(
+                ['external_key' => $key],
+                [
+                    'type' => 'memory',
+                    'source' => 'session',
+                    'area_id' => $area?->id,
+                    'department_id' => $department?->id,
+                    'label' => $this->smartTitle($rec),
+                    'description' => $this->describe($rec),
+                    'meta' => $meta,
+                    'strength' => 1,
+                    'last_activated_at' => $lastActivatedAt,
+                ],
+            );
+            $created = $node->wasRecentlyCreated;
 
-            // umelo posunúť created_at na začiatok session (pre časovú os / denník)
-            if ($rec['started_at']) {
-                $node->forceFill(['created_at' => Carbon::parse($rec['started_at'])])->save();
+            if ($created) {
+                // umelo posunúť created_at na začiatok session (pre časovú os / denník)
+                if ($rec['started_at']) {
+                    $node->forceFill(['created_at' => Carbon::parse($rec['started_at'])])->save();
+                }
+            } else {
+                // Preteky sme prehrali — uzol medzitým vytvoril iný beh. Ideme UPDATE cestou
+                // (len meta + last_activated_at), aby sme neprepísali jeho label/popis ani
+                // nezdvojili hrany, .md súbor a pulz.
+                $node->fill([
+                    'meta' => $meta,
+                    'last_activated_at' => $lastActivatedAt,
+                ])->save();
             }
         } elseif ($forceRefresh) {
             // jednorazová oprava: plný refresh vrátane labelu/oblasti/oddelenia,

@@ -16,6 +16,13 @@ return [
     // Default OFF (fail-safe): brain-write endpointy vracajú 403, .md sa nemení.
     'allow_brain_write' => (bool) env('HADES_ALLOW_BRAIN_WRITE', false),
 
+    // Guard pre DEŠTRUKTÍVNE nočné joby: mind:cleanup-edges, mind:prune-coactivation,
+    // mind:automerge. Nevratne mažú hrany a zlučujú uzly. Ich prahy (weight<1/90d, 0.08,
+    // 0.92) sú kalibrované na TF-IDF skóre — pri prechode na embeddingy znamenajú niečo
+    // úplne iné. Default OFF (fail-safe): zapnúť až po rekalibrácii a schválenom
+    // --dry-run reporte na reálnych dátach. Rozhodnutie #32.
+    'destructive_jobs_enabled' => (bool) env('HADES_DESTRUCTIVE_JOBS', false),
+
     // Register zdrojov .md „mozgov" indexovaných do siete (origin=brain).
     // BrainSourceRegistry (B2) toto zlúči s DB tabuľkou brain_sources a .env cestami.
     'brain_sources' => [

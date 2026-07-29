@@ -8,20 +8,39 @@
 }
 
 :8095 {
-	# Heslo na verejný prístup (basic-auth). Meno: hades.
-	# Hash je bcrypt hesla "Aura-Hades-4271" — zmeniť = prehashovať a reštartnúť caddy.
-	basic_auth {
-		hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+	# MCP prístup pre appku Claude (connectory tam nevedia poslať Basic Auth
+	# hlavičku, len URL) — tajný token v query stringu namiesto hesla, obchádza
+	# basic_auth nižšie. Token: wtVnmO1iE2FGdnvT2F_lIqpWP5J1SKN7
+	# (zmena = upraviť tu + reštart caddy).
+	@mcp_token {
+		path /mcp
+		query token=wtVnmO1iE2FGdnvT2F_lIqpWP5J1SKN7
+	}
+	handle @mcp_token {
+		reverse_proxy app:8080
+	}
+
+	# OAuth discovery sondy appky Claude musia dostať 404 (nie 401 z basic_auth),
+	# inak si appka myslí, že server má OAuth prihlásenie, a pripojenie zlyhá.
+	@oauth_probe path /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /register
+	handle @oauth_probe {
+		respond 404
 	}
 
 	# WebSocket (pusher protokol Reverbu beží na ceste /app/<key>) → Reverb
 	@ws path /app /app/*
 	handle @ws {
+		basic_auth {
+			hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+		}
 		reverse_proxy reverb:8081
 	}
 
-	# Všetko ostatné → Laravel appka
+	# Všetko ostatné (dashboard, chat, priamy /mcp bez tokenu) → basic-auth.
 	handle {
+		basic_auth {
+			hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+		}
 		reverse_proxy app:8080
 	}
 }

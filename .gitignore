@@ -23,6 +23,10 @@
 /vendor
 /backups/*
 !/backups/.gitkeep
+# Generované výstupy TranscriptIngestService::writeMarkdown — rastú s každou session
+# a robili `git status` permanentne špinavým (36 súborov pri prevzatí projektu).
+/summaries/sessions/*
+!/summaries/sessions/.gitkeep
 _ide_helper.php
 Homestead.json
 Homestead.yaml

@@ -65,9 +65,17 @@ $nightly = fn (string $command, string $at) => Schedule::command($command)
 
 $nightly('mind:rewire', '04:05');            // A3 — backfill similarity synapsií (najťažší)
 $nightly('mind:decay', '04:20');             // D2 — zabúdanie neaktívnych uzlov/hrán
-$nightly('mind:cleanup-edges', '04:30');     // A9 — prerušenie zabudnutých synapsií
-$nightly('mind:prune-coactivation', '04:35'); // prerezanie koincidenčného hairballu (skóre < 0.08)
-$nightly('mind:automerge', '04:45');         // D5/E7 — zlúčenie takmer identických uzlov
+
+// DEŠTRUKTÍVNE joby — nevratne MAŽÚ hrany a ZLUČUJÚ uzly nad jedinou kópiou pamäte.
+// Ovládané prepínačom, lebo ich prahy (cleanup weight<1/90d, prune 0.08, automerge 0.92)
+// sú kalibrované na TF-IDF. Pri prechode na embeddingy znamenajú niečo úplne iné, takže
+// do rekalibrácie + schváleného --dry-run reportu musia byť VYPNUTÉ. Rozhodnutie #32.
+if (config('hades.destructive_jobs_enabled')) {
+    $nightly('mind:cleanup-edges', '04:30');      // A9 — prerušenie zabudnutých synapsií
+    $nightly('mind:prune-coactivation', '04:35'); // prerezanie koincidenčného hairballu (skóre < 0.08)
+    $nightly('mind:automerge', '04:45');          // D5/E7 — zlúčenie takmer identických uzlov
+}
+
 $nightly('mind:sync-memory', '04:55');       // Claude memory → Hades
 $nightly('mind:export-memory', '05:05');     // Hades → Claude memory
 
