@@ -1,0 +1,49 @@
+{
+  "by_area": {
+    "*": "number"
+  },
+  "by_type": {
+    "core": "number",
+    "memory": "number",
+    "project": "number",
+    "skill": "number"
+  },
+  "growth": [
+    {
+      "count": "number",
+      "day": "string"
+    }
+  ],
+  "recent_records": [
+    {
+      "created_at": "string",
+      "id": "number",
+      "label": "string",
+      "project": "string"
+    }
+  ],
+  "state": {
+    "awake": "boolean",
+    "last_activity_at": "string"
+  },
+  "top_nodes": [
+    {
+      "id": "number",
+      "label": "string",
+      "strength": "number",
+      "type": "string"
+    }
+  ],
+  "totals": {
+    "activations": "number",
+    "edges": "number",
+    "nodes": "number",
+    "sessions": "number",
+    "skills": "number"
+  },
+  "week": {
+    "activations": "number",
+    "new_nodes": "number",
+    "new_sessions": "number"
+  }
+}

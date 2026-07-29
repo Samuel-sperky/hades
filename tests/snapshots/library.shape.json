@@ -1,0 +1,21 @@
+{
+  "areas": [
+    {
+      "color": "string",
+      "name": "string",
+      "skills": [
+        {
+          "certainty": "null",
+          "id": "number",
+          "label": "string",
+          "origin": "string",
+          "path": "null|string",
+          "snippet": "null|string",
+          "tags": [
+            "empty"
+          ]
+        }
+      ]
+    }
+  ]
+}

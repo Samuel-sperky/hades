@@ -80,7 +80,7 @@ class SecretScannerTest extends TestCase
     public function test_env_variable_names_are_allowed_only_values_are_secrets(): void
     {
         $this->assertSame([], $this->scanner->scan(
-            'Pri deployi nezabudni nastaviť HADES_API_TOKEN a HADES_ALLOW_BRAIN_WRITE v .env.'
+            'Pri deployi nezabudni nastaviť AURAAI_API_TOKEN a AURAAI_ALLOW_BRAIN_WRITE v .env.'
         ));
     }
 

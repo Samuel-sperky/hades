@@ -24,13 +24,13 @@ class BrainWriterTest extends TestCase
         @mkdir($this->tmp, 0775, true);
 
         // transcripts mimo dosahu (claude-memory adaptér nič nenačíta)
-        config(['hades.transcripts_path' => $this->tmp.'/no-transcripts']);
+        config(['auraai.transcripts_path' => $this->tmp.'/no-transcripts']);
         // jediný zdroj = náš writable temp priečinok
         config([
-            'hades.brain_sources' => [
+            'auraai.brain_sources' => [
                 'test' => ['type' => 'external', 'path' => $this->tmp, 'label' => 'Test', 'writable' => true],
             ],
-            'hades.brain_paths' => [],
+            'auraai.brain_paths' => [],
         ]);
     }
 
@@ -42,7 +42,7 @@ class BrainWriterTest extends TestCase
 
     private function enableWrite(): void
     {
-        config(['hades.allow_brain_write' => true]);
+        config(['auraai.allow_brain_write' => true]);
     }
 
     private function tmpFiles(): array
@@ -66,7 +66,7 @@ class BrainWriterTest extends TestCase
 
     public function test_guard_off_blocks_write_and_leaves_file_untouched(): void
     {
-        config(['hades.allow_brain_write' => false]);
+        config(['auraai.allow_brain_write' => false]);
 
         $file = $this->tmp.'/existing.md';
         file_put_contents($file, "---\nname: Pôvodné\n---\n# Pôvodné\n\nText.");

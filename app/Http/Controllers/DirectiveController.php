@@ -417,7 +417,7 @@ class DirectiveController extends Controller
     {
         $label = mb_strtolower(trim((string) $node->label));
 
-        foreach ((array) config('hades.project_dirs', []) as $name => $dir) {
+        foreach ((array) config('auraai.project_dirs', []) as $name => $dir) {
             if (mb_strtolower((string) $name) === $label) {
                 return (string) $dir;
             }
@@ -439,6 +439,6 @@ class DirectiveController extends Controller
     /** Absolútna cesta k priečinku smerníc (config alebo base_path/directives). */
     protected function directivesPath(): string
     {
-        return (string) config('hades.directives_path', base_path('directives'));
+        return (string) config('auraai.directives_path', base_path('directives'));
     }
 }

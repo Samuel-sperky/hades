@@ -1,7 +1,7 @@
-# Caddy reverzný proxy pre verejný (ngrok) prístup k Hadesovi.
-# Zlúči appku (8080) aj Reverb WebSocket (8081) na JEDEN port (8090),
-# takže jeden ngrok tunel prenesie aj HTTP aj živé pulzy. Chránené basic-auth.
-# Lokálny prístup na 127.0.0.1:8080 (priamo appka) toto NEobchádza a nemá heslo.
+# Caddy reverzný proxy pre verejný (ngrok) prístup k AuraAI.
+# Zlúči appku (8080) aj Reverb WebSocket (8081) na JEDEN port (8095 v kontajneri,
+# 8084 na hostiteľovi), takže jeden ngrok tunel prenesie aj HTTP aj živé pulzy.
+# Chránené basic-auth. Lokálny priamy prístup na appku toto NEobchádza a nemá heslo.
 {
 	admin off
 	auto_https off
@@ -10,11 +10,18 @@
 :8095 {
 	# MCP prístup pre appku Claude (connectory tam nevedia poslať Basic Auth
 	# hlavičku, len URL) — tajný token v query stringu namiesto hesla, obchádza
-	# basic_auth nižšie. Token: wtVnmO1iE2FGdnvT2F_lIqpWP5J1SKN7
-	# (zmena = upraviť tu + reštart caddy).
+	# basic_auth nižšie.
+	#
+	# Token je v .env ako MCP_QUERY_TOKEN a compose ho podáva tomuto kontajneru.
+	# Predtým bol zapísaný priamo tu, plaintextom, v git-trackovanom súbore —
+	# takže žije v histórii repozitára hades.git a musel byť rotovaný.
+	# Zmena tokenu = upraviť .env + `docker compose up -d caddy`.
+	#
+	# Fail-closed: ak MCP_QUERY_TOKEN nie je nastavený, tento matcher sa nezhodne
+	# so žiadnou požiadavkou a /mcp spadne do basic-auth bloku nižšie.
 	@mcp_token {
 		path /mcp
-		query token=wtVnmO1iE2FGdnvT2F_lIqpWP5J1SKN7
+		query token={$MCP_QUERY_TOKEN}
 	}
 	handle @mcp_token {
 		reverse_proxy app:8080

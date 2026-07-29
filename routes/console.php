@@ -11,12 +11,29 @@ Artisan::command('inspire', function () {
 // Denna zaloha vedomia + rotacia (drzi poslednych 14 dni).
 // Fail-safe: dump ide najprv do temp suboru a do backups/ sa presunie len ak nie je
 // prazdny; heslo cez MYSQL_PWD namiesto argv (-p), aby nesvietilo v process liste.
+//
+// Nazov DB, uzivatel a heslo sa BERU Z CONFIGU, nie z literalu. Predtym boli zadrotovane
+// tu aj v .env aj v compose — pri premenovani DB (Hades -> AuraAI) by dump tichym
+// fail-safe checkom [ -s ] nic nezapisal a jedinou stopou by bol Log::error, ktory
+// nikto necita. Rotacia mie na *.sql (nie na prefix), aby premenovanie nezastavilo
+// mazanie starych dumpov — v backups/ nie su ine subory nez zalohy.
+$db = config('database.connections.'.config('database.default'));
+$dumpTmp = '/tmp/db-backup.sql';
+$dumpDir = '/var/www/html/backups';
+
 Schedule::exec(
-    'MYSQL_PWD=hades mariadb-dump -h mariadb -uhades hades > /tmp/hades-backup.sql'
-    .' && [ -s /tmp/hades-backup.sql ]'
-    .' && mv /tmp/hades-backup.sql /var/www/html/backups/hades-$(date +\%F).sql'
-    .' && find /var/www/html/backups -name "hades-*.sql" -mtime +14 -delete'
-)->dailyAt('03:00')->onFailure(fn () => \Log::error('Hades backup zlyhal'));
+    sprintf(
+        'MYSQL_PWD=%s mariadb-dump -h %s -u%s --single-transaction --routines --triggers %s > %s',
+        escapeshellarg((string) ($db['password'] ?? '')),
+        escapeshellarg((string) ($db['host'] ?? 'mariadb')),
+        escapeshellarg((string) ($db['username'] ?? '')),
+        escapeshellarg((string) ($db['database'] ?? '')),
+        $dumpTmp,
+    )
+    .' && [ -s '.$dumpTmp.' ]'
+    .' && mv '.$dumpTmp.' '.$dumpDir.'/'.($db['database'] ?? 'db').'-$(date +\%F).sql'
+    .' && find '.$dumpDir.' -name "*.sql" -mtime +14 -delete'
+)->dailyAt('03:00')->onFailure(fn () => \Log::error('AuraAI: denna zaloha DB zlyhala'));
 
 // Automaticke zapisovanie zaznamov zo sessions (bez modelu) — priebezne kazdych 10 minut,
 // plny prechod v noci. Oba ingesty zdielaju rovnaky mutex, aby nikdy nebezali naraz.
@@ -70,7 +87,7 @@ $nightly('mind:decay', '04:20');             // D2 — zabúdanie neaktívnych u
 // Ovládané prepínačom, lebo ich prahy (cleanup weight<1/90d, prune 0.08, automerge 0.92)
 // sú kalibrované na TF-IDF. Pri prechode na embeddingy znamenajú niečo úplne iné, takže
 // do rekalibrácie + schváleného --dry-run reportu musia byť VYPNUTÉ. Rozhodnutie #32.
-if (config('hades.destructive_jobs_enabled')) {
+if (config('auraai.destructive_jobs_enabled')) {
     $nightly('mind:cleanup-edges', '04:30');      // A9 — prerušenie zabudnutých synapsií
     $nightly('mind:prune-coactivation', '04:35'); // prerezanie koincidenčného hairballu (skóre < 0.08)
     $nightly('mind:automerge', '04:45');          // D5/E7 — zlúčenie takmer identických uzlov

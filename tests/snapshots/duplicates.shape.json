@@ -1,0 +1,19 @@
+{
+  "pairs": [
+    {
+      "a": {
+        "id": "number",
+        "label": "string",
+        "strength": "number",
+        "type": "string"
+      },
+      "b": {
+        "id": "number",
+        "label": "string",
+        "strength": "number",
+        "type": "string"
+      },
+      "percent": "number"
+    }
+  ]
+}

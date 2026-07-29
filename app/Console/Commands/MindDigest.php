@@ -47,7 +47,7 @@ class MindDigest extends Command
             $lines[] = 'Top skills: '.implode(', ', $topSkills);
         }
 
-        $core = Node::where('type', 'core')->where('label', config('hades.name'))->first();
+        $core = Node::where('type', 'core')->where('label', config('auraai.name'))->first();
 
         // súhrn ide rovno do oddelenia "Súhrny" v oblasti jadra (fallback osobne-preferencie)
         $area = $core?->area_id ? Area::find($core->area_id) : null;

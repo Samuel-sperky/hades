@@ -36,8 +36,9 @@ class TranscriptIngestService
         protected SummaryService $summaries = new SummaryService(),
         protected SimilarityService $similarity = new SimilarityService(),
         protected MindService $mind = new MindService(),
+        protected Brain\SecretScanner $secrets = new Brain\SecretScanner(),
     ) {
-        $this->base = rtrim((string) config('hades.transcripts_path', '/transcripts'), '/');
+        $this->base = rtrim((string) config('auraai.transcripts_path', '/transcripts'), '/');
     }
 
     /**
@@ -343,7 +344,7 @@ class TranscriptIngestService
                             $this->extractCommits($input['command'], $rec['commits']);
                         }
                     } elseif ($bt === 'text' && is_string($block['text'] ?? null) && trim($block['text']) !== '') {
-                        $rec['final'] = $block['text'];
+                        $rec['final'] = $this->secrets->redact($block['text']);
                     }
                 }
             }
@@ -430,6 +431,14 @@ class TranscriptIngestService
         $content = preg_replace('/@"[^"]*"/', '', $content);
         $content = preg_replace('/@\S+\.\w+/', '', $content);
 
+        // Redakcia tajomstiev PRED zápisom do pamäte. Prompty bežne obsahujú vloženú
+        // dokumentáciu s API kľúčmi a tento ingest z nich robí label, popis, meta aj
+        // .md súbor. SecretScanner bol dovtedy zapojený len v MCP a BrainWriter, takže
+        // transcript bola jediná cesta, ktorou sa kľúč mohol dostať do siete.
+        // Nezamietame celý prompt (to by bola tichá strata pamäte) — vystrihneme len
+        // zhodu a zvyšok spomienky zapíšeme.
+        $content = $this->secrets->redact($content);
+
         return trim(preg_replace('/[ \t]+/', ' ', $content));
     }
 
@@ -512,12 +521,12 @@ class TranscriptIngestService
     }
 
     /**
-     * Projekt → oblasť podľa config('hades.project_area_map'); case-insensitive,
+     * Projekt → oblasť podľa config('auraai.project_area_map'); case-insensitive,
      * skúša aj čiastočnú zhodu (contains oboma smermi). Fallback z configu.
      */
     public function resolveArea(?string $project): ?Area
     {
-        $map = (array) config('hades.project_area_map', []);
+        $map = (array) config('auraai.project_area_map', []);
         $needle = mb_strtolower(trim((string) $project));
 
         $slug = null;
@@ -541,7 +550,7 @@ class TranscriptIngestService
             }
         }
 
-        $slug ??= (string) config('hades.project_area_fallback', 'vyvoj-kod');
+        $slug ??= (string) config('auraai.project_area_fallback', 'vyvoj-kod');
 
         return Area::where('slug', $slug)->first() ?? Area::orderBy('id')->first();
     }

@@ -17,7 +17,7 @@ class AuthenticateApiToken
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $configured = (string) config('hades.api_token', '');
+        $configured = (string) config('auraai.api_token', '');
 
         // prázdny token v konfigu = fail-closed
         if ($configured === '') {

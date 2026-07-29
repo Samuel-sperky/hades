@@ -23,8 +23,25 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <!--
+            Testy bežia proti REÁLNEJ MariaDB, nie proti SQLite :memory:.
+
+            SQLite nedokáže spustiť SQL, na ktorom stojí jadro produktu:
+              - `COLLATE utf8mb4_unicode_ci` v MindService::searchNodes() (recall)
+              - `JSON_UNQUOTE(JSON_EXTRACT(...))` v JournalController
+            Na SQLite preto musel byť test recallu trvalo skipnutý — teda práve
+            najdôležitejšia logika projektu nebola pokrytá vôbec. Beh je o niekoľko
+            sekúnd pomalší, ale testuje sa to, čo reálne pobeží v produkcii.
+
+            Databáza auraai_test je oddelená od auraai; RefreshDatabase ju migruje
+            nanovo pri každom teste, takže sa nikdy nedotkne živých dát.
+        -->
+        <env name="DB_CONNECTION" value="mariadb"/>
+        <env name="DB_HOST" value="mariadb"/>
+        <env name="DB_PORT" value="3306"/>
+        <env name="DB_DATABASE" value="auraai_test"/>
+        <env name="DB_USERNAME" value="auraai"/>
+        <env name="DB_PASSWORD" value="auraai"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

@@ -15,10 +15,10 @@ class HealthController extends Controller
     {
         return response()->json([
             'status' => 'ok',
-            'name' => config('hades.name'),
-            'version' => config('hades.version'),
+            'name' => config('auraai.name'),
+            'version' => config('auraai.version'),
             'time' => now()->toIso8601String(),
-            'brain_write_enabled' => (bool) config('hades.allow_brain_write'),
+            'brain_write_enabled' => (bool) config('auraai.allow_brain_write'),
         ]);
     }
 }

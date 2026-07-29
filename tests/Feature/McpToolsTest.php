@@ -22,7 +22,7 @@ class McpToolsTest extends TestCase
     {
         parent::setUp();
 
-        config(['hades.allow_brain_write' => false, 'cache.default' => 'array']);
+        config(['auraai.allow_brain_write' => false, 'cache.default' => 'array']);
 
         Area::create(['name' => 'Vývoj / kód', 'slug' => 'vyvoj-kod', 'color' => '#03797e', 'angle' => 0]);
     }

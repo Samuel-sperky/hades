@@ -114,7 +114,7 @@ class SearchService
 
         $files = glob(base_path('skills').'/*/*.md') ?: [];
         $stamp = $files ? (max(array_map('filemtime', $files)) ?: 0) : 0;
-        $key = 'hades.playbooks.'.count($files).'.'.$stamp;
+        $key = 'auraai.playbooks.'.count($files).'.'.$stamp;
 
         return $cache = Cache::remember($key, 3600, function () use ($files) {
             $contents = [];

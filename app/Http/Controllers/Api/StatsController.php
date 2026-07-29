@@ -51,7 +51,7 @@ class StatsController extends Controller
                 'session' => max(0, $totalNodes - $brain),
             ],
             'sync' => $this->sync(),
-            'brain_write_enabled' => (bool) config('hades.allow_brain_write'),
+            'brain_write_enabled' => (bool) config('auraai.allow_brain_write'),
         ];
     }
 
@@ -253,7 +253,7 @@ class StatsController extends Controller
             'deleted' => (int) ($stats['deleted'] ?? 0),
             'skipped' => (int) ($stats['skipped'] ?? 0),
             'message' => $run?->message,
-            'brain_write_enabled' => (bool) config('hades.allow_brain_write'),
+            'brain_write_enabled' => (bool) config('auraai.allow_brain_write'),
         ];
     }
 }

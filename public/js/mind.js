@@ -2830,10 +2830,16 @@ let wsWasConnected = false;
 
 function connectWs(ws) {
     // Same-origin WS keď je appka servovaná cez proxy/tunel (https, alebo iný port
-    // než priamy 8080) — Caddy routuje /app/* na Reverb, takže pulzy chodia aj cez
-    // ngrok. Priamy lokálny 127.0.0.1:8080 ostáva na ws.host/ws.port (localhost:8081).
+    // než priamy port appky) — Caddy routuje /app/* na Reverb, takže pulzy chodia aj
+    // cez ngrok. Priamy lokálny prístup ostáva na ws.host/ws.port.
+    //
+    // Priamy port prichádza zo servera (ws.app_port), nie z literálu. Zadrôtované
+    // '8080' predtým znamenalo, že presun appky na iný port ju vyhodnotil ako
+    // tunelovanú a WebSocket išiel na port, kde Reverb nebeží — pulzy tichým
+    // spôsobom prestali chodiť.
     const tls = location.protocol === 'https:';
-    const proxied = tls || (location.port && location.port !== '8080');
+    const directPort = String(ws.app_port || '8080');
+    const proxied = tls || (location.port && location.port !== directPort);
     const host = proxied ? location.hostname : ws.host;
     const port = proxied
         ? (location.port ? Number(location.port) : (tls ? 443 : 80))

@@ -1,0 +1,15 @@
+{
+  "decisions": [
+    {
+      "area_id": "number",
+      "created_at": "string",
+      "decided_on": "string",
+      "id": "number",
+      "node_id": "null",
+      "origin": "string",
+      "reason": "string",
+      "source_file": "null",
+      "text": "string"
+    }
+  ]
+}

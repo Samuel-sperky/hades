@@ -29,7 +29,7 @@ class ChatController extends Controller
         // E2 — „zapamätaj si" intent z používateľovej správy (detekcia aj bez API kľúča)
         $suggestedNode = $this->detectRememberIntent($validated['message']);
 
-        $apiKey = config('hades.anthropic_api_key');
+        $apiKey = config('auraai.anthropic_api_key');
 
         if (blank($apiKey)) {
             return response()->json(array_filter([
@@ -57,7 +57,7 @@ class ChatController extends Controller
             $client = new Client(apiKey: $apiKey);
 
             $response = $client->messages->create(
-                model: config('hades.chat_model'),
+                model: config('auraai.chat_model'),
                 maxTokens: 1500,
                 system: $this->systemPrompt($recalled, $context),
                 messages: $messages,

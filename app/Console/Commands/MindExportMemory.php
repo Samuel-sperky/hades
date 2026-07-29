@@ -29,7 +29,7 @@ class MindExportMemory extends Command
 
     public function handle(): int
     {
-        $exportPath = rtrim((string) config('hades.memory_export_path', '/memory-rw/hades'), '/');
+        $exportPath = rtrim((string) config('auraai.memory_export_path', '/memory-rw/hades'), '/');
         $mountRoot = dirname($exportPath);
 
         // mount ešte nie je pripojený → graceful no-op

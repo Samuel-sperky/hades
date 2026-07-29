@@ -1,0 +1,11 @@
+{
+  "activations": [
+    {
+      "created_at": "string",
+      "id": "number",
+      "kind": "string",
+      "node_id": "number",
+      "session_key": "null|string"
+    }
+  ]
+}

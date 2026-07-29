@@ -85,7 +85,7 @@ class MindReorganize extends Command
     /** Digest uzly → oddelenie "Súhrny" v oblasti core uzla (fallback osobne-preferencie). */
     protected function reorganizeDigests(): int
     {
-        $core = Node::where('type', 'core')->where('label', config('hades.name'))->first();
+        $core = Node::where('type', 'core')->where('label', config('auraai.name'))->first();
         $area = null;
         if ($core?->area_id) {
             $area = Area::find($core->area_id);

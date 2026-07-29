@@ -1,4 +1,9 @@
-name: hades
+name: auraai
+
+# Compose project name určuje názvy volumes (auraai_dbdata), kontajnerov a siete.
+# Pri forku z Hadesa sa dáta NEPREBERAJÚ automaticky — starý hades_dbdata zostáva
+# nedotknutý a obsah sa prenáša cez mysqldump → import (rozhodnutie #2 a #12).
+# Postup je zdokumentovaný v refactor-auraai/07-W0-SPEC.md.
 
 x-app: &app
   build: docker/php
@@ -7,19 +12,32 @@ x-app: &app
   volumes:
     - .:/var/www/html
     - "${CC_TRANSCRIPTS:-C:/Users/Ucet/.claude/projects}:/transcripts:ro"
-    - "C:/Users/Ucet/.claude/projects/C--Users-Ucet-Desktop-AI-mind/memory:/memory-rw"
+    # Zapisovateľný mount pre export vedomia späť do Claude memory.
+    # Cesta je Claude Code konvencia: názov projektového adresára s / a : nahradenými -.
+    # Po forku do C:\Aura\aura-ai je to C--Aura-aura-ai (predtým C--Users-Ucet-Desktop-AI-mind).
+    - "${CC_MEMORY:-C:/Users/Ucet/.claude/projects/C--Aura-aura-ai/memory}:/memory-rw"
   depends_on:
-    - mariadb
-    - redis
+    mariadb:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
 
 services:
   app:
     <<: *app
     ports:
-      - "127.0.0.1:8080:8080"
+      # 8082 počas sprintu: Hades ešte beží na 8080 ako živá záloha, kým AuraAI
+      # nepreukáže funkčnosť. Prepnutie na finálny port je posledný krok sprintu.
+      - "127.0.0.1:8082:8080"
     environment:
       PHP_CLI_SERVER_WORKERS: 8
     command: php artisan serve --host=0.0.0.0 --port=8080
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/up') === false ? 1 : 0);"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   queue:
     <<: *app
@@ -32,41 +50,78 @@ services:
   reverb:
     <<: *app
     ports:
-      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:8083:8081"
     command: php artisan reverb:start --host=0.0.0.0 --port=8081
 
   # Reverzný proxy pre verejný (ngrok) prístup — appka + WebSocket na jednom porte,
-  # chránené basic-auth. Lokálny 127.0.0.1:8080 ostáva priamy (bez hesla, bez proxy).
+  # chránené basic-auth. Lokálny priamy port ostáva bez proxy a bez hesla.
   caddy:
     image: caddy:2-alpine
     restart: always
     ports:
-      - "127.0.0.1:8095:8095"
+      - "127.0.0.1:8084:8095"
+    environment:
+      # Token pre /mcp bol predtým plaintextom priamo v Caddyfile (git-trackovaný).
+      # Presunutý do .env; starý token treba považovať za kompromitovaný.
+      MCP_QUERY_TOKEN: "${MCP_QUERY_TOKEN:-}"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - app
       - reverb
 
+  # Lokálny LLM — Ollama. Hostí malé modely (rozhodnutie #104): Qwen3-0.6B ako
+  # router/vyhodnocovač, multilingual-e5-small na embeddingy, nemotron-mini 4B ako
+  # eskalácia. Žiadny veľký model, žiadne platené API. Appka MUSÍ fungovať aj keď
+  # tento kontajner nebeží — všetky utility úlohy majú deterministický fallback.
+  ollama:
+    image: ollama/ollama:latest
+    restart: always
+    ports:
+      - "127.0.0.1:11434:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+    volumes:
+      - ollamadata:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   mariadb:
     image: mariadb:11.4
     restart: always
     environment:
-      MARIADB_DATABASE: hades
-      MARIADB_USER: hades
-      MARIADB_PASSWORD: hades
-      MARIADB_ROOT_PASSWORD: hades_root
+      MARIADB_DATABASE: auraai
+      MARIADB_USER: auraai
+      MARIADB_PASSWORD: auraai
+      MARIADB_ROOT_PASSWORD: auraai_root
     ports:
-      - "127.0.0.1:3307:3306"
+      - "127.0.0.1:3308:3306"
     volumes:
       - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
     restart: always
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   dbdata:
   redisdata:
+  ollamadata:

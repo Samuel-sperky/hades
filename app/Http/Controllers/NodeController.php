@@ -180,7 +180,7 @@ class NodeController extends Controller
 
     public function destroy(Node $node): JsonResponse
     {
-        if ($node->type === 'core' && $node->label === config('hades.name')) {
+        if ($node->type === 'core' && $node->label === config('auraai.name')) {
             return response()->json(['message' => 'Jadro vedomia sa nedá zmazať.'], 422);
         }
 

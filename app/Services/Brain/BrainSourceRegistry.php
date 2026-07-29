@@ -7,8 +7,8 @@ use Illuminate\Support\Str;
 /**
  * Register zdrojov `.md` „mozgov" + enumerácia ich súborov na deskriptory.
  *
- * Zlučuje `config('hades.brain_sources')` (skills, claude-memory), externé cesty
- * z `config('hades.brain_paths')` (`.env` HADES_BRAIN_PATHS) a per-typ adaptéry.
+ * Zlučuje `config('auraai.brain_sources')` (skills, claude-memory), externé cesty
+ * z `config('auraai.brain_paths')` (`.env` AURAAI_BRAIN_PATHS) a per-typ adaptéry.
  *
  * KĽÚČOVÉ pre adopciu (Risk #2): external_key sa ZACHOVÁVA presne v tvare, ktorý
  * už používajú MindSeedSkills a ClaudeMemoryIngestService, aby brain-sync
@@ -39,7 +39,7 @@ class BrainSourceRegistry
     {
         $sources = [];
 
-        foreach ((array) config('hades.brain_sources', []) as $key => $def) {
+        foreach ((array) config('auraai.brain_sources', []) as $key => $def) {
             $sources[] = [
                 'key' => (string) $key,
                 'type' => $def['type'] ?? 'external',
@@ -51,7 +51,7 @@ class BrainSourceRegistry
             ];
         }
 
-        foreach ((array) config('hades.brain_paths', []) as $path) {
+        foreach ((array) config('auraai.brain_paths', []) as $path) {
             $path = trim((string) $path);
             if ($path === '') {
                 continue;
@@ -62,8 +62,8 @@ class BrainSourceRegistry
                 'type' => 'external',
                 'label' => Str::headline(basename(rtrim($path, '/\\'))),
                 'path' => $path,
-                'writable' => (bool) config('hades.allow_brain_write', false),
-                'area_slug' => config('hades.brain_paths_area', null),
+                'writable' => (bool) config('auraai.allow_brain_write', false),
+                'area_slug' => config('auraai.brain_paths_area', null),
                 'enabled' => true,
             ];
         }
@@ -162,7 +162,7 @@ class BrainSourceRegistry
         // claude-memory sa VŽDY číta z transcripts mountu — tam žijú existujúce
         // memory uzly, takže rel (a teda external_key) presne sedí a adopcia
         // nezdvojí. Configovaná `path` slúži len na evidenciu zdroja.
-        $base = rtrim((string) config('hades.transcripts_path', '/transcripts'), '/');
+        $base = rtrim((string) config('auraai.transcripts_path', '/transcripts'), '/');
         if (! is_dir($base)) {
             return [];
         }

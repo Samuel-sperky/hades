@@ -1,0 +1,30 @@
+{
+  "recent_records": [
+    {
+      "created_at": "string",
+      "id": "number",
+      "label": "string",
+      "project": "string",
+      "snippet": "string"
+    }
+  ],
+  "recent_sessions": [
+    {
+      "created_at": "string",
+      "id": "number",
+      "label": "string",
+      "project": "string",
+      "source": "string"
+    }
+  ],
+  "top_projects": [
+    {
+      "count": "number",
+      "project": "string"
+    }
+  ],
+  "week_added": {
+    "nodes": "number",
+    "sessions": "number"
+  }
+}

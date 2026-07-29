@@ -45,7 +45,7 @@ class NodeMarkdownResolver
         if ($node->source === 'claude-memory') {
             $path = $meta['path'] ?? null;
             if (is_string($path) && $path !== '') {
-                $transcripts = rtrim((string) config('hades.transcripts_path', '/transcripts'), '/');
+                $transcripts = rtrim((string) config('auraai.transcripts_path', '/transcripts'), '/');
                 $md = $this->readInside($transcripts, $path);
                 if ($md !== null) {
                     return ['markdown' => $md, 'source_path' => $path];

@@ -56,13 +56,18 @@ class GraphService
         $hiddenSplit = $this->deriveHiddenSplit($nodes, $edges);
 
         return [
-            'name' => config('hades.name'),
+            'name' => config('auraai.name'),
             'scope' => $scope,
             'state' => $this->state(),
             'ws' => [
                 'key' => config('broadcasting.connections.reverb.key'),
-                'host' => config('hades.public_ws_host'),
-                'port' => config('hades.public_ws_port'),
+                'host' => config('auraai.public_ws_host'),
+                'port' => config('auraai.public_ws_port'),
+                // Port, na ktorom je appka dostupná PRIAMO (mimo Caddy proxy). Frontend
+                // podľa neho rozhodne, či ide same-origin WS (tunel) alebo priamo na
+                // Reverb. Predtým bolo '8080' zadrôtované v mind.js, takže presun appky
+                // na iný port tichým spôsobom rozbil živé pulzy.
+                'app_port' => (string) config('auraai.public_app_port'),
             ],
             'areas' => Area::orderBy('angle')->get(),
             'departments' => Department::all(),
@@ -88,7 +93,7 @@ class GraphService
     {
         $lastActivation = Activation::latest('created_at')->first();
         $awake = $lastActivation
-            && $lastActivation->created_at->gt(now()->subMinutes(config('hades.awake_minutes')));
+            && $lastActivation->created_at->gt(now()->subMinutes(config('auraai.awake_minutes')));
 
         return [
             'awake' => (bool) $awake,

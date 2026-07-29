@@ -1,0 +1,20 @@
+{
+  "areas": [
+    {
+      "color": "string",
+      "departments": [
+        {
+          "id": "number",
+          "name": "string",
+          "node_count": "number",
+          "slug": "string"
+        }
+      ],
+      "id": "number",
+      "name": "string",
+      "node_count": "number"
+    }
+  ],
+  "core": "number",
+  "unassigned": "number"
+}

@@ -1,0 +1,31 @@
+{
+  "projects": {
+    "*": "number"
+  },
+  "records": [
+    {
+      "commits": [
+        "empty"
+      ],
+      "created_at": "string",
+      "description": "string",
+      "file_count": "null|number",
+      "files": [
+        "empty"
+      ],
+      "final": "null|string",
+      "id": "number",
+      "label": "string",
+      "project": "null|string",
+      "prompt_count": "null|number",
+      "prompts": [
+        "empty"
+      ],
+      "source": "string",
+      "tools": [
+        "empty"
+      ]
+    }
+  ],
+  "total": "number"
+}

@@ -22,7 +22,7 @@ class ReviewFlowTest extends TestCase
         parent::setUp();
 
         config([
-            'hades.allow_brain_write' => false,
+            'auraai.allow_brain_write' => false,
             'cache.default' => 'array',
         ]);
 
@@ -113,7 +113,7 @@ class ReviewFlowTest extends TestCase
 
     public function test_v1_review_queue_requires_token(): void
     {
-        config(['hades.api_token' => 'tok']);
+        config(['auraai.api_token' => 'tok']);
 
         $this->getJson('/api/v1/review/queue')->assertStatus(401);
         $this->withToken('tok')->getJson('/api/v1/review/queue')->assertOk()

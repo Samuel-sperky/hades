@@ -81,7 +81,7 @@ class DecisionController extends Controller
 
             // guard ON → skús markdown zrkadlo; Secrets/lock výnimky prebublú
             // (guardBrain ich zmapuje). Ak nie je writable zdroj, ostane session.
-            if (config('hades.allow_brain_write')) {
+            if (config('auraai.allow_brain_write')) {
                 try {
                     $res = app(BrainWriter::class)->writeDecision(
                         $text,

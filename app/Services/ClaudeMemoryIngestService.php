@@ -23,7 +23,7 @@ class ClaudeMemoryIngestService
 
     public function __construct()
     {
-        $this->base = rtrim((string) config('hades.transcripts_path', '/transcripts'), '/');
+        $this->base = rtrim((string) config('auraai.transcripts_path', '/transcripts'), '/');
     }
 
     /**

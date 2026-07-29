@@ -57,7 +57,7 @@ class ReviewController extends Controller
      */
     public function verify(Node $node): JsonResponse
     {
-        $guardOn = (bool) config('hades.allow_brain_write');
+        $guardOn = (bool) config('auraai.allow_brain_write');
 
         // guard ON + brain uzol → frontmatter upgrade + resync, potom DB dorovnaj
         if ($guardOn && $node->origin === 'brain') {

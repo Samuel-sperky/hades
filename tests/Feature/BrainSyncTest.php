@@ -22,7 +22,7 @@ class BrainSyncTest extends TestCase
         @mkdir($this->tmp, 0775, true);
 
         // transcripts mimo dosahu (claude-memory adaptér nič nenačíta v testoch)
-        config(['hades.transcripts_path' => $this->tmp.'/no-transcripts']);
+        config(['auraai.transcripts_path' => $this->tmp.'/no-transcripts']);
     }
 
     protected function tearDown(): void
@@ -34,10 +34,10 @@ class BrainSyncTest extends TestCase
     private function useExternal(): void
     {
         config([
-            'hades.brain_sources' => [
+            'auraai.brain_sources' => [
                 'test' => ['type' => 'external', 'path' => $this->tmp, 'label' => 'Test', 'writable' => false],
             ],
-            'hades.brain_paths' => [],
+            'auraai.brain_paths' => [],
         ]);
     }
 
@@ -101,10 +101,10 @@ class BrainSyncTest extends TestCase
         // skills zdroj mieri na temp skills priečinok s tým istým slugom
         $skillsDir = $this->tmp.'/skills';
         config([
-            'hades.brain_sources' => [
+            'auraai.brain_sources' => [
                 'skills' => ['type' => 'skills', 'path' => $skillsDir, 'label' => 'Skills', 'writable' => false],
             ],
-            'hades.brain_paths' => [],
+            'auraai.brain_paths' => [],
         ]);
         @mkdir($skillsDir.'/it', 0775, true);
         file_put_contents($skillsDir.'/it/docker.md', "# Docker\n\nKontajnerizácia.");

@@ -431,7 +431,7 @@ class MindService
             ]);
 
         return [
-            'name' => config('hades.name'),
+            'name' => config('auraai.name'),
             'areas' => $areas->all(),
             'node_types' => ['skill', 'memory', 'project'],
             'totals' => [

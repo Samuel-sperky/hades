@@ -22,7 +22,7 @@ use Illuminate\Support\Str;
  *     v rovnakom filesystéme). Pri zlyhaní sa tmp upratuje, nezostáva.
  *   - Presun medzi súbormi (move): cieľ zapíš+over, AŽ POTOM zmaž zdroj — nikdy
  *     naopak. Pri zlyhaní zostane obsah aspoň v jednom súbore.
- *   - Guard `config('hades.allow_brain_write')` default OFF → BrainWriteDisabledException.
+ *   - Guard `config('auraai.allow_brain_write')` default OFF → BrainWriteDisabledException.
  *     Cieľový zdroj musí byť navyše `writable`.
  *   - SecretScanner pri každom zápise; nález bez `force` → SecretsDetectedException
  *     (len názvy vzorov, nikdy hodnota). `force=true` → varovania.
@@ -210,7 +210,7 @@ class BrainWriter
 
     private function ensureWriteEnabled(): void
     {
-        if (! config('hades.allow_brain_write')) {
+        if (! config('auraai.allow_brain_write')) {
             throw new BrainWriteDisabledException;
         }
     }

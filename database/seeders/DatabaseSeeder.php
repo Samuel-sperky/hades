@@ -28,7 +28,10 @@ class DatabaseSeeder extends Seeder
 
         $core = [
             [
-                'label' => 'Hades',
+                // MUSÍ sa zhodovať s config('auraai.name') — frontend podľa toho nájde
+                // centrálny hub uzol (`n.label === S.name`) a umiestni ho do stredu.
+                // Rozchod configu a DB = rozsypaný graf (hub mimo stredu, pulzy z náhodného uzla).
+                'label' => (string) config('auraai.name', 'AuraAI'),
                 'description' => 'Jadro vedomia. Živá neurónová sieť, ktorá sa učí z každého rozhovoru '
                     .'v Claude Code — pamätá si skills, spomienky a projekty a nikdy nezabúda.',
                 'strength' => 5,

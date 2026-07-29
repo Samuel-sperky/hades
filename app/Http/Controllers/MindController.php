@@ -94,7 +94,7 @@ class MindController extends Controller
     {
         $lastActivation = Activation::latest('created_at')->first();
         $awake = $lastActivation
-            && $lastActivation->created_at->gt(now()->subMinutes(config('hades.awake_minutes')));
+            && $lastActivation->created_at->gt(now()->subMinutes(config('auraai.awake_minutes')));
 
         return [
             'awake' => (bool) $awake,

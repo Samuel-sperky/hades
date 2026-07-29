@@ -1,0 +1,75 @@
+{
+  "brain_write_enabled": "boolean",
+  "certainty": {
+    "bez": "number",
+    "hypoteza": "number",
+    "needs_review": "number",
+    "overene": "number",
+    "pasca": "number",
+    "total": "number"
+  },
+  "counts": {
+    "brain": "number",
+    "decisions": "number",
+    "edges": "number",
+    "nodes": "number",
+    "session": "number"
+  },
+  "growth": {
+    "labels": [
+      "string"
+    ],
+    "values": [
+      "number"
+    ]
+  },
+  "heatmap": {
+    "months": {
+      "0": "string",
+      "1": "string",
+      "6": "string",
+      "10": "string",
+      "14": "string",
+      "19": "string",
+      "23": "string",
+      "27": "string",
+      "31": "string",
+      "36": "string",
+      "40": "string",
+      "45": "string",
+      "49": "string"
+    },
+    "total": "number",
+    "weeks": [
+      [
+        {
+          "count": "number",
+          "date": "string",
+          "level": "number"
+        }
+      ]
+    ]
+  },
+  "per_area": [
+    {
+      "bez": "number",
+      "color": "string",
+      "count": "number",
+      "hypoteza": "number",
+      "name": "string",
+      "overene": "number",
+      "pasca": "number",
+      "slug": "string"
+    }
+  ],
+  "sync": {
+    "brain_write_enabled": "boolean",
+    "created": "number",
+    "deleted": "number",
+    "finished_at": "string",
+    "message": "null",
+    "skipped": "number",
+    "status": "string",
+    "updated": "number"
+  }
+}

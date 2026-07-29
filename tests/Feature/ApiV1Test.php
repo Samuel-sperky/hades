@@ -22,8 +22,8 @@ class ApiV1Test extends TestCase
         parent::setUp();
 
         config([
-            'hades.api_token' => $this->token,
-            'hades.allow_brain_write' => false,
+            'auraai.api_token' => $this->token,
+            'auraai.allow_brain_write' => false,
             'cache.default' => 'array',
         ]);
 
@@ -46,7 +46,7 @@ class ApiV1Test extends TestCase
     public function test_v1_with_empty_configured_token_is_fail_closed_401(): void
     {
         // prázdny token v konfigu = NIKTO neprejde (aj so „správnou" hlavičkou)
-        config(['hades.api_token' => '']);
+        config(['auraai.api_token' => '']);
 
         $this->withToken('')->getJson('/api/v1/stats')->assertStatus(401);
         $this->withToken('whatever')->getJson('/api/v1/stats')->assertStatus(401);

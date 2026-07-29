@@ -1,0 +1,28 @@
+{
+  "queue": [
+    {
+      "area_id": "number",
+      "certainty": "null",
+      "created_at": "string",
+      "department_id": "number",
+      "description": "string",
+      "heat": "number",
+      "id": "number",
+      "label": "string",
+      "last_activated_at": "string",
+      "layer_role": "string",
+      "needs_review": "boolean",
+      "origin": "string",
+      "pinned": "boolean",
+      "source": "string",
+      "source_file": "string",
+      "strength": "number",
+      "tags": [
+        "empty"
+      ],
+      "type": "string",
+      "verified_at": "null"
+    }
+  ],
+  "total": "number"
+}
