@@ -7,6 +7,7 @@ use App\Llm\EmbedOptions;
 use App\Llm\ProviderFactory;
 use App\Models\Node;
 use Illuminate\Container\Container;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Jediné miesto, ktoré premieňa text na vektor. Nad `ChatProvider::embed()`
@@ -108,6 +109,54 @@ class EmbeddingService
         $vectors = $this->embed([$text]);
 
         return $vectors[0] ?? [];
+    }
+
+    /**
+     * Ako `embedOne()`, ale s krátkodobou cache. Používa to recall na vektor
+     * DOPYTU — na tomto stroji je round-trip do Ollamy ~130 ms a je to 76 %
+     * celej latencie vektorovej vetvy, pričom používateľ ten istý dopyt píše
+     * opakovane (hľadanie počas písania, MCP recall tej istej témy).
+     *
+     * Cache nemôže zastarať: rovnaký text + rovnaký model + rovnaká dimenzia
+     * dá bit-identický vektor (overené, kosínus uložený vs. nový = 1,0000000000).
+     * TTL je preto len strop pamäte, nie ochrana pred nesprávnym výsledkom.
+     *
+     * PRÁZDNY VEKTOR SA NIKDY NECACHUJE — inak by sekundový výpadok Ollamy vypol
+     * vektorovú vetvu na celý TTL. Nedostupná cache recall nezhodí.
+     *
+     * @return list<float>
+     */
+    public function embedOneCached(string $text): array
+    {
+        $ttl = (int) config('recall.embed.query_cache_ttl', 300);
+
+        if ($ttl <= 0) {
+            return $this->embedOne($text);
+        }
+
+        $dimensions = $this->dimensions();
+        $key = 'recall.qvec.'.hash('sha256', $this->model().'|'.$dimensions.'|'.$this->prepare($text));
+
+        try {
+            $cached = Cache::get($key);
+            if (is_array($cached) && count($cached) === $dimensions) {
+                return array_values($cached);
+            }
+        } catch (\Throwable) {
+            // nedostupná cache je normálny stav — pokračujeme na provider
+        }
+
+        $vector = $this->embedOne($text);
+
+        if ($vector !== []) {
+            try {
+                Cache::put($key, $vector, $ttl);
+            } catch (\Throwable) {
+                // zápis do cache nie je kritický
+            }
+        }
+
+        return $vector;
     }
 
     /**

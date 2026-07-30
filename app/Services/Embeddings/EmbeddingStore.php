@@ -41,20 +41,32 @@ class EmbeddingStore
     }
 
     /**
-     * Všetky uložené vektory pre daný model a dimenziu, ako [node_id => vektor].
-     * Jeden dopyt nad celým korpusom (679 × 4 KB ≈ 2,7 MB) — bez N+1.
+     * Uložené vektory pre daný model a dimenziu, ako [node_id => vektor].
+     * Jeden dopyt — bez N+1.
      *
      * `$model` = null znamená „ktorýkoľvek model"; vektory z iného modelu sa
      * NIKDY nemiešajú do jedného porovnania, preto je filtrovanie povinné vo
      * volajúcom (VectorSearch posiela aktuálny model).
      *
+     * `$nodeIds` zúži načítanie na konkrétne uzly. Recall v režime 'rerank'
+     * potrebuje kosínus len pre lexikálnych kandidátov (~12–60 uzlov), takže
+     * načítať celý korpus (700 × 4 KB ≈ 2,8 MB + unpack 716 800 floatov) by
+     * bola zbytočná práca — skóre ostatných uzlov sa aj tak zahodí.
+     * `$nodeIds = []` vráti prázdno, `null` = celý korpus.
+     *
+     * @param  list<int>|null  $nodeIds
      * @return array<int, list<float>>
      */
-    public function all(?string $model = null, ?int $dimensions = null): array
+    public function all(?string $model = null, ?int $dimensions = null, ?array $nodeIds = null): array
     {
+        if ($nodeIds !== null && $nodeIds === []) {
+            return [];
+        }
+
         $rows = DB::table('nodes')
             ->whereNotNull('embedding')
             ->when($model !== null, fn ($q) => $q->where('embedding_model', $model))
+            ->when($nodeIds !== null, fn ($q) => $q->whereIn('id', $nodeIds))
             ->get(['id', 'embedding']);
 
         $out = [];

@@ -15,6 +15,7 @@ use App\Services\Embeddings\EmbeddingStore;
 use App\Services\Embeddings\EmbeddingVector;
 use App\Services\MindService;
 use App\Services\Recall\RecallEngine;
+use App\Services\Recall\VectorSearch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\FakeProvider;
@@ -426,6 +427,226 @@ class EmbeddingsTest extends TestCase
 
         $this->assertSame('created', $result['action']);
         $this->assertNull(DB::table('nodes')->where('id', $result['node']['id'])->value('embedding'));
+    }
+
+    // ---- dávkovanie a prerušený beh -----------------------------------------
+
+    public function test_limit_bounds_the_run_and_the_rest_follows_next_time(): void
+    {
+        $this->fake();
+        $this->node('Redis caching', 'Cache-aside vzor.');
+        $this->node('Kubernetes Ingress', 'Routovanie HTTP.');
+        $this->node('MariaDB indexy', 'B-tree a pokrytie.');
+
+        $this->artisan('aura:embed --limit=1')->assertSuccessful();
+        $this->assertSame(1, app(EmbeddingStore::class)->count('bge-m3'));
+
+        // pokračovanie po prerušení: ďalší beh dopočíta zvyšok a nič neprepisuje
+        $this->artisan('aura:embed')->assertSuccessful();
+        $this->assertSame(3, app(EmbeddingStore::class)->count('bge-m3'));
+    }
+
+    public function test_provider_dying_mid_run_keeps_what_was_written_and_next_run_finishes(): void
+    {
+        // batch = 3 (setUp), 6 uzlov = 2 dávky; provider prežije len prvú
+        $flaky = new FlakyEmbedProvider(succeedCalls: 1);
+        $this->app->instance(ChatProvider::class, $flaky);
+
+        for ($i = 1; $i <= 6; $i++) {
+            $this->node('Uzol '.$i, 'Popis uzla číslo '.$i);
+        }
+
+        $this->artisan('aura:embed')->assertSuccessful();
+
+        $store = app(EmbeddingStore::class);
+        $this->assertSame(3, $store->count('bge-m3'), 'prvá dávka musí zostať zapísaná');
+
+        // zdravý provider dopočíta zvyšok — nič sa medzitým nezmazalo
+        $this->app->instance(ChatProvider::class, new FakeProvider);
+        $this->artisan('aura:embed')->assertSuccessful();
+        $this->assertSame(6, $store->count('bge-m3'));
+    }
+
+    // ---- zúženie skórovania na kandidátov -----------------------------------
+
+    public function test_narrowed_vector_scores_match_the_full_corpus_scores(): void
+    {
+        $this->fake();
+        $a = $this->node('Redis caching', 'Cache-aside vzor.');
+        $b = $this->node('Redis clustering', 'Sharding kľúčov.');
+        $this->node('Fakturácia', 'Faktúry a DPH.');
+
+        $this->artisan('aura:embed')->assertSuccessful();
+
+        $full = (new VectorSearch)->scores('redis');
+        $narrow = (new VectorSearch)->scores('redis', [$a->id, $b->id]);
+
+        $this->assertCount(3, $full, 'bez zúženia sa skóruje celý korpus');
+        $this->assertSame([$a->id, $b->id], array_keys($narrow));
+
+        // zúženie nesmie zmeniť ani jedno skóre — inak by sa zmenilo poradie
+        $this->assertSame($full[$a->id], $narrow[$a->id]);
+        $this->assertSame($full[$b->id], $narrow[$b->id]);
+    }
+
+    public function test_empty_candidate_list_scores_nothing(): void
+    {
+        $this->fake();
+        $this->node('Redis caching', 'Cache-aside vzor.');
+        $this->artisan('aura:embed')->assertSuccessful();
+
+        $this->assertSame([], (new VectorSearch)->scores('redis', []));
+    }
+
+    public function test_store_all_can_be_narrowed_to_node_ids(): void
+    {
+        $a = $this->node('Alfa');
+        $b = $this->node('Beta');
+        $store = app(EmbeddingStore::class);
+        $store->put($a->id, [1, 0, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h1');
+        $store->put($b->id, [0, 1, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h2');
+
+        $this->assertCount(2, $store->all('bge-m3', 8));
+        $this->assertSame([$a->id], array_keys($store->all('bge-m3', 8, [$a->id])));
+        $this->assertSame([], $store->all('bge-m3', 8, []));
+    }
+
+    public function test_vector_branch_is_skipped_when_the_lexical_branch_finds_nothing(): void
+    {
+        $provider = $this->fake();
+        $this->node('Redis caching', 'Cache-aside vzor.');
+        $this->artisan('aura:embed')->assertSuccessful();
+        $callsAfterEmbed = $provider->embedCalls;
+
+        $rows = (new RecallEngine)->search('zzzqqqxyz neexistujuce', 12);
+
+        $this->assertTrue($rows->isEmpty());
+        $this->assertSame(
+            $callsAfterEmbed,
+            $provider->embedCalls,
+            'bez lexikálnych kandidátov sa dopyt nemá vôbec embedovať',
+        );
+    }
+
+    public function test_stored_vector_with_a_wrong_dimension_is_ignored(): void
+    {
+        $node = $this->node('Redis alfa', 'Redis.', 2.0);
+        $other = $this->node('Redis beta', 'Redis.', 90.0);
+
+        $this->controlled(['query:redis' => [1, 0, 0, 0, 0, 0, 0, 0]]);
+
+        // 4 zložky pri nakonfigurovanej dimenzii 8 — vektor sa musí zahodiť
+        app(EmbeddingStore::class)->put($node->id, [1, 0, 0, 0], 'bge-m3', 'h1');
+
+        $rows = app(RecallEngine::class)->search('redis', 5);
+
+        // poradie rozhodne strength, presne ako pri čistom TF-IDF
+        $this->assertSame([$other->id, $node->id], $rows->pluck('node.id')->all());
+        $this->assertSame(0.0, $rows->first()['vector']);
+    }
+
+    // ---- cache vektora dopytu -----------------------------------------------
+
+    public function test_query_vector_is_cached_across_service_instances(): void
+    {
+        $provider = $this->fake();
+
+        $first = (new EmbeddingService)->embedOneCached('redis caching');
+        $callsAfterFirst = $provider->embedCalls;
+        $second = (new EmbeddingService)->embedOneCached('redis caching');
+
+        $this->assertNotSame([], $first);
+        $this->assertEquals($first, $second);
+        $this->assertSame($callsAfterFirst, $provider->embedCalls, 'druhý rovnaký dopyt nesmie ísť na provider');
+    }
+
+    public function test_unavailable_query_vector_is_never_cached(): void
+    {
+        $broken = (new FakeProvider)->broken();
+        $service = new EmbeddingService($broken);
+
+        $this->assertSame([], $service->embedOneCached('redis'));
+        $this->assertSame([], $service->embedOneCached('redis'));
+
+        // prázdny vektor sa NESMIE cachovať — sekundový výpadok Ollamy by inak
+        // vypol vektorovú vetvu na celý TTL
+        $this->assertSame(2, $broken->embedCalls);
+    }
+
+    public function test_query_cache_can_be_turned_off(): void
+    {
+        config(['recall.embed.query_cache_ttl' => 0]);
+        $provider = $this->fake();
+
+        (new EmbeddingService)->embedOneCached('redis caching');
+        $calls = $provider->embedCalls;
+        (new EmbeddingService)->embedOneCached('redis caching');
+
+        $this->assertGreaterThan($calls, $provider->embedCalls);
+    }
+
+    public function test_cached_query_vector_is_not_reused_for_another_model(): void
+    {
+        $provider = $this->fake();
+
+        $first = (new EmbeddingService)->embedOneCached('redis caching');
+
+        config(['recall.embed.model' => 'iny-model']);
+        $calls = $provider->embedCalls;
+        $second = (new EmbeddingService)->embedOneCached('redis caching');
+
+        $this->assertGreaterThan($calls, $provider->embedCalls, 'iný model = iný kľúč cache');
+        $this->assertNotSame([], $second);
+        $this->assertCount(count($first), $second);
+    }
+}
+
+/**
+ * Provider, ktorý po `$succeedCalls` dávkach „umrie" (vráti prázdno, bez výnimky).
+ * Simuluje spadnutú Ollamu v polovici dávkového behu `aura:embed`.
+ */
+final class FlakyEmbedProvider implements ChatProvider
+{
+    public int $embedCalls = 0;
+
+    public function __construct(private int $succeedCalls) {}
+
+    public function chat(array $messages, ChatOptions $opts): ChatResult
+    {
+        return ChatResult::failed('flaky', 'flaky nechatuje');
+    }
+
+    public function stream(array $messages, ChatOptions $opts, callable $onDelta): ChatResult
+    {
+        return ChatResult::failed('flaky', 'flaky nechatuje');
+    }
+
+    public function embed(array $texts, EmbedOptions $opts): array
+    {
+        $this->embedCalls++;
+
+        if ($this->embedCalls > $this->succeedCalls) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($texts as $i => $text) {
+            $vector = array_fill(0, $opts->dimensions, 0.0);
+            $vector[$i % $opts->dimensions] = 1.0;
+            $out[] = $vector;
+        }
+
+        return $out;
+    }
+
+    public function health(): ProviderHealth
+    {
+        return new ProviderHealth(ok: true, chat: false, embed: true, models: ['flaky'], latencyMs: 1);
+    }
+
+    public function name(): string
+    {
+        return 'flaky';
     }
 }
 

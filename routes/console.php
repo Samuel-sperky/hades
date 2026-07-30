@@ -1,9 +1,15 @@
 <?php
 
+use App\Models\Edge;
+use App\Models\Node;
+use App\Services\Maintenance\Calibration\ThresholdSweep;
 use App\Services\Maintenance\DryRun\DryRunOptions;
 use App\Services\Maintenance\DryRun\DryRunRunner;
+use App\Services\Maintenance\Metric\EmbeddingMetric;
+use App\Services\Maintenance\Metric\TfidfMetric;
 use App\Services\Maintenance\Rewire\RewireOrchestrator;
 use App\Services\Maintenance\SyncRunRetention;
+use App\Services\SimilarityService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -88,6 +94,124 @@ Artisan::command(
         return 0;
     },
 )->purpose('Dry-run deštruktívnych jobov: čo by sa zlúčilo/zmazalo, dvojitou metrikou. Nič nemení.');
+
+// ---------------------------------------------------------------------------
+// aura:calibrate — sweep PRAHOV. NIČ NEMENÍ a NIČ V CONFIGU NEPREPISUJE.
+//
+// Rozdiel oproti aura:dry-run: dry-run odpovedá „čo by sa stalo pri prahu z configu",
+// kalibrácia odpovedá „čo by sa stalo pri KTOROMKOĽVEK prahu" a k tomu vypíše celé
+// rozdelenie skóre. Prah sa podľa železného pravidla v configu nemení — tento príkaz
+// dodá čísla, na základe ktorých o ňom rozhodne používateľ.
+//
+// Výstup ide do JSON súboru, aby sa dal priložiť k reportu.
+// ---------------------------------------------------------------------------
+Artisan::command(
+    'aura:calibrate {--metric=tfidf : tfidf|embeddings}'
+    .' {--thresholds= : čiarkou oddelené prahy pre automerge (default 0.80,0.85,0.88,0.90,0.92,0.95)}'
+    .' {--prune-thresholds= : čiarkou oddelené prahy pre prune (default 0.08,0.20,0.30,0.35,0.40,0.50)}'
+    .' {--floor=0.5 : pod týmto skóre sa páry neuchovávajú (musí byť <= najmenší prah)}'
+    .' {--samples=60 : koľko konkrétnych párov na jeden prah}'
+    .' {--out= : kam zapísať JSON (default storage/app/dry-run/calibration-<metric>-<čas>.json)}',
+    function (ThresholdSweep $sweep, SimilarityService $similarity) {
+        $metricKey = (string) $this->option('metric');
+        $metric = match ($metricKey) {
+            'tfidf' => new TfidfMetric($similarity),
+            'embeddings' => new EmbeddingMetric,
+            default => null,
+        };
+
+        if ($metric === null) {
+            $this->error("Neznáma metrika '{$metricKey}'. Dostupné: tfidf, embeddings.");
+
+            return 1;
+        }
+        if (! $metric->available()) {
+            $this->warn("Metrika '{$metricKey}' nie je dostupná: ".$metric->unavailableReason());
+
+            return 2;
+        }
+
+        $parse = function (?string $raw, array $fallback): array {
+            if ($raw === null || trim($raw) === '') {
+                return $fallback;
+            }
+
+            return array_values(array_map('floatval', array_filter(explode(',', $raw), fn ($v) => trim($v) !== '')));
+        };
+
+        $mergeThresholds = $parse($this->option('thresholds'), [0.80, 0.85, 0.88, 0.90, 0.92, 0.95]);
+        $pruneThresholds = $parse($this->option('prune-thresholds'), [0.08, 0.20, 0.30, 0.35, 0.40, 0.50]);
+        $samples = (int) $this->option('samples');
+
+        $this->info("Kalibrácia beží len na čítanie — nič sa nezmení. Metrika: {$metricKey}");
+
+        $nodesBefore = Node::count();
+        $edgesBefore = Edge::count();
+
+        $automerge = $sweep->automerge($metric, $mergeThresholds, (float) $this->option('floor'), $samples);
+        $this->line('');
+        $this->line('AUTOMERGE — '.$automerge['compared'].' párov, rozdelenie: '
+            .'p50='.$automerge['distribution']['p50']
+            .' p99='.$automerge['distribution']['p99']
+            .' max='.$automerge['distribution']['max']);
+        $rows = [];
+        foreach ($automerge['by_threshold'] as $k => $r) {
+            $rows[] = [$k, $r['merges'], $r['risky'], $r['risk_levels']['high'], $r['risk_levels']['medium']];
+        }
+        $this->table(['Prah', 'Zlúčení', 'Rizikových', 'high', 'medium'], $rows);
+
+        $prune = $sweep->pruneCoactivation($metric, $pruneThresholds, $samples);
+        $this->line('PRUNE-COACTIVATION — '.$prune['compared'].' hrán, rozdelenie: '
+            .'min='.$prune['distribution']['min']
+            .' p50='.$prune['distribution']['p50']
+            .' max='.$prune['distribution']['max']);
+        $rows = [];
+        foreach ($prune['by_threshold'] as $k => $r) {
+            $rows[] = [$k, $r['pruned'], $r['kept']];
+        }
+        $this->table(['Prah', 'Prerezaných', 'Ponechaných'], $rows);
+
+        $cleanup = $sweep->cleanupEdges([0.5, 1.0, 1.5], [30, 60, 90, 180], null, $samples);
+        $rows = [];
+        foreach ($cleanup['grid'] as $g) {
+            $rows[] = [$g['max_weight'], $g['older_than_days'], $g['candidates'], $g['deleted']];
+        }
+        $this->line('CLEANUP-EDGES — mriežka (podobnosť sa nepoužíva):');
+        $this->table(['max_weight', 'dni', 'Kandidátov', 'Zmazaných'], $rows);
+
+        $payload = [
+            'generated_at' => now()->toIso8601String(),
+            'metric' => $metricKey,
+            'destructive_enabled' => (bool) config('maintenance.destructive_enabled'),
+            'current_thresholds' => config('maintenance.thresholds'),
+            'network' => ['nodes' => $nodesBefore, 'edges' => $edgesBefore],
+            'automerge' => $automerge,
+            'prune_coactivation' => $prune,
+            'cleanup_edges' => $cleanup,
+        ];
+
+        $out = (string) ($this->option('out')
+            ?: 'dry-run/calibration-'.$metricKey.'-'.now()->format('Y-m-d_His').'.json');
+        $path = storage_path('app/'.$out);
+        @mkdir(dirname($path), 0775, true);
+        file_put_contents($path, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        // Poistka: kalibrácia je čítanie. Keby čokoľvek zmenilo dáta, musí to byť vidieť.
+        $nodesAfter = Node::count();
+        $edgesAfter = Edge::count();
+        if ($nodesAfter !== $nodesBefore || $edgesAfter !== $edgesBefore) {
+            $this->error("POZOR: počty sa zmenili! uzly {$nodesBefore}→{$nodesAfter}, hrany {$edgesBefore}→{$edgesAfter}");
+
+            return 1;
+        }
+
+        $this->info("Uzly {$nodesAfter} a hrany {$edgesAfter} nezmenené. JSON: storage/app/{$out}");
+        $state = config('maintenance.destructive_enabled') ? 'ZAPNUTÉ' : 'vypnuté';
+        $this->line("Deštruktívne joby sú {$state}. Prahy v configu tento príkaz NEMENÍ.");
+
+        return 0;
+    },
+)->purpose('Sweep prahov deštruktívnych jobov s rozdelením skóre a značkovaním rizikových párov. Nič nemení.');
 
 // ---------------------------------------------------------------------------
 // aura:sync-runs-prune — rotácia tabuľky sync_runs (rozhodnutie #36).
@@ -238,6 +362,14 @@ if (config('maintenance.destructive_enabled', config('auraai.destructive_jobs_en
     $nightly('mind:prune-coactivation', '04:35'); // prerezanie koincidenčného hairballu (skóre < 0.08)
     $nightly('mind:automerge', '04:45');          // D5/E7 — zlúčenie takmer identických uzlov
 }
+
+// Embeddingy pre uzly, ktoré vznikli počas dňa. Bez tohto jobu nový uzol vektor nikdy
+// nedostane a vektorová vetva recallu ho nevidí — počas jednej ~30-minútovej session
+// pribudlo 6 uzlov bez vektora. Beh je bezpečný: idempotentný (preskočí všetko s
+// aktuálnym hashom), nič nemaže, a keď Ollama nebeží, skončí s kódom 0 a hláškou
+// namiesto výnimky. Čas 04:35 je za rewire aj decay, takže vektory sa počítajú nad
+// už usporiadanou sieťou. Priepustnosť ~586 uzlov/min (bge-m3, 1024 dim).
+$nightly('aura:embed', '04:35');
 
 $nightly('mind:sync-memory', '04:55');       // Claude memory → Hades
 $nightly('mind:export-memory', '05:05');     // Hades → Claude memory

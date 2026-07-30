@@ -86,11 +86,25 @@ class RecallEngine
     public function search(string $query, int $limit = 12): Collection
     {
         $candidates = $this->lexical->candidates($query, $limit);
-        $vectorScores = $this->vector->scores($query);
+        $expand = $this->vector->mode() === 'expand';
+
+        // Bez lexikálnych kandidátov nemá režim 'rerank' čo preraďovať — vetva sa
+        // vynechá úplne (žiadne čítanie korpusu, žiadny request do Ollamy).
+        // 'expand' pokračuje, tam vektor SMIE priniesť vlastných kandidátov.
+        if (! $expand && $candidates->isEmpty()) {
+            return collect();
+        }
+
+        // V 'rerank' stačí kosínus pre kandidátov; skóre ostatných uzlov sa
+        // v `HybridScorer::rank()` aj tak zahodí. 'expand' potrebuje celý korpus.
+        $vectorScores = $this->vector->scores(
+            $query,
+            $expand ? null : $candidates->pluck('node.id')->all(),
+        );
 
         // 'expand' — vektor smie pridať uzly, ktoré lexikálna vetva nenašla.
         // Default je 'rerank': tvrdý prah zostáva a množina výsledkov sa nemení.
-        if ($vectorScores !== [] && $this->vector->mode() === 'expand') {
+        if ($vectorScores !== [] && $expand) {
             $candidates = $this->expand($candidates, $vectorScores, $query);
         }
 

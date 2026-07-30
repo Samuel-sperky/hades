@@ -66,6 +66,18 @@ return [
 
         // Strop dĺžky textu poslaného do embeddingu (znaky). Chráni prompt budget.
         'max_chars' => (int) env('AURAAI_EMBED_MAX_CHARS', 2_000),
+
+        /*
+         * Sekundy, počas ktorých sa drží vektor DOPYTU v cache. NIE JE to prah
+         * relevancie — žiadny zo štyroch zamknutých prahov (0.92 / 0.20 / 0.08 /
+         * 0.18) sa tým nemení.
+         *
+         * Meranie (700 uzlov, bge-m3): round-trip do Ollamy za vektor dopytu je
+         * p50 129 ms, teda 76 % latencie vektorovej vetvy. Rovnaký text + model
+         * dá vždy bit-identický vektor, takže cache nemôže vrátiť zlý výsledok
+         * a TTL je len strop pamäte. 0 = vypnuté.
+         */
+        'query_cache_ttl' => (int) env('AURAAI_EMBED_QUERY_CACHE_TTL', 300),
     ],
 
 ];

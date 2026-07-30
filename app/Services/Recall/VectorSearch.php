@@ -44,9 +44,14 @@ class VectorSearch
      * Kosínus dopytu ku každému uzlu, ktorý má vektor z aktuálneho modelu.
      * Prázdne pole = vetva sa vynecháva.
      *
+     * `$nodeIds` zúži porovnanie na konkrétne uzly. Režim 'rerank' posiela
+     * lexikálnych kandidátov, lebo skóre ostatných uzlov sa aj tak zahodí;
+     * režim 'expand' posiela `null`, lebo potrebuje celý korpus.
+     *
+     * @param  list<int>|null  $nodeIds
      * @return array<int, float>  node_id => 0..1
      */
-    public function scores(string $query): array
+    public function scores(string $query, ?array $nodeIds = null): array
     {
         if (trim($query) === '' || ! $this->enabled()) {
             return [];
@@ -55,13 +60,14 @@ class VectorSearch
         $model = $this->embeddings->model();
         $dimensions = $this->embeddings->dimensions();
 
-        // Najprv korpus: keď v DB nie je ani jeden vektor, dopyt sa ani neposiela.
-        $corpus = $this->store->all($model, $dimensions);
+        // Najprv korpus: keď v DB (resp. v zúženej množine) nie je ani jeden
+        // vektor, dopyt sa do Ollamy ani neposiela.
+        $corpus = $this->store->all($model, $dimensions, $nodeIds);
         if ($corpus === []) {
             return [];
         }
 
-        $queryVector = $this->embeddings->embedOne($query);
+        $queryVector = $this->embeddings->embedOneCached($query);
         if ($queryVector === [] || count($queryVector) !== $dimensions) {
             return [];
         }
