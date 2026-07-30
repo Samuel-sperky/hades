@@ -17,12 +17,8 @@
     position: absolute; inset: 0;
     transform: translateX(-100%);
     background: linear-gradient(90deg, transparent,
-        rgba(16, 29, 27, .06), transparent);
+        var(--shimmer-sheen), transparent);
     animation: hades-shimmer 1.4s var(--ease) infinite;
-}
-:root[data-theme="dark"] .shimmer::after {
-    background: linear-gradient(90deg, transparent,
-        rgba(255, 255, 255, .07), transparent);
 }
 @media (prefers-reduced-motion: reduce) {
     .shimmer::after { animation: none; }

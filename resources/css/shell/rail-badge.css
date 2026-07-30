@@ -1,3 +1,9 @@
+/* P9: mobilná vrstva sa importuje odtiaľto, nie z app.css (zdieľaný súbor,
+   integrátor only). rail-badge.css je slot 71 zo 72 → mobile.css tak leží
+   na konci kaskády a nepotrebuje ani jeden !important na prebitie šírok
+   z komponentových partialov. Patch pre app.css je v W2-P9-REPORT.md. */
+@import '../mobile.css';
+
 /* ---------------------------------------------------------------------------
    RAIL BADGE COUNT — #dest-kontrola .count (review-queue size on the nav dest)
    --------------------------------------------------------------------------- */
@@ -17,3 +23,12 @@
 }
 #rail .rail-group button.dest .count:empty,
 #rail .rail-group button.dest .count[data-count="0"] { display: none; }
+
+/* Rozbalený rail (208 px) — počítadlo prestane byť odznak v rohu a stane sa
+   pravým koncom riadku, aby neprekrývalo textový label. */
+[data-rail="expanded"] #rail .rail-group button.dest .count {
+    position: static;
+    top: auto; right: auto;
+    margin-left: auto;
+    flex: 0 0 auto;
+}

@@ -1,0 +1,41 @@
+/* ---------------------------------------------------------------------------
+   AUTOCOMPLETE (#chat-ac) — `/` príkazy a `@` uzly nad composerom
+   --------------------------------------------------------------------------- */
+#chat-ac {
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: var(--sp-1);
+    padding: var(--sp-0);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+#chat-ac.hidden { display: none; }
+
+.ac-row {
+    display: flex; align-items: baseline; gap: var(--sp-1);
+    padding: var(--sp-1) 10px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+}
+.ac-row.active { background: var(--accent-softer); }
+.ac-row:hover { background: var(--surface-subtle); }
+
+.ac-label {
+    font-family: var(--mono);
+    font-size: var(--fs-body);
+    letter-spacing: var(--ls-mono);
+    color: var(--text);
+    flex-shrink: 0;
+    max-width: 55%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ac-hint {
+    font-size: var(--fs-small);
+    color: var(--muted);
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

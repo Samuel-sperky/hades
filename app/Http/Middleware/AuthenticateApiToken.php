@@ -9,7 +9,7 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Bearer-token guard pre externé /api/v1/*.
  *
- * Fail-closed: keď je `hades.api_token` prázdny, NIKTO neprejde (401) — radšej
+ * Fail-closed: keď je `auraai.api_token` prázdny, NIKTO neprejde (401) — radšej
  * odmietnuť všetko než otvoriť API bez tokenu. Porovnanie cez hash_equals
  * (timing-safe). Interné /api/* (SPA, same-origin) tento middleware nepoužíva.
  */

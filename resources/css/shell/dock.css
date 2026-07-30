@@ -32,63 +32,66 @@
 
 #growth-chart { width: 100%; height: auto; display: block; margin-top: var(--sp-1); }
 
-#search-input { margin-top: 0; }
-#search-results { margin-top: var(--sp-2); }
+/* CLAUDE.md §7.5 UZAVRETÉ — dock/search.js ZMAZANÝ, spolu s jeho CSS.
+   Dôvod: shell/cmdk.js (Cmd-K paleta) robí to isté a lepšie — hľadá cez SK-aware
+   /api/search (uzly + playbooky) namiesto lokálneho filtra nad S.nodes, pozná
+   cert:/tag: prefix, navigáciu aj akciu „Vytvor smernicu", má vlastný markup
+   (cmdk.blade.php) a je nabindovaná na Ctrl+K / F / /. renderSearch() nemala
+   volajúceho, #search-results/#search-input neexistovali v žiadnom partiale a
+   .search-item / .result-divider / .pb-item boli mŕtve pravidlá.
+   Zmazané: resources/js/dock/search.js + 57 riadkov CSS.
+   PATCH pre integrátora (base/reset.css je môj, upravené; ostatné nič).
 
-.search-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: var(--sp-1) 10px;
+   ---------------------------------------------------------------------------
+   NASTAVENIA — segmentovaný prepínač témy + fold „Pokročilé" (rozhodnutia #64, #67)
+   --------------------------------------------------------------------------- */
+.seg {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: var(--r-md);
-    cursor: pointer;
-    font-size: var(--fs-body);
-    color: var(--text);
-    transition: background var(--dur-fast) var(--ease);
+    margin-bottom: var(--sp-2);
 }
-.search-item:hover { background: var(--hover-fill); }
-.search-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.search-item .sub { color: var(--muted); font-size: var(--fs-caption); margin-left: auto; }
-
-/* Fulltext results — mono uppercase divider + playbook rows */
-.result-divider {
-    display: flex; align-items: center; gap: var(--sp-1);
-    font-family: var(--mono);
-    font-size: 10.5px;
-    line-height: var(--lh-caption);
-    text-transform: uppercase;
-    letter-spacing: var(--ls-mono-caps);
-    font-weight: var(--fw-medium);
-    color: var(--muted);
-    margin: var(--sp-2) 0 var(--sp-0);
-}
-.result-divider::after {
-    content: "";
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-}
-
-.pb-item {
-    display: flex; align-items: flex-start; gap: 10px;
-    width: 100%; text-align: left;
+.seg .seg-btn {
+    flex: 1 1 0; min-width: 0;
+    min-height: 28px;
+    padding: 4px 6px;
     background: none; border: none;
-    border-radius: var(--r-md);
-    padding: var(--sp-1) 10px;
-    min-height: auto;
-    cursor: pointer;
-    transition: background var(--dur-fast) var(--ease);
+    border-radius: calc(var(--r-md) - 3px);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    white-space: nowrap;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.pb-item:hover { background: var(--hover-fill); }
-.pb-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.pb-item .ms { font-size: var(--icon-sm); color: var(--muted); flex-shrink: 0; margin-top: 1px; }
-.pb-item .pb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.pb-item .pb-title {
+.seg .seg-btn:hover { color: var(--text); background: var(--hover-fill); }
+.seg .seg-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.seg .seg-btn.active {
+    color: var(--text);
+    background: var(--panel-solid);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Fold „Pokročilé" — 13 zo 17 volieb ide pod fold, nad foldom zostanú 4. */
+#sec-settings .adv { margin-top: var(--sp-3); }
+#sec-settings .adv > summary {
+    display: flex; align-items: center; gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-0);
+    border-top: 1px solid var(--border);
     font-size: var(--fs-body);
     font-weight: var(--fw-medium);
-    color: var(--text);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-secondary);
+    list-style: none;
+    cursor: pointer;
 }
-.pb-item .pb-snippet {
-    font-size: 11.5px;
-    color: var(--muted);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+#sec-settings .adv > summary::-webkit-details-marker { display: none; }
+#sec-settings .adv > summary:hover { color: var(--text); }
+#sec-settings .adv > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
+#sec-settings .adv > summary .ms {
+    font-size: var(--icon-sm); color: var(--muted);
+    transition: transform var(--dur-fast) var(--ease);
 }
+#sec-settings .adv[open] > summary .ms { transform: rotate(180deg); }
+#sec-settings .adv[open] > summary { color: var(--text); }

@@ -1,7 +1,24 @@
+/* ===========================================================================
+   GRAFY — CSS strana. JS strana je resources/js/charts/**.
+
+   Farby: `--chart-*` (P9 tokens.css) s reťazou na dnešné rodinné tokeny, presne
+   ako `charts/chart-theme.js`. Legenda MUSÍ držať tú istú reťaz ako donut, inak
+   by prstenec a swatch pri sebe svietili inak.
+
+   HISTORICKÉ POUČENIE: grafy už raz boli rozbité tým, že sa CSS zoscopovalo na
+   jeden obal (`.chart`) a vlastné obaly zostali bez štýlov. Preto sú tu VŠETKY
+   selektory ploché (`.heat`, `.donut`, `.dbar`, `.spark`) a fungujú bez ohľadu
+   na to, do čoho graf niekto zabalí.
+
+   VEDOMÁ ODCHÝLKA od UX plánu (vlna 2): rampa heatmapy zostáva na `--heat-0..4`
+   a nederivuje sa z `--chart-2` cez color-mix. `--heat-*` je zmeraná 5-kroková
+   škála (najtmavší krok 5,61 : 1 na papieri, 9,43 : 1 v dark) — prepočet by ten
+   zmeraný kontrast zahodil. Zjednotenie je návrh pre P9, nie práca P10.
+   =========================================================================== */
+
 /* ---------------------------------------------------------------------------
-   HEATMAP (.heat*) — 365-day activity grid, teal ramp, horizontal scroll
-   DOM (built by charts.js): .heat > .heat-grid > .heat-cell[.l1..l4|.out]
-   .heat is the overflow viewport so the page body never scrolls sideways.
+   HEATMAPA (.heat*) — 365-dňová mriežka, horizontálny scroll vo vnútri
+   DOM (charts/heatmap.js): .heat > .heat-months + .heat-grid > .heat-cell
    --------------------------------------------------------------------------- */
 .heat { overflow-x: auto; padding-bottom: var(--sp-0); }
 .heat-grid {
@@ -14,15 +31,15 @@
 .heat-cell {
     width: 12px; height: 12px;
     border-radius: 2.5px;
-    background: var(--heat-0);
+    background: var(--heat-0, var(--surface-2));
 }
 .heat-cell.l1 { background: var(--heat-1); }
 .heat-cell.l2 { background: var(--heat-2); }
 .heat-cell.l3 { background: var(--heat-3); }
 .heat-cell.l4 { background: var(--heat-4); }
-.heat-cell.out { background: transparent; }  /* cell outside the date range — no silent zero */
+.heat-cell.out { background: transparent; }  /* bunka mimo rozsahu — nie tichá nula */
 .heat-cell[data-tip]:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
-/* Month labels row above the grid */
+/* Riadok mesiacov nad mriežkou */
 .heat-months {
     display: grid;
     grid-auto-flow: column;
@@ -34,7 +51,7 @@
     color: var(--muted);
     width: max-content;
 }
-/* less --- more legend */
+/* menej --- viac legenda */
 .heat-legend {
     display: flex; align-items: center; gap: var(--sp-0);
     margin-top: var(--sp-1);
@@ -45,7 +62,7 @@
 .heat-legend .heat-cell { pointer-events: none; }
 
 /* ---------------------------------------------------------------------------
-   DONUT (.donut*) — certainty split ring (SVG from charts.js) + centre total
+   DONUT (.donut*) — prstenec istoty (SVG z charts/donut.js) + číslo v strede
    --------------------------------------------------------------------------- */
 .donut {
     position: relative;
@@ -73,7 +90,8 @@
     color: var(--muted);
     margin-top: 2px;
 }
-/* Certainty legend — swatch + name + count; colors pulled from --cert-* */
+/* Legenda istoty — swatch + názov + počet. Reťaz tokenov je identická
+   s CHAINS v charts/chart-theme.js; pri zmene sa menia OBE miesta. */
 .cert-legend { display: flex; flex-direction: column; gap: var(--sp-0); }
 .cert-legend .cl-row {
     display: flex; align-items: center; gap: var(--sp-1);
@@ -88,14 +106,37 @@
     font-family: var(--mono); font-variant-numeric: tabular-nums;
     letter-spacing: var(--ls-mono); color: var(--muted); flex-shrink: 0;
 }
-.cert-legend .cl-row[data-cert="overene"] .cl-sw { --cl-c: var(--cert-overene); }
-.cert-legend .cl-row[data-cert="hypoteza"] .cl-sw { --cl-c: var(--cert-hypoteza); }
-.cert-legend .cl-row[data-cert="pasca"] .cl-sw { --cl-c: var(--cert-pasca); }
+.cert-legend .cl-row[data-cert="overene"] .cl-sw { --cl-c: var(--chart-2, var(--cert-overene)); }
+.cert-legend .cl-row[data-cert="hypoteza"] .cl-sw { --cl-c: var(--chart-7, var(--cert-hypoteza)); }
+.cert-legend .cl-row[data-cert="pasca"] .cl-sw { --cl-c: var(--chart-4, var(--cert-pasca)); }
 .cert-legend .cl-row[data-cert="bez"] .cl-sw,
-.cert-legend .cl-row[data-cert="none"] .cl-sw { --cl-c: var(--cert-none); }
+.cert-legend .cl-row[data-cert="none"] .cl-sw { --cl-c: var(--chart-none, var(--cert-none)); }
 
 /* ---------------------------------------------------------------------------
-   DBAR (.dbar*) — horizontal per-area knowledge bar; area hue via inline --lobe
+   RAST SIETE (.chart-growth) — výška z tokenu, nie z atribútu height=""
+   (akceptačné kritérium P10). Tvrdý px fallback drží graf nenulový aj bez tokenu.
+   --------------------------------------------------------------------------- */
+.chart-growth { display: flex; flex-direction: column; min-width: 0; }
+.chart-growth > svg {
+    display: block;
+    width: 100%;
+    height: var(--chart-h-sm, 110px);
+}
+.chart-axis {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: var(--ls-mono);
+    color: var(--muted);
+    margin-top: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   SPARKLINE (.spark) — mikro-trend v KPI karte; výšku dáva jej obal
+   --------------------------------------------------------------------------- */
+.spark { display: block; width: 100%; }
+
+/* ---------------------------------------------------------------------------
+   DBAR (.dbar*) — vodorovný bar per oblasť; odtieň oblasti cez inline --lobe
    --------------------------------------------------------------------------- */
 .dbar { display: flex; flex-direction: column; gap: 5px; margin-bottom: var(--sp-1); }
 .dbar-head {

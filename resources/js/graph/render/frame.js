@@ -8,6 +8,7 @@ import { draw } from './draw.js';
 import { stopReplay, updateTimelineLabel } from '../timeline.js';
 import { syncSlider } from '../../shell/settings.js';
 import { updateStateUi } from '../../shell/status-chip.js';
+import { applyReadableZoom } from './zoom.js';
 
 
 /* ---------- render ---------- */
@@ -27,10 +28,22 @@ let lastFrame = now();
 
 let framePending = false;
 
+// FÁZA RENDER PIPELINE: strážca čitateľnosti prvého záberu. app.js po loadGraph() fitne
+// kameru cez fitView() (graph/camera.js — cudzí balík), ktorý zoom počíta len z bbox uzlov:
+// pri 200+ uzloch skončí pod prahom detailu, pri neznámom viewporte (0×0 pred prvým
+// layoutom) až na spodnej zátke 0.14. Prvý frame po načítaní dát zoom raz zdvihne na
+// čitateľné minimum (render/zoom.js). Zaniká po prvom použití — bežné oddialenie kolieskom
+// ani zoom-out to nikdy nevracia späť.
+let readableFitPending = true;
+
 export function frame() {
     framePending = false;
     // FÁZA SHELL: ak sme medzitým opustili Graf, slučka zaparkuje bez kreslenia.
     if (S.screen !== 'graf') return;
+    if (readableFitPending && S.nodes.length) {
+        readableFitPending = false;
+        if (applyReadableZoom()) S._dirty = true;
+    }
     const nowMs = now();
     const dt = Math.min((nowMs - lastFrame) / 1000, 0.1);
     lastFrame = nowMs;

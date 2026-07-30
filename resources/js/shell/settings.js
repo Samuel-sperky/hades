@@ -5,12 +5,16 @@ import { store } from '../core/store.js';
 import { draw } from '../graph/render/draw.js';
 import { requestDraw } from '../graph/render/frame.js';
 import { buildSim, forceDefault, kickSim } from '../graph/sim.js';
+import { dropMotionSnapshot, register as registerReducedMotion } from './reduced-motion.js';
 import { showToast } from './toasts.js';
 
 
 export function setOpt(key, value) {
     S.opts[key] = value;
     store.setRaw('opts', JSON.stringify(S.opts));
+    // Ručná zmena pohybu počas aktívneho prefers-reduced-motion zneplatní snapshot,
+    // aby ho vypnutie preferencie neprepísalo starou hodnotou (rozhodnutie #81).
+    dropMotionSnapshot(key);
     applyOpts();
     requestDraw(); // zmena nastavenia vzhľadu → prekresli (slučka mohla spať)
 }
@@ -66,6 +70,10 @@ export function syncForceSliders() {
 
 /* Nastavenia — slidery vzhľadu (data-opt), sily (data-force), prepínače a resety. */
 export function register(root) {
+    // prefers-reduced-motion listener (rozhodnutie #81) — registruje sa odtiaľto,
+    // app.js je zdieľaný súbor (patch pre integrátora je v W2-P9-REPORT.md).
+    registerReducedMotion();
+
     root.querySelectorAll('input[data-opt]').forEach((inp) => {
         inp.oninput = () => { syncSlider(inp); setOpt(inp.dataset.opt, parseFloat(inp.value)); };
     });

@@ -1,5 +1,7 @@
 /* ---------------------------------------------------------------------------
-   PROMPT BAR (#prompt) — owns bottom-center; white glass, teal focus ring
+   COMPOSER (#prompt / #chat-composer) — biele sklo, tealový focus ring.
+   #prompt je domovský host quickbaru; #chat-composer je blok, ktorý sa presúva
+   medzi režimami, takže jeho štýly nesmú závisieť od #prompt.
    --------------------------------------------------------------------------- */
 #prompt {
     position: fixed;
@@ -11,8 +13,10 @@
 }
 #prompt.open { width: min(600px, 60vw); }
 
+#chat-composer { min-width: 0; }
+
 #prompt-form {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: flex-end; gap: 10px;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
@@ -25,28 +29,50 @@
     border-color: var(--border-accent);
     box-shadow: var(--elev-2), 0 0 0 3px rgba(var(--accent-rgb), .16);
 }
-/* Open prompt emits a soft teal ring echoing node rings */
-#prompt.open #prompt-form {
+/* Otvorený composer vysiela mäkký tealový prstenec — echo prstencov uzlov */
+#prompt.open #prompt-form,
+.chat-composer-host #prompt-form {
     border-color: var(--border-accent);
     box-shadow: var(--elev-2), 0 0 0 4px rgba(var(--accent-rgb), .10);
 }
 
-/* spark echoes the gold core — --gold-text passes contrast in both themes */
-#prompt-form .spark { color: var(--gold-text); font-size: var(--icon-sm); flex-shrink: 0; }
+/* chat-spark je echo zlatého jadra — --gold-text prechádza kontrastom v oboch
+   témach. Meno NIE je `.spark`: tú si v charts.css berú sparkline grafy
+   (`width: 100%`) a importujú sa neskôr, čím by ikonu roztiahli na celú lištu. */
+#prompt-form .chat-spark {
+    width: var(--icon-sm);
+    flex: 0 0 auto;
+    color: var(--gold-text);
+    font-size: var(--icon-sm);
+    line-height: 1;
+    padding-bottom: 12px;
+}
 
+/* <textarea> namiesto <input>: Shift+Enter robí nový riadok (rozhodnutie 88),
+   výška rastie s obsahom po strop 160 px (autoresize v chat/composer.js). */
 #prompt-input {
     flex: 1;
+    min-width: 0;
+    /* components/forms.css dáva každému textarea min-height 72px (to je pre
+       formuláre uzla) — composer rastie od jedného riadku, preto sa ruší. */
+    min-height: 0;
+    height: auto;
     background: none; border: none; margin: 0;
     padding: var(--sp-1) 0;
     font-size: var(--fs-base);
+    line-height: var(--lh-base);
     font-family: var(--font);
     color: var(--text);
+    resize: none;
+    overflow-y: hidden;
+    max-height: 160px;
 }
+#prompt-input.is-tall { overflow-y: auto; }
 #prompt-input::placeholder { color: var(--muted); }
 #prompt-input:focus { outline: none; }
 
-/* Send button: muted teal-tint at rest, promoted to solid accent when input has text */
-#prompt-form button {
+/* Send: tlmený teal v pokoji, plný accent keď je čo poslať. Stop je vždy plný. */
+#prompt-form .send-btn {
     border: 1px solid transparent;
     background: var(--accent-softer);
     color: rgba(var(--accent-rgb), .75);
@@ -58,11 +84,20 @@
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
                 border-color var(--dur-fast) var(--ease);
 }
-#prompt-form button:hover { background: var(--accent-soft); color: var(--accent-600); }
-#prompt-form.has-text button {
+#prompt-form .send-btn:hover { background: var(--accent-soft); color: var(--accent-600); }
+#prompt-form.has-text #chat-send {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--on-accent);
 }
-#prompt-form.has-text button:hover { background: var(--accent-600); border-color: var(--accent-600); }
-#prompt-form button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#prompt-form.has-text #chat-send:hover { background: var(--accent-600); border-color: var(--accent-600); }
+#prompt-form #chat-stop {
+    background: var(--danger-soft);
+    border-color: var(--danger-border);
+    color: var(--danger);
+}
+#prompt-form #chat-stop:hover { border-color: var(--danger-border-hover); }
+#prompt-form .send-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#prompt-form .send-btn.hidden { display: none; }
+
+#prompt-form .comp-btn { align-self: center; }

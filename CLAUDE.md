@@ -21,6 +21,15 @@ docker compose exec -T app php artisan test
 docker compose exec -T app php artisan test --testsuite=Unit
 docker compose exec -T app php artisan test --filter=SomeTest
 
+# Running at the same time as another agent? Take your own schema FIRST.
+# RefreshDatabase migrates at the start of every test, so two concurrent runs over one
+# schema tear down each other's migrations ("Base table or view already exists"). In the
+# first wave that produced dozens of phantom failures and hid the real ones: 10 failed on
+# the shared schema, 61 on the second attempt, 3 in isolation. phpunit.xml pins
+# DB_DATABASE=auraai_test, but <env> does not override an already-set variable, so -e wins.
+sh scripts/test-db.sh p3      # create/reset auraai_test_p3 (needs root inside the container)
+docker compose exec -T -e DB_DATABASE=auraai_test_p3 app php artisan test
+
 # frontend build (node 22 + npm live in the app image AND on the host)
 npm ci
 npm run build                 # -> public/build/manifest.json + assets
@@ -321,6 +330,14 @@ whitelist that used to be duplicated is gone. DOM conventions it implies: the se
 - **Never run a destructive DB operation autonomously** (drop, truncate, delete). Backup +
   explicit user confirmation first, even mid-run. Migrations are fine, always with a `mysqldump`
   into `backups/` (keep the last 3).
+- **`migrate:fresh` / `migrate:refresh` / `migrate:reset` / `migrate:rollback` / `db:wipe` never
+  go near the live DB.** On 2026-07-30 `migrate:fresh --env=testing --force` wiped live `auraai`:
+  `--env` and `--database` do **not** switch the database (`--database` picks a *connection*), and
+  `phpunit.xml`'s `<env DB_DATABASE>` only applies when PHPUnit boots the app. A guard in
+  `AppServiceProvider` now prohibits those five commands unless the connected database name looks
+  like a test DB (`/_test(?:_[a-z0-9-]+)?$/i`, e.g. `auraai_test_p7`) — `--force` does not bypass
+  it. Reset a test DB via PHPUnit's `RefreshDatabase`, or name the database **literally** in the
+  command. Override only ad-hoc with `AURAAI_ALLOW_DESTRUCTIVE_DB_COMMANDS=true`, never in `.env`.
 - **`docker/Caddyfile` contains a plaintext MCP token — never commit it.** It stays a local
   modification until P4 moves the token into env.
 - **Seed/test data is always fictional.** Read `.env` if you must, never print secret values into

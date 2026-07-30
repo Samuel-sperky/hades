@@ -2,6 +2,7 @@ import { $, emptyHtml, esc } from '../core/dom.js';
 import { certTagMatch, parseQueryFilter } from '../core/query-filter.js';
 import { gotoDirective } from '../screens/directive.js';
 import { certBadge } from '../screens/shared/cert.js';
+import { trapFocus } from './focus-trap.js';
 import { openNodeFromAnywhere, setScreen } from './router.js';
 
 
@@ -20,16 +21,23 @@ const CMDK_NAV = [
 let cmdkTimer = null, cmdkSeq = 0;
 
 
+// Rozhodnutie #80: focus trap + návrat fókusu po zatvorení.
+let releaseCmdkTrap = null;
+
+
 export function openCmdk() {
     const overlay = $('cmdk');
     overlay.classList.remove('hidden');
     const input = $('cmdk-input');
     input.value = '';
     renderCmdk('');
-    setTimeout(() => input.focus(), 30);
+    if (!releaseCmdkTrap) releaseCmdkTrap = trapFocus(overlay, { initial: input });
 }
 
-export function closeCmdk() { $('cmdk').classList.add('hidden'); }
+export function closeCmdk() {
+    $('cmdk').classList.add('hidden');
+    if (releaseCmdkTrap) { releaseCmdkTrap(); releaseCmdkTrap = null; }
+}
 
 export function cmdkOpen() { return !$('cmdk').classList.contains('hidden'); }
 

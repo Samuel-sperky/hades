@@ -2,9 +2,11 @@ import { $, emptyHtml } from '../core/dom.js';
 import { S } from '../core/state/index.js';
 import { packHas } from '../dock/pack.js';
 import { mdToHtml } from '../markdown.js';
+import { trapFocus } from '../shell/focus-trap.js';
 
 
-let mdReturnFocus = null;
+// Rozhodnutie #80: focus trap + návrat fókusu (predtým len návrat).
+let releaseMdTrap = null;
 
 export let mdNodeId = null;
 
@@ -15,7 +17,7 @@ export let mdPath = null;
 
 export function closeMdOverlay() {
     $('md-overlay').classList.add('hidden');
-    if (mdReturnFocus) { mdReturnFocus.focus(); mdReturnFocus = null; }
+    if (releaseMdTrap) { releaseMdTrap(); releaseMdTrap = null; }
 }
 
 
@@ -29,9 +31,8 @@ export async function openMdOverlay(node) {
     $('md-title').textContent = mdLabel;
     $('md-body').innerHTML = emptyHtml('hourglass_empty', 'Načítavam…');
     syncMdFoot();
-    mdReturnFocus = document.activeElement;
     overlay.classList.remove('hidden');
-    $('md-close').focus();
+    if (!releaseMdTrap) releaseMdTrap = trapFocus(overlay, { initial: $('md-close') });
     try {
         const res = await fetch('/api/nodes/' + node.id + '/markdown');
         const data = await res.json();

@@ -4,6 +4,7 @@ import { store } from '../core/store.js';
 import { animLevel } from './animation.js';
 import { fitView } from './camera.js';
 import { draw } from './render/draw.js';
+import { applyReadableZoom } from './render/zoom.js';
 import { buildSim, kickSim } from './sim.js';
 import { syncForceSliders } from '../shell/settings.js';
 
@@ -25,7 +26,7 @@ export function setView(view) {
     if (S.sim && view !== 'layers') S.sim.tick(30);
     syncForceSliders(); // efektívne predvolené sily sa menia s náhľadom
 
-    if (!animate) { fitView(); return; }
+    if (!animate) { fitView(); if (applyReadableZoom()) draw(); return; }
 
     // cieľové pozície: layers sú pripnuté (fx/fy) a neťikajú sa, mapa/sieť sú usadené v n.x/n.y
     const to = new Map(S.nodes.map(n => [n.id, {
@@ -35,6 +36,7 @@ export function setView(view) {
     // dočasne posaď uzly na cieľ, nech fitView zaráta kameru na cieľový layout
     for (const n of S.nodes) { const b = to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } }
     fitView(); // zaráta kameru na cieľ (a raz vykreslí cieľové pozície)
+    applyReadableZoom(); // fit môže skončiť pod prahom čitateľnosti (rozhodnutie 74)
     S.sim.stop(); // počas morphu nesmie sim prepisovať pozície
     for (const n of S.nodes) { const f = from.get(n.id); if (f) { n.x = f.x; n.y = f.y; } }
     S._morph = { from, to, t: 0, dur: 0.6 };

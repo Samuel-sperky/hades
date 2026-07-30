@@ -15,7 +15,9 @@
 }
 .tag.muted { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
 
-#journal-filter { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-bottom: var(--sp-2); }
+/* Filter projektov je `.screen-toolbar` — odstup rieši gap `.page-stack`,
+   nie vlastný margin (inak sa spodná mezera zdvojí). */
+#journal-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0); }
 
 /* Active filter chip (project filter in the journal) */
 .chip.active {

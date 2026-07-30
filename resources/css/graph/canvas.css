@@ -10,3 +10,27 @@
 }
 #mind.dragging { cursor: grabbing; }
 #mind.grabbing { cursor: grabbing; } /* ťahanie uzla (grab & fling) */
+
+/* ---------------------------------------------------------------------------
+   CANVAS TUNING TOKENS (§7.4) — graph/canvas-colors.js číta tieto hodnoty cez
+   getComputedStyle, takže JS už nemá vlastný zdroj pravdy (rozhodnutie 62).
+   Farby berie canvas z tokens.css / dark.css (--bg-rgb, --text,
+   --text-secondary, --muted, --accent-rgb); tu žijú len BEZFAREBNÉ ladiace
+   čísla, ktoré patria výhradne plátnu a v CSS ich nikto iný nepoužíva.
+   Žiadny hex ani rgba() — kontrakt §4.8 zostáva nedotknutý.
+   --------------------------------------------------------------------------- */
+:root {
+    --canvas-grid-alpha: 0.05;    /* sila technickej mriežky na papieri */
+    --canvas-node-floor: 0.30;    /* spodná hranica tlmenia uzla (hover × fokus) */
+    --canvas-edge-floor: 0.20;    /* spodná hranica tlmenia hrany */
+    --canvas-halo-alpha: 0.92;    /* podklad popisku (papier s alfou) */
+    --canvas-outline-alpha: 0.35; /* obrys uzla nad papierom */
+}
+
+:root[data-theme="dark"] {
+    --canvas-grid-alpha: 0.09;
+    --canvas-node-floor: 0.35;
+    --canvas-edge-floor: 0.25;
+    --canvas-halo-alpha: 0.92;
+    --canvas-outline-alpha: 0.30;
+}

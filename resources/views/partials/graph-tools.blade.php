@@ -12,3 +12,11 @@
     <button data-view="net">Sieť</button>
     <button data-view="layers">Vrstvy</button>
 </div>
+{{-- Časová os (prehrávanie rastu siete). Do W2 chýbal markup, takže graph/timeline.js
+     nemal volajúceho (CLAUDE.md §7.5) — dopĺňa ho P8. Kontejner je skrytý a odkryje
+     ho až graph/timeline.js::register(), aby bez zadrôtovania nesvietilo mŕtve UI. --}}
+<div id="timeline" class="hidden" role="group" aria-label="Prehrávanie rastu siete">
+    <button id="tl-play" class="ms" type="button" aria-label="Prehrať rast siete" aria-pressed="false">play_arrow</button>
+    <input id="tl-range" type="range" min="0" max="1000" step="1" value="1000" aria-label="Časová os siete">
+    <span id="tl-label" aria-live="polite">teraz</span>
+</div>

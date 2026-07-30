@@ -1,12 +1,9 @@
 /* ---------------------------------------------------------------------------
    DASHBOARD + DENNÍK ZÁZNAMOV (Aura business vrstva)
    --------------------------------------------------------------------------- */
-.metric-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--sp-1);
-    margin-bottom: var(--sp-1);
-}
+/* AURA PARITA vlna 3 / G4: mriežka .metric-grid je zlúčená s .kpi-grid
+   (components/kpi.css) — jeden zdroj pravdy pre layout. Tu zostávajú len
+   prezentačné triedy dlaždice. */
 .metric {
     background: var(--surface-2);
     border: 1px solid var(--border);

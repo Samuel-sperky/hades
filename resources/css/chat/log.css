@@ -1,0 +1,175 @@
+/* ---------------------------------------------------------------------------
+   ZOZNAM SPRÁV (.chat-log) — spoločný základ pre quickbar, overlay aj obrazovku
+   --------------------------------------------------------------------------- */
+.chat-log {
+    display: flex; flex-direction: column; gap: var(--sp-2);
+    overflow-y: auto;
+    user-select: text;
+}
+.chat-log.hidden { display: none; }
+
+/* Quickbar: log sedí nad lištou a tvorí s ňou jednu bielu sklenú plochu */
+#chat-log {
+    max-height: 44vh;
+    gap: var(--sp-1);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding: var(--sp-2);
+    margin-bottom: -1px;
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+@keyframes rise-fade {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------------------------------------------------------------------
+   RIADOK SPRÁVY — používateľ vpravo bez avatara, AuraAI vľavo s prstencom
+   --------------------------------------------------------------------------- */
+.msg-row {
+    display: flex; align-items: flex-start; gap: var(--sp-1);
+    align-self: flex-start;
+    max-width: 88%;
+    min-width: 0;
+}
+.msg-row--user { align-self: flex-end; align-items: flex-end; flex-direction: column; }
+.msg-row--system { align-self: center; max-width: 100%; }
+
+.msg-col { display: flex; flex-direction: column; gap: var(--sp-0); min-width: 0; }
+
+.msg {
+    max-width: 100%;
+    padding: var(--sp-1) 12px;
+    border-radius: var(--r-md);
+    font-size: var(--fs-base);
+    line-height: var(--lh-prose);
+    overflow-wrap: anywhere;
+}
+.msg.me {
+    background: var(--accent-soft);
+    color: var(--text);
+    white-space: pre-wrap;
+}
+.msg.aura {
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+/* Bublina používa markdown typografiu z components/md.css, ale nie jeho layout
+   (ten je pre kartu dokumentu uzla) — preto tieto tri override-y. */
+.msg.md-body {
+    flex: none;
+    overflow: visible;
+    padding: var(--sp-1) 12px;
+}
+.msg.md-body > :last-child { margin-bottom: 0; }
+.msg.md-body > :first-child { margin-top: 0; }
+
+.avatar {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid var(--gold-text);
+    background: none;
+    color: var(--gold-text);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 4px;
+    user-select: none;
+}
+
+.msg.sys {
+    align-self: center;
+    color: var(--muted);
+    font-size: var(--fs-small);
+    background: none;
+    padding: var(--sp-0);
+    text-align: center;
+}
+.msg.sys--error {
+    align-self: stretch;
+    color: var(--text-secondary);
+    background: var(--danger-soft);
+    border-left: 2px solid var(--danger);
+    text-align: left;
+}
+
+/* „Thinking" je aria-hidden — čítač ho neohlási (rozhodnutie 80) */
+.thinking { color: var(--muted); }
+.thinking .dot {
+    display: inline-block;
+    animation: thinking-pulse 1.2s var(--ease) infinite;
+    opacity: .25;
+}
+.thinking .dot:nth-child(2) { animation-delay: .2s; }
+.thinking .dot:nth-child(3) { animation-delay: .4s; }
+@keyframes thinking-pulse {
+    0%, 100% { opacity: .25; }
+    50%      { opacity: .8; }
+}
+
+/* ---------------------------------------------------------------------------
+   PATIČKA SPRÁVY — mikro-label (model · tok/s · čas) + akcie
+   --------------------------------------------------------------------------- */
+.msg-foot {
+    display: flex; align-items: center; gap: var(--sp-1);
+    min-height: 20px;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.msg-row:hover .msg-foot,
+.msg-row:focus-within .msg-foot { opacity: 1; }
+.msg-row--user .msg-foot { justify-content: flex-end; }
+
+.msg-meta {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+.msg-acts { display: inline-flex; gap: 2px; }
+.msg-act {
+    width: 24px; height: 24px; min-height: 24px;
+    padding: 0;
+    border: none; background: none;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: var(--icon-sm);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.msg-act:hover { background: var(--accent-softer); color: var(--accent-600); }
+.msg-act:focus-visible { outline: none; box-shadow: var(--focus-ring); opacity: 1; }
+
+/* ---------------------------------------------------------------------------
+   CITÁCIE „Vychádzal som z:" — klik skočí na uzol (rozhodnutie 96)
+   --------------------------------------------------------------------------- */
+.msg-cites {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0);
+    padding-top: var(--sp-0);
+}
+.msg-cites-label {
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    margin-right: var(--sp-0);
+}
+.cite-chip {
+    max-width: 200px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding: 2px 10px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-small);
+    color: var(--accent-600);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease);
+}
+.cite-chip:hover { background: var(--accent-soft); }
+.cite-chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }

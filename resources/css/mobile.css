@@ -1,0 +1,229 @@
+/* ---------------------------------------------------------------------------
+   MOBIL — rozhodnutie #76 / #77 / #78.
+
+   V ROZSAHU: Chat, Dnes, Denník, Knižnica (+ Rozhodnutia, Kontrola, Smernica)
+   na 390 px, bottom nav pod 640 px.
+   MIMO ROZSAHU: graf na mobile a touch gestá pre canvas — obrazovka Graf
+   zobrazí zrozumiteľnú výzvu, nie prázdne plátno.
+
+   Vlastník: P9. Importuje sa z shell/rail-badge.css (slot 71 v app.css), teda
+   ako predposledný blok kaskády — mobilné pravidlá tak prebijú komponentové
+   šírky z predchádzajúcich 70 importov bez jedného !important.
+   --------------------------------------------------------------------------- */
+
+/* Desktopový default: mobilná navigácia ani jej spodný list neexistujú vizuálne.
+   Markup je v DOM vždy (partial nemá podmienku), viditeľnosť riadi len tento súbor. */
+#mobile-nav,
+#mobile-sheet { display: none; }
+
+/* ===========================================================================
+   ≤ 640 px — MOBIL
+   =========================================================================== */
+@media (max-width: 640px) {
+    :root {
+        --edge: 10px;
+        /* rail sa skryje → shell začína na okraji viewportu */
+        --shell-left: var(--edge);
+        --header-h: 44px;
+    }
+
+    /* ---- rail von, bottom nav dovnútra ---- */
+    #rail { display: none; }
+    #mobile-nav.hidden { display: none; }
+    #mobile-nav {
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        display: flex;
+        align-items: stretch;
+        height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px));
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        background: var(--panel-solid);
+        border-top: 1px solid var(--border);
+        box-shadow: var(--shadow-pop);
+        z-index: var(--z-overlay);
+    }
+    #mobile-nav .mdest {
+        flex: 1 1 0; min-width: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 2px;
+        background: none; border: none;
+        padding: var(--sp-0) 2px; min-height: 0;
+        color: var(--muted);
+        border-radius: 0;
+    }
+    #mobile-nav .mdest .ms { font-size: 22px; line-height: 1; }
+    #mobile-nav .mdest .lbl {
+        font-size: 10px; font-weight: var(--fw-medium); line-height: 1.1;
+        max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #mobile-nav .mdest:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
+    /* aktívny stav rovnaký zlatý recept ako v rely */
+    #mobile-nav .mdest.active {
+        color: var(--gold-text);
+        background: color-mix(in srgb, var(--brand-gold) 14%, var(--panel-solid));
+    }
+    #mobile-nav .mdest.active .lbl { color: var(--text); }
+    #mobile-nav .mdest .dot {
+        position: absolute; margin-top: -18px; margin-left: 14px;
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--accent);
+    }
+
+    /* ---- hlavička: len brand + hľadanie, breadcrumb a metriky idú von ---- */
+    #app-header {
+        left: var(--edge); right: var(--edge);
+        padding: 0 var(--sp-1);
+        gap: var(--sp-1);
+    }
+    #app-header .h-center { display: none; }
+    #breadcrumb { display: none; }
+    #brand-name { display: inline; font-size: var(--fs-small); }
+    #cmdk-trigger .cmdk-hint,
+    #cmdk-trigger kbd { display: none; }
+
+    /* ---- obsah: celá šírka, miesto na bottom nav ---- */
+    #screens {
+        left: var(--edge); right: var(--edge);
+        top: var(--shell-top);
+        bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-0));
+        -webkit-overflow-scrolling: touch;
+    }
+    .screen { max-width: none; padding-right: 0; }
+    .screen-head h1, .page-head h1, .page-title { font-size: 24px; }
+
+    /* jednostĺpcové mriežky */
+    :root { --kpi-cols: 2; --hero-span: 2; }
+    .kpi-grid, .metric-grid { grid-template-columns: 1fr 1fr; gap: var(--sp-1); }
+    .dash-grid { grid-template-columns: 1fr; gap: var(--sp-2); }
+    .dash-card.span-2 { grid-column: span 1; }
+    .dir-cols { grid-template-columns: 1fr; }
+    .dir-preview-wrap { position: static; }
+    .dir-saved { grid-template-columns: 1fr; }
+
+    /* ---- dock a node-panel ako spodné listy (bottom sheet) ---- */
+    #dock, #node-panel {
+        left: var(--edge); right: var(--edge); width: auto;
+        top: auto;
+        bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-0));
+        max-height: 62vh;
+        border-radius: var(--r-lg);
+    }
+
+    /* ---- graf je desktop-only (rozhodnutie #76/#77) ---- */
+    #zoomctl, #graph-tools, #view-switch, #local-chip, #hover-card { display: none; }
+    body[data-screen="graf"] #mind { visibility: hidden; }
+    body[data-screen="graf"] #mobile-graph-note { display: flex; }
+
+    /* ---- chat: fullscreen, klávesnica nesmie prekryť composer ---- */
+    #prompt {
+        left: var(--edge); right: var(--edge); width: auto;
+        bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-0));
+    }
+
+    /* ---- overlaye na celú plochu ---- */
+    #cmdk-card, #help-overlay .help-card, #md-overlay .md-card {
+        left: var(--edge); right: var(--edge);
+        width: auto; max-width: none;
+    }
+
+    /* dotykové cieľové plochy ≥ 40 px */
+    button, .dest, .chip, .tab { min-height: 40px; }
+}
+
+/* Výzva namiesto prázdneho plátna na obrazovke Graf.
+   Element žije v mobile-nav.blade.php; na desktope je vypnutý úplne, na mobile
+   ho zapne len body[data-screen="graf"] (pravidlo v bloku ≤ 640 px vyššie). */
+#mobile-graph-note,
+#mobile-sheet.hidden { display: none; }
+
+@media (max-width: 640px) {
+    #mobile-graph-note {
+        position: fixed;
+        left: var(--edge); right: var(--edge);
+        top: var(--shell-top);
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--sp-2);
+        padding: var(--card-pad);
+        background: var(--panel-solid);
+        border: 1px solid var(--border);
+        border-radius: var(--card-radius);
+        box-shadow: var(--shadow-sm);
+        z-index: var(--z-panel);
+    }
+    #mobile-graph-note .ms { font-size: 32px; color: var(--gold-text); }
+    #mobile-graph-note h2 {
+        font-family: var(--serif); font-size: 20px; font-weight: var(--fw-semibold);
+        color: var(--text);
+    }
+    #mobile-graph-note p { color: var(--muted); font-size: var(--fs-base); line-height: var(--lh-body); }
+
+    /* ---- spodný list „Viac" ---- */
+    #mobile-sheet {
+        position: fixed; inset: 0;
+        display: flex; align-items: flex-end;
+        background: var(--scrim);
+        backdrop-filter: var(--blur-scrim);
+        z-index: calc(var(--z-overlay) + 1);
+    }
+    .msheet-card {
+        width: 100%;
+        max-height: 78vh;
+        overflow-y: auto;
+        padding: var(--sp-2) var(--sp-2) calc(var(--sp-2) + env(safe-area-inset-bottom, 0px));
+        background: var(--panel-solid);
+        border-top: 1px solid var(--border);
+        border-radius: var(--r-lg) var(--r-lg) 0 0;
+        box-shadow: var(--shadow-pop);
+        animation: msheet-in var(--dur-slow) var(--ease);
+    }
+    @keyframes msheet-in {
+        from { transform: translateY(12px); opacity: 0; }
+        to   { transform: translateY(0); opacity: 1; }
+    }
+    .msheet-head {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: var(--sp-1);
+        margin-bottom: var(--sp-2);
+    }
+    .msheet-head h2 {
+        font-family: var(--serif); font-size: 18px; font-weight: var(--fw-semibold);
+        color: var(--text);
+    }
+    .msheet-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--sp-1);
+    }
+    .msheet-item {
+        display: flex; align-items: center; gap: var(--sp-1);
+        padding: var(--sp-1) var(--sp-2);
+        min-height: 44px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        color: var(--text);
+        font-size: var(--fs-body);
+        text-align: left;
+    }
+    .msheet-item .ms { font-size: var(--icon-md); color: var(--muted); flex-shrink: 0; }
+    .msheet-item.active {
+        color: var(--gold-text);
+        background: color-mix(in srgb, var(--brand-gold) 14%, var(--panel-solid));
+        border-color: color-mix(in srgb, var(--brand-gold) 34%, transparent);
+    }
+    .msheet-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+}
+
+/* ===========================================================================
+   ≤ 390 px — najmenší podporovaný viewport
+   =========================================================================== */
+@media (max-width: 390px) {
+    /* --hero-span MUSÍ ísť na 1: .kpi-hero má `grid-column: span var(--hero-span)`,
+       a span 2 v jednostĺpcovej mriežke vyrobí implicitný druhý stĺpec (grid
+       nemá kam prvok položiť) — dashboard sa potom rozsype na 249 + 117 px. */
+    :root { --edge: 8px; --kpi-cols: 1; --hero-span: 1; }
+    .kpi-grid, .metric-grid { grid-template-columns: 1fr; }
+    #mobile-nav .mdest .lbl { font-size: 9px; }
+    .screen-head h1, .page-head h1, .page-title { font-size: 22px; }
+}

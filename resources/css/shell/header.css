@@ -4,8 +4,10 @@
    --------------------------------------------------------------------------- */
 #app-header {
     position: fixed;
-    top: var(--edge); left: 104px; right: var(--edge);
-    height: 44px;
+    /* left je odvodené z --rail-w (collapse railu 72 ↔ 208 px posúva celý shell) */
+    top: var(--edge); left: var(--shell-left); right: var(--edge);
+    height: var(--header-h);
+    transition: left var(--dur-base) var(--ease);
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
     /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur (viď #rail). */

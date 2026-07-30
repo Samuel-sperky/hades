@@ -1,6 +1,7 @@
 import { rad } from '../core/format.js';
 import { S } from '../core/state/index.js';
 import { AREA_RADIUS, DEPT_RADIUS } from './colors.js';
+import { isHub } from './geometry.js';
 
 
 export function areaAnchor(area) {
@@ -24,8 +25,8 @@ function deptAnchor(dept) {
 
 export function anchorOf(n) {
     if (n.type === 'core') {
-        if (n.label === S.name) return { x: 0, y: 0 };
-        const cores = S.nodes.filter(m => m.type === 'core' && m.label !== S.name);
+        if (isHub(n)) return { x: 0, y: 0 };            // hub drží stred siete
+        const cores = S.nodes.filter(m => m.type === 'core' && !isHub(m));
         const i = cores.findIndex(m => m.id === n.id);
         const a = rad((360 / Math.max(cores.length, 1)) * i - 90);
         return { x: Math.cos(a) * 85, y: Math.sin(a) * 85 };

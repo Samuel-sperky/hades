@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 /**
- * "Prompt builder / smernica pre Claude" — Hades poskladá pre danú úlohu
+ * "Prompt builder / smernica pre Claude" — AuraAI poskladá pre danú úlohu
  * smernicu, ktorá Claudovi povie, KDE ČO NÁJDE: overené skilly (.md cesty),
  * súvisiace projekty (adresáre), kľúčové fakty a pravidlá/preferencie.
  *
@@ -363,7 +363,8 @@ class DirectiveController extends Controller
         }
         $have = ! empty($parts) ? ' Zahŕňa '.implode(' a ', $parts).'.' : '';
 
-        return 'Táto smernica hovorí, kde v Hadese nájdeš relevantné znalosti pre '
+        return 'Táto smernica hovorí, kde v '.config('auraai.name', 'AuraAI')
+            .' nájdeš relevantné znalosti pre '
             .$subject.'.'.$have.' Použi uvedené zdroje ako kontext skôr, než začneš.';
     }
 

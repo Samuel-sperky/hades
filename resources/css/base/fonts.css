@@ -1,0 +1,41 @@
+/* ---------------------------------------------------------------------------
+   FONTY — vendoring pre offline režim (rozhodnutie #142, akceptačné kritérium 10)
+
+   STAV: PRIPRAVENÉ, NEAKTÍVNE. Vlastník P9.
+
+   Appka dnes načítava fonty z `fonts.googleapis.com` (partials/head.blade.php),
+   takže NIE JE offline-ready. Najhoršia časť zlyhania: `--font` / `--mono` /
+   `--serif` majú systémové fallbacky, ale **Material Symbols Rounded nemá žiadny**
+   — pri nedostupnom CDN sa všetky ikony vykreslia ako textové názvy
+   („wb_sunny", „hub", „close"). To je viditeľný rozpad UI, nie kozmetika.
+
+   PREČO TO P9 NEDOKONČILA:
+     · `package.json` + `package-lock.json` sú zdieľané súbory (kontrakt §3.1,
+       integrátor only) — bez nich sa balíčky fontov nedajú pridať;
+     · `partials/head.blade.php` je zdieľaný súbor — `<link>` na Google Fonts
+       z neho smie odstrániť len integrátor;
+     · sťahovanie .woff2 priamo z webu je mimo mandátu agenta.
+
+   AKTIVÁCIA — 3 kroky, presný postup je aj v W2-P9-REPORT.md:
+
+     1) npm i -D @fontsource-variable/geist @fontsource-variable/geist-mono \
+                @fontsource-variable/playfair-display material-symbols
+     2) odkomentuj 4 @import riadky nižšie
+     3) v partials/head.blade.php zmaž 3 riadky:
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist…">
+
+   Vite prepíše `url()` vnútri týchto balíčkových CSS na hashované assety v
+   public/build, takže po builde nezostane ani jeden externý request.
+   Overenie: `grep -r "fonts.googleapis.com" resources/views/` → 0 výskytov
+   a načítanie stránky s odpojeným internetom.
+
+   Tento súbor je importovaný z base/reset.css (slot 14 — @font-face musí byť
+   pred prvým použitím), takže po odkomentovaní netreba nič ďalšie drôtovať.
+   --------------------------------------------------------------------------- */
+
+/* @import '@fontsource-variable/geist/index.css'; */
+/* @import '@fontsource-variable/geist-mono/index.css'; */
+/* @import '@fontsource-variable/playfair-display/index.css'; */
+/* @import 'material-symbols/rounded.css'; */

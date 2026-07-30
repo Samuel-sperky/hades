@@ -10,32 +10,44 @@ use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
- * MCP JSON-RPC nástroje (B5): mind_learn +certainty/tags, mind_recall vracia
- * certainty/tags/verified/origin, mind_overview +needs_review count, nový
- * mind_decision (DB origin=session, funguje aj pri guard OFF).
+ * MCP JSON-RPC nástroje: kanonické `aura_*` (rozhodnutie #6) so schémou B5 —
+ * `aura_learn` +certainty/tags, `aura_recall` vracia certainty/tags/verified/
+ * origin, `aura_overview` +needs_review count, `aura_decision` (DB
+ * origin=session, funguje aj pri guard OFF).
+ *
+ * Legacy `mind_*` aliasy pokrýva {@see McpSecurityTest}; endpoint je od W2 za
+ * tokenom, preto každý request nesie Bearer hlavičku.
  */
 class McpToolsTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** Fiktívny token — nikdy sa nečíta z .env. */
+    private const TOKEN = 'test-mcp-token-0123456789';
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        config(['auraai.allow_brain_write' => false, 'cache.default' => 'array']);
+        config([
+            'auraai.allow_brain_write' => false,
+            'cache.default' => 'array',
+            'mcp.token' => self::TOKEN,
+        ]);
 
         Area::create(['name' => 'Vývoj / kód', 'slug' => 'vyvoj-kod', 'color' => '#03797e', 'angle' => 0]);
     }
 
-    /** JSON-RPC POST na /mcp. */
+    /** JSON-RPC POST na /mcp s platným tokenom. */
     private function rpc(string $method, array $params = [], int $id = 1): TestResponse
     {
-        return $this->postJson('/mcp', [
-            'jsonrpc' => '2.0',
-            'id' => $id,
-            'method' => $method,
-            'params' => $params,
-        ]);
+        return $this->withHeader('Authorization', 'Bearer '.self::TOKEN)
+            ->postJson('/mcp', [
+                'jsonrpc' => '2.0',
+                'id' => $id,
+                'method' => $method,
+                'params' => $params,
+            ]);
     }
 
     /** Zavolá tool a vráti dekódovaný JSON payload z result.content[0].text. */
@@ -49,27 +61,27 @@ class McpToolsTest extends TestCase
         return json_decode($text, true);
     }
 
-    // ---- tools/list: nová schéma + nový tool -------------------------------
+    // ---- tools/list: kanonická sada + schéma B5 -----------------------------
 
-    public function test_tools_list_exposes_certainty_tags_and_mind_decision(): void
+    public function test_tools_list_exposes_certainty_tags_and_aura_decision(): void
     {
         $tools = $this->rpc('tools/list')->assertOk()->json('result.tools');
 
         $names = collect($tools)->pluck('name')->all();
-        $this->assertContains('mind_decision', $names);
+        $this->assertContains('aura_decision', $names);
 
-        $learn = collect($tools)->firstWhere('name', 'mind_learn');
+        $learn = collect($tools)->firstWhere('name', 'aura_learn');
         $props = $learn['inputSchema']['properties'];
         $this->assertArrayHasKey('certainty', $props);
         $this->assertArrayHasKey('tags', $props);
         $this->assertSame(['overene', 'hypoteza', 'pasca'], $props['certainty']['enum']);
     }
 
-    // ---- mind_learn s certainty/tags ---------------------------------------
+    // ---- aura_learn s certainty/tags ---------------------------------------
 
     public function test_learn_stores_certainty_and_tags(): void
     {
-        $data = $this->callTool('mind_learn', [
+        $data = $this->callTool('aura_learn', [
             'type' => 'skill',
             'label' => 'Kubernetes Ingress',
             'description' => 'Smerovanie HTTP do klastra cez ingress controller.',
@@ -90,8 +102,8 @@ class McpToolsTest extends TestCase
 
     public function test_learn_without_new_params_still_works(): void
     {
-        // regres — holý mind_learn (bez certainty/tags) beží nezmenene
-        $data = $this->callTool('mind_learn', [
+        // regres — holý aura_learn (bez certainty/tags) beží nezmenene
+        $data = $this->callTool('aura_learn', [
             'type' => 'memory',
             'label' => 'Fakt bez značiek',
             'area' => 'vyvoj-kod',
@@ -102,18 +114,46 @@ class McpToolsTest extends TestCase
         $this->assertSame([], $data['node']['tags']);
     }
 
-    // ---- mind_recall vracia certainty/tags/verified/origin -----------------
+    /**
+     * `certainty` mimo enumu je od W2 validačná chyba, nie tichý zápis. Predtým
+     * sa akákoľvek hodnota poslala do MindService a skončila v DB, hoci schéma
+     * povoľuje tri.
+     */
+    public function test_learn_rejects_certainty_outside_enum(): void
+    {
+        $res = $this->rpc('tools/call', ['name' => 'aura_learn', 'arguments' => [
+            'type' => 'skill',
+            'label' => 'Uzol s nezmyslom',
+            'area' => 'vyvoj-kod',
+            'certainty' => 'vymyslene',
+        ]])->assertOk();
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertNull(Node::where('label', 'Uzol s nezmyslom')->first());
+    }
+
+    /** Blacklist ostáva serverovou poistkou — a nikdy nevráti zachytenú hodnotu. */
+    public function test_learn_rejects_content_that_looks_like_a_secret(): void
+    {
+        $res = $this->rpc('tools/call', ['name' => 'aura_learn', 'arguments' => [
+            'type' => 'memory',
+            'label' => 'Prihlásenie do stagingu',
+            'description' => 'password: nejakeDlheHeslo123',
+            'area' => 'vyvoj-kod',
+        ]])->assertOk();
+
+        $this->assertTrue($res->json('result.isError'));
+        $text = (string) $res->json('result.content.0.text');
+        $this->assertStringContainsString('blacklistu', $text);
+        $this->assertStringNotContainsString('nejakeDlheHeslo123', $text);
+        $this->assertNull(Node::where('label', 'Prihlásenie do stagingu')->first());
+    }
+
+    // ---- aura_recall vracia certainty/tags/verified/origin ------------------
 
     public function test_recall_returns_certainty_tags_verified_origin(): void
     {
-        // MindService::searchNodes používa MariaDB-only `COLLATE utf8mb4_unicode_ci`
-        // (accent-insensitive LIKE), ktoré sqlite nepozná → recall sa reálne overuje
-        // proti MariaDB (viď curl smoke v správe). Na sqlite ho preskočíme.
-        if (\Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite') {
-            $this->markTestSkipped('recall/searchNodes vyžaduje MariaDB COLLATE (overené smoke proti MariaDB).');
-        }
-
-        $this->callTool('mind_learn', [
+        $this->callTool('aura_learn', [
             'type' => 'skill',
             'label' => 'Redis caching',
             'description' => 'Cache-aside vzor s TTL a jitterom v Redise.',
@@ -122,7 +162,7 @@ class McpToolsTest extends TestCase
             'tags' => ['redis'],
         ]);
 
-        $data = $this->callTool('mind_recall', ['query' => 'Redis caching']);
+        $data = $this->callTool('aura_recall', ['query' => 'Redis caching']);
 
         $this->assertGreaterThanOrEqual(1, $data['found']);
         $hit = collect($data['nodes'])->firstWhere('label', 'Redis caching');
@@ -133,7 +173,15 @@ class McpToolsTest extends TestCase
         $this->assertArrayHasKey('origin', $hit);
     }
 
-    // ---- mind_overview +needs_review ---------------------------------------
+    /** `limit` sa zovrie do 1..30 — strop je ochrana pred vyčerpaním kontextu. */
+    public function test_recall_clamps_limit(): void
+    {
+        $data = $this->callTool('aura_recall', ['query' => 'Redis caching', 'limit' => 9999]);
+
+        $this->assertLessThanOrEqual(30, count($data['nodes']));
+    }
+
+    // ---- aura_overview +needs_review ---------------------------------------
 
     public function test_overview_includes_needs_review_count(): void
     {
@@ -141,17 +189,17 @@ class McpToolsTest extends TestCase
         Node::create(['type' => 'memory', 'origin' => 'brain', 'area_id' => $areaId, 'label' => 'X', 'strength' => 1, 'needs_review' => true, 'last_activated_at' => now()]);
         Node::create(['type' => 'memory', 'origin' => 'brain', 'area_id' => $areaId, 'label' => 'Y', 'strength' => 1, 'needs_review' => false, 'last_activated_at' => now()]);
 
-        $data = $this->callTool('mind_overview');
+        $data = $this->callTool('aura_overview');
 
         $this->assertArrayHasKey('needs_review', $data['totals']);
         $this->assertSame(1, $data['totals']['needs_review']);
     }
 
-    // ---- mind_decision (DB origin=session, guard OFF) ----------------------
+    // ---- aura_decision (DB origin=session, guard OFF) ----------------------
 
     public function test_decision_creates_session_db_row_with_guard_off(): void
     {
-        $data = $this->callTool('mind_decision', [
+        $data = $this->callTool('aura_decision', [
             'text' => 'Zvolili sme Reverb pre WebSockety.',
             'reason' => 'Natívna Laravel integrácia.',
             'area' => 'vyvoj-kod',
@@ -170,7 +218,7 @@ class McpToolsTest extends TestCase
 
     public function test_decision_requires_text(): void
     {
-        $res = $this->rpc('tools/call', ['name' => 'mind_decision', 'arguments' => ['reason' => 'x']])
+        $res = $this->rpc('tools/call', ['name' => 'aura_decision', 'arguments' => ['reason' => 'x']])
             ->assertOk();
 
         $this->assertTrue($res->json('result.isError'));

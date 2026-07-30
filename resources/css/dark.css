@@ -4,13 +4,19 @@
    Node identity colors (--node-*) stay untouched. */
 :root[data-theme="dark"] {
     --bg-rgb: 14, 20, 19;                 /* dark paper, matches canvas T.paper */
-    --panel-rgb: 19, 27, 26;
+    /* AURA PARITA: panel zjednotený s rodinou na #161f1d (bolo #131b1a).
+       Rozhodnutie #56. Zhoda 3/3 — sperky-ai, aura-roadmap, aura-redesign. */
+    --panel-rgb: 22, 31, 29;              /* #161f1d */
     /* --panel-alpha stays slider-owned (applyOpts sets it inline on :root) */
-    --surface-2: #16201f;
+    --surface-2: #1b2624;                 /* rodinné --panel2; bolo #16201f = po zmene panelu splynulo s ním */
     --field-bg: #121b1a;
     --scrim: rgba(6, 10, 9, .55);
-    --border: rgba(255, 255, 255, .10);
-    --border-strong: rgba(255, 255, 255, .16);
+    /* AURA PARITA: solid linka namiesto alpha. Rozhodnutie #57 uvádza #22302e,
+       tá hodnota však v celom C:\Aura neexistuje — rodinná zhoda 3/3 je #27332f
+       (sperky-ai, aura-roadmap, aura-redesign). Beriem meranú hodnotu, odchýlka
+       od textu rozhodnutia je zapísaná v reporte P9. */
+    --border: #27332f;
+    --border-strong: #33433e;             /* rodinné --border2 */
     --line-soft: rgba(255, 255, 255, .07);
     --top-rim: rgba(255, 255, 255, .06);
     --hover-fill: rgba(255, 255, 255, .06);
@@ -33,6 +39,11 @@
     --focus-ring: 0 0 0 3px rgba(5, 188, 196, .32);
     --glow-accent: 0 1px 2px rgba(0, 0, 0, .30), 0 6px 18px -10px rgba(5, 188, 196, .35);
     --glow-accent-lg: 0 8px 24px -12px rgba(5, 188, 196, .30);
+    /* AURA PARITA: dark --gold doteraz prepadával na svetlú hodnotu #b88a3a,
+       ktorá je na tmavom paneli pod prahom čitateľnosti. Rodinná dark hodnota
+       je #d8b878 (= --brand-gold). Rozhodnutie #57 uvádza #c9a869 — hodnota
+       v C:\Aura neexistuje, beriem meranú rodinnú (audit EST-001 v sperky-ai). */
+    --gold: #d8b878;
     --gold-text: #d8b878;
     --gold-soft: rgba(184, 138, 58, .18);
     --success: #34d399;
@@ -49,7 +60,7 @@
     --elev-tooltip: 0 2px 4px rgba(0, 0, 0, .45), 0 12px 28px -16px rgba(0, 0, 0, .55), inset 0 1px 0 var(--top-rim);
 
     /* ---- APOLLO INTEGRATION tokens — dark mirror ---- */
-    --surface-raised: #1a2322;            /* one step above panel #131b1a */
+    --surface-raised: #1f2b29;            /* one step above panel #161f1d a nad --surface-2 #1b2624 */
     --track: rgba(255, 255, 255, .08);
 
     /* certainty ramp — lighter tints, read 5.7–9.2:1 on dark panel/surface */
@@ -68,4 +79,42 @@
     --heat-2: #2f7d7f;
     --heat-3: #3aa7ab;
     --heat-4: #4fd0d4;                    /* 9.43 on panel */
+
+    /* ======================================================================
+       AURA PARITA — dark zrkadlo vlny 1 (token bridge).
+       Density, radius, type a časovania sú téma-nezávislé → tu sa NEredefinujú.
+       Redefinujú sa len farby, triplety a tiene, presne ako v rodine.
+       ====================================================================== */
+    --ink-rgb: 234, 243, 241;
+    --gold-rgb: 216, 184, 120;
+    --success-rgb: 52, 211, 153;          /* dark --success #34d399 */
+    --warn-rgb: 245, 158, 11;             /* dark --warn #f59e0b */
+
+    /* kategoriálna paleta — svetlejšie odtiene pre tmavé panely */
+    --chart-1: #d8b878;                   /* brand gold — téma-stabilný */
+    --chart-2: #4dd9df;
+    --chart-3: #8a9cf0;
+    --chart-4: #ec988f;
+    --chart-5: #7fd6b4;
+    --chart-6: #d29ff0;
+    --chart-7: #ecba6c;
+    --chart-8: #74b0e8;
+
+    /* tiene — hlbšie na takmer čiernom povrchu */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .30);
+    --shadow-md: 0 1px 2px rgba(0, 0, 0, .30), 0 12px 30px -16px rgba(0, 0, 0, .55);
+    --shadow-lg: 0 4px 12px rgba(0, 0, 0, .40), 0 20px 44px -20px rgba(0, 0, 0, .65);
+    --shadow-pop: 0 10px 28px -12px rgba(0, 0, 0, .60);
+    --shadow-gold: 0 1px 2px rgba(0, 0, 0, .30), 0 16px 38px -18px rgba(0, 0, 0, .60);
+
+    /* §7.6: tmavé varianty literálov vytiahnutých z monolitu */
+    --knob-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+    --shimmer-sheen: rgba(255, 255, 255, .07);
+
+    color-scheme: dark;
 }
+
+/* Rozhodnutie #64 — „Systém" ako tretia možnosť témy.
+   Zámerne sa NEriešÍ druhým @media blokom s duplikovanými ~80 tokenmi: theme.js
+   rozloží preferenciu 'system' na konkrétnu hodnotu a stampne data-theme sám
+   (+ listener na zmenu OS témy). CSS tak zostáva s jediným prepínacím bodom. */

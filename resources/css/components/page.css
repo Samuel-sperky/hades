@@ -1,0 +1,164 @@
+/* ---------------------------------------------------------------------------
+   ANATÓMIA STRÁNKY — AURA PARITA vlna 3 + prestavba layoutu (rozhodnutie #51)
+   Vlastník: P9. Importuje sa z components/cards-late.css (slot 64 v app.css),
+   teda ZA screens/screen-base.css (slot 51) — override #screens tu funguje bez
+   zásahu do cudzieho súboru.
+
+   Toto NIE JE šiesty prepis frontendu: existujúce .screen-head / .today-card /
+   .dash-card zostávajú a fungujú. Pridáva sa rodinná anatómia (.page-stack →
+   .eyebrow + h1 → .kpi-grid → .card sekcie) a aliasy názvoslovia, aby sa nové
+   bloky písali Aura menami a markup sa dal kopírovať medzi appkami rodiny.
+   --------------------------------------------------------------------------- */
+
+/* ---- shell: rail je jediný zdroj šírky (collapse 72 ↔ 208 px) ----
+   screen-base.css má zadrôtované left: 104px; --shell-left to prepočíta
+   z --rail-w, takže expand railu posunie hlavičku aj obsah bez ďalšieho JS. */
+#screens {
+    left: var(--shell-left);
+    top: var(--shell-top);
+    transition: left var(--dur-base) var(--ease);
+}
+
+/* ---- vertikálny flow stránky ---- */
+.page-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+}
+
+/* ---- hlavička obrazovky v rodinnom rytme: eyebrow → h1 → podtitul ---- */
+.page-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0);
+}
+.page-head h1,
+.page-title {
+    font-family: var(--serif);
+    font-size: var(--page-h1);
+    line-height: 1.15;
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+}
+.page-head .page-sub {
+    color: var(--muted);
+    font-size: var(--fs-base);
+    line-height: var(--lh-body);
+}
+
+/* .eyebrow — uppercase mono nadpisík nad titulkom aj nad sekciami */
+.eyebrow {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    font-weight: var(--fw-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+}
+
+/* .screen-head .screen-sub dostane rovnaké ošetrenie ako .eyebrow — existujúce
+   obrazovky (P10) tak získajú rodinný rytmus bez zmeny ich markupu. */
+.screen-head .screen-sub {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+}
+.screen-head h1 { font-size: var(--page-h1); }
+
+/* ---- sekcia vnútri .page-stack ---- */
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-1);
+}
+.section-title {
+    font-size: var(--fs-h2);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-title);
+    color: var(--text);
+}
+
+/* ---- G7: .card* ako aliasy nad .panel/.dash-card gramatikou ----
+   Nové bloky sa píšu Aura názvoslovím; staré triedy zostávajú nedotknuté. */
+.card {
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: var(--card-pad);
+    box-shadow: var(--shadow-sm);
+}
+.card-soft {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: var(--card-pad);
+}
+.card-flat {
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: var(--card-pad);
+    box-shadow: none;
+}
+.card-hover {
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+.card-hover:hover {
+    border-color: var(--border-accent);
+    box-shadow: var(--shadow-md);
+}
+.card-overlay { box-shadow: var(--shadow-pop); }
+.card-elevated { box-shadow: var(--shadow-md); }
+
+/* ---- tabulárne číslice na každom číselnom readoute ---- */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* ---- G3: výška grafu z tokenu, nie z atribútu height="" ---- */
+.chart-box { height: var(--chart-h); }
+.chart-box-sm { height: var(--chart-h-sm); }
+.chart-box-lg { height: var(--chart-h-lg); }
+.chart-box > canvas,
+.chart-box-sm > canvas,
+.chart-box-lg > canvas,
+.chart-box > svg,
+.chart-box-sm > svg,
+.chart-box-lg > svg { width: 100%; height: 100%; display: block; }
+
+/* ---- tabuľkový riadok v rodinnej hustote ---- */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th,
+.tbl td {
+    padding: var(--row-pad-y) var(--row-pad-x);
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    font-size: var(--fs-body);
+}
+.tbl th {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+    font-weight: var(--fw-medium);
+}
+.tbl td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ---- pill (rodinné názvoslovie nad .badge/.chip) ---- */
+.pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 9px;
+    border-radius: var(--r-pill);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
+}
+.pill-neutral { background: var(--surface-2); color: var(--muted); }
+.pill-accent { background: var(--accent-tint); color: var(--accent); }
+.pill-positive { background: var(--success-soft); color: var(--success); }
+.pill-negative { background: var(--danger-soft); color: var(--danger); }
+.pill-gold { background: var(--gold-soft); color: var(--gold-text); }

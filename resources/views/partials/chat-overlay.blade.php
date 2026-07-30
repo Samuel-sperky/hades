@@ -1,22 +1,29 @@
-{{-- Vlastník: A3 (P6 — chat, režim „overlay").
+{{-- Vlastník: P6 (chat, režim „overlay").
 
-     SKELETON. Fullscreen overlay nad grafom. Rovnaký stav ako quickbar a
-     obrazovka Chat (rozhodnutie 82: „mať aj-aj") — prepnutie režimu nesmie
-     zhodiť konverzáciu ani rozpísaný draft.
+     Fullscreen overlay nad ktoroukoľvek obrazovkou; nad grafom je karta
+     poloprieh­ľadná, takže graf a chat sú vidieť naraz (rozhodnutie 83).
 
-     Stabilné id pre A3:
-       #chat-overlay-log       — správy
-       #chat-overlay-composer  — composer
-       #chat-overlay-threads   — vlákna
-     Overlay má mať focus trap a vrátiť fókus (rovnako ako #cmdk, #help-overlay). --}}
-<div id="chat-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Chat">
+     Rovnaký stav ako quickbar aj obrazovka Chat — #chat-composer sa sem presúva,
+     #chat-overlay-log sa vykresľuje zo `chatState.messages`.
+
+     a11y: role=dialog + aria-modal, focus trap a Esc sú v chat/modes.js; Esc sa
+     tu zastaví, aby nepokračoval do kaskády v shell/shortcuts.js (P9). --}}
+<div id="chat-overlay" class="hidden" role="dialog" aria-modal="true" aria-hidden="true"
+     aria-labelledby="chat-overlay-title">
     <div id="chat-overlay-card">
-        <div class="dock-head">
-            <h2>Chat</h2>
-            <button class="close ms" id="chat-overlay-close" data-chat-action="stop" aria-label="Zavrieť">close</button>
+        <div class="dock-head chat-head">
+            <h2 id="chat-overlay-title">Chat</h2>
+            <button type="button" id="chat-to-screen" class="ms comp-btn"
+                    title="Otvoriť ako obrazovku" aria-label="Otvoriť ako obrazovku">open_in_new</button>
+            <button type="button" id="chat-overlay-close" class="close ms"
+                    title="Zavrieť (Esc)" aria-label="Zavrieť chat">close</button>
         </div>
-        <div id="chat-overlay-threads" aria-label="Vlákna"></div>
-        <div id="chat-overlay-log"></div>
-        <div id="chat-overlay-composer"></div>
+        <div id="chat-overlay-body">
+            <aside id="chat-overlay-threads" class="chat-threads" aria-label="Vlákna"></aside>
+            <div class="chat-main">
+                <div id="chat-overlay-log" class="chat-log"></div>
+                <div id="chat-overlay-composer" class="chat-composer-host"></div>
+            </div>
+        </div>
     </div>
 </div>

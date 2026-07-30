@@ -7,14 +7,38 @@
 	auto_https off
 }
 
+# Jedno miesto s prihlasovacími údajmi. Predtým bol ten istý blok (aj ten istý
+# bcrypt hash) opísaný dvakrát — pri rotácii hesla sa dala jedna kópia prehliadnuť
+# a tichým spôsobom nechať otvorenú.
+#
+# Používateľ je `aura` (rozhodnutie #25; predtým `hades`) — uložené prihlásenie
+# v prehliadači treba prepísať. HESLO SA NEMENÍ, bcrypt hash sa hashuje len z
+# hesla, nie z používateľského mena.
+#
+# TODO(integrátor): hash presunúť do `{$CADDY_BASIC_AUTH_HASH}`. Vyžaduje riadok
+# v `docker-compose.yml` (zdieľaný súbor) — presný patch je v reporte P4. Kým to
+# nie je, hash zostáva tu: je to bcrypt cost 12, nie plaintext, takže na rozdiel
+# od MCP tokenu (ten už v env je) nejde o priamo použiteľný secret.
+(aura_auth) {
+	basic_auth {
+		aura $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+	}
+}
+
 :8095 {
-	# MCP prístup pre appku Claude (connectory tam nevedia poslať Basic Auth
-	# hlavičku, len URL) — tajný token v query stringu namiesto hesla, obchádza
-	# basic_auth nižšie.
+	# MCP prístup pre appku Claude: konektory tam vedia poslať len URL, žiadnu
+	# Basic Auth hlavičku — preto tajný token v query stringu namiesto hesla.
 	#
-	# Token je v .env ako MCP_QUERY_TOKEN a compose ho podáva tomuto kontajneru.
+	# Toto UŽ NIE JE bezpečnostný bypass. Do W2 bol `/mcp` na strane appky úplne
+	# bez autentifikácie, takže tento matcher robil z verejného tunela otvorený
+	# ZÁPISOVÝ endpoint do dlhodobej pamäte (`aura_learn`, `aura_decision`).
+	# Odteraz `/mcp` autentifikuje middleware `auth.mcp` (Bearer alebo `?token=`)
+	# a má throttle — Caddy tu už len smeruje, gate je appka. Rozhodnutie #21.
+	#
+	# Token je v .env ako MCP_QUERY_TOKEN a compose ho podáva tomuto kontajneru;
+	# tú istú hodnotu čítá `config/mcp.php`, takže rotácia je jeden riadok.
 	# Predtým bol zapísaný priamo tu, plaintextom, v git-trackovanom súbore —
-	# takže žije v histórii repozitára hades.git a musel byť rotovaný.
+	# takže žije v histórii repozitára a MUSÍ byť rotovaný.
 	# Zmena tokenu = upraviť .env + `docker compose up -d caddy`.
 	#
 	# Fail-closed: ak MCP_QUERY_TOKEN nie je nastavený, tento matcher sa nezhodne
@@ -29,6 +53,7 @@
 
 	# OAuth discovery sondy appky Claude musia dostať 404 (nie 401 z basic_auth),
 	# inak si appka myslí, že server má OAuth prihlásenie, a pripojenie zlyhá.
+	# Z toho istého dôvodu `auth.mcp` neposiela `WWW-Authenticate`.
 	@oauth_probe path /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /register
 	handle @oauth_probe {
 		respond 404
@@ -37,17 +62,13 @@
 	# WebSocket (pusher protokol Reverbu beží na ceste /app/<key>) → Reverb
 	@ws path /app /app/*
 	handle @ws {
-		basic_auth {
-			hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
-		}
+		import aura_auth
 		reverse_proxy reverb:8081
 	}
 
 	# Všetko ostatné (dashboard, chat, priamy /mcp bez tokenu) → basic-auth.
 	handle {
-		basic_auth {
-			hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
-		}
+		import aura_auth
 		reverse_proxy app:8080
 	}
 }

@@ -23,3 +23,15 @@
     min-width: 56px;
     flex-shrink: 0;
 }
+#tl-play:focus-visible,
+#tl-range:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Časová os patrí k plátnu: mimo obrazovky Graf sa nezobrazuje a na mobile vôbec
+   (graf je desktop-only — rozhodnutie #76/#77). Rovnaké pravidlo drží
+   screens/screen-base.css pre ostatné ovládanie grafu; tu je lokálne, aby
+   komponent nezávisel od cudzieho súboru. */
+body:not([data-screen="graf"]) #timeline { display: none !important; }
+
+@media (max-width: 640px) {
+    #timeline { display: none; }
+}

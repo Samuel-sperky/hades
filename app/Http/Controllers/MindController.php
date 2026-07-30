@@ -29,7 +29,12 @@ class MindController extends Controller
         return response()->json($graph->payload((string) $request->query('scope', 'live')));
     }
 
-    public function stats(): JsonResponse
+    /**
+     * Štatistiky vedomia pre dashboard. `state` si NEPOČÍTA sama — berie ho
+     * z GraphService, aby awake logika (prah `auraai.awake_minutes`) žila na
+     * jedinom mieste. Predtým bola skopírovaná v oboch triedach.
+     */
+    public function stats(GraphService $graph): JsonResponse
     {
         $byType = Node::select('type', DB::raw('COUNT(*) as count'))
             ->groupBy('type')->pluck('count', 'type');
@@ -61,7 +66,7 @@ class MindController extends Controller
         $weekAgo = now()->subDays(7);
 
         return response()->json([
-            'state' => $this->state(),
+            'state' => $graph->state(),
             'totals' => [
                 'nodes' => Node::count(),
                 'edges' => Edge::count(),
@@ -88,17 +93,5 @@ class MindController extends Controller
                     'created_at' => $n->created_at?->toIso8601String(),
                 ]),
         ]);
-    }
-
-    protected function state(): array
-    {
-        $lastActivation = Activation::latest('created_at')->first();
-        $awake = $lastActivation
-            && $lastActivation->created_at->gt(now()->subMinutes(config('auraai.awake_minutes')));
-
-        return [
-            'awake' => (bool) $awake,
-            'last_activity_at' => $lastActivation?->created_at->toIso8601String(),
-        ];
     }
 }

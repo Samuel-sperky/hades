@@ -17,6 +17,7 @@ import { drawEdges, nodeAlphaMul } from './edges.js';
 import { drawLayerBands, drawLayerScaffold } from './layers-draw.js';
 import { drawShape } from './shapes.js';
 import { visibleInReplay } from '../timeline.js';
+import { K_DETAIL, labelFade } from './zoom.js';
 
 
 export function draw() {
@@ -152,9 +153,9 @@ export function draw() {
     }
 
     ctx.globalCompositeOperation = 'source-over';
-    // FÁZA RENDER PIPELINE: pri oddialení (k<0.5) sú uzly jednoduché plné disky — bez ink obrysu,
+    // FÁZA RENDER PIPELINE: pri oddialení (k<K_DETAIL) sú uzly jednoduché plné disky — bez ink obrysu,
     // heat/zrod prstenca a bez donut diery/prstenca v drawShape (detail je aj tak neviditeľný).
-    const simpleNodes = S.cam.k < 0.5;
+    const simpleNodes = S.cam.k < K_DETAIL;
     for (const n of S.nodes) {
         if (!visibleInReplay(n)) continue;
         if (!nodeVisible(n, loc)) continue;
@@ -234,9 +235,9 @@ export function draw() {
 
     ctx.globalCompositeOperation = 'source-over';
 
-    // zoom fade rampa (Obsidian): labely sa vynárajú medzi k 0.42 a 0.64;
+    // zoom fade rampa (Obsidian): labely sa vynárajú medzi K_LABEL_FADE_FROM a _TO;
     // hover/select kotva + jej susedia (highlightSet) ostávajú viditeľní vždy
-    const zoomFade = Math.min(1, Math.max(0, (S.cam.k - 0.42) / 0.22));
+    const zoomFade = labelFade(S.cam.k);
     const showLabels = zoomFade > 0 && S.opts.labelAlpha > 0.02;
     const baseLabelAlpha = Math.min(1, S.opts.labelAlpha);
     const candidates = [];

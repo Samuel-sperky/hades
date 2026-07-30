@@ -55,6 +55,7 @@
 .md-body h1.md-h { font-size: 1.5rem; }
 .md-body h2.md-h { font-size: 1.25rem; }
 .md-body h3.md-h { font-size: 1.05rem; }
+.md-body h4.md-h { font-size: 1rem; }
 .md-body .md-h {
     font-family: var(--font);
     font-weight: var(--fw-semibold);
@@ -90,6 +91,77 @@
     white-space: pre;
 }
 .md-body .md-hr { border: none; border-top: 1px solid var(--border); margin: var(--sp-2) 0; }
+
+/* ---------------------------------------------------------------------------
+   P6 — rozšírenia rozhrania #10: číslované listy, blockquote, odkazy, tabuľky
+   a tlačidlo Kopírovať pri code blockoch (rozhodnutia 86 a 87).
+   --------------------------------------------------------------------------- */
+.md-body .md-ol { list-style: decimal; }
+.md-body .md-ol li::marker { color: var(--muted); font-family: var(--mono); font-size: .9em; }
+
+.md-body .md-quote {
+    margin: 0 0 var(--sp-2);
+    padding: var(--sp-1) 0 var(--sp-1) var(--sp-2);
+    border-left: 2px solid var(--border-accent);
+    color: var(--muted-strong);
+}
+.md-body .md-quote > :last-child { margin-bottom: 0; }
+
+.md-body .md-link {
+    color: var(--accent-600);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    overflow-wrap: anywhere;
+}
+.md-body .md-link:hover { color: var(--accent); }
+.md-body .md-link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-sm); }
+
+/* Široká tabuľka scrolluje vo vlastnom obale — stránka sa nikdy nerozťahuje */
+.md-body .md-tablewrap { overflow-x: auto; margin: 0 0 var(--sp-2); }
+.md-body .md-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--fs-body);
+}
+.md-body .md-table th,
+.md-body .md-table td {
+    padding: var(--sp-0) var(--sp-1);
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: top;
+}
+.md-body .md-table th {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.md-body .md-table tbody tr:last-child td { border-bottom: none; }
+
+.md-body .md-codewrap { position: relative; }
+.md-body .md-codewrap .md-code { margin-bottom: var(--sp-2); }
+.md-body .md-copy {
+    position: absolute;
+    top: var(--sp-0); right: var(--sp-0);
+    width: 26px; height: 26px; min-height: 26px;
+    padding: 0;
+    border: 1px solid var(--border);
+    background: var(--panel-solid);
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: var(--icon-sm);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.md-body .md-codewrap:hover .md-copy,
+.md-body .md-copy:focus-visible { opacity: 1; }
+.md-body .md-copy:hover { color: var(--accent-600); }
+.md-body .md-copy:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 #md-foot {
     display: flex; justify-content: flex-end;

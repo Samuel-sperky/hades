@@ -1,5 +1,9 @@
 <?php
 
+use App\Services\Maintenance\DryRun\DryRunOptions;
+use App\Services\Maintenance\DryRun\DryRunRunner;
+use App\Services\Maintenance\Rewire\RewireOrchestrator;
+use App\Services\Maintenance\SyncRunRetention;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -7,6 +11,140 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+/*
+|--------------------------------------------------------------------------
+| Údržba vedomia — balík P2
+|--------------------------------------------------------------------------
+|
+| Príkazy sú zámerne closure-based TU a nie v app/Console/Commands: ten priečinok
+| patrí príkazom prevzatým z Hadesa a P2 do cudzích súborov nezasahuje. Logika žije
+| v app/Services/Maintenance/** — tieto obaly sú len CLI vstup.
+*/
+
+// ---------------------------------------------------------------------------
+// aura:dry-run — čo BY deštruktívne joby urobili. NIČ NEMENÍ.
+//
+// Report do storage/app/dry-run/ (JSON + Markdown) s labelmi konkrétnych párov,
+// spočítaný DVOJITOU metrikou (TF-IDF aj embeddingy), aby W3 videla na jednom
+// papieri, že prah 0.92 na TF-IDF a 0.92 na embeddingoch sú dve iné rozhodnutia.
+// Metrika 'embeddings' sa preskočí a v reporte označí, kým stĺpec nodes.embedding
+// neexistuje alebo je prázdny (vlastníkom embeddingov je balík P1).
+//
+// Zapnutie samotných jobov (maintenance.destructive_enabled) schvaľuje VÝHRADNE
+// používateľ po prečítaní tohto reportu — rozhodnutie #32.
+// ---------------------------------------------------------------------------
+Artisan::command(
+    'aura:dry-run {job=all : automerge|prune-coactivation|cleanup-edges|all}'
+    .' {--metric=* : tfidf|embeddings (default z configu)}'
+    .' {--sample= : koľko konkrétnych položiek do reportu (0 = všetky)}'
+    .' {--max-pairs= : strop porovnaných párov (0 = bez stropu)}'
+    .' {--no-write : nezapisuj report, len vypíš súhrn}',
+    function (DryRunRunner $runner) {
+        $job = (string) $this->argument('job');
+        $jobs = $job === 'all' ? [] : [$job];
+
+        if ($jobs !== [] && ! array_key_exists($job, $runner->jobs())) {
+            $this->error("Neznámy job '{$job}'. Dostupné: ".implode(', ', array_keys($runner->jobs())).', all');
+
+            return 1;
+        }
+
+        $options = DryRunOptions::fromConfig();
+        if ($this->option('sample') !== null) {
+            $options = $options->withSampleSize((int) $this->option('sample'));
+        }
+        if ($this->option('max-pairs') !== null) {
+            $options = $options->withMaxPairs((int) $this->option('max-pairs'));
+        }
+
+        $metrics = array_values(array_filter((array) $this->option('metric')));
+
+        $this->info('Dry-run beží len na čítanie — nič sa nezmení.');
+
+        $files = null;
+        if ($this->option('no-write')) {
+            $results = $runner->run($jobs, $metrics, $options);
+        } else {
+            ['results' => $results, 'files' => $files] = $runner->runAndReport($jobs, $metrics, $options);
+        }
+
+        $rows = [];
+        foreach ($results as $r) {
+            $rows[] = $r->skipped
+                ? [$r->job, $r->metric, '—', '—', 'preskočené: '.$r->skippedReason]
+                : [$r->job, $r->metric, $r->threshold, $r->compared, $r->affected.($r->truncated ? ' (strop!)' : '')];
+        }
+        $this->table(['Job', 'Metrika', 'Prah', 'Vyhodnotené', 'Dopad'], $rows);
+
+        if ($files !== null) {
+            $this->info('Report: storage/app/'.$files['markdown']);
+            $this->line('        storage/app/'.$files['json']);
+        }
+
+        $state = config('maintenance.destructive_enabled') ? 'ZAPNUTÉ' : 'vypnuté';
+        $this->line("Deštruktívne joby sú {$state}. Zapnutie schvaľuje používateľ po prečítaní reportu.");
+
+        return 0;
+    },
+)->purpose('Dry-run deštruktívnych jobov: čo by sa zlúčilo/zmazalo, dvojitou metrikou. Nič nemení.');
+
+// ---------------------------------------------------------------------------
+// aura:sync-runs-prune — rotácia tabuľky sync_runs (rozhodnutie #36).
+// Maže VÝHRADNE riadky auditu údržby; uzlov, hrán ani aktivácií sa nedotýka.
+//
+// Nočný beh robí len rotáciu podľa veku. Dobehnutie historických no-op behov
+// (dnes >1 200 riadkov) je mazanie dát, takže vyžaduje výslovné `--purge-noop`
+// alebo AURAAI_SYNC_RUNS_PURGE_NOOP=true — nikdy sa nestane samo.
+// ---------------------------------------------------------------------------
+Artisan::command(
+    'aura:sync-runs-prune {--dry-run : len vypíš, čo by sa zmazalo}'
+    .' {--purge-noop : dobehni aj historické no-op behy (mazanie dát — vyžaduje rozhodnutie používateľa)}',
+    function (SyncRunRetention $retention) {
+        $dry = (bool) $this->option('dry-run');
+        $purge = $this->option('purge-noop') ? true : null;
+        $stats = $retention->prune($dry, $purge);
+
+        $this->info(sprintf(
+            'sync_runs%s — staré: %d · no-op zmazané: %d · zostáva: %d (cutoff %s, chybové %s)',
+            $dry ? ' (dry-run)' : '',
+            $stats['deleted_old'],
+            $stats['deleted_noop'],
+            $stats['kept'],
+            substr($stats['cutoff'], 0, 10),
+            substr($stats['cutoff_failed'], 0, 10),
+        ));
+
+        if ($stats['noop_pending'] > 0) {
+            $this->warn(
+                "{$stats['noop_pending']} historických no-op behov čaká na rozhodnutie — "
+                .'spusti `aura:sync-runs-prune --purge-noop`, ak ich chceš zmazať.'
+            );
+        }
+
+        return 0;
+    },
+)->purpose('Rotácia sync_runs: staré behy podľa veku; historické no-op behy len s --purge-noop');
+
+// ---------------------------------------------------------------------------
+// aura:rewire — rovnaký algoritmus ako mind:rewire, ale rozdelený na triedy podľa
+// algoritmu (app/Services/Maintenance/Rewire/**) so stropom času/veľkosti a
+// s meraním trvania každého algoritmu zvlášť. Výsledok je identický.
+// ---------------------------------------------------------------------------
+Artisan::command('aura:rewire {--timings : vypíš trvanie každého algoritmu}', function (RewireOrchestrator $rewire) {
+    $result = $rewire->run();
+    $this->info($result->summary());
+
+    if ($this->option('timings')) {
+        $rows = [];
+        foreach ($result->timings as $step => $seconds) {
+            $rows[] = [$step, number_format($seconds, 2).' s'];
+        }
+        $this->table(['Algoritmus', 'Trvanie'], $rows);
+    }
+
+    return 0;
+})->purpose('Backfill similarity/skill_mention/mostov — rozdelené na triedy, so stropom času a veľkosti');
 
 // Denna zaloha vedomia + rotacia (drzi poslednych 14 dni).
 // Fail-safe: dump ide najprv do temp suboru a do backups/ sa presunie len ak nie je
@@ -80,14 +218,22 @@ $nightly = fn (string $command, string $at) => Schedule::command($command)
     ->timezone('Europe/Bratislava')
     ->withoutOverlapping(60);
 
-$nightly('mind:rewire', '04:05');            // A3 — backfill similarity synapsií (najťažší)
+// aura:rewire je ten istý algoritmus ako mind:rewire, len rozdelený na triedy podľa
+// algoritmu a so stropom času/veľkosti (config maintenance.rewire) — bez stropu by
+// rast siete jedného dňa spôsobil, že O(n²) rewire pretečie do 15-minútového okna
+// pred decay-om a oba joby budú súťažiť o rovnaké hrany. Výsledok je identický,
+// stráži to RewireEquivalenceTest.
+$nightly('aura:rewire', '04:05');            // A3–A11 — backfill synapsií (najťažší)
 $nightly('mind:decay', '04:20');             // D2 — zabúdanie neaktívnych uzlov/hrán
 
 // DEŠTRUKTÍVNE joby — nevratne MAŽÚ hrany a ZLUČUJÚ uzly nad jedinou kópiou pamäte.
 // Ovládané prepínačom, lebo ich prahy (cleanup weight<1/90d, prune 0.08, automerge 0.92)
 // sú kalibrované na TF-IDF. Pri prechode na embeddingy znamenajú niečo úplne iné, takže
-// do rekalibrácie + schváleného --dry-run reportu musia byť VYPNUTÉ. Rozhodnutie #32.
-if (config('auraai.destructive_jobs_enabled')) {
+// do rekalibrácie + schváleného dry-run reportu (aura:dry-run) musia byť VYPNUTÉ.
+// Rozhodnutie #32. Prepínač sa presunul do config/maintenance.php (vlastní P2);
+// pôvodný auraai.destructive_jobs_enabled zostáva ako fallback, kým ho integrátor
+// nezmaže — obe čítajú tú istú env premennú, takže sa chovanie nemení.
+if (config('maintenance.destructive_enabled', config('auraai.destructive_jobs_enabled'))) {
     $nightly('mind:cleanup-edges', '04:30');      // A9 — prerušenie zabudnutých synapsií
     $nightly('mind:prune-coactivation', '04:35'); // prerezanie koincidenčného hairballu (skóre < 0.08)
     $nightly('mind:automerge', '04:45');          // D5/E7 — zlúčenie takmer identických uzlov
@@ -101,3 +247,7 @@ Schedule::command('mind:rollup')
     ->weeklyOn(0, '05:15')
     ->timezone('Europe/Bratislava')
     ->withoutOverlapping(60);
+
+// Rotácia auditu údržby (sync_runs) — mimo okna ostatných jobov, aby nesúťažila
+// o zámky. Maže len riadky auditu, nikdy dáta vedomia. Rozhodnutie #36.
+$nightly('aura:sync-runs-prune', '05:30');

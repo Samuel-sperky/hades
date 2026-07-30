@@ -24,14 +24,33 @@ export function focusNode(n) {
 }
 
 
-export function zoomBy(factor) {
-    // pivot okolo stredu obrazovky — rovnaká technika ako wheel handler
-    const before = screenToWorld(S.w / 2, S.h / 2);
-    S.cam.k = Math.min(3.2, Math.max(0.14, S.cam.k * factor));
-    const after = screenToWorld(S.w / 2, S.h / 2);
+export const K_MIN = 0.14;
+export const K_MAX = 3.2;
+
+
+// Zoom okolo bodu na obrazovke (px). Jediné miesto, kde sa mení S.cam.k —
+// wheel, tlačidlá aj klávesnica idú cez toto, takže strop/podlaha platí vždy.
+export function zoomAt(px, py, factor) {
+    const before = screenToWorld(px, py);
+    S.cam.k = Math.min(K_MAX, Math.max(K_MIN, S.cam.k * factor));
+    const after = screenToWorld(px, py);
     S.cam.x += (after.x - before.x) * S.cam.k;
     S.cam.y += (after.y - before.y) * S.cam.k;
-    requestDraw(); // zoom tlačidlom zmenil kameru → prekresli
+    requestDraw(); // zoom zmenil kameru → prekresli
+}
+
+
+export function zoomBy(factor) {
+    // pivot okolo stredu obrazovky — rovnaká technika ako wheel handler
+    zoomAt(S.w / 2, S.h / 2, factor);
+}
+
+
+// Posun kamery o pixely obrazovky (klávesová obsluha plátna).
+export function panBy(dx, dy) {
+    S.cam.x += dx;
+    S.cam.y += dy;
+    requestDraw(); // kamera sa posunula → prekresli
 }
 
 
@@ -76,10 +95,16 @@ export function fitView(pad = 90) {
 }
 
 
-/* Ovládanie kamery (data-zoom). */
+/* Ovládanie kamery — drôtuje sa na data-zoom (§4.7), nie na id: markup smie
+   prežiť prestavbu layoutu, kontrakt je atribút. */
 export function register(root) {
-    const wire = (id, fn) => { const el = root.querySelector('#' + id); if (el) el.onclick = fn; };
-    wire('zoom-in', () => zoomBy(1.3));
-    wire('zoom-out', () => zoomBy(1 / 1.3));
-    wire('zoom-reset', () => fitView());
+    const actions = {
+        in: () => zoomBy(1.3),
+        out: () => zoomBy(1 / 1.3),
+        reset: () => fitView(),
+    };
+    root.querySelectorAll('[data-zoom]').forEach((el) => {
+        const fn = actions[el.dataset.zoom];
+        if (fn) el.onclick = fn;
+    });
 }

@@ -1,88 +1,132 @@
-import { $, esc, renderEmpty } from '../core/dom.js';
-import { plural, timeAgo } from '../core/format.js';
+/* Obrazovka Dnes — dashboard vedomia.
+
+   Anatómia (Aura vlna 3): hero hľadanie → KPI pás → mriežka kariet (heatmapa,
+   istota, rast, oblasti, sync, lokálny model) → sekcie „naposledy / záznamy /
+   projekty". Šírku dáva `.screen--wide` v blade, nie inline style v JS.
+
+   Dva zdroje: /api/today je ľahký (sessions/records/projekty), /api/dashboard
+   nesie agregáty. Padne len jeden? Obrazovka sa vykreslí z toho, čo prišlo —
+   dashboard bez /api/today ani /api/today bez dashboardu nie je prázdna plocha. */
+
+import { apiGet } from '../core/api.js';
+import { $, esc } from '../core/dom.js';
+import { timeAgo } from '../core/format.js';
 import { bindPackButtons, packBtn } from '../dock/pack.js';
+import { barHtml, emptyStateHtml, renderApiError, sectionHtml } from './shared/anatomy.js';
 import { dashboardHtml, renderDashboardBlocks } from './today/dashboard-blocks.js';
+import { renderTodayKpiSpark, todayKpiHtml } from './today/kpi.js';
 import { openCmdk } from '../shell/cmdk.js';
-import { openNodeFromAnywhere } from '../shell/router.js';
+import { openNodeFromAnywhere, setScreen } from '../shell/router.js';
 
 
 // Shimmer skeleton počas načítania dashboardu (loading stav)
 function todaySkeleton() {
-    const bar = (w, h) => '<div class="shimmer" style="width:' + w + ';height:' + h + ';border-radius:var(--r-md);"></div>';
-    return '<div style="display:flex;flex-direction:column;gap:var(--gutter);">'
-        + bar('100%', '46px')
-        + '<div class="kpi-grid">' + [0, 0, 0, 0].map(() => bar('100%', '58px')).join('') + '</div>'
-        + '<div class="dash-grid">' + bar('100%', '160px') + bar('100%', '160px') + '</div>'
+    return '<div class="page-stack">'
+        + barHtml('100%', '58px')
+        + '<div class="kpi-grid">' + [0, 0, 0, 0, 0, 0].map(() => barHtml('100%', '62px')).join('') + '</div>'
+        + '<div class="dash-grid">' + barHtml('100%', '160px') + barHtml('100%', '160px') + '</div>'
         + '</div>';
+}
+
+
+function searchHtml() {
+    return '<button type="button" id="today-search" class="today-search">'
+        + '<span class="ms" aria-hidden="true">search</span>'
+        + '<span class="ts-text">Hľadaj vo vedomí — skilly, záznamy, projekty…</span>'
+        + '<kbd>Ctrl K</kbd></button>';
 }
 
 
 export async function renderToday() {
     const body = $('dnes-body');
     if (!body) return;
-    // Dashboard potrebuje viac miesta než 920px čítacia šírka ostatných obrazoviek.
-    const screen = $('screen-dnes');
-    if (screen) screen.style.maxWidth = '1120px';
     body.innerHTML = todaySkeleton();
 
-    // /api/today je ľahký (sessions/records/projekty); ťažké agregáty sú v /api/dashboard (§4.1).
     const [todayRes, dashRes] = await Promise.allSettled([
-        fetch('/api/today').then((r) => r.json()),
-        fetch('/api/dashboard').then((r) => r.json()),
+        apiGet('/api/today'),
+        apiGet('/api/dashboard'),
     ]);
 
-    if (todayRes.status !== 'fulfilled') {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+    // Oba zdroje mimo → jediný chybový stav s možnosťou skúsiť znova.
+    if (todayRes.status !== 'fulfilled' && dashRes.status !== 'fulfilled') {
+        renderApiError(body, todayRes.reason, renderToday);
         return;
     }
-    const d = todayRes.value;
+
+    const d = todayRes.status === 'fulfilled' ? todayRes.value : {};
     const dash = dashRes.status === 'fulfilled' ? dashRes.value : null;
-    const wb = d.week_added || {};
 
-    // Veľké hľadacie pole — primárny prvok obrazovky (otvorí Cmd-K paletu)
-    let h = '<button type="button" id="today-search" class="today-search">'
-        + '<span class="ms" aria-hidden="true">search</span>'
-        + '<span class="ts-text">Hľadaj vo vedomí — skilly, záznamy, projekty…</span>'
-        + '<kbd>Ctrl K</kbd></button>';
+    let h = '<div class="page-stack">' + searchHtml();
+    h += todayKpiHtml(d, dash);
 
-    h += '<p class="today-line">Tento týždeň pribudlo <strong>' + esc(String(wb.nodes ?? 0))
-        + '</strong> ' + plural(wb.nodes ?? 0, 'poznatok', 'poznatky', 'poznatkov')
-        + ', <strong>' + esc(String(wb.sessions ?? 0)) + '</strong> '
-        + plural(wb.sessions ?? 0, 'záznam', 'záznamy', 'záznamov') + '.</p>';
-
-    // ---- Dashboard agregáty (KPI + charty + Sync) z /api/dashboard ----
-    if (dash) h += dashboardHtml(dash);
-
-    // ---- Naposledy / záznamy / projekty (z /api/today) ----
-    const sessions = d.recent_sessions || [];
-    if (sessions.length) {
-        h += '<section class="today-sec"><h2>Naposledy si robil na…</h2><div class="today-grid">'
-            + sessions.slice(0, 6).map((s) => todaySessionCard(s)).join('')
-            + '</div></section>';
+    if (dash) {
+        h += dashboardHtml(dash);
+    } else {
+        h += emptyStateHtml('insights', 'Agregáty sa nenačítali',
+            'Grafy a synchronizácia sú dočasne nedostupné — zoznamy nižšie sú v poriadku.');
     }
 
-    const records = d.recent_records || [];
-    if (records.length) {
-        h += '<section class="today-sec"><h2>Posledné záznamy</h2><div class="today-list">'
-            + records.map((r) => todayRow('article', r.id, r.label, r.project, r.snippet, r.created_at)).join('')
-            + '</div></section>';
-    }
-
-    const projects = d.top_projects || [];
-    if (projects.length) {
-        h += '<section class="today-sec"><h2>Aktívne projekty</h2><div class="today-chips">'
-            + projects.map((p) => '<span class="today-chip">' + esc(p.project)
-                + '<span class="n">' + (p.count || 0) + '</span></span>').join('')
-            + '</div></section>';
-    }
-
+    h += listsHtml(d);
+    h += '</div>';
     body.innerHTML = h;
 
-    // Charty + Sync wiring — kontajnery sú už v DOM po nastavení innerHTML.
-    if (dash) renderDashboardBlocks(dash);
+    if (dash) {
+        renderDashboardBlocks(dash);
+        renderTodayKpiSpark(dash);
+    }
+    wireToday(body);
+}
 
+
+/** Sekcie zo /api/today. Keď nie je nič, jeden zmysluplný prázdny stav. */
+function listsHtml(d) {
+    const sessions = d.recent_sessions || [];
+    const records = d.recent_records || [];
+    const projects = d.top_projects || [];
+
+    if (!sessions.length && !records.length && !projects.length) {
+        return emptyStateHtml('bedtime', 'Dnes je vo vedomí ticho',
+            'Zatiaľ žiadne sessions ani záznamy. Pribudnú pri ďalšom ingeste z Claude Code.');
+    }
+
+    let h = '';
+    if (sessions.length) {
+        h += sectionHtml('Naposledy si robil na…',
+            '<div class="today-grid">' + sessions.slice(0, 6).map(todaySessionCard).join('') + '</div>');
+    }
+    if (records.length) {
+        h += sectionHtml('Posledné záznamy',
+            '<div class="today-list">'
+            + records.map((r) => todayRow('article', r.id, r.label, r.project, r.snippet, r.created_at)).join('')
+            + '</div>');
+    }
+    if (projects.length) {
+        h += sectionHtml('Aktívne projekty',
+            '<div class="today-chips">'
+            + projects.map((p) => '<span class="today-chip">' + esc(p.project)
+                + '<span class="n tnum">' + esc(String(p.count || 0)) + '</span></span>').join('')
+            + '</div>');
+    }
+    return h;
+}
+
+
+function wireToday(body) {
     const searchBtn = $('today-search');
     if (searchBtn) searchBtn.onclick = openCmdk;
+
+    // KPI „na overenie" vedie tam, kde sa s tým číslom dá niečo urobiť.
+    const reviewKpi = body.querySelector('.kpi-card[data-cert="pending"]');
+    if (reviewKpi) {
+        reviewKpi.classList.add('kpi-card--link');
+        reviewKpi.setAttribute('role', 'button');
+        reviewKpi.setAttribute('tabindex', '0');
+        reviewKpi.title = 'Otvoriť Kontrolu';
+        const go = () => setScreen('kontrola');
+        reviewKpi.onclick = go;
+        reviewKpi.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    }
+
     body.querySelectorAll('.today-item[data-id], .today-card-link[data-id]').forEach((el) => {
         el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
     });
@@ -114,7 +158,3 @@ function todayRow(icon, id, label, project, snippet, iso) {
         + '</button>'
         + packBtn(id, label) + '</div>';
 }
-
-/* ---------- certainty badge (.cert) — zdieľaný helper (F3; F4 ho reuse-uje) ----
-   §4.5/§4.8: data-cert="overene|hypoteza|pasca|bez|pending"; ikony
-   verified/science/warning/radio_button_unchecked/pending. iconOnly = .cert--icon. */

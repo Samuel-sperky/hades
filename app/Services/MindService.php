@@ -9,9 +9,11 @@ use App\Models\Department;
 use App\Models\Edge;
 use App\Models\Node;
 use App\Models\Tombstone;
+use App\Services\Recall\RecallEngine;
+use App\Services\Recall\RecallResult;
+use App\Services\Similarity\TaxonomyResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class MindService
 {
@@ -28,17 +30,17 @@ class MindService
     ];
 
     /**
-     * Slovenské + anglické funkčné slová, ktoré v dopyte nič zmysluplné
-     * nehľadajú. Odhadzujú sa PRED stemmingom — bránia tomu, aby '%ako%' a
-     * spol. našli skoro každý uzol a zhodili relevanciu na strength.
+     * Vyhľadávanie vo vedomí žije v `RecallEngine` (rozhranie #13, rozhodnutie #40),
+     * zaradenie do taxonómie v `Similarity\TaxonomyResolver`.
+     *
+     * Defaulty v konštruktore sú zámerné: `MindService` sa na niekoľkých miestach
+     * inštancuje cez `new MindService()` (napr. TranscriptIngestService), takže
+     * povinná závislosť by rozbila 7 konzumentov.
      */
-    protected const STOP = [
-        'ako', 'aby', 'ale', 'alebo', 'ani', 'and', 'the', 'pre', 'pri', 'pro',
-        'cez', 'som', 'byť', 'bez', 'tak', 'len', 'už', 'kto', 'čo', 'že', 'či',
-        'aj', 'nie', 'áno', 'ešte', 'for', 'with', 'from', 'you', 'this', 'that',
-        'not', 'sme', 'ste', 'sú', 'bol', 'bola', 'boli', 'mať', 'ten', 'tej',
-        'táto', 'tento', 'toto', 'sem', 'tam', 'kde', 'keď', 'pod', 'nad', 'ich',
-    ];
+    public function __construct(
+        protected RecallEngine $recall = new RecallEngine,
+        protected TaxonomyResolver $taxonomy = new TaxonomyResolver,
+    ) {}
 
     /**
      * Ulozi novy poznatok. Ak uz podobny uzol existuje, zluci ho (auto-merge)
@@ -72,19 +74,27 @@ class MindService
             return ['action' => 'merged', 'node' => $merged->fresh()->toApi()];
         }
 
-        $area = $this->resolveArea($areaName);
-        $department = $departmentName ? $this->resolveDepartment($area, $departmentName) : null;
+        // Zaradenie do taxonómie. Pri nezhode NEPODSTRČÍ prvú oblasť potichu —
+        // uzol dostane needs_review a audit poznámku v meta (bug z 29. 7. 2026).
+        $placement = $this->resolvePlacement($areaName, $departmentName);
 
-        $node = Node::create([
+        $attributes = [
             'type' => $type,
-            'area_id' => $area->id,
-            'department_id' => $department?->id,
+            'area_id' => $placement['area']->id,
+            'department_id' => $placement['department']?->id,
             'label' => trim($label),
             'description' => $description,
             'certainty' => $certainty,
             'strength' => 1,
             'last_activated_at' => now(),
-        ]);
+        ];
+
+        if ($placement['review'] !== null) {
+            $attributes['needs_review'] = true;
+            $attributes['meta'] = ['taxonomy_review' => $placement['review']];
+        }
+
+        $node = Node::create($attributes);
 
         $this->syncTags($node, $tags);
 
@@ -145,64 +155,26 @@ class MindService
     /**
      * Najde poznatky relevantne k dopytu. Nezvysuje silu, ale vysle
      * "spomienkovy" pulz do vizualizacie.
+     *
+     * Fasáda nad `RecallEngine` (#13) — 7 konzumentov (MCP recall, chat, ingest…)
+     * očakáva plochú `Collection<Node>`, takže sa vracia `primaries + neighbours`.
+     * Kto potrebuje rozdelenie, volá `recallResult()`.
      */
     public function recall(string $query, int $limit = 12, ?string $sessionKey = null): Collection
     {
-        // Jeden zdroj pravdy: stemovaný SK-aware engine s tvrdým prahom.
-        // recall() pridáva navrch len graph-walk + „spomienkový" pulz.
-        $matches = $this->searchNodes($query, $limit);
+        return $this->recall->recall($query, $limit, $sessionKey)->all();
+    }
 
-        if ($matches->isEmpty()) {
-            return collect();
-        }
+    /** Ten istý recall, ale s rozdelením na primárne zásahy a susedov (#13). */
+    public function recallResult(string $query, int $limit = 12, ?string $sessionKey = null): RecallResult
+    {
+        return $this->recall->recall($query, $limit, $sessionKey);
+    }
 
-        $scored = $matches->pluck('node')->values();
-
-        // Graph-walk hĺbky 1: k primárnym zásahom pridaj ich priamych susedov
-        // (jeden skok po hranách) s polovičnou relevanciou. Primáre si držia
-        // poradie, susedia sa pripoja za ne. Celkový strop = limit + 50 %.
-        $primaryIds = $scored->pluck('id')->all();
-        $overallCap = (int) ceil($limit * 1.5);
-        $neighborSlots = max(0, $overallCap - $scored->count());
-
-        $neighbors = collect();
-        if ($neighborSlots > 0) {
-            $neighborIds = Edge::query()
-                ->where(function ($q) use ($primaryIds) {
-                    $q->whereIn('source_id', $primaryIds)
-                        ->orWhereIn('target_id', $primaryIds);
-                })
-                ->get(['source_id', 'target_id'])
-                ->flatMap(fn (Edge $e) => [$e->source_id, $e->target_id])
-                ->reject(fn ($id) => in_array($id, $primaryIds, true))
-                ->unique()
-                ->values();
-
-            if ($neighborIds->isNotEmpty()) {
-                $neighbors = Node::query()
-                    ->with(['area', 'department'])
-                    ->whereIn('id', $neighborIds->all())
-                    ->orderByDesc('strength')
-                    ->limit($neighborSlots)
-                    ->get();
-            }
-        }
-
-        // session_key sa uloží k aktiváciám — neskoršie learn/activate v tej istej
-        // session sa cez coActivate prepoja aj s vybavenými uzlami
-        foreach ($scored as $node) {
-            Activation::record($node, 'recall', $sessionKey);
-        }
-        foreach ($neighbors as $node) {
-            // ľahšia aktivácia — sused vybavený cez hranu, nie priamou zhodou
-            Activation::record($node, 'recall-neighbor', $sessionKey);
-        }
-
-        $result = $scored->concat($neighbors)->values();
-
-        MindPulse::dispatch('recall', ['node_ids' => $result->pluck('id')->all()]);
-
-        return $result;
+    /** Priamy prístup k enginu — pre konzumentov, ktorí chcú len kandidátov. */
+    public function recallEngine(): RecallEngine
+    {
+        return $this->recall;
     }
 
     /**
@@ -212,207 +184,51 @@ class MindService
      * popise. TVRDÝ PRAH: uzol bez jediného skutočného term-hitu sa NIKDY
      * nevráti. Skóre = počet reálnych hitov; strength je len tie-break.
      *
-     * @return Collection<int, array{node: Node, score: int, snippet: ?string}>
+     * Kľúč `vector` je aditívny (kosínus embeddingu, 0.0 keď vetva nebeží) —
+     * existujúci konzumenti čítajú `node`/`score`/`snippet` a nič sa im nemení.
+     *
+     * @return Collection<int, array{node: Node, score: int, snippet: ?string, vector: float}>
      */
     public function searchNodes(string $query, int $limit = 12): Collection
     {
-        // Koncepty = pôvodné dopytové slová, každé so svojou skupinou koreňov
-        // (synonymá + pádové tvary). Skóre počíta ZHODNÉ KONCEPTY, nie korene —
-        // uzol bohatý na jeden pojem (napr. 5× „šperk/jewelry") tak nedostane
-        // umelo vyššie skóre než uzol, ktorý trafí dva rôzne pojmy.
-        $concepts = $this->queryConcepts($query);
-
-        if ($concepts->isEmpty()) {
-            return collect();
-        }
-
-        $roots = $concepts->flatten()->unique()->values();
-
-        // SQL relevancia (label=2, description=1 za koreň) drží top kandidátov —
-        // silné, ale nezhodné uzly už NEvytláčajú slabšie skutočné zhody.
-        // COLLATE utf8mb4_unicode_ci = accent-insensitive: ASCII koreň 'sperk'
-        // tak v SQL trafí aj diakritický 'Šperky' (a naopak). Ako poistka aj
-        // OR bez collate pre prípad odlišnej kolácie stĺpca.
-        $col = ' COLLATE utf8mb4_unicode_ci';
-        $orderCases = [];
-        $orderBindings = [];
-        foreach ($roots as $root) {
-            $orderCases[] = '(CASE WHEN label LIKE ?'.$col.' THEN 2 ELSE 0 END)';
-            $orderBindings[] = '%'.$root.'%';
-            $orderCases[] = '(CASE WHEN description LIKE ?'.$col.' THEN 1 ELSE 0 END)';
-            $orderBindings[] = '%'.$root.'%';
-        }
-
-        $nodes = Node::query()
-            ->with(['area', 'department'])
-            ->where(function ($q) use ($roots, $col) {
-                foreach ($roots as $root) {
-                    $like = '%'.$root.'%';
-                    $q->orWhereRaw('label LIKE ?'.$col, [$like])
-                        ->orWhereRaw('description LIKE ?'.$col, [$like]);
-                }
-            })
-            ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
-            ->orderByDesc('strength')
-            ->limit(max($limit * 5, 60))
-            ->get();
-
-        return $nodes
-            ->map(function (Node $node) use ($concepts, $roots) {
-                // fold haystack — korene sú už foldnuté v queryConcepts, takže
-                // tvrdý prah je tiež necitlivý na diakritiku
-                $hay = ' '.$this->fold(trim($node->label.' '.(string) $node->description)).' ';
-
-                // koncept je zhoda, ak ho trafí aspoň jeden jeho koreň
-                $score = $concepts->filter(
-                    fn (Collection $conceptRoots) => $conceptRoots->contains(
-                        fn ($root) => mb_strpos($hay, $root) !== false
-                    )
-                )->count();
-
-                return [
-                    'node' => $node,
-                    'score' => $score,
-                    'snippet' => $this->snippetFor((string) $node->description, $roots),
-                ];
-            })
-            ->filter(fn ($row) => $row['score'] > 0)   // tvrdý prah — 0 zhodných konceptov = von
-            ->sortByDesc(fn ($row) => $row['score'] * 1000 + min((float) $row['node']->strength, 999))
-            ->take($limit)
-            ->values();
+        return $this->recall->search($query, $limit);
     }
 
     /**
-     * Dopyt → koncepty. Každý pôvodný (nestopový, ≥3 znaky) token sa samostatne
-     * rozšíri doménovým slovníkom (SK↔EN synonymá, SimilarityService::expandTerms)
-     * a stemuje (skStem) do skupiny koreňov. Skupinovanie drží pojmy oddelené,
-     * aby skóre v searchNodes vedelo počítať zhodné POJMY, nie surové korene.
+     * Dopyt → koncepty (delegát na `Recall\QueryAnalyzer`).
      *
      * @return Collection<int, Collection<int, string>>
      */
     public function queryConcepts(string $query): Collection
     {
-        $terms = collect(preg_split('/[\s,;.!?:()\/"]+/u', mb_strtolower($query)))
-            ->map(fn ($t) => trim($t))
-            ->filter(fn ($t) => mb_strlen($t) >= 3 && ! in_array($t, self::STOP, true))
-            ->take(12)
-            ->values();
-
-        if ($terms->isEmpty()) {
-            $bare = mb_strtolower(trim($query));
-            if ($bare === '') {
-                return collect();
-            }
-            $terms = collect([$bare]);
-        }
-
-        $sim = app(SimilarityService::class);
-
-        return $terms
-            ->map(fn ($term) => collect($sim->expandTerms([$term]))
-                ->map(fn ($t) => $this->fold($this->skStem((string) $t)))
-                ->filter(fn ($root) => mb_strlen($root) >= 3)
-                ->unique()
-                ->values())
-            ->filter(fn (Collection $roots) => $roots->isNotEmpty())
-            ->values();
+        return $this->analyzer()->concepts($query);
     }
 
-    /**
-     * ASCII-fold slovenskej diakritiky (á→a, š→s, ž→z…). Vďaka nemu je hľadanie
-     * necitlivé na diakritiku: 'sperky' nájde 'šperky', 'marza' nájde 'maržu'.
-     * Fold je 1:1 znak → znak, takže znakové offsety ostávajú platné aj v origináli.
-     */
+    /** ASCII-fold slovenskej diakritiky (delegát na `Recall\QueryAnalyzer`). */
     public function fold(string $s): string
     {
-        return strtr(mb_strtolower($s), [
-            'á' => 'a', 'ä' => 'a', 'č' => 'c', 'ď' => 'd', 'é' => 'e', 'í' => 'i',
-            'ĺ' => 'l', 'ľ' => 'l', 'ň' => 'n', 'ó' => 'o', 'ô' => 'o', 'ŕ' => 'r',
-            'š' => 's', 'ť' => 't', 'ú' => 'u', 'ý' => 'y', 'ž' => 'z',
-        ]);
+        return $this->analyzer()->fold($s);
     }
 
     /**
-     * Dopyt → plochá množina unikátnych koreňov pre LIKE %koreň% (playbooky,
-     * knižnica). Odvodené z queryConcepts, takže engine má jeden zdroj koreňov.
+     * Dopyt → plochá množina unikátnych koreňov (delegát na `Recall\QueryAnalyzer`).
      *
      * @return Collection<int, string>
      */
     public function queryRoots(string $query): Collection
     {
-        return $this->queryConcepts($query)->flatten()->unique()->values();
+        return $this->analyzer()->roots($query);
     }
 
-    /**
-     * Lacný slovenský stemmer: orezáva bežné pádové/číselné (a pár slovesných)
-     * koncoviek na koreň. Orezáva NAJVIAC jednu koncovku a len ak koreň ostane
-     * aspoň 3 znaky; slová do 4 znakov nechá tak. Funguje na diakritickom aj
-     * bezdiakritickom tvare: 'maržu'→'marž', 'šperky'→'šperk',
-     * 'objednávok'→'objednáv'. 'docker'/'banner'/'order' ostávajú nedotknuté
-     * (ich koncovky v zozname nie sú), takže engine nezačne matchovať šum.
-     */
+    /** Lacný slovenský stemmer (delegát na `Recall\QueryAnalyzer`). */
     public function skStem(string $word): string
     {
-        $w = mb_strtolower(trim($word));
-        $len = mb_strlen($w);
-
-        if ($len <= 4) {
-            return $w;
-        }
-
-        // koncovky zoradené od najdlhších — orež prvú, ktorá sedí
-        static $suffixes = [
-            'ejšieho', 'ejšiemu', 'ejších', 'ejšie', 'ejší',
-            'ovanie', 'ovania', 'ovať', 'ávať',
-            'ých', 'ého', 'ému', 'ími', 'emi', 'ami', 'ach', 'ách', 'iam', 'iach',
-            'ové', 'ová', 'ovi', 'och', 'iu', 'ie', 'ým', 'om', 'em', 'im',
-            'ou', 'ám', 'ov', 'mi',
-            'ať', 'iť', 'yť',
-            'a', 'e', 'i', 'o', 'u', 'y', 'á', 'é', 'í', 'ý', 'ú', 'ô', 'ä',
-        ];
-
-        foreach ($suffixes as $sfx) {
-            $sl = mb_strlen($sfx);
-            if ($len - $sl >= 3 && mb_substr($w, -$sl) === $sfx) {
-                return mb_substr($w, 0, $len - $sl);
-            }
-        }
-
-        return $w;
+        return $this->analyzer()->stem($word);
     }
 
-    /**
-     * Úryvok ~140 znakov okolo prvého výskytu ktoréhokoľvek koreňa v popise
-     * (zbalený na jeden riadok) — hľadanie tak ukáže, KDE sa zhoda našla.
-     *
-     * @param  Collection<int, string>  $roots
-     */
-    protected function snippetFor(string $description, Collection $roots): ?string
+    private function analyzer(): \App\Services\Recall\QueryAnalyzer
     {
-        $text = trim(preg_replace('/\s+/u', ' ', $description));
-        if ($text === '') {
-            return null;
-        }
-
-        // fold text aj hľadanie — korene sú foldnuté, fold je 1:1 znak, takže
-        // nájdený offset platí aj v origináli (necitlivé na diakritiku)
-        $lower = $this->fold($text);
-        $pos = null;
-        foreach ($roots as $root) {
-            $p = mb_strpos($lower, $root);
-            if ($p !== false) {
-                $pos = $pos === null ? $p : min($pos, $p);
-            }
-        }
-
-        if ($pos === null) {
-            return mb_substr($text, 0, 140);
-        }
-
-        $start = max(0, $pos - 50);
-        $snippet = mb_substr($text, $start, 160);
-
-        return ($start > 0 ? '…' : '').$snippet.(mb_strlen($text) > $start + 160 ? '…' : '');
+        return $this->recall->analyzer();
     }
 
     /**
@@ -694,44 +510,14 @@ class MindService
         return $winner->fresh();
     }
 
-    protected function resolveArea(string $name): Area
+    /**
+     * Zaradenie uzla do taxonómie — deleguje na `Similarity\TaxonomyResolver`.
+     * Vracia oblasť, oddelenie a (pri nezhode) audit poznámku pre `needs_review`.
+     *
+     * @return array{area: Area, department: ?Department, review: ?array<string, mixed>}
+     */
+    protected function resolvePlacement(string $areaName, ?string $departmentName): array
     {
-        $normalized = mb_strtolower(trim($name));
-
-        $area = Area::all()->first(function (Area $area) use ($normalized) {
-            return mb_strtolower($area->name) === $normalized
-                || str_contains(mb_strtolower($area->name), $normalized)
-                || str_contains($normalized, mb_strtolower($area->name));
-        });
-
-        return $area ?? Area::orderBy('id')->firstOrFail();
-    }
-
-    protected function resolveDepartment(Area $area, string $name): Department
-    {
-        $normalized = mb_strtolower(trim($name));
-
-        $existing = $area->departments->first(
-            fn (Department $d) => mb_strtolower($d->name) === $normalized
-        );
-
-        if ($existing) {
-            return $existing;
-        }
-
-        $department = $area->departments()->create([
-            'name' => trim($name),
-            'slug' => Str::slug($name),
-        ]);
-
-        MindPulse::dispatch('department.created', [
-            'department' => [
-                'id' => $department->id,
-                'area_id' => $area->id,
-                'name' => $department->name,
-            ],
-        ]);
-
-        return $department;
+        return $this->taxonomy->place($areaName, $departmentName);
     }
 }

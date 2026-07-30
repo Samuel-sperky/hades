@@ -1,5 +1,21 @@
-import { $, busy, emptyHtml, esc, renderEmpty } from '../core/dom.js';
+/* Obrazovka Smernica — prompt builder pre Claude Code.
+
+   Tok: úloha (alebo šablóna) → /api/directive/build poskladá návrh (skilly,
+   projekty, fakty, pravidlá) → editovateľný checklist → náhľad markdownu sa
+   prestavuje KLIENTSKY z vybraných položiek → kopírovať / uložiť ako .md.
+
+   Anatómia: .screen-toolbar (šablóny) → vstup úlohy → dva stĺpce (návrh |
+   náhľad) → sekcia uložených smerníc. Šírku dáva `.screen--wide` v blade.
+   Sekcia „Kde nájdeš" je v P10 zrušená (viď directive/markdown-builder.js).
+
+   Verejné rozhranie: renderDirective (router.js), gotoDirective (cmdk.js). */
+
+import { apiGet, apiSend } from '../core/api.js';
+import { $, busy, esc } from '../core/dom.js';
 import { mdToHtml } from '../markdown.js';
+import { emptyStateHtml, renderEmptyState } from './shared/anatomy.js';
+import { buildDirectiveMarkdown } from './directive/markdown-builder.js';
+import { DIR_SECTIONS, pickSelected, suggestHtml, suggestTotal } from './directive/suggest.js';
 import { setScreen } from '../shell/router.js';
 import { showToast } from '../shell/toasts.js';
 
@@ -15,19 +31,9 @@ let directiveMarkdown = '';       // aktuálny markdown náhľadu (na copy/save)
 let directiveBuildSeq = 0;        // ochrana proti pretekaniu odpovedí
 
 
-const DIR_SECTIONS = [
-    { key: 'skills', title: 'Skilly', icon: 'bolt' },
-    { key: 'projects', title: 'Projekty', icon: 'inventory_2' },
-    { key: 'facts', title: 'Fakty', icon: 'psychology' },
-    { key: 'rules', title: 'Pravidlá', icon: 'gavel' },
-];
-
-
-export function renderDirective(prefillTask) {
-    const body = $('directive-body');
-    if (!body) return;
-    body.innerHTML =
-        '<div class="dir-templates" id="dir-templates"></div>'
+function shellHtml() {
+    return '<div class="page-stack">'
+        + '<div class="screen-toolbar dir-templates" id="dir-templates"></div>'
         + '<div class="dir-input-row">'
         + '<input id="dir-task" class="dir-task" placeholder="Na čom pracuješ? Napíš úlohu…" autocomplete="off" aria-label="Úloha">'
         + '<button type="button" id="dir-build" class="primary">Poskladať</button>'
@@ -42,7 +48,16 @@ export function renderDirective(prefillTask) {
         + '</div></div>'
         + '<div class="dir-preview md-body" id="dir-preview"></div>'
         + '</div></div>'
-        + '<section class="dir-saved-sec"><h2>Uložené smernice</h2><div class="dir-saved" id="dir-saved"></div></section>';
+        + '<section class="screen-sec dir-saved-sec"><div class="sec-head"><h2>Uložené smernice</h2></div>'
+        + '<div class="dir-saved" id="dir-saved"></div></section>'
+        + '</div>';
+}
+
+
+export function renderDirective(prefillTask) {
+    const body = $('directive-body');
+    if (!body) return;
+    body.innerHTML = shellHtml();
 
     const taskInput = $('dir-task');
     const buildBtn = $('dir-build');
@@ -62,17 +77,17 @@ export function renderDirective(prefillTask) {
 
     if (directiveData) {
         renderDirectiveSuggest();
-        renderDirectivePreview();
     } else {
-        renderEmpty($('dir-suggest'), 'assignment', 'Vyber šablónu alebo napíš úlohu');
-        renderDirectivePreview();
+        renderEmptyState($('dir-suggest'), 'assignment', 'Zatiaľ nič nie je poskladané',
+            'Vyber šablónu vyššie alebo napíš úlohu — AuraAI nájde relevantné skilly, projekty a pravidlá.');
     }
+    renderDirectivePreview();
 
     if (prefillTask) runDirectiveBuild(prefillTask);
 }
 
 
-// Skok na obrazovku Smernica s predvyplneným dopytom (z Cmd-K akcie).
+/** Skok na obrazovku Smernica s predvyplneným dopytom (z Cmd-K akcie). */
 export function gotoDirective(task) {
     setScreen('smernica');
     const inp = $('dir-task');
@@ -86,7 +101,7 @@ async function loadDirectiveTemplates() {
     if (!box) return;
     try {
         if (!directiveTemplates) {
-            const d = await (await fetch('/api/directive/templates')).json();
+            const d = await apiGet('/api/directive/templates');
             directiveTemplates = d.templates || [];
         }
         box.innerHTML = directiveTemplates.map((t, i) =>
@@ -110,47 +125,42 @@ async function runDirectiveBuild(task) {
     task = (task || '').trim();
     const suggest = $('dir-suggest');
     if (task === '') { showToast('Napíš úlohu alebo vyber šablónu'); return; }
-    if (suggest) renderEmpty(suggest, 'hourglass_empty', 'Skladám…');
-    const seq = ++directiveBuildSeq;
-    try {
-        const res = await fetch('/api/directive/build', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task }),
-        });
-        const data = await res.json();
-        if (seq !== directiveBuildSeq) return;
-        directiveData = { task: data.task || task, suggested: data.suggested || {} };
-        directiveSel.clear();
-        for (const sec of DIR_SECTIONS) {
-            for (const it of (directiveData.suggested[sec.key] || [])) directiveSel.add(+it.id);
-        }
-        renderDirectiveSuggest();
-        renderDirectivePreview();
-    } catch (e) {
-        if (seq === directiveBuildSeq && suggest) renderEmpty(suggest, 'cloud_off', 'Nepodarilo sa poskladať');
+    if (suggest) {
+        suggest.innerHTML = '<div class="empty"><span class="ms" aria-hidden="true">hourglass_empty</span>'
+            + '<p>Skladám…</p></div>';
     }
+    const seq = ++directiveBuildSeq;
+    let data;
+    try {
+        data = await apiSend('POST', '/api/directive/build', { task });
+    } catch (e) {
+        if (seq === directiveBuildSeq && suggest) {
+            renderEmptyState(suggest, 'cloud_off', 'Nepodarilo sa poskladať',
+                'Server neodpovedal. Skús to znova — rozpísaná úloha zostáva v poli.');
+        }
+        return;
+    }
+    if (seq !== directiveBuildSeq) return;
+
+    directiveData = { task: data.task || task, suggested: data.suggested || {} };
+    directiveSel.clear();
+    for (const sec of DIR_SECTIONS) {
+        for (const it of (directiveData.suggested[sec.key] || [])) directiveSel.add(+it.id);
+    }
+    renderDirectiveSuggest();
+    renderDirectivePreview();
 }
 
 
 function renderDirectiveSuggest() {
     const wrap = $('dir-suggest');
     if (!wrap || !directiveData) return;
-    const sug = directiveData.suggested || {};
-    const total = DIR_SECTIONS.reduce((n, s) => n + ((sug[s.key] || []).length), 0);
-    if (!total) { renderEmpty(wrap, 'search_off', 'Nič relevantné sa nenašlo'); return; }
-
-    let h = '';
-    for (const sec of DIR_SECTIONS) {
-        const items = sug[sec.key] || [];
-        if (!items.length) continue;
-        h += '<div class="dir-group"><div class="dir-group-head">'
-            + '<span class="ms" aria-hidden="true">' + sec.icon + '</span>' + esc(sec.title)
-            + '<span class="dir-group-n">' + items.length + '</span></div>'
-            + items.map((it) => dirItem(sec.key, it)).join('')
-            + '</div>';
+    if (!suggestTotal(directiveData.suggested)) {
+        renderEmptyState(wrap, 'search_off', 'Nič relevantné sa nenašlo',
+            'Skús úlohu formulovať inak alebo konkrétnejšie — hľadá sa v skilloch, projektoch a pravidlách.');
+        return;
     }
-    wrap.innerHTML = h;
+    wrap.innerHTML = suggestHtml(directiveData.suggested, directiveSel);
 
     wrap.querySelectorAll('.dir-check input[type="checkbox"]').forEach((cb) => {
         cb.onchange = () => {
@@ -164,118 +174,20 @@ function renderDirectiveSuggest() {
 }
 
 
-function dirItem(key, it) {
-    const id = +it.id;
-    const on = directiveSel.has(id);
-    let sub = '';
-    if (key === 'skills' && it.path) sub = '<code class="dir-path">' + esc(it.path) + '</code>';
-    else if (key === 'projects' && it.info) sub = '<span class="dir-sub">' + esc(it.info) + '</span>';
-    else if (it.snippet) sub = '<span class="dir-sub">' + esc(it.snippet) + '</span>';
-
-    let badge = '';
-    if (key === 'skills') {
-        badge = it.verified
-            ? '<span class="dir-badge ok">overené</span>'
-            : '<span class="dir-badge warn">neoverené</span>';
-    }
-
-    return '<label class="check dir-check' + (on ? '' : ' off') + '">'
-        + '<input type="checkbox" data-id="' + id + '"' + (on ? ' checked' : '') + '>'
-        + '<span class="box" aria-hidden="true"></span>'
-        + '<span class="dir-item-text"><span class="dir-item-label">' + esc(it.label || '') + badge + '</span>'
-        + sub + '</span></label>';
-}
-
-
 function renderDirectivePreview() {
     const pv = $('dir-preview');
     if (!pv) return;
     if (!directiveData) {
         directiveMarkdown = '';
-        pv.innerHTML = emptyHtml('description', 'Napíš úlohu a poskladaj smernicu');
+        pv.innerHTML = emptyStateHtml('description', 'Náhľad je prázdny',
+            'Poskladaj smernicu a tu sa objaví markdown, ktorý vložíš Claude Code.');
         return;
     }
-    directiveMarkdown = buildDirectiveMarkdown();
+    directiveMarkdown = buildDirectiveMarkdown(
+        directiveData.task,
+        pickSelected(directiveData.suggested, directiveSel),
+    );
     pv.innerHTML = mdToHtml(directiveMarkdown);
-}
-
-
-// Klientsky rebuild markdownu z vybraných položiek — zrkadlí DirectiveController::buildMarkdown.
-function buildDirectiveMarkdown() {
-    const task = (directiveData.task || '').trim();
-    const taskLine = task !== '' ? task : 'Nešpecifikovaná úloha';
-    const skills = dirSelected('skills');
-    const projects = dirSelected('projects');
-    const facts = dirSelected('facts');
-    const rules = dirSelected('rules');
-    const verified = skills.filter((s) => s.verified && s.path);
-
-    const L = [];
-    L.push('# Smernica: ' + taskLine, '');
-    L.push('## Kontext');
-    L.push(dirContextSentence(task, verified, projects), '');
-
-    if (verified.length) {
-        L.push('## Použi tieto skilly');
-        for (const s of verified) L.push('- ' + s.label + ' — `' + s.path + '`');
-        L.push('');
-    }
-    if (projects.length) {
-        L.push('## Súvisiace projekty');
-        for (const p of projects) {
-            const info = String(p.info || '').trim();
-            L.push('- ' + p.label + (info !== '' ? ': ' + info : ''));
-        }
-        L.push('');
-    }
-    if (facts.length) {
-        L.push('## Kľúčové fakty');
-        for (const f of facts) {
-            const s = dirOneLine(f.snippet);
-            L.push('- ' + f.label + (s !== '' ? ': ' + s : ''));
-        }
-        L.push('');
-    }
-    if (rules.length) {
-        L.push('## Pravidlá a preferencie');
-        for (const r of rules) {
-            const s = dirOneLine(r.snippet);
-            L.push('- ' + r.label + (s !== '' ? ': ' + s : ''));
-        }
-        L.push('');
-    }
-
-    const where = [];
-    for (const s of verified) where.push('- ' + s.label + ' → `' + s.path + '`');
-    for (const p of projects) {
-        const info = String(p.info || '').trim();
-        if (info !== '') where.push('- ' + p.label + ' → ' + info);
-    }
-    if (where.length) { L.push('## Kde nájdeš'); for (const w of where) L.push(w); L.push(''); }
-
-    return L.join('\n').replace(/\n+$/, '') + '\n';
-}
-
-
-function dirSelected(key) {
-    return (directiveData.suggested[key] || []).filter((it) => directiveSel.has(+it.id));
-}
-
-
-function dirContextSentence(task, verified, projects) {
-    const subject = task !== '' ? '„' + task + '"' : 'túto úlohu';
-    const parts = [];
-    if (verified.length) parts.push(verified.length + '× skill');
-    if (projects.length) parts.push(projects.length + '× projekt');
-    const have = parts.length ? ' Zahŕňa ' + parts.join(' a ') + '.' : '';
-    return 'Táto smernica hovorí, kde v Hadese nájdeš relevantné znalosti pre '
-        + subject + '.' + have + ' Použi uvedené zdroje ako kontext skôr, než začneš.';
-}
-
-
-function dirOneLine(text) {
-    const t = String(text || '').replace(/\s+/g, ' ').trim();
-    return t.length > 160 ? t.slice(0, 160) + '…' : t;
 }
 
 
@@ -290,16 +202,10 @@ async function saveDirective() {
     if (!directiveMarkdown || !directiveData) { showToast('Najprv poskladaj smernicu'); return; }
     const name = (directiveData.task || '').trim() || 'smernica';
     try {
-        const res = await fetch('/api/directive/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, markdown: directiveMarkdown }),
-        });
-        if (!res.ok) { showToast('Uloženie zlyhalo'); return; }
-        const data = await res.json();
-        showToast('Uložené: ' + (data.path || ''));
+        const data = await apiSend('POST', '/api/directive/save', { name, markdown: directiveMarkdown });
+        showToast('Uložené: ' + ((data && data.path) || ''));
         loadDirectiveSaved();
-    } catch (e) { showToast('Uloženie zlyhalo'); }
+    } catch (e) { showToast('Uloženie zlyhalo', null, 'error'); }
 }
 
 
@@ -307,9 +213,13 @@ async function loadDirectiveSaved() {
     const box = $('dir-saved');
     if (!box) return;
     try {
-        const d = await (await fetch('/api/directives')).json();
+        const d = await apiGet('/api/directives');
         const items = d.directives || [];
-        if (!items.length) { renderEmpty(box, 'folder_open', 'Zatiaľ žiadne uložené smernice'); return; }
+        if (!items.length) {
+            renderEmptyState(box, 'folder_open', 'Zatiaľ žiadne uložené smernice',
+                'Uložením vznikne directives/<slug>.md, ktoré vieš kedykoľvek znovu otvoriť.');
+            return;
+        }
         box.innerHTML = items.map((it) =>
             '<button type="button" class="dir-saved-item" data-name="' + esc(it.name) + '">'
             + '<span class="ms" aria-hidden="true">description</span>'
@@ -319,18 +229,21 @@ async function loadDirectiveSaved() {
         box.querySelectorAll('.dir-saved-item').forEach((b) => {
             b.onclick = () => openSavedDirective(b.dataset.name);
         });
-    } catch (e) { renderEmpty(box, 'cloud_off', 'Nepodarilo sa načítať'); }
+    } catch (e) {
+        renderEmptyState(box, 'cloud_off', 'Uložené smernice sa nenačítali', null);
+    }
 }
 
 
 async function openSavedDirective(name) {
+    let d;
     try {
-        const d = await (await fetch('/api/directive/' + encodeURIComponent(name))).json();
-        if (!d || !d.markdown) { showToast('Smernica sa nenašla'); return; }
-        directiveMarkdown = d.markdown;
-        const pv = $('dir-preview');
-        if (pv) pv.innerHTML = mdToHtml(d.markdown);
-        try { await navigator.clipboard.writeText(d.markdown); showToast('Smernica skopírovaná'); }
-        catch (e) { showToast('Smernica otvorená'); }
-    } catch (e) { showToast('Nepodarilo sa načítať'); }
+        d = await apiGet('/api/directive/' + encodeURIComponent(name));
+    } catch (e) { showToast('Nepodarilo sa načítať', null, 'error'); return; }
+    if (!d || !d.markdown) { showToast('Smernica sa nenašla'); return; }
+    directiveMarkdown = d.markdown;
+    const pv = $('dir-preview');
+    if (pv) pv.innerHTML = mdToHtml(d.markdown);
+    try { await navigator.clipboard.writeText(d.markdown); showToast('Smernica skopírovaná'); }
+    catch (e) { showToast('Smernica otvorená'); }
 }

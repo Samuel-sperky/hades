@@ -2,8 +2,21 @@ import { $, esc } from '../core/dom.js';
 import { S } from '../core/state/index.js';
 
 
+// Karta žije v cudzom partiale (§3) — keď v layoute nie je, hover len tichšie mlčí.
+function cardEl() {
+    return $('hover-card');
+}
+
+
+export function hideHoverCard() {
+    const card = cardEl();
+    if (card) card.classList.remove('show');
+}
+
+
 export function updateHoverCard(e) {
-    const card = $('hover-card');
+    const card = cardEl();
+    if (!card) return;
     const n = S.hover;
 
     if (!n) {

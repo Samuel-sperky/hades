@@ -1,4 +1,5 @@
 import { $ } from '../core/dom.js';
+import { trapFocus } from './focus-trap.js';
 
 
 const SHORTCUTS = [
@@ -27,7 +28,8 @@ const MOUSE_HINTS = [
 ];
 
 
-let helpReturnFocus = null;
+// Rozhodnutie #80: Tab cyklí len vnútri dialógu, po zatvorení sa fókus vráti.
+let releaseHelpTrap = null;
 
 
 export function toggleHelp(show) {
@@ -44,11 +46,10 @@ export function toggleHelp(show) {
             + MOUSE_HINTS.map(row).join('');
     }
     if (target) {
-        helpReturnFocus = document.activeElement;
-        $('help-close').focus();
-    } else if (helpReturnFocus) {
-        helpReturnFocus.focus();
-        helpReturnFocus = null;
+        if (!releaseHelpTrap) releaseHelpTrap = trapFocus(el, { initial: $('help-close') });
+    } else if (releaseHelpTrap) {
+        releaseHelpTrap();
+        releaseHelpTrap = null;
     }
 }
 

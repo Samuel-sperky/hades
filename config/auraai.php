@@ -23,6 +23,12 @@ return [
     // --dry-run reporte na reálnych dátach. Rozhodnutie #32.
     'destructive_jobs_enabled' => (bool) env('AURAAI_DESTRUCTIVE_JOBS', false),
 
+    // Núdzový vypínač guardu deštruktívnych artisan DB príkazov (viď AppServiceProvider).
+    // Default OFF (fail-safe): `migrate:fresh`, `migrate:refresh`, `migrate:reset`,
+    // `migrate:rollback` a `db:wipe` prejdú len na databáze, ktorej názov vyzerá testovo.
+    // Zapínať výhradne ad-hoc v jednom príkaze, nikdy nie natrvalo v .env.
+    'allow_destructive_db_commands' => (bool) env('AURAAI_ALLOW_DESTRUCTIVE_DB_COMMANDS', false),
+
     // Register zdrojov .md „mozgov" indexovaných do siete (origin=brain).
     // BrainSourceRegistry (B2) toto zlúči s DB tabuľkou brain_sources a .env cestami.
     'brain_sources' => [

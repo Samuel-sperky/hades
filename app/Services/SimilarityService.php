@@ -230,6 +230,16 @@ class SimilarityService
     /** @var array<int, string> node_id → surový text (label+description+meta) */
     protected array $texts = [];
 
+    /**
+     * node_id → Node z nahriateho korpusu. Drží sa preto, aby `topSimilar()`
+     * nemusel v cykle nad celým korpusom robiť `Node::find()` (N+1: 679 dopytov
+     * na jedno volanie, ×679 uzlov v nočnom rewire). Filtre volajúcich čítajú
+     * len id/type/source/meta, takže model z korpusu im plne stačí.
+     *
+     * @var array<int, Node>
+     */
+    protected array $nodes = [];
+
     protected bool $warmed = false;
 
     /**
@@ -333,12 +343,14 @@ class SimilarityService
     {
         $this->corpus = [];
         $this->texts = [];
+        $this->nodes = [];
         $docFreq = [];
 
         foreach ($nodes as $node) {
             $tf = $this->nodeTf($node);
             $this->corpus[$node->id] = $tf;
             $this->texts[$node->id] = $this->nodeText($node);
+            $this->nodes[$node->id] = $node;
 
             foreach (array_keys($tf) as $term) {
                 $docFreq[$term] = ($docFreq[$term] ?? 0) + 1;
@@ -402,13 +414,22 @@ class SimilarityService
             $this->warmCorpus(Node::query()->get());
         }
 
+        // Uzly sa berú z nahriateho korpusu (jeden dopyt vo warmCorpus), nie
+        // `Node::find()` v cykle — to bol N+1 nad celým korpusom.
+        $missing = array_values(array_diff(array_keys($this->corpus), array_keys($this->nodes)));
+        if ($missing !== []) {
+            foreach (Node::query()->whereIn('id', $missing)->get() as $fetched) {
+                $this->nodes[$fetched->id] = $fetched;
+            }
+        }
+
         $scores = [];
         foreach (array_keys($this->corpus) as $otherId) {
             if ($otherId === $node->id) {
                 continue;
             }
 
-            $other = Node::find($otherId);
+            $other = $this->nodes[$otherId] ?? null;
             if (! $other) {
                 continue;
             }

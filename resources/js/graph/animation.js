@@ -1,5 +1,6 @@
 import { REDUCED_MOTION } from '../core/motion.js';
 import { S } from '../core/state/index.js';
+import { K_DETAIL } from './render/zoom.js';
 
 
 /* ---------- FÁZA ANIMÁCIE: globálne škálovanie + toky ---------- */
@@ -54,10 +55,10 @@ export function birthScale(n) {
 
 // FÁZA ANIMÁCIE (Living): idle dýchanie — jemná sínusová modulácia polomeru viditeľných uzlov
 // (~±2–3 %, jadro výraznejšie ±5 %), fázovo rozhodené podľa id, pomalé (5–8 s). Škáluje Život.
-// Auto-strop tier 1: dýcha len jadro. Zamrzne pri drag/pan, pri oddialení (k<0.5) a keď Život=0.
+// Auto-strop tier 1: dýcha len jadro. Zamrzne pri drag/pan, pri oddialení (k<K_DETAIL) a keď Život=0.
 // Konkrétny uzol pod kurzorom nedýcha (hover ho drží pevný pre presné čítanie).
 export function breatheFactor(n) {
-    if (S._life <= 0 || S._interacting || S.cam.k < 0.5) return 1;
+    if (S._life <= 0 || S._interacting || S.cam.k < K_DETAIL) return 1;
     const core = n.type === 'core';
     if (!core && (S._lifeTier >= 1 || n === S.hover)) return 1;
     if (core && n === S.hover) return 1;

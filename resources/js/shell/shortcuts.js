@@ -14,6 +14,7 @@ import { armKontrolaAction, disarmKontrolaBtn, kontrolaBtn, kontrolaMove, kontro
 import { closeCmdk, cmdkOpen, openCmdk } from './cmdk.js';
 import { closeDock, dockOpen, openDock } from './dock.js';
 import { toggleHelp } from './help.js';
+import { closeMobileSheet, mobileSheetOpen } from './mobile-nav.js';
 import { openNodeFromAnywhere, setScreen } from './router.js';
 import { showToast } from './toasts.js';
 
@@ -34,6 +35,8 @@ export function setupShortcuts() {
 
         if (e.key === 'Escape') {
             // kaskáda — jeden Esc zavrie vždy len najvrchnejšiu vrstvu
+            // mobilný spodný list má najvyšší z-index (z-overlay + 1), preto je prvý
+            if (mobileSheetOpen()) { closeMobileSheet(); return; }
             if (cmdkOpen()) { closeCmdk(); return; }
             if (packDrawerOpen()) { closePackDrawer(); return; }
             if (S.connectFrom) { cancelConnect(); showToast('Prepájanie zrušené'); return; }

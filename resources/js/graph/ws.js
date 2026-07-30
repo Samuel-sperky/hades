@@ -1,11 +1,14 @@
 import Pusher from 'pusher-js';
+import { bus } from '../core/bus.js';
 import { $ } from '../core/dom.js';
+import { EV } from '../core/events.js';
 import { blip } from '../core/sound.js';
 import { S } from '../core/state/index.js';
 import { refreshStats } from '../dock/stats.js';
 import { renderStructure } from '../dock/structure.js';
 import { anchorOf } from './anchors.js';
 import { markAwake } from './awake.js';
+import { refreshVisibility } from './filters.js';
 import { reloadGraph } from './loader.js';
 import { clearLocal } from './local.js';
 import { neighborsOf } from './neighbors.js';
@@ -23,9 +26,13 @@ import { showToast } from '../shell/toasts.js';
 /* ---------- websocket ---------- */
 
 let wsWasConnected = false;
+let wsDownNotified = false;
 
 
 export function connectWs(ws) {
+    // Bez konfigurácie WS (chýbajúci Reverb, degradovaný beh) appka funguje ďalej,
+    // len bez živých pulzov — nikdy sa nesmie zabiť boot.
+    if (!ws || !ws.key) return null;
     // Same-origin WS keď je appka servovaná cez proxy/tunel (https, alebo iný port
     // než priamy port appky) — Caddy routuje /app/* na Reverb, takže pulzy chodia aj
     // cez ngrok. Priamy lokálny prístup ostáva na ws.host/ws.port.
@@ -54,16 +61,34 @@ export function connectWs(ws) {
 
     // po výpadku spojenia mohli pulzy vypadnúť — pri REconnecte dotiahni stav grafu
     pusher.connection.bind('state_change', (st) => {
-        if (st.current !== 'connected') return;
-        if (wsWasConnected && S.nodes.length) reloadGraph();
-        wsWasConnected = true;
+        if (st.current === 'connected') {
+            if (wsWasConnected && S.nodes.length) reloadGraph();
+            if (wsDownNotified) showToast('Spojenie s vedomím obnovené', null, 'success');
+            wsWasConnected = true;
+            wsDownNotified = false;
+            return;
+        }
+        // 'unavailable' = pusher-js medzitým sám skúša znova; 'failed' = transport chýba.
+        // Hlásime raz za výpadok, nie pri každom pokuse, a nikdy pri prvom nábehu.
+        if ((st.current === 'unavailable' || st.current === 'failed') && !wsDownNotified) {
+            wsDownNotified = true;
+            showToast('Živé pulzy sú odpojené — skúšam znova', null, 'warn');
+        }
     });
 
-    pusher.subscribe('mind').bind('pulse', (msg) => handlePulse(msg.type, msg.data || {}));
+    // Chyba spojenia nesmie vyletieť ako neodchytená výnimka (pusher-js ju inak
+    // len hodí do konzoly) — reconnect si drží knižnica sama.
+    pusher.connection.bind('error', () => { /* stav riešime v state_change */ });
+
+    // Názov kanála príde z payloadu, keď ho backend začne posielať (premenovanie
+    // 'mind' → 'aura' je koordinovaná zmena); dovtedy zostáva dnešný kanál.
+    const channel = ws.channel || 'mind';
+    pusher.subscribe(channel).bind('pulse', (msg) => handlePulse(msg.type, msg.data || {}));
+    return pusher;
 }
 
 
-function hadesNode() {
+function coreNode() {
     return S.nodes.find((n) => n.type === 'core' && n.label === S.name) || S.nodes[0];
 }
 
@@ -83,7 +108,7 @@ function handlePulse(type, data) {
         S.byId.set(n.id, n);
         buildSim();
         kickSim(0.5);
-        spawnPulse(hadesNode(), n, { speed: 1.4 });
+        spawnPulse(coreNode(), n, { speed: 1.4 });
         emitFlows(n, { tone: 'accent', speed: 1.1 }); // tok po nových hranách uzla
         blip(520);
         showToast('Naučil som sa: ' + n.label, n.id);
@@ -98,7 +123,7 @@ function handlePulse(type, data) {
         if (!n) return;
         n.strength = data.strength;
         n.flash = 1;
-        const from = neighborsOf(n)[0] || hadesNode();
+        const from = neighborsOf(n)[0] || coreNode();
         spawnPulse(from, n, { speed: 1.6 });
         emitFlows(n, { tone: 'accent' }); // FÁZA ANIMÁCIE (Q10): tok po incidentných hranách
         kickSim(0.12);
@@ -163,7 +188,7 @@ function handlePulse(type, data) {
             const n = S.byId.get(id);
             if (!n) return;
             setTimeout(() => {
-                spawnPulse(hadesNode(), n, { speed: 1.8, dim: 0.8 });
+                spawnPulse(coreNode(), n, { speed: 1.8, dim: 0.8 });
                 emitFlows(n, { tone: 'accent', dim: 0.85, wait: 0.35 }); // vlna k susedom o skok ďalej
             }, i * 120);
         });
@@ -172,13 +197,19 @@ function handlePulse(type, data) {
     }
 
     if (type === 'chat') {
-        const h = hadesNode();
+        const h = coreNode();
         if (h) h.flash = 1;
     }
 
     if (dockOpen === 'stats') refreshStats();
-    if (dockOpen === 'structure' && /^(node|department)\./.test(type)
-        && !$('structure-tree').querySelector('.dept-actions')) renderStructure();
+    // strom prekresli len keď nie je rozbalené riadkové menu (inak by zmizlo pod rukou);
+    // markup stromu vlastní iný balík — chýbajúci #structure-tree nesmie zhodiť pulz
+    if (dockOpen === 'structure' && /^(node|department)\./.test(type)) {
+        const tree = $('structure-tree');
+        if (tree && !tree.querySelector('.dept-actions')) renderStructure();
+    }
     updateHeaderMetrics();
+    refreshVisibility();   // a11y sumár + prázdny stav filtrov (uzol mohol prísť/odísť)
+    bus.emit(EV.PULSE, { type, data }); // §4.4 — ostatné balíky reagujú bez zásahu do tohto súboru
     requestDraw(); // WS udalosť zmenila stav grafu → prekresli (pokrýva aj neanimované vetvy)
 }

@@ -3,7 +3,7 @@
    --------------------------------------------------------------------------- */
 #dock, #node-panel {
     position: fixed;
-    top: calc(var(--edge) + 44px + var(--sp-1)); bottom: var(--edge);
+    top: var(--shell-top); bottom: var(--edge);
     width: 300px;
     background: var(--panel);
     border: 1px solid var(--border);
@@ -14,7 +14,7 @@
     padding: var(--sp-2);
     overflow-y: auto;
 }
-#dock { left: 104px; animation: panel-in-l var(--dur-slow) var(--ease); }
+#dock { left: var(--shell-left); animation: panel-in-l var(--dur-slow) var(--ease); }
 #node-panel {
     right: var(--edge);
     animation: panel-in-r var(--dur-slow) var(--ease);

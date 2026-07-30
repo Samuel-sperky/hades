@@ -1,5 +1,6 @@
 import { S } from '../core/state/index.js';
 import { fitView } from './camera.js';
+import { refreshVisibility } from './filters.js';
 
 
 /* ---------- lokálny graf (Obsidian local graph) ---------- */
@@ -35,6 +36,7 @@ export function setLocal(rootId, depth) {
     S.local = { rootId, depth: Math.min(3, Math.max(1, depth || 1)) };
     S._localFor = null;
     updateLocalChip();
+    refreshVisibility();
     fitView();
 }
 
@@ -45,6 +47,7 @@ export function clearLocal() {
     S._localFor = null;
     S._localSet = null;
     updateLocalChip();
+    refreshVisibility();
     fitView();
 }
 

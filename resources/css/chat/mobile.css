@@ -1,0 +1,76 @@
+/* ---------------------------------------------------------------------------
+   MOBIL — chat MUSÍ fungovať na telefóne (rozhodnutie 76), overené na 390 px.
+   Bottom nav je pod 640 px (rozhodnutie 78), takže všetko, čo sedí na spodku,
+   sa nad ňu odsúva o --mobile-nav-h + safe-area.
+   --------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+    /* Quickbar prestáva byť 320px pilulka v strede — je to plná spodná lišta */
+    #prompt {
+        left: var(--edge); right: var(--edge);
+        width: auto;
+        transform: none;
+        bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-0));
+    }
+    #prompt.open, #prompt:focus-within { width: auto; }
+    #chat-log { max-height: 52vh; }
+
+    /* Overlay ide od hrany po hranu — na 390 px je každý pixel zúžením */
+    #chat-overlay { padding: 0; }
+    #chat-overlay-card {
+        width: 100%; height: 100%;
+        max-height: none;
+        border: none;
+        border-radius: 0;
+        padding: var(--sp-2) var(--sp-2)
+                 calc(var(--sp-2) + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* Vlákna nie sú stĺpec, ale zbaliteľný pás nad konverzáciou */
+    #chat-overlay-body,
+    #chat-screen-body {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: var(--sp-1);
+    }
+    .chat-threads {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding-right: 0;
+        padding-bottom: var(--sp-1);
+        max-height: 40vh;
+    }
+    .th-list {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: var(--sp-0);
+    }
+    .th-row { width: auto; flex-shrink: 0; max-width: 60vw; }
+    .th-row .th-when { display: none; }
+    .th-list .empty { flex-shrink: 0; }
+
+    /* Obrazovka Chat: bez vnútorného rámu, aby text dostal celú šírku */
+    #chat-screen-body {
+        padding: var(--sp-1);
+        border-radius: var(--r-md);
+    }
+    #screen-chat .chat-screen-head { align-items: flex-start; }
+    #screen-chat .chat-screen-acts { width: 100%; }
+    #screen-chat .chat-screen-acts button { flex: 1; }
+
+    /* Bubliny smú byť širšie — 88 % je na 390 px zbytočné plytvanie */
+    .msg-row { max-width: 96%; }
+
+    /* Akcie správ sú na dotyk vždy viditeľné (nie je tam hover) */
+    .msg-foot { opacity: 1; }
+    .msg-act { width: 32px; height: 32px; min-height: 32px; }
+
+    /* Tabuľka v odpovedi sa scrolluje vodorovne, nerozťahuje stránku */
+    .msg .md-tablewrap { max-width: 100%; }
+}
+
+/* Na výške klávesnice (nízke okno na telefóne) nech log nezmizne úplne */
+@media (max-width: 640px) and (max-height: 560px) {
+    #chat-log { max-height: 38vh; }
+    .chat-threads { max-height: 28vh; }
+}

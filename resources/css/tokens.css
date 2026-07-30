@@ -183,4 +183,171 @@
     /* ---- spacing extras ---- */
     --sp-2h: 12px;                        /* half-step between sp-1(8) and sp-2(16) */
     --gutter: 20px;                       /* dashboard grid gutter */
+
+    /* ======================================================================
+       AURA PARITA — vlna 1: token bridge (UX-PLAN-AURA-PARITA.md §3).
+       Iba PRIDÁVA. Žiadny existujúci token sa neprepisuje, takže nulové
+       riziko regresie. Zdroj hodnôt: C:\Aura\sperky-ai/src/app/globals.css
+       (rodinný etalón), overené proti aura-roadmap / aura-redesign.
+       ====================================================================== */
+
+    /* ---- G7: názvoslovie — Aura mená nad existujúcimi AuraAI tokenmi ----
+       Umožňuje kopírovať markup medzi appkami rodiny bez prepisu 3 300 riadkov
+       CSS a bez zásahu do JS, ktorý číta --accent-rgb. */
+    --panel2: var(--surface-2);
+    --ink: var(--text);
+    --ink2: var(--text-secondary);
+    --ink-soft: var(--text-secondary);
+    --line: var(--border);
+    --line2: var(--border-strong);
+    --accent2: var(--accent-300);
+    --accent-ink: var(--accent-600);
+    --accent-tint: var(--accent-softer);
+    --accent-line: var(--border-accent);
+    --ok: var(--success);
+    --error: var(--danger);
+
+    /* JS-facing triplety rodiny (AuraAI mal doteraz len --accent-rgb / --danger-rgb) */
+    --ink-rgb: 16, 29, 27;
+    --gold-rgb: 184, 138, 58;             /* --gold #b88a3a */
+    --brand-gold-rgb: 216, 184, 120;      /* --brand-gold #d8b878 */
+    --success-rgb: 15, 140, 90;           /* --success #0f8c5a */
+    --warn-rgb: 217, 119, 6;              /* --warn #d97706 */
+
+    /* ---- G2: density tokeny — jeden zdroj pravdy pre hustotu ----
+       Predvolená škála je „cozy" (rovnaká ako :root v rodine). Rozhodnutie #59:
+       tokeny ÁNO, UI prepínač NIE — preto tu nie je žiadny prepínač, len
+       opt-in atribút <html data-density="comfortable|compact"> nižšie. */
+    --card-pad: 14px;
+    --card-radius: 12px;
+    --kpi-pad: 14px;
+    --kpi-pad-accent: 16px;
+    --kpi-pad-sm: 10px;
+    --kpi-value: 24px;
+    --kpi-value-accent: 28px;
+    --kpi-value-sm: 16px;
+    --section-gap: 14px;
+    --row-pad-y: 8px;
+    --row-pad-x: 16px;
+    --control-h: 32px;
+    --page-h1: 30px;
+    --grid-gap: 16px;
+    --kpi-cols: 4;                        /* .kpi-grid stĺpce; media queries ich znižujú */
+    --hero-span: 2;                       /* .kpi-hero { grid-column: span var(--hero-span) } */
+
+    /* ---- G1: kategoriálna grafová paleta (rodinná, 8 hodnôt) ----
+       chart-1 = brand gold, chart-2 = accent teal, ďalej rozptyl odtieňov,
+       ktoré sú čitateľné na svetlom aj tmavom paneli. Drift test:
+       tests/js/css-tokens.test.js. */
+    --chart-1: #d8b878;                   /* brand gold */
+    --chart-2: #05bcc4;                   /* accent teal */
+    --chart-3: #6f86d6;                   /* periwinkle */
+    --chart-4: #e0857b;                   /* coral rose */
+    --chart-5: #6ec6a4;                   /* mint green */
+    --chart-6: #c08adb;                   /* orchid */
+    --chart-7: #e0a850;                   /* amber */
+    --chart-8: #5b9bd5;                   /* sky blue */
+    --chart-gold: var(--chart-1);
+    --chart-accent: var(--chart-2);
+    /* Rozhodnutie #61: farby 5 oblastí sú oficiálna súčasť rampy, nie ad-hoc hodnoty. */
+    --chart-area-marketing: #b88a3a;
+    --chart-area-vyvoj: #03797e;
+    --chart-area-dizajn: #9d5c7a;
+    --chart-area-biznis: #2f6d8f;
+    --chart-area-osobne: #a86a4a;
+
+    /* ---- G3: viewport-aware výšky grafov (koniec height="60" v markupe) ---- */
+    --chart-h: clamp(220px, 34vh, 380px);
+    --chart-h-sm: clamp(180px, 28vh, 300px);
+    --chart-h-lg: clamp(240px, 38vh, 420px);
+
+    /* ---- G6: elevation + motion parita — rodinné mená nad --elev-* / --dur-* ----
+       Aura shadow ladder je bez inset rimu; --elev-* si ho drží, preto tu nie sú
+       aliasy 1:1 ale samostatné hodnoty zhodné s rodinou. */
+    --shadow-sm: 0 1px 2px rgba(15, 40, 38, .05);
+    --shadow-md: 0 1px 2px rgba(15, 40, 38, .05), 0 8px 24px -14px rgba(15, 40, 38, .12);
+    --shadow-lg: 0 4px 12px rgba(15, 40, 38, .08), 0 18px 40px -18px rgba(15, 40, 38, .22);
+    --shadow-pop: 0 8px 24px -10px rgba(15, 40, 38, .22);
+    --shadow-gold: 0 1px 2px rgba(15, 40, 38, .05), 0 14px 32px -16px rgba(var(--brand-gold-rgb), .35);
+    --transition: .18s cubic-bezier(.16, 1, .3, 1);
+    --transition-fast: .12s ease;
+
+    /* ======================================================================
+       SHELL GEOMETRIA — prestavba layoutu (rozhodnutie #51 / #54).
+       Rail je jediný zdroj šírky; #app-header a #screens čítajú --shell-left,
+       takže collapse 72 ↔ 208 px nevyžaduje zásah do cudzích súborov.
+       ====================================================================== */
+    --rail-w-collapsed: 72px;
+    --rail-w-expanded: 208px;
+    --rail-w: var(--rail-w-collapsed);
+    --header-h: 44px;
+    --shell-left: calc(var(--edge) + var(--rail-w) + var(--sp-2));
+    --shell-top: calc(var(--edge) + var(--header-h) + var(--sp-1));
+    --mobile-nav-h: 60px;
+
+    /* ======================================================================
+       BREAKPOINTY — jediný záväzný zoznam (docs/dizajn.md §5).
+       Custom properties sa v @media použiť nedajú, preto sú tu len ako
+       dokumentácia a zdroj pravdy pre revíziu:
+         1280 px  užšie panely, skryté header metriky
+          900 px  dock/node-panel doprava, skryté brand + cmdk hint
+          640 px  MOBIL: rail sa skryje, bottom nav, graf desktop-only
+          390 px  najmenší podporovaný viewport
+       ====================================================================== */
+    --bp-lg: 1280px;
+    --bp-md: 900px;
+    --bp-sm: 640px;
+
+    /* ======================================================================
+       CLAUDE.md §7.6 UZAVRETÉ — posledné farebné literály z monolitu.
+       Boli rozsypané v components/{slider,switch,skeleton}.css a shell/rail.css;
+       teraz sú tu, takže `npm run lint:css` má nulový baseline a color-no-hex
+       je reálna brána, nie zoznam dlhu.
+       ====================================================================== */
+    --knob: #ffffff;                      /* slider thumb + switch knob (rovnaký literál) */
+    --knob-shadow: 0 1px 2px rgba(15, 40, 38, .25);
+    --shimmer-sheen: rgba(16, 29, 27, .06);   /* prebeh cez skeleton dlaždicu */
+
+    /* Zlaté dýchanie jadra v rely — jediný gold moment v chrome.
+       Hodnoty sú filter: drop-shadow(...), preto celý filter, nie len farba. */
+    --glow-core-base: drop-shadow(0 1px 2px rgba(138, 100, 23, .35));
+    --glow-core-rest: drop-shadow(0 0 6px rgba(216, 184, 120, .45));
+    --glow-core-peak: drop-shadow(0 0 14px rgba(216, 184, 120, .85));
+    --glow-core-asleep: drop-shadow(0 0 2px rgba(216, 184, 120, .25));
+}
+
+/* ---- G2: opt-in density škály (rozhodnutie #59 — bez UI prepínača) ----
+   Stampuje sa ručne na <html data-density="…">; default (cozy) je :root vyššie. */
+:root[data-density="comfortable"] {
+    --card-pad: 20px;
+    --card-radius: 18px;
+    --kpi-pad: 18px;
+    --kpi-pad-accent: 22px;
+    --kpi-pad-sm: 12px;
+    --kpi-value: 26px;
+    --kpi-value-accent: 32px;
+    --kpi-value-sm: 18px;
+    --section-gap: 22px;
+    --row-pad-y: 12px;
+    --row-pad-x: 22px;
+    --control-h: 38px;
+    --page-h1: 42px;
+    --grid-gap: 22px;
+}
+
+:root[data-density="compact"] {
+    --card-pad: 10px;
+    --card-radius: 10px;
+    --kpi-pad: 11px;
+    --kpi-pad-accent: 12px;
+    --kpi-pad-sm: 8px;
+    --kpi-value: 22px;
+    --kpi-value-accent: 26px;
+    --kpi-value-sm: 15px;
+    --section-gap: 10px;
+    --row-pad-y: 5px;
+    --row-pad-x: 12px;
+    --control-h: 28px;
+    --page-h1: 22px;
+    --grid-gap: 12px;
 }

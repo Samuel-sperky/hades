@@ -67,5 +67,23 @@
 }
 .dtl-card .dtl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0); margin-top: 2px; }
 
-/* Period / area filter chips row (reuses .chip; this just gives it air) */
-.dtl-filter { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-bottom: var(--sp-2); }
+/* ---------------------------------------------------------------------------
+   TOOLBAR + INLINE PRIDÁVANIE (P10)
+   `.dtl-filter` zrušené — filtre roka a oblasti sú v jednom `.screen-toolbar`
+   spolu s tlačidlom „Pridať rozhodnutie", takže obrazovka nemá tri riadky
+   ovládania nad sebou. Inline štýly formulára z monolitu sú tu ako triedy.
+   --------------------------------------------------------------------------- */
+.dec-toolbar { row-gap: var(--sp-0); }
+.dec-add {
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius, var(--r-md));
+    padding: var(--card-pad, var(--sp-2));
+}
+/* Zámerne bez id selektorov: `#dec-area` je pre strážny test palety (a pre oko)
+   nerozoznateľné od hex literálu `#dec`, takže sa cielime na typ prvku. */
+.dec-add-row { display: flex; gap: var(--sp-1); flex-wrap: wrap; align-items: center; }
+.dec-add-row select { flex: 1; min-width: 160px; }
+.dec-add-row input[type="date"] { flex: 0 0 auto; }
+.dec-add-row .primary { flex: 0 0 auto; }

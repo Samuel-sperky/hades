@@ -1,0 +1,40 @@
+/* ---------------------------------------------------------------------------
+   REŽIM OBRAZOVKA (#screen-chat) — samostatná obrazovka „Chat" v raili.
+   Plná šírka (nie 920 px ako dashboardy), história vľavo, composer na spodku.
+   Id selektory bijú `.screen` z screens/screen-base.css bez ohľadu na poradie
+   importov — preto sa nemusí meniť kaskáda v app.css.
+   --------------------------------------------------------------------------- */
+#screen-chat.screen {
+    max-width: none;
+    padding-right: 0;
+}
+#screen-chat.screen.active {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+#screen-chat .chat-screen-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: var(--sp-2); flex-wrap: wrap;
+    flex-shrink: 0;
+    margin-bottom: var(--sp-2);
+}
+#screen-chat .chat-screen-title { min-width: 0; }
+#screen-chat .chat-screen-acts { display: flex; gap: var(--sp-1); flex-shrink: 0; }
+
+#chat-screen-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: var(--sp-2);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+}
+
+#screen-chat .chat-log { padding-right: var(--sp-1); }

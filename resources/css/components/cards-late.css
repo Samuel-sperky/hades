@@ -1,3 +1,9 @@
+/* P9: anatómia stránky sa importuje odtiaľto, nie z app.css (zdieľaný súbor,
+   integrátor only). Slot 64 v kaskáde je ZA screens/screen-base.css (51), takže
+   override #screens/#app-header funguje. Integrátor môže riadok presunúť do
+   app.css — patch je v W2-P9-REPORT.md. */
+@import './page.css';
+
 /* ---------------------------------------------------------------------------
    DASHBOARD CARD (.dash-card) + grid — flat at rest (B6), hairline lift on hover
    --------------------------------------------------------------------------- */

@@ -38,7 +38,7 @@ class ContextController extends Controller
         $lines = [];
         $lines[] = '# Balík vedomia — '.$count.' '.$this->plural($count);
         $lines[] = '';
-        $lines[] = '_Exportované z Hades · '.now()->format('d.m.Y H:i').'_';
+        $lines[] = '_Exportované z '.config('auraai.name', 'AuraAI').' · '.now()->format('d.m.Y H:i').'_';
         $lines[] = '';
 
         foreach ($nodes as $node) {

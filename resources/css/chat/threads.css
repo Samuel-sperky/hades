@@ -1,0 +1,73 @@
+/* ---------------------------------------------------------------------------
+   VLÁKNA (.chat-threads) — história vľavo v overlayi aj na obrazovke Chat
+   --------------------------------------------------------------------------- */
+.chat-threads {
+    display: flex; flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--border);
+    padding-right: var(--sp-1);
+}
+
+.th-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-1);
+    padding: 0 var(--sp-0) var(--sp-1);
+    border-bottom: 1px solid var(--line-soft);
+}
+.th-title {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+}
+.th-new {
+    width: 24px; height: 24px; min-height: 24px;
+    padding: 0;
+    border: none; background: none;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: var(--icon-sm);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.th-new:hover { background: var(--accent-softer); color: var(--accent-600); }
+.th-new:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.th-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 2px;
+    padding-top: var(--sp-1);
+}
+
+.th-row {
+    display: flex; align-items: baseline; gap: var(--sp-1);
+    width: 100%;
+    padding: var(--sp-1) 10px;
+    background: none; border: none;
+    border-radius: var(--r-sm);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease);
+}
+.th-row:hover { background: var(--surface-subtle); }
+.th-row.active { background: var(--accent-softer); }
+.th-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.th-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: var(--fs-body);
+    color: var(--text-secondary);
+}
+.th-row.active .th-label { color: var(--text); font-weight: var(--fw-medium); }
+.th-when {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}

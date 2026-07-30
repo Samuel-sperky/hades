@@ -1,7 +1,9 @@
+import { apiGet } from '../core/api.js';
 import { $, esc } from '../core/dom.js';
 import { S } from '../core/state/index.js';
 import { store } from '../core/store.js';
-import { persistFilter } from './filters.js';
+import { persistFilter, refreshVisibility } from './filters.js';
+import { apiErrorText } from './loader.js';
 import { draw } from './render/draw.js';
 import { showToast } from '../shell/toasts.js';
 
@@ -50,9 +52,13 @@ export async function loadTagFilter() {
     if (!box) return;
     let tags = [];
     try {
-        const d = await (await fetch('/api/tags')).json();
-        tags = d.tags || [];
-    } catch (e) { /* offline — bez značiek */ }
+        const d = await apiGet('/api/tags');
+        tags = (d && d.tags) || [];
+    } catch (e) {
+        // 401/429/500 už nevyzerá ako „žiadne značky" — sekcia sa skryje a povie prečo
+        const msg = apiErrorText(e);
+        if (msg) showToast(msg, null, 'warn');
+    }
 
     if (!tags.length) {
         // žiadne značky → sekcia sa nezobrazí (žiadny prázdny caption)
@@ -75,6 +81,7 @@ export async function loadTagFilter() {
             const val = inp.dataset.ftag;
             if (inp.checked) S.filter.tags.add(val); else S.filter.tags.delete(val);
             persistFilter();
+            refreshVisibility();
             draw();
         };
     });

@@ -101,8 +101,13 @@ class SummaryService
 
     /**
      * Plný .md dokument session pre zápis do summaries/.
+     *
+     * $summary je voliteľná náhrada úvodného zhrnutia. Používa ju
+     * {@see \App\Services\Ingest\SessionWriter}, keď zhrnutie navrhol model a
+     * prešlo validáciou — inak by popis uzla a .md dokument tvrdili niečo iné.
+     * Bez parametra je výsledok identický s dnešným (extraktívne zhrnutie).
      */
-    public function toMarkdown(Node $node, array $meta): string
+    public function toMarkdown(Node $node, array $meta, ?string $summary = null): string
     {
         $project = (string) ($meta['project'] ?? '');
         $sessionId = (string) ($meta['session_id'] ?? '');
@@ -119,7 +124,7 @@ class SummaryService
         $out[] = '';
         $out[] = '# '.$node->label;
         $out[] = '';
-        $out[] = $this->forSession($meta);
+        $out[] = $summary ?? $this->forSession($meta);
 
         $prompts = array_values(array_filter((array) ($meta['prompts'] ?? []), 'is_string'));
         if ($prompts !== []) {

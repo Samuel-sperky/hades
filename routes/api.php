@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\GraphController as ApiGraphController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\KnowledgeController;
 use App\Http\Controllers\Api\ReviewController;
-use App\Http\Controllers\Api\SearchController as ApiSearchController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\ChatController;
@@ -22,6 +21,16 @@ use App\Http\Controllers\StructureController;
 use App\Http\Controllers\TodayController;
 use Illuminate\Support\Facades\Route;
 
+/*
+| Throttle pre NEVRATNÉ operácie nad dátami (mazanie uzlov, hrán, oddelení,
+| zlučovanie, zápis smernice na disk). Interné /api/* nedržia token (§4.3) —
+| perimeter je Caddy basic-auth a same-origin CORS — takže limit je posledná
+| vrstva, ktorá bráni tomu, aby jedna zablúdená smyčka alebo skript vymazal
+| pamäť v dávke. Čítanie a bežné zápisy (POST/PUT uzlov) zámerne bez limitu,
+| aby sa nespomalil hromadný ingest.
+*/
+$throttleWrite = 'throttle:60,1';
+
 Route::get('/mind', [MindController::class, 'graph']);
 Route::get('/mind/stats', [MindController::class, 'stats']);
 Route::get('/journal', [\App\Http\Controllers\JournalController::class, 'index']);
@@ -33,7 +42,8 @@ Route::post('/context/pack', [ContextController::class, 'pack']);
 
 // Smernica pre Claude — prompt builder (KDE ČO NÁJDE: skilly, projekty, fakty, pravidlá)
 Route::post('/directive/build', [DirectiveController::class, 'build']);
-Route::post('/directive/save', [DirectiveController::class, 'save']);
+// zapisuje .md na disk pod menom od používateľa → throttle
+Route::post('/directive/save', [DirectiveController::class, 'save'])->middleware($throttleWrite);
 Route::get('/directive/templates', [DirectiveController::class, 'templates']);
 Route::get('/directive/{name}', [DirectiveController::class, 'show']);
 Route::get('/directives', [DirectiveController::class, 'index']);
@@ -43,10 +53,10 @@ Route::get('/nodes/{node}/suggestions', [NodeController::class, 'suggestions']);
 Route::get('/nodes/{node}/markdown', [NodeController::class, 'markdown']);
 Route::get('/nodes/{node}', [NodeController::class, 'show']);
 Route::put('/nodes/{node}', [NodeController::class, 'update']);
-Route::delete('/nodes/{node}', [NodeController::class, 'destroy']);
+Route::delete('/nodes/{node}', [NodeController::class, 'destroy'])->middleware($throttleWrite);
 
 Route::post('/edges', [EdgeController::class, 'store']);
-Route::delete('/edges/{edge}', [EdgeController::class, 'destroy']);
+Route::delete('/edges/{edge}', [EdgeController::class, 'destroy'])->middleware($throttleWrite);
 
 Route::get('/activations', [ActivationController::class, 'index']);
 
@@ -55,14 +65,16 @@ Route::post('/chat', [ChatController::class, 'send'])->middleware('throttle:20,1
 // Foldering / štruktúra vedomia
 Route::get('/structure', [StructureController::class, 'index']);
 Route::put('/departments/{department}', [StructureController::class, 'updateDepartment']);
-Route::delete('/departments/{department}', [StructureController::class, 'destroyDepartment']);
+Route::delete('/departments/{department}', [StructureController::class, 'destroyDepartment'])
+    ->middleware($throttleWrite);
 
 // Vyhľadávanie naprieč uzlami a playbookmi
 Route::get('/search', [SearchController::class, 'index']);
 
 // Údržba — duplicity a zlučovanie uzlov
 Route::get('/duplicates', [MaintenanceController::class, 'duplicates']);
-Route::post('/nodes/{node}/merge/{target}', [MaintenanceController::class, 'merge']);
+Route::post('/nodes/{node}/merge/{target}', [MaintenanceController::class, 'merge'])
+    ->middleware($throttleWrite);
 
 // ---------------------------------------------------------------------------
 // Interné /api/* pre SPA (same-origin, BEZ Bearer tokenu) — §4.3.
@@ -94,7 +106,9 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/knowledge/{node}', [KnowledgeController::class, 'destroy']);
 
         Route::get('/graph', [ApiGraphController::class, 'index']);
-        Route::get('/search', [ApiSearchController::class, 'index']);
+        // Ten istý controller ako interné /api/search — Api\SearchController bol
+        // znak za znak identický wrapper nad tou istou SearchService a zmizol.
+        Route::get('/search', [SearchController::class, 'index']);
         Route::get('/stats', [StatsController::class, 'index']);
         Route::post('/sync', [SyncController::class, 'store']);
 

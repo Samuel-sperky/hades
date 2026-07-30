@@ -1,25 +1,9 @@
-/* ---- obrazovka Dnes ---- */
-.today-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--sp-2);
-    margin-bottom: var(--sp-3);
-}
-.today-card {
-    display: flex; flex-direction: column; gap: var(--sp-0);
-    padding: var(--sp-2);
-    background: var(--panel-solid);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    box-shadow: var(--elev-1);
-}
-.tc-val {
-    font-family: var(--mono); font-size: 30px; font-weight: 600;
-    color: var(--text); font-variant-numeric: tabular-nums; line-height: 1;
-}
-.tc-label { font-size: var(--fs-small); color: var(--muted); }
-.today-sec { margin-bottom: var(--sp-3); }
-.today-sec h2 { font-size: var(--fs-title); color: var(--text); margin-bottom: var(--sp-1); }
+/* ---- obrazovka Dnes ----
+   Odstránené v P10: `.today-cards` / `.today-card` / `.tc-val` / `.tc-label`
+   (nahradené `.kpi-*` z P9 pri zlúčení `.metric-grid` + `.kpi-grid`) a
+   `.today-sec` (nahradené anatomickou `.screen-sec`). Žiadny JS ani blade ich
+   po refaktore nepoužíval — boli to mŕtve pravidlá po rozsekaní monolitu. */
+
 .today-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .today-chip {
     display: inline-flex; align-items: center; gap: var(--sp-1);
@@ -30,6 +14,7 @@
     font-size: var(--fs-small); color: var(--text-secondary);
 }
 .today-chip .n { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+
 .today-list { display: flex; flex-direction: column; gap: 2px; }
 .today-item {
     display: flex; align-items: center; gap: var(--sp-2);
@@ -51,3 +36,56 @@
     padding: 1px 8px; flex-shrink: 0;
 }
 .ti-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+
+/* ---- KPI doplnky (základ vlastní P9 v components/kpi.css) ---- */
+/* Sparkline v hero karte — mikro-trend posledných 14 dní aktivity */
+.kpi-spark { order: 3; margin-top: 4px; height: 24px; }
+.kpi-spark .spark { display: block; width: 100%; height: 24px; }
+/* Klikateľná KPI karta („na overenie" → obrazovka Kontrola) */
+.kpi-card--link { cursor: pointer; transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.kpi-card--link:hover { border-color: var(--border-accent); background: var(--accent-softer); }
+.kpi-card--link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---- karta Istota: donut + legenda pod sebou ---- */
+.dash-donut-wrap {
+    display: flex; flex-direction: column;
+    gap: var(--sp-2);
+    align-items: center;
+}
+.dash-donut-wrap .cert-legend { align-self: stretch; }
+
+/* ---- karta Synchronizácia (inline štýly monolitu → triedy) ---- */
+.sync-state {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-size: var(--fs-small); color: var(--text-secondary);
+}
+.sync-msg { font-size: var(--fs-small); color: var(--muted); }
+.sync-stats {
+    display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2);
+    font-family: var(--mono); font-size: var(--fs-small); color: var(--muted);
+}
+.sync-stats strong { color: var(--text-secondary); }
+.sync-guard {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted);
+}
+.sync-guard .ms { font-size: var(--icon-sm); }
+.sync-guard strong { color: var(--text-secondary); }
+.sync-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---- karta Lokálny model (llm_runs, rozhodnutia 138 + 145) ---- */
+.llm-status {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-size: var(--fs-small); color: var(--text-secondary);
+}
+.llm-models { display: flex; flex-wrap: wrap; gap: var(--sp-0); }
+.llm-rows { display: flex; flex-direction: column; gap: 3px; }
+.llm-rows:empty { display: none; }
+.llm-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: var(--sp-1);
+    font-size: var(--fs-small); color: var(--muted);
+}
+.llm-row .llm-v { font-family: var(--mono); color: var(--text-secondary); }
+.llm-hint { font-size: var(--fs-caption); color: var(--muted); line-height: var(--lh-body); }
+.llm-hint strong { color: var(--text-secondary); font-family: var(--mono); }

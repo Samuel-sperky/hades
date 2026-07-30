@@ -1,3 +1,25 @@
+/* ===========================================================================
+   ANATÓMIA OBRAZOVKY (P10)
+
+   Aura anatómia z docs/UX-PLAN-AURA-PARITA.md §G4:
+     .screen > .page-stack > (.screen-head > .eyebrow + h1 + .screen-sub)
+                           > .screen-toolbar
+                           > .kpi-grid
+                           > .screen-sec / .dash-card …
+
+   DELENIE VLASTNÍCTVA: `.page-stack`, `.page-head`, `.eyebrow`, `.card*`,
+   `.tnum`, `.section-head`, `.kpi-*` a `--section-gap`/`--page-h1`/`--chart-h*`
+   vlastní P9 (`components/page.css`, `components/kpi.css`, `tokens.css`).
+   P10 ich LEN POUŽÍVA a nedefinuje — jeden komponent = jeden vlastník.
+   ZÁVISLOSŤ: `components/page.css` sa dnes @importuje z `components/cards-late.css`
+   (slot 64), teda ZA týmto súborom (slot 51). Keby integrátor ten @import
+   presunul PRED screens/screen-base.css, obrazovky stratia rytmus — poradie je
+   v reporte P10 aj P9 zapísané ako podmienka.
+
+   Tu zostáva len to, čo je vlastné obrazovkám: kontajner #screens, `.screen`,
+   toolbar, sekcia, prázdne stavy a skeleton.
+   =========================================================================== */
+
 body:not([data-screen="graf"]) #mind { visibility: hidden; }
 body:not([data-screen="graf"]) #zoomctl,
 body:not([data-screen="graf"]) #view-switch,
@@ -21,21 +43,83 @@ body[data-screen="graf"] #screens { display: none; }
 
 .screen { display: none; max-width: 920px; padding-right: var(--sp-1); }
 .screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
+/* Dashboard a prompt builder potrebujú viac než čítaciu šírku (bolo inline v JS) */
+.screen--wide { max-width: 1120px; }
 
-.screen-head { margin-bottom: var(--sp-3); }
+/* Obsah obrazovky nesmie pretekať do strán — `.page-stack` je flex column,
+   takže bez min-width sa dlhé mono cesty rozťahujú (Smernica). */
+.screen > .page-stack { min-width: 0; }
+.page-head .page-sub { max-width: 62ch; }
+
+/* Hlavička v starom názvosloví — chat.blade.php (P6) a eshop.blade.php (P2)
+   ju ešte používajú; obrazovky P10 sú už na `.page-head` z P9. */
+.screen-head { display: flex; flex-direction: column; gap: var(--sp-0); }
 .screen-head h1 {
     font-family: var(--serif);
-    font-size: 28px; font-weight: 600;
+    font-weight: 600;
     color: var(--text); line-height: 1.2;
 }
-.screen-head .screen-sub {
-    margin-top: var(--sp-0);
-    color: var(--muted);
-    font-size: var(--fs-base);
+
+/* ---------- toolbar (filtre, hľadanie, prepínače fronty) ---------- */
+.screen-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--sp-0) var(--sp-1);
+    min-width: 0;
 }
+.screen-toolbar:empty { display: none; }
+/* Tichý počet na konci toolbaru — tlačí sa doprava */
+.screen-toolbar .toolbar-note {
+    margin-left: auto;
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+/* Vizuálny oddeľovač skupín filtrov */
+.screen-toolbar .toolbar-sep {
+    width: 1px; height: 18px;
+    background: var(--border);
+    margin: 0 var(--sp-0);
+}
+/* Čip s ikonou, ktorý spúšťa akciu (nie filter) */
+.chip.chip--action { display: inline-flex; align-items: center; gap: 4px; }
+.chip.chip--action .ms { font-size: var(--icon-sm); }
+/* Počítadlo vo vnútri čipu (prepínač fronty v Kontrole) */
+.chip .chip-n {
+    margin-left: 5px;
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); opacity: .75;
+}
+
+/* ---------- sekcia ----------
+   Hlavičku sekcie kreslí P9 (`.section-head` + `.section-title`); tu je len
+   obal a tichý počet vpravo. */
+.screen-sec { display: flex; flex-direction: column; min-width: 0; }
+.screen-sec > .section-head .sec-note {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted); flex-shrink: 0;
+}
+
+/* ---------- prázdny stav s nadpisom, vysvetlením a akciou ---------- */
+.empty.empty-state {
+    background: var(--surface-subtle);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4) var(--sp-2);
+}
+.empty-state .es-title {
+    font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text-secondary);
+}
+.empty-state .es-hint { font-size: var(--fs-small); color: var(--muted); max-width: 46ch; }
+.empty-state .empty-act {
+    margin-top: var(--sp-1);
+    display: inline-flex; align-items: center; gap: 6px;
+}
+
+/* ---------- skeleton ---------- */
+.skel-stack { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+/* ---------- Knižnica: filtračné pole v toolbare ---------- */
 #library-search {
     display: block;
-    margin-top: var(--sp-2);
     width: 100%; max-width: 420px;
     background: var(--field-bg);
     border: 1px solid var(--border);
@@ -47,5 +131,16 @@ body[data-screen="graf"] #screens { display: none; }
 }
 #library-search:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
 
-/* Denník obrazovka — filter dostane vzduch nad zoznamom */
-#screen-dennik #journal-filter { margin-bottom: var(--sp-2); }
+/* ===========================================================================
+   SMERNICA — anatómia
+   `.dir-*` základ žije v P9 `responsive.css` (dedičstvo poradia sekcií monolitu).
+   Presun do `screens/directive.css` je patch pre integrátora (report P10 §Patche);
+   dovtedy sú tu len #screen-smernica scopnuté úpravy, ktoré vyhrajú
+   špecificitou (id + class) bez ohľadu na poradie @importov.
+   =========================================================================== */
+#screen-smernica .dir-templates,
+#screen-smernica .dir-input-row { margin-bottom: 0; }
+#screen-smernica .dir-cols { gap: var(--gutter); }
+#screen-smernica .dir-preview.md-body { max-height: var(--chart-h-lg, 60vh); }
+#screen-smernica .dir-saved-sec { display: flex; flex-direction: column; gap: var(--sp-1); }
+#screen-smernica .dir-saved-sec h2 { margin-bottom: 0; }

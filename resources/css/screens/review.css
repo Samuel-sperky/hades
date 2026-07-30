@@ -72,3 +72,18 @@
     font-family: var(--mono); font-size: var(--fs-caption);
     color: var(--text);
 }
+
+/* ---------------------------------------------------------------------------
+   TRIEDIČ ISTOTY (P10) — obrazovka Kontrola už nie je len fronta needs_review.
+   Obsah: #kontrola-stats (KPI pokrytia) · #kontrola-tabs (prepínač fronty) ·
+   #kontrola-body (zoznam + priznanie zdroja + skratky + slabé oblasti).
+   --------------------------------------------------------------------------- */
+#kontrola-body { display: flex; flex-direction: column; gap: var(--sp-2); }
+/* Priznanie, že fronta „bez istoty" prišla z klientskeho výberu z grafu */
+.queue-note {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+/* Kbd legenda je v tomto flow-e, takže vlastný horný margin už netreba */
+#kontrola-body .kbd-hints { margin-top: 0; }
+.kontrola-areas .dbar:last-child { margin-bottom: 0; }

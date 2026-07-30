@@ -1,7 +1,7 @@
 import * as d3 from 'd3-force';
 import { S } from '../core/state/index.js';
 import { anchorOf } from './anchors.js';
-import { nodeRadius } from './geometry.js';
+import { hubNode, nodeRadius } from './geometry.js';
 import { layerLayout } from './layers.js';
 import { requestDraw } from './render/frame.js';
 
@@ -33,7 +33,7 @@ function applyViewPins() {
     }
 
     for (const n of S.nodes) { n.fx = null; n.fy = null; }
-    const h = S.nodes.find((n) => n.type === 'core' && n.label === S.name);
+    const h = hubNode(); // pripni hub na (0,0) — stred siete
     if (h) { h.fx = 0; h.fy = 0; }
 }
 

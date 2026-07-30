@@ -1,5 +1,5 @@
 import { S } from '../core/state/index.js';
-import { T, THEMES } from './canvas-colors.js';
+import { T } from './canvas-colors.js';
 
 /* Farby uzlov a oblastí + základné geometrické konštanty siete. */
 
@@ -57,5 +57,6 @@ export function nodeColor(n) {
         const area = S.areas.get(n.area_id);
         hex = area ? area.color : '#2f6d8f';
     }
-    return T === THEMES.dark ? darkAreaColor(hex) : hex;
+    // T.dark číta data-theme (predtým identita T === THEMES.dark) — paleta už žije v CSS
+    return T.dark ? darkAreaColor(hex) : hex;
 }

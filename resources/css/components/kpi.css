@@ -1,19 +1,45 @@
 /* ---------------------------------------------------------------------------
-   KPI GRID (.kpi-*) — compact mono readouts, one row across the dashboard top
+   KPI GRID — jeden mriežkový komponent pre celý dashboard.
+
+   AURA PARITA vlna 3 / G4: .metric-grid (components/cards.css) a .kpi-grid boli
+   dva paralelné duplikáty tej istej veci. Zlúčené: mriežku definuje JEDEN blok,
+   `.metric-grid` je jeho alias. Prezentačné triedy (.metric-* vs .kpi-*) sa
+   nemenia, takže žiadny existujúci render (dock/stats.js, screens/**) sa
+   nerozbije — mení sa len počet zdrojov pravdy pre layout.
+
+   Stĺpce: --kpi-cols (rodinné auto-fit správanie drží minmax fallback), takže
+   ten istý komponent slúži v 300 px docku aj na 920 px obrazovke.
    --------------------------------------------------------------------------- */
-.kpi-grid {
+.kpi-grid,
+.metric-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: var(--sp-1);
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+    gap: var(--grid-gap);
     margin-bottom: var(--gutter);
+    align-items: start;
+    grid-auto-flow: dense;
 }
+
+/* Hero dlaždica — zaberie dva stĺpce (rodinný .kpi-hero recept). */
+.kpi-grid > .kpi-hero,
+.metric-grid > .kpi-hero { grid-column: span var(--hero-span, 2); }
+
+/* Dock je úzky (min(300px, 26vw)) — tam chceme vždy presne dva stĺpce. */
+#dock .kpi-grid,
+#dock .metric-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-1);
+}
+
 .kpi-card {
     display: flex; flex-direction: column; gap: 2px;
-    padding: var(--sp-2);
+    padding: var(--kpi-pad);
     background: var(--panel-solid);
     border: 1px solid var(--border);
-    border-radius: var(--r-md);
+    border-radius: var(--card-radius);
 }
+.kpi-card.kpi-hero { padding: var(--kpi-pad-accent); }
 .kpi-label {
     font-family: var(--mono);
     font-size: var(--fs-caption);
@@ -31,6 +57,9 @@
     color: var(--text);
     order: 1;
 }
+.kpi-card.kpi-hero .kpi-val { font-size: var(--kpi-value-accent); }
+.kpi-card.kpi-sm .kpi-val { font-size: var(--kpi-value-sm); }
+.kpi-card.kpi-sm { padding: var(--kpi-pad-sm); }
 .kpi-suffix {
     font-size: var(--fs-small);
     font-weight: var(--fw-medium);

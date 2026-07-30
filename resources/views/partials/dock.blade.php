@@ -39,22 +39,51 @@
         <div id="legend-connections"></div>
     </section>
 
+    {{-- ZJEDNOTENÉ NASTAVENIA — rozhodnutie #67.
+         Používateľ za celú históriu appky nezmenil ani jednu zo 17 volieb, preto sa
+         nastavenia ZOŠKRTÁVAJÚ, nie rozširujú: nad foldom sú 4 veci, ktoré sa reálne
+         prepínajú, ostatné sa presunuli do <details> „Pokročilé".
+         Žiadne id ani data-* sa nemenili — settings.js, filters.js, filters-cert.js,
+         pack.js, ambient.js a chat/controller.js si držia svoje úchyty. --}}
     <section id="sec-settings" class="hidden">
-        <h3>Vzhľad</h3>
-        <div class="switch-row">
+        <h3>Téma</h3>
+        {{-- Rozhodnutie #64: tretia možnosť „Systém". Starý #theme-toggle zostáva
+             v DOM (skrytý), kým naň mieri smoke test — theme.js drôtuje oba. --}}
+        <div id="theme-seg" class="seg" role="radiogroup" aria-label="Téma">
+            <button type="button" class="seg-btn" data-theme-pref="light" role="radio" aria-checked="false">Svetlá</button>
+            <button type="button" class="seg-btn" data-theme-pref="dark" role="radio" aria-checked="false">Tmavá</button>
+            <button type="button" class="seg-btn" data-theme-pref="system" role="radio" aria-checked="false">Systém</button>
+        </div>
+        <div class="switch-row visually-hidden">
             <span id="theme-toggle-label">Tmavý režim</span>
             <button id="theme-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="theme-toggle-label"></button>
         </div>
-        <div class="switch-row">
-            <span id="chat-toggle-label">Chat s AuraAI</span>
-            <button id="chat-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="chat-toggle-label"></button>
-        </div>
+
+        <h3>Základné</h3>
         <div class="switch-row">
             <span id="sound-toggle-label">Zvuk</span>
             <button id="btn-sound" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="sound-toggle-label"></button>
         </div>
+        <div class="switch-row">
+            <span id="scope-label">Zobraziť knižnicu v grafe</span>
+            <button id="scope-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="scope-label"></button>
+        </div>
         <div class="row">
             <button id="btn-ambient" class="ghost" type="button">Ambient režim (celá obrazovka)</button>
+        </div>
+
+        <details id="settings-advanced" class="adv">
+            <summary>
+                <span class="ms" aria-hidden="true">expand_more</span>
+                <span>Pokročilé</span>
+            </summary>
+
+        {{-- Chat: rozhodnutie #84 hovorí, že prepínač má zmiznúť a chat byť zapnutý
+             by default. Odstránenie vlastní P6 (chat/controller.js drží .chat-on
+             cez tento prvok) — do tej doby zostáva tu, len pod foldom. --}}
+        <div class="switch-row">
+            <span id="chat-toggle-label">Chat s AuraAI</span>
+            <button id="chat-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="chat-toggle-label"></button>
         </div>
         <h3>Pohyb</h3>
         <label class="slider">Život
@@ -66,10 +95,6 @@
             <output></output>
         </label>
         <h3>Sieť — filter</h3>
-        <div class="switch-row">
-            <span id="scope-label">Zobraziť knižnicu v grafe</span>
-            <button id="scope-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="scope-label"></button>
-        </div>
         <div class="check-cap">Typy</div>
         <label class="check"><input type="checkbox" data-ftype="memory" data-filter-type="memory" checked><span class="box" aria-hidden="true"></span><span>Spomienky</span></label>
         <label class="check"><input type="checkbox" data-ftype="skill" data-filter-type="skill" checked><span class="box" aria-hidden="true"></span><span>Skills</span></label>
@@ -153,5 +178,6 @@
         <div class="row">
             <button id="opts-reset">Obnoviť predvolené</button>
         </div>
+        </details>
     </section>
 </aside>

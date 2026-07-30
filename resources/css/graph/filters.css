@@ -48,3 +48,45 @@ label.check input:checked + .box::after {
     transform: translateY(-1px) rotate(-45deg);
 }
 label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
+
+/* ---------------------------------------------------------------------------
+   PRÁZDNY STAV FILTROV (#filter-empty) — filtre môžu skryť celú sieť a plátno
+   by vyzeralo ako prázdna appka; kartu stavia JS (updateFilterNotice)
+   --------------------------------------------------------------------------- */
+#filter-empty {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex; align-items: center; gap: var(--sp-2);
+    max-width: 440px;
+    padding: var(--sp-2);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-2);
+    z-index: var(--z-chrome);
+}
+#filter-empty > .ms { font-size: var(--icon-md); color: var(--muted); flex-shrink: 0; }
+#filter-empty .fe-text { display: flex; flex-direction: column; gap: 2px; }
+#filter-empty .fe-text strong { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text); }
+#filter-empty .fe-text span { font-size: var(--fs-small); color: var(--muted); }
+#filter-empty .fe-reset {
+    flex-shrink: 0;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: var(--on-accent);
+    border-radius: var(--r-pill);
+    padding: 6px 14px;
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+}
+#filter-empty .fe-reset:hover { background: var(--accent-600); border-color: var(--accent-600); }
+#filter-empty .fe-reset:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Karta patrí k plátnu — mimo Grafu a na mobile (graf je desktop-only) sa nezobrazuje */
+body:not([data-screen="graf"]) #filter-empty { display: none !important; }
+
+@media (max-width: 640px) {
+    #filter-empty { display: none; }
+}

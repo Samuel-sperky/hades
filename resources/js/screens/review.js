@@ -1,30 +1,126 @@
-import { $, busy, esc, renderEmpty } from '../core/dom.js';
-import { timeAgo } from '../core/format.js';
+/* Obrazovka Kontrola — triedič istoty poznatkov.
+
+   ROZHODNUTIE P10 (detail v W2-P10-REPORT.md): vrstvu `certainty` NERUŠÍME.
+   Nesie 64 overených a 6 pascí — pasca je najcennejší signál v celej sieti
+   (zabráni agentovi zopakovať chybu). Rozbitá nebola vrstva, ale obrazovka:
+   ukazovala výhradne `needs_review`, čo je backendom nastavovaný príznak s 5
+   výskytmi zo 684, takže Kontrola 99 % času vyzerala prázdna a 614 neoznačených
+   uzlov sa nedalo dosiahnuť. Preto tu teraz sú:
+     1. KPI pás pokrytia (koľko % siete vôbec nesie značku),
+     2. fronta „Na overenie"  — needs_review, ako doteraz,
+     3. fronta „Bez istoty"   — 614 uzlov, ktoré nikto nikdy neoznačil,
+     4. najslabšie pokryté oblasti — kde má triedenie najväčší efekt.
+   Rozhodnutie 132/49 platí: certainty nikdy nedopĺňa model, len človek tu.
+
+   VEREJNÉ ROZHRANIE (importuje shell/shortcuts.js a shell/router.js — nemeniť):
+   renderKontrola, kontrolaState, kontrolaMove, kontrolaNodeRef, kontrolaBtn,
+   kontrolaVerify, kontrolaResolve, armKontrolaAction, disarmKontrolaBtn.
+   `kontrolaState.items` vždy zrkadlí AKTÍVNU frontu, takže j/k/v/r fungujú v oboch. */
+
+import { ApiError, apiGet, apiSend } from '../core/api.js';
+import { $, busy } from '../core/dom.js';
 import { S } from '../core/state/index.js';
 import { clearLocal } from '../graph/local.js';
-import { certBadge } from './shared/cert.js';
-import { originBadge } from './shared/origin-badge.js';
+import { listSkeletonHtml, renderApiError } from './shared/anatomy.js';
+import { applyMark, decNeedsReview } from './review/coverage.js';
+import { hintsHtml, queueItemHtml } from './review/queue-item.js';
+import { loadUnmarked } from './review/triage-source.js';
+import { areaSectionHtml, emptyForTabHtml, sourceNoteHtml, statsHtml, tabsHtml } from './review/view.js';
 import { setRailBadge } from '../shell/rail.js';
 import { openNodeFromAnywhere } from '../shell/router.js';
 import { showToast, showUndoToast } from '../shell/toasts.js';
 
 
-export const kontrolaState = { items: [], idx: 0, total: 0 };
-
+export const kontrolaState = {
+    items: [],        // aktívna fronta (čítajú ju skratky)
+    idx: 0,
+    total: 0,         // needs_review total → rail badge
+    tab: 'review',    // 'review' | 'bez'
+    queue: [],        // cache fronty needs_review
+    unmarked: null,   // cache fronty bez istoty (null = ešte nenačítané)
+    cert: null,       // blok certainty z /api/dashboard
+    perArea: [],
+    source: null,     // 'knowledge' | 'graph' — odkiaľ prišli neoznačené
+};
 
 export async function renderKontrola() {
     const body = $('kontrola-body');
     if (!body) return;
-    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
-    try {
-        const d = await (await fetch('/api/review/queue')).json();
-        kontrolaState.items = d.queue || [];
-        kontrolaState.total = d.total != null ? d.total : kontrolaState.items.length;
-        kontrolaState.idx = 0;
-        rerenderKontrola();
-    } catch (e) {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+    body.innerHTML = listSkeletonHtml(5, '68px');
+
+    const [queueRes, dashRes] = await Promise.allSettled([
+        apiGet('/api/review/queue'),
+        apiGet('/api/dashboard'),
+    ]);
+
+    if (queueRes.status !== 'fulfilled' && dashRes.status !== 'fulfilled') {
+        renderApiError(body, queueRes.reason, renderKontrola);
+        return;
     }
+
+    if (queueRes.status === 'fulfilled') {
+        const d = queueRes.value;
+        kontrolaState.queue = d.queue || [];
+        kontrolaState.total = d.total != null ? d.total : kontrolaState.queue.length;
+    }
+    if (dashRes.status === 'fulfilled') {
+        kontrolaState.cert = dashRes.value.certainty || null;
+        kontrolaState.perArea = dashRes.value.per_area || [];
+    }
+    kontrolaState.unmarked = null;
+    kontrolaState.idx = 0;
+    rerenderKontrola();
+}
+
+
+/* ---------- KPI pokrytia + prepínač fronty (markup je v review/view.js) ---------- */
+
+function renderStats() {
+    const host = $('kontrola-stats');
+    if (host) host.innerHTML = statsHtml(kontrolaState.cert);
+}
+
+
+function renderTabs() {
+    const host = $('kontrola-tabs');
+    if (!host) return;
+    host.innerHTML = tabsHtml(kontrolaState);
+    host.querySelectorAll('[data-tab]').forEach((b) => {
+        b.onclick = () => switchTab(b.dataset.tab);
+    });
+}
+
+
+function switchTab(tab) {
+    if (kontrolaState.tab === tab) return;
+    kontrolaState.tab = tab;
+    kontrolaState.idx = 0;
+    if (tab === 'bez' && kontrolaState.unmarked === null) { loadTriage(); return; }
+    rerenderKontrola();
+}
+
+
+async function loadTriage() {
+    const body = $('kontrola-body');
+    renderTabs();
+    if (body) body.innerHTML = listSkeletonHtml(6, '68px');
+    try {
+        const { items, source } = await loadUnmarked();
+        kontrolaState.unmarked = items;
+        kontrolaState.source = source;
+    } catch (e) {
+        kontrolaState.unmarked = [];
+        if (body) renderApiError(body, e, loadTriage);
+        return;
+    }
+    rerenderKontrola();
+}
+
+
+/* ---------- zoznam ---------- */
+
+function activeList() {
+    return kontrolaState.tab === 'bez' ? (kontrolaState.unmarked || []) : kontrolaState.queue;
 }
 
 
@@ -32,50 +128,34 @@ function rerenderKontrola() {
     const body = $('kontrola-body');
     if (!body) return;
     setRailBadge('kontrola', kontrolaState.total);
-    const items = kontrolaState.items;
+    renderStats();
+    renderTabs();
+
+    const items = activeList();
+    kontrolaState.items = items;
+
     if (!items.length) {
-        renderEmpty(body, 'fact_check', 'Fronta na overenie je prázdna');
+        body.innerHTML = emptyForTabHtml(kontrolaState) + areaSectionHtml(kontrolaState.perArea);
+        wireAreaJump(body);
         return;
     }
+
     kontrolaState.idx = Math.max(0, Math.min(kontrolaState.idx, items.length - 1));
+    const acts = kontrolaState.tab === 'bez' ? ['verify', 'skip'] : ['verify', 'resolve', 'skip'];
     body.innerHTML = '<div class="queue">'
-        + items.map((n, i) => queueItemHtml(n, i)).join('')
-        + '</div>' + kontrolaHintsHtml();
+        + items.map((n, i) => queueItemHtml(n, i, i === kontrolaState.idx, acts)).join('')
+        + '</div>'
+        + sourceNoteHtml(kontrolaState)
+        + hintsHtml(kontrolaState.tab !== 'bez')
+        + areaSectionHtml(kontrolaState.perArea);
     wireKontrola(body);
+    wireAreaJump(body);
 }
 
 
-function queueItemHtml(n, i) {
-    const desc = n.description ? String(n.description).replace(/\s+/g, ' ').trim() : '';
-    return '<div class="queue-item' + (i === kontrolaState.idx ? ' selected' : '') + '"'
-        + ' data-id="' + n.id + '" data-idx="' + i + '" tabindex="-1">'
-        + '<div class="queue-body">'
-        + '<div class="queue-meta">'
-        + '<span>' + esc(n.type || 'uzol') + '</span>'
-        + originBadge(n.origin) + certBadge(n.certainty)
-        + (n.created_at ? '<span>' + esc(timeAgo(n.created_at)) + '</span>' : '')
-        + '</div>'
-        + '<div class="queue-text"><strong>' + esc(n.label || '') + '</strong>'
-        + (desc ? ' — ' + esc(desc) : '') + '</div>'
-        + '</div>'
-        + '<div class="queue-actions">'
-        + '<button type="button" class="act-verify ms" data-act="verify" title="Overiť (v)" aria-label="Overiť">verified</button>'
-        + '<button type="button" class="act-resolve ms" data-act="resolve" title="Vyriešiť (r)" aria-label="Vyriešiť">done_all</button>'
-        + '<button type="button" class="act-skip ms" data-act="skip" title="Preskočiť" aria-label="Preskočiť">redo</button>'
-        + '</div></div>';
-}
-
-
-function kontrolaHintsHtml() {
-    const kh = (keys, label) => '<span class="kh">'
-        + keys.map((k) => '<kbd>' + esc(k) + '</kbd>').join('') + ' ' + esc(label) + '</span>';
-    return '<div class="kbd-hints">'
-        + kh(['j', 'k'], 'posun')
-        + kh(['Enter'], 'detail')
-        + kh(['v'], 'overiť')
-        + kh(['r'], 'vyriešiť')
-        + kh(['Del'], 'zmazať uzol')
-        + '</div>';
+function wireAreaJump(body) {
+    const btn = body.querySelector('#kontrola-goto-bez');
+    if (btn) btn.onclick = () => switchTab('bez');
 }
 
 
@@ -123,12 +203,16 @@ export function kontrolaMove(delta) {
 }
 
 
-// Odober položku z fronty; decBadge=true znižuje rail počítadlo (server-affecting).
+/** Odober položku z aktívnej fronty. `decBadge` znižuje rail počítadlo. */
 function removeKontrolaItem(id, decBadge) {
-    const i = kontrolaState.items.findIndex((n) => n.id === id);
+    const list = activeList();
+    const i = list.findIndex((n) => n.id === id);
     if (i < 0) return;
-    kontrolaState.items.splice(i, 1);
-    if (decBadge) kontrolaState.total = Math.max(0, kontrolaState.total - 1);
+    list.splice(i, 1);
+    if (decBadge) {
+        kontrolaState.total = Math.max(0, kontrolaState.total - 1);
+        if (kontrolaState.cert) kontrolaState.cert = decNeedsReview(kontrolaState.cert);
+    }
     if (kontrolaState.idx > i) kontrolaState.idx--;
     rerenderKontrola();
 }
@@ -136,35 +220,49 @@ function removeKontrolaItem(id, decBadge) {
 
 export async function kontrolaVerify(id) {
     const btn = kontrolaBtn(id, 'verify') || document.createElement('button');
+    const wasUnmarked = kontrolaState.tab === 'bez';
     await busy(btn, async () => {
+        let j;
         try {
-            const res = await fetch('/api/nodes/' + id + '/verify', { method: 'POST' });
-            const j = await res.json().catch(() => ({}));
-            if (!res.ok) { showToast(j.message || j.error || 'Overenie zlyhalo', null, 'error'); return; }
+            j = await apiSend('POST', '/api/nodes/' + id + '/verify');
+        } catch (e) {
+            const b = e instanceof ApiError ? e.body : null;
+            showToast((b && (b.message || b.error)) || 'Overenie zlyhalo', null, 'error');
+            return;
+        }
+        // pokrytie sa hýbe hneď: uzol prešiel z „bez značky" na „overené"
+        if (kontrolaState.cert) kontrolaState.cert = applyMark(kontrolaState.cert, 'overene');
+        if (wasUnmarked) {
+            // verify zhodí aj needs_review, ale tento uzol v tej fronte nebol
+            removeKontrolaItem(id, false);
+        } else {
             removeKontrolaItem(id, true);
-            const warns = j.warnings || [];
-            showToast(warns.length ? ('Overené — ' + warns[0]) : 'Overené', null, 'success');
-        } catch (e) { showToast('Overenie zlyhalo', null, 'error'); }
+        }
+        const warns = (j && j.warnings) || [];
+        showToast(warns.length ? ('Overené — ' + warns[0]) : 'Overené', null, 'success');
     }, '…');
 }
 
 
 export async function kontrolaResolve(id) {
     const btn = kontrolaBtn(id, 'resolve') || document.createElement('button');
+    if (kontrolaState.tab === 'bez') { showToast('Táto fronta nemá čo vyriešiť — over alebo preskoč'); return; }
     await busy(btn, async () => {
         try {
-            const res = await fetch('/api/nodes/' + id + '/resolve-review', { method: 'POST' });
-            const j = await res.json().catch(() => ({}));
-            if (!res.ok) { showToast(j.message || j.error || 'Akcia zlyhala', null, 'error'); return; }
-            removeKontrolaItem(id, true);
-            showToast('Vyriešené', null, 'success');
-        } catch (e) { showToast('Akcia zlyhala', null, 'error'); }
+            await apiSend('POST', '/api/nodes/' + id + '/resolve-review');
+        } catch (e) {
+            const b = e instanceof ApiError ? e.body : null;
+            showToast((b && (b.message || b.error)) || 'Akcia zlyhala', null, 'error');
+            return;
+        }
+        removeKontrolaItem(id, true);
+        showToast('Vyriešené', null, 'success');
     }, '…');
 }
 
 
-// Armed-inline (žiadny natívny confirm): 1. akcia ozbrojí tlačidlo, 2. potvrdí.
-// kind='skip' (lokálne preskočenie + undo) alebo 'delete' (DELETE uzla).
+/* Armed-inline (žiadny natívny confirm): 1. akcia ozbrojí tlačidlo, 2. potvrdí.
+   kind='skip' (lokálne preskočenie + undo) alebo 'delete' (DELETE uzla). */
 export function disarmKontrolaBtn(btn) {
     clearTimeout(btn._disarm);
     btn.classList.remove('armed');
@@ -191,16 +289,20 @@ export function armKontrolaAction(btn, id, kind) {
 
 
 function kontrolaSkip(id) {
-    const i = kontrolaState.items.findIndex((n) => n.id === id);
+    const list = activeList();
+    const i = list.findIndex((n) => n.id === id);
     if (i < 0) return;
-    const [removed] = kontrolaState.items.splice(i, 1);
-    if (kontrolaState.idx > i || kontrolaState.idx >= kontrolaState.items.length) {
+    const [removed] = list.splice(i, 1);
+    if (kontrolaState.idx > i || kontrolaState.idx >= list.length) {
         kontrolaState.idx = Math.max(0, kontrolaState.idx - (kontrolaState.idx > i ? 1 : 0));
     }
+    const tab = kontrolaState.tab;
     rerenderKontrola();
     // preskočenie je len lokálne (uzol ostáva v serverovej fronte) → total badge nemeníme
     showUndoToast('Preskočené', () => {
-        kontrolaState.items.splice(Math.min(i, kontrolaState.items.length), 0, removed);
+        const back = tab === 'bez' ? (kontrolaState.unmarked || []) : kontrolaState.queue;
+        back.splice(Math.min(i, back.length), 0, removed);
+        kontrolaState.tab = tab;
         kontrolaState.idx = i;
         rerenderKontrola();
     });
@@ -208,24 +310,21 @@ function kontrolaSkip(id) {
 
 
 async function kontrolaDelete(id) {
-    const node = kontrolaState.items.find((n) => n.id === id);
+    const wasInReviewQueue = kontrolaState.queue.some((n) => n.id === id);
     try {
-        const res = await fetch('/api/nodes/' + id, { method: 'DELETE' });
-        if (!res.ok) {
-            const j = await res.json().catch(() => ({}));
-            showToast(j.message || 'Nepodarilo sa zmazať', null, 'error');
-            return;
-        }
-        // dorovnaj aj graf, ak je uzol načítaný (rovnako ako node-panel delete)
-        if (node && S.byId.has(id)) {
-            S.nodes = S.nodes.filter((m) => m.id !== id);
-            S.edges = S.edges.filter((e) => e.source.id !== id && e.target.id !== id);
-            S.byId.delete(id);
-            if (S.local && S.local.rootId === id) clearLocal();
-        }
-        removeKontrolaItem(id, true);
-        showToast('Uzol zmazaný', null, 'success');
+        await apiSend('DELETE', '/api/nodes/' + id);
     } catch (e) {
-        showToast('Nepodarilo sa zmazať', null, 'error');
+        const b = e instanceof ApiError ? e.body : null;
+        showToast((b && b.message) || 'Nepodarilo sa zmazať', null, 'error');
+        return;
     }
+    // dorovnaj aj graf, ak je uzol načítaný (rovnako ako node-panel delete)
+    if (S.byId.has(id)) {
+        S.nodes = S.nodes.filter((m) => m.id !== id);
+        S.edges = S.edges.filter((e) => e.source.id !== id && e.target.id !== id);
+        S.byId.delete(id);
+        if (S.local && S.local.rootId === id) clearLocal();
+    }
+    removeKontrolaItem(id, wasInReviewQueue);
+    showToast('Uzol zmazaný', null, 'success');
 }

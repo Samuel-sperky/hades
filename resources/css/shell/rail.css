@@ -1,12 +1,18 @@
 /* ---------------------------------------------------------------------------
-   LEFT RAIL (#rail) — crisp white slab, gold breathing core, teal active-pill
+   LEFT RAIL (#rail) — biely slab, zlaté dýchajúce jadro, pomenované grupy.
+
+   PRESTAVBA NAVIGÁCIE (rozhodnutie #51 / #54, UX plán vlna 4):
+     · šírka je token --rail-w (72 px collapsed ↔ 208 px expanded); #app-header
+       a #screens ju čítajú cez --shell-left, takže expand posunie celý shell
+     · grupy majú uppercase eyebrow label, ktorý sa v collapsed stave skryje
+     · aktívny stav je zlatý color-mix nad --brand-gold (bolo teal fill)
    --------------------------------------------------------------------------- */
 #rail {
     position: fixed;
     top: var(--edge); left: var(--edge); bottom: var(--edge);
-    width: 72px;
-    display: flex; flex-direction: column; align-items: center;
-    padding: var(--sp-1) 0; gap: var(--sp-1);
+    width: var(--rail-w);
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: var(--sp-1) var(--sp-0); gap: var(--sp-1);
     /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur — GPU nerozmazáva pozadie
        každý frame (plynulejšie), rail je čitateľnejší. Blur ostáva len na plávajúcich kartách. */
     background: var(--panel-solid);
@@ -14,45 +20,91 @@
     border-radius: var(--r-lg);
     box-shadow: var(--elev-1);
     z-index: var(--z-chrome);
+    transition: width var(--dur-base) var(--ease);
 }
 
-/* The breathing consciousness core — the ONE reserved gold moment. */
-#brand-core {
+/* ---- hlava railu: jadro + prepínač šírky ---- */
+.rail-top {
     position: relative;
-    color: var(--brand-gold);
-    width: 44px; height: 44px;
-    display: flex; align-items: center; justify-content: center;
-    background: none; border: none;
-    filter: drop-shadow(0 1px 2px rgba(138, 100, 23, .35));
-    animation: core-pulse 4s var(--ease) infinite;
-    transition: filter var(--dur-ambient) var(--ease), opacity var(--dur-ambient) var(--ease);
+    display: flex; align-items: center; gap: var(--sp-0);
     padding-bottom: var(--sp-1);
     margin-bottom: var(--sp-0);
 }
-#brand-core::after {
+.rail-top::after {
     content: "";
     position: absolute;
     left: 8px; right: 8px; bottom: 0;
     height: 1px;
     background: var(--border);
 }
+
+/* The breathing consciousness core — the ONE reserved gold moment. */
+#brand-core {
+    position: relative;
+    color: var(--brand-gold);
+    flex: 1; min-width: 0;
+    height: 44px;
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-1);
+    background: none; border: none;
+    filter: var(--glow-core-base);
+    animation: core-pulse 4s var(--ease) infinite;
+    transition: filter var(--dur-ambient) var(--ease), opacity var(--dur-ambient) var(--ease);
+}
+#brand-core .brand-word {
+    display: none;
+    font-family: var(--mono);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--ls-mono);
+    color: var(--text);
+    white-space: nowrap;
+}
 #brand-core:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-md); }
 #brand-core.asleep {
     animation-play-state: paused;
     opacity: .5;
-    filter: drop-shadow(0 0 2px rgba(216, 184, 120, .25));
+    filter: var(--glow-core-asleep);
 }
 
 @keyframes core-pulse {
-    0%, 100% { filter: drop-shadow(0 0 6px rgba(216, 184, 120, .45)); }
-    50%      { filter: drop-shadow(0 0 14px rgba(216, 184, 120, .85)); }
+    0%, 100% { filter: var(--glow-core-rest); }
+    50%      { filter: var(--glow-core-peak); }
 }
 
-.rail-group { display: flex; flex-direction: column; gap: var(--sp-1); }
+/* Prepínač 72 ↔ 208 px. V collapsed stave je pod jadrom (celá šírka je úzka),
+   v expanded stave vpravo vedľa názvu. */
+#rail .rail-toggle {
+    flex: 0 0 auto;
+    width: 28px; height: 28px; min-height: 28px;
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 0;
+    background: none; border: none;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#rail .rail-toggle .ms { font-size: var(--icon-sm); }
+#rail .rail-toggle:hover { background: var(--hover-fill); color: var(--text); }
+#rail .rail-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---- skrolovateľná zóna destinácií (rail sa nesmie preliať pri nízkom okne) ---- */
+.rail-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    scrollbar-width: none;
+}
+.rail-scroll::-webkit-scrollbar { width: 0; height: 0; }
+
+.rail-group { display: flex; flex-direction: column; gap: 2px; align-items: stretch; }
 .rail-group.bottom {
     margin-top: auto;
     padding-top: var(--sp-1);
     position: relative;
+    flex: 0 0 auto;
 }
 .rail-group.bottom::before {
     content: "";
@@ -62,11 +114,20 @@
     background: var(--border);
 }
 
+/* ---- eyebrow label grupy — v collapsed stave sa skryje (rozhodnutie #54) ---- */
+#rail .rail-cap {
+    display: none;
+    padding: var(--sp-1) var(--sp-1) 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- destinácia ---- */
 #rail .rail-group button {
     position: relative;
     background: none; border: none;
     border-radius: var(--r-md);
-    width: 40px; height: 40px;
     min-height: 40px;
     padding: 0;
     color: var(--muted);
@@ -77,33 +138,39 @@
 #rail .rail-group button:hover { background: var(--hover-fill); color: var(--text); }
 #rail .rail-group button:active { background: var(--accent-soft); }
 #rail .rail-group button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-/* Active state — solid tint + inset teal ring, no additive glow */
+
+/* AKTÍVNY STAV — zlatý recept rodiny: color-mix(--brand-gold 16 %, panel) + --ink text.
+   Ikona zostáva zlatá (gold-text má na oboch témach kontrast ≥ 4.5:1). */
 #rail .rail-group button.active {
-    color: var(--accent);
-    background: var(--accent-soft);
-    box-shadow: inset 0 0 0 1px var(--border-accent);
+    color: var(--gold-text);
+    background: color-mix(in srgb, var(--brand-gold) 16%, var(--panel-solid));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-gold) 34%, transparent);
 }
-/* persistent left active-pill */
+#rail .rail-group button.active .lbl { color: var(--text); }
+/* persistent left active-pill — zlatý */
 #rail .rail-group button.active::before {
     content: "";
     position: absolute;
-    left: -6px; top: 50%;
+    left: -5px; top: 50%;
     transform: translateY(-50%);
     width: 3px; height: 20px;
     border-radius: 2px;
-    background: var(--accent);
+    background: var(--gold);
 }
 
-/* FÁZA SHELL: pomenované destinácie — ikona + text pod ňou */
+/* ---- COLLAPSED (predvolený, 72 px): ikona + text pod ňou ---- */
 #rail .rail-group button.dest {
-    width: 60px; height: auto; min-height: 52px;
+    width: auto; height: auto; min-height: 52px;
+    display: flex;
     flex-direction: column;
+    align-items: center;
     justify-content: center;
     gap: 3px;
     padding: var(--sp-1) 2px;
     border-radius: var(--r-md);
+    text-align: center;
 }
-#rail .rail-group button.dest .ms { font-size: 22px; line-height: 1; }
+#rail .rail-group button.dest .ms { font-size: 22px; line-height: 1; flex: 0 0 auto; }
 #rail .rail-group button.dest .lbl {
     font-size: 10px;
     font-weight: var(--fw-medium);
@@ -123,3 +190,32 @@
     border-radius: 50%;
     background: var(--accent);
 }
+
+/* ---- EXPANDED (208 px): ikona vľavo, label vedľa, viditeľné eyebrow grupy ---- */
+:root[data-rail="expanded"] { --rail-w: var(--rail-w-expanded); }
+
+[data-rail="expanded"] #rail { padding: var(--sp-1); }
+[data-rail="expanded"] #brand-core { justify-content: flex-start; padding-left: var(--sp-0); }
+[data-rail="expanded"] #brand-core .brand-word { display: inline; }
+[data-rail="expanded"] #rail .rail-cap { display: block; }
+[data-rail="expanded"] #rail .rail-toggle .ms { transform: rotate(180deg); }
+[data-rail="expanded"] #rail .rail-group button.dest {
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: var(--sp-2h);
+    min-height: 38px;
+    padding: var(--sp-1) var(--sp-1);
+    text-align: left;
+}
+[data-rail="expanded"] #rail .rail-group button.dest .ms { font-size: 20px; }
+[data-rail="expanded"] #rail .rail-group button.dest .lbl {
+    font-size: var(--fs-body);
+    text-align: left;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+[data-rail="expanded"] #rail .rail-group button.dest .dot { position: static; margin-left: auto; }
+
+/* Prepínač je viditeľný len tam, kde má zmysel (nie na mobile — tam je bottom nav). */
+#rail .rail-toggle { display: inline-flex; }
