@@ -3,27 +3,33 @@
 /*
  * SPERKY e-shop — čítacie endpointy pre obrazovku „E-shop" a pre chatový nástroj.
  *
- * SKELETON. Napĺňa agent SPERKY-BE; súbor je už zapojený v bootstrap/app.php
- * pod prefixom `api/eshop` s middleware `api`, takže netreba siahať do
- * zdieľaných súborov.
+ * Súbor je zapojený v bootstrap/app.php pod prefixom `api/eshop` s middleware
+ * `api` + `throttle:config('sperky.throttle')`.
  *
- * Rozsah kľúča je `orders:read` — tieto routy teda NIKDY nesmú zapisovať do
- * e-shopu. Produktové endpointy sú verejné a kľúč nepotrebujú.
+ * Rozsah kľúča je `orders:read` — tu NIE JE a nikdy nesmie byť zápisová cesta.
+ * Produktové endpointy sú verejné a kľúč nepotrebujú (posiela sa len k objednávkam).
  *
- * Povinne throttle: appka je verejne tunelovaná cez ngrok a SPERKY API má
- * vlastný rate limit, ktorého vyčerpanie by odstrelilo aj legitímne volania
- * (nález N5 v 08-SPERKY-API-SPEC.md).
- *
- * Očakávané routy (návrh, uprav podľa potreby):
- *   GET  orders            zoznam, page/per_page (per_page clamp na 100, nález N8)
- *   GET  orders/{id}       detail jednej objednávky
- *   GET  products          zoznam produktov
- *   GET  products/{id}     detail produktu (bez variantov — nález N2)
- *   GET  summary           počty + rozpad podľa country_iso (NIE súhrnný obrat, nález N1)
- *   GET  health            dostupnosť API pre indikátor v UI
+ * Kontrakt odpovede je popísaný v EshopController — {ok, data, meta} / {ok, data, error}.
  */
 
+use App\Http\Controllers\EshopController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/health', fn () => response()->json(['ok' => false, 'error' => 'not_implemented'], 501))
-    ->name('eshop.health');
+// Zoznamy a detaily idú naživo cez SperkyClient (cache: zoznamy 5 min, detaily 15 min).
+Route::get('/orders', [EshopController::class, 'orders'])->name('eshop.orders');
+Route::get('/orders/{id}', [EshopController::class, 'order'])
+    ->whereNumber('id')
+    ->name('eshop.order');
+
+Route::get('/products', [EshopController::class, 'products'])->name('eshop.products');
+Route::get('/products/{id}', [EshopController::class, 'product'])
+    ->whereNumber('id')
+    ->name('eshop.product');
+
+// Hlavné čísla obrazovky: POČTY objednávok (denné/okno/celkovo) + rozpad podľa
+// krajín z mesačných súhrnov. Súhrnný obrat sa nevracia — `total_paid` mieša
+// HUF, CZK a EUR (nález N1 v 08-SPERKY-API-SPEC.md).
+Route::get('/summary', [EshopController::class, 'summary'])->name('eshop.summary');
+
+// Indikátor dostupnosti. Vždy HTTP 200 — je to hlásenie o stave, nie zlyhanie.
+Route::get('/health', [EshopController::class, 'health'])->name('eshop.health');

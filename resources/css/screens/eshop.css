@@ -1,8 +1,233 @@
-/* Obrazovka E-shop — SKELETON, dopĺňa agent SPERKY-FE.
+/* Obrazovka E-shop (SPERKY integrácia) — vlastník SPERKY-FE.
 
    Pravidlá: žiadny raw hex, len tokeny z tokens.css / dark.css (kontrakt §4.8).
-   Farebné hodnoty Aura palety sa nemenia, chýbajúce tokeny sa dopĺňajú. */
+   Farebné hodnoty Aura palety sa nemenia. Alfa sa robí výhradne nad tokenovým
+   tripletom — `rgba(var(--warn-rgb), .10)` — nikdy číselným literálom.
 
-#screen-eshop {
-    /* SPERKY-FE: naplň */
+   Rozpad podľa krajín používa rodinný `.dbar*` z charts.css (P10), takže tu
+   nie je vlastný stĺpcový graf, len sumový riadok pod ním.
+
+   Mobil: obrazovka musí byť použiteľná na 390 px (rozhodnutie #76 — dashboardy
+   áno). Riadky objednávok sa preto pod 640 px lámu z mriežky do dvoch liniek. */
+
+/* ---------- stav integrácie ---------- */
+.es-status {
+    display: flex; align-items: flex-start; gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--panel-solid);
+    font-size: var(--fs-body); line-height: var(--lh-body);
+    color: var(--text-secondary);
+}
+.es-status .ms { font-size: var(--icon-sm); flex-shrink: 0; margin-top: 1px; }
+.es-status strong { color: var(--text); font-weight: var(--fw-semibold); }
+.es-status--ok { border-color: var(--border-accent); background: var(--accent-softer); }
+.es-status--ok .ms { color: var(--accent); }
+.es-status--wait .ms { color: var(--muted); }
+.es-status--down {
+    border-color: var(--danger-border);
+    background: var(--danger-soft);
+}
+.es-status--down .ms { color: var(--danger); }
+
+/* ---------- priznanie k odhadu meny (nález N1) ---------- */
+.es-note {
+    font-size: var(--fs-small); line-height: var(--lh-small);
+    color: var(--muted); max-width: 68ch;
+}
+.es-note--warn {
+    display: block;
+    margin-bottom: var(--sp-1);
+    padding: 6px var(--sp-1);
+    border-left: 2px solid var(--warn);
+    border-radius: var(--r-sm);
+    background: rgba(var(--warn-rgb), .10);
+    color: var(--text-secondary);
+}
+
+/* ---------- suma: číslo + mena + značka odhadu ----------
+   Vizuálne sa nikdy nesmie stať, že sa suma číta bez meny — preto sú `.es-cur`
+   aj `.es-est` súčasťou toho istého inline bloku a nezalamujú sa od čísla. */
+.es-amount { display: inline-flex; align-items: baseline; gap: 5px; flex-wrap: wrap; }
+.es-sum {
+    font-family: var(--mono); font-size: var(--fs-body);
+    letter-spacing: var(--ls-mono); color: var(--text);
+}
+.es-cur {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono-caps); text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.es-cur--unknown { text-transform: none; letter-spacing: var(--ls-mono); color: var(--muted); }
+.es-est {
+    font-size: var(--fs-caption); line-height: 1.5;
+    padding: 0 5px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill);
+    background: var(--gold-soft);
+    color: var(--gold-text);
+    cursor: help;
+}
+.es-amount--na { color: var(--muted); font-family: var(--mono); }
+
+/* ---------- pásy počtov (dni aj krajiny) — rodinný .dbar z charts.css ---------- */
+.es-bars { display: flex; flex-direction: column; gap: var(--sp-1); }
+.es-bar { margin-bottom: 0; }
+.es-country-sum { margin-top: 4px; }
+
+/* ---------- objednávky ---------- */
+.es-orders {
+    display: flex; flex-direction: column;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--panel-solid);
+    padding: var(--sp-0);
+}
+.es-order {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr auto 18px;
+    align-items: center;
+    gap: var(--sp-1);
+    width: 100%;
+    text-align: left;
+    padding: var(--row-pad-y) var(--sp-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.es-order:hover, .es-order:focus-visible {
+    background: var(--accent-softer);
+    border-color: var(--border-accent);
+    outline: none;
+}
+.es-order:focus-visible { box-shadow: var(--focus-ring); }
+.es-order[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--border-accent); }
+.es-o-id {
+    font-family: var(--mono); font-size: var(--fs-small);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+.es-o-date { font-size: var(--fs-small); color: var(--text-secondary); }
+.es-o-sum { justify-self: end; }
+.es-o-chev { font-size: var(--icon-sm); color: var(--muted); }
+.es-order[aria-expanded="true"] .es-o-chev { transform: rotate(90deg); }
+
+/* ---------- stránkovanie (N4: strana 1 = najnovšie) ---------- */
+.es-pager {
+    display: flex; align-items: center; gap: var(--sp-1);
+    margin-top: var(--sp-1);
+}
+.es-pager .chip[disabled] { opacity: .45; cursor: not-allowed; }
+.es-page {
+    margin-left: auto;
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+
+/* ---------- detail objednávky ---------- */
+.es-detail {
+    padding: var(--card-pad);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-lg);
+    background: var(--panel-solid);
+    box-shadow: var(--elev-1);
+}
+.es-d-head {
+    display: flex; align-items: baseline; gap: var(--sp-1);
+    padding-bottom: var(--sp-1);
+    border-bottom: 1px solid var(--line-soft);
+    margin-bottom: var(--sp-1);
+}
+.es-d-id {
+    font-family: var(--mono); font-size: var(--fs-title);
+    letter-spacing: var(--ls-mono); color: var(--text);
+}
+.es-d-date { font-size: var(--fs-small); color: var(--muted); margin-left: auto; }
+.es-d-grid {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: 6px var(--sp-2);
+    align-items: baseline;
+    font-size: var(--fs-body);
+}
+.es-d-grid dt {
+    font-size: var(--fs-caption); text-transform: uppercase;
+    letter-spacing: var(--ls-caps); color: var(--muted);
+}
+.es-d-grid dd { color: var(--text); min-width: 0; }
+.es-pids {
+    font-family: var(--mono); font-size: var(--fs-small);
+    letter-spacing: var(--ls-mono); color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+.es-detail .es-note--warn { margin-top: var(--sp-1); margin-bottom: 0; }
+
+/* ---------- hľadanie produktu ---------- */
+.es-find {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--sp-1);
+    margin-bottom: 6px;
+}
+.es-find-label {
+    font-size: var(--fs-caption); text-transform: uppercase;
+    letter-spacing: var(--ls-caps); color: var(--muted);
+}
+.es-find-input {
+    width: 9rem;
+    height: var(--control-h);
+    padding: 0 var(--sp-1);
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    font-family: var(--mono); font-size: var(--fs-base);
+    letter-spacing: var(--ls-mono); color: var(--text);
+}
+.es-find-input:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+.es-find-go { display: inline-flex; align-items: center; gap: 5px; height: var(--control-h); }
+.es-find-go .ms { font-size: var(--icon-sm); }
+
+/* ---------- karta produktu (bez variantov — nález N2) ---------- */
+.es-pcard {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: var(--card-pad);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--panel-solid);
+}
+.es-p-name {
+    font-size: var(--fs-title); line-height: var(--lh-title);
+    font-weight: var(--fw-semibold); color: var(--text);
+}
+.es-p-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
+.es-p-id {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+.es-p-desc {
+    font-size: var(--fs-body); line-height: var(--lh-prose);
+    color: var(--text-secondary); max-width: 72ch;
+}
+
+/* ---------- mobil (rozhodnutie #76 — dashboard áno) ---------- */
+@media (max-width: 640px) {
+    .es-order {
+        grid-template-columns: 1fr auto;
+        grid-template-areas: "id chev" "date sum";
+        row-gap: 4px;
+    }
+    .es-o-id { grid-area: id; }
+    .es-o-chev { grid-area: chev; justify-self: end; }
+    .es-o-date { grid-area: date; }
+    .es-o-sum { grid-area: sum; }
+    .es-d-grid { grid-template-columns: 1fr; gap: 2px var(--sp-1); }
+    .es-d-grid dd { margin-bottom: 6px; }
+}
+
+@media (max-width: 390px) {
+    .es-find { gap: 6px; }
+    .es-find-input { flex: 1 1 6rem; width: auto; }
+    .es-note--warn { padding: 6px; }
 }
