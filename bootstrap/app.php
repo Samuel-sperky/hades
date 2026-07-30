@@ -27,6 +27,15 @@ return Application::configure(basePath: dirname(__DIR__))
                 'throttle:'.(string) config('mcp.throttle', '120,1'),
                 'auth.mcp',
             ])->match(['get', 'post', 'delete'], '/mcp', McpController::class);
+
+            // SPERKY e-shop (len čítanie). Vlastný súbor rout, aby balík nemusel
+            // siahať do zdieľaného routes/api.php. Throttle je povinný: SPERKY API
+            // má vlastný rate limit a jeho vyčerpanie by odstrelilo aj legitímne
+            // volania — vrátane tých z chatu (nález N5 v 08-SPERKY-API-SPEC.md).
+            Route::middleware([
+                'api',
+                'throttle:'.(string) config('sperky.throttle', '60,1'),
+            ])->prefix('api/eshop')->group(base_path('routes/eshop.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

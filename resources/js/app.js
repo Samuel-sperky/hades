@@ -38,6 +38,7 @@ import { register as registerCreateNode } from './node/create-node.js';
 import { register as registerEdgeAdmin } from './node/edge-admin.js';
 import { register as registerMdOverlay } from './node/md-overlay.js';
 import { register as registerLibrary } from './screens/library.js';
+import { register as registerEshop } from './screens/eshop.js';
 import { register as registerGraphInput } from './graph/input.js';
 import { register as registerShortcuts } from './shell/shortcuts.js';
 import { register as registerCmdk } from './shell/cmdk.js';
@@ -75,6 +76,7 @@ async function boot() {
     registerEdgeAdmin(root);
     registerMdOverlay(root);
     registerLibrary(root);
+    registerEshop(root);
     registerGraphInput(canvas);
     registerShortcuts(root);
     registerCmdk(root);
