@@ -1,0 +1,106 @@
+/* ---------------------------------------------------------------------------
+   NODE PANEL details
+   --------------------------------------------------------------------------- */
+#node-meta {
+    color: var(--muted);
+    font-size: var(--fs-small);
+    margin-bottom: var(--sp-1);
+}
+#node-desc {
+    white-space: pre-wrap;
+    user-select: text;
+    line-height: var(--lh-prose);
+    color: var(--text-secondary);
+}
+
+/* Chip — interactive (neighbor browsing = core loop) */
+.chip {
+    display: inline-block;
+    margin: var(--sp-0) var(--sp-0) var(--sp-0) 0;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--fs-body);
+    padding: var(--sp-0) 12px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: var(--font);
+    transition: background var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease);
+}
+.chip:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent-600); }
+.chip:active { background: var(--accent-soft); transform: scale(.97); }
+.chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* History rows */
+.hist {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: var(--sp-2);
+    font-size: var(--fs-small);
+    padding: var(--sp-1) 0;
+    border-bottom: 1px solid var(--border);
+}
+.hist:last-child { border-bottom: none; }
+.hist .kind { color: var(--text); font-weight: var(--fw-medium); }
+.hist .time, .hist .ts { color: var(--muted); font-size: var(--fs-caption); flex-shrink: 0; }
+
+/* Action rows */
+.row { display: flex; gap: var(--sp-1); margin-top: var(--sp-3); }
+.row button { flex: 1; }
+
+#node-edit { flex: 1; }
+#node-delete {
+    flex: 0 0 auto;
+    width: 40px; height: 40px; min-height: 40px;
+    padding: 0;
+    font-size: var(--icon-md);
+}
+/* Ozbrojený stav mazania — ikona sa mení na textovú otázku */
+#node-delete.armed {
+    width: auto;
+    padding: 0 12px;
+    font-family: var(--font);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    border-color: var(--danger-border-hover);
+    background: var(--danger-soft);
+}
+
+/* ---------------------------------------------------------------------------
+   MOŽNO SÚVISÍ (#node-suggestions) — algoritmické návrhy prepojení (A8)
+   --------------------------------------------------------------------------- */
+#node-suggestions-sec.hidden { display: none; }
+
+.sug-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: var(--sp-1) 0;
+    border-bottom: 1px solid var(--border);
+}
+.sug-row:last-child { border-bottom: none; }
+.sug-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: var(--fs-body);
+}
+.sug-score {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+.sug-add {
+    flex-shrink: 0;
+    width: 28px; height: 28px; min-height: 28px;
+    padding: 0;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: var(--icon-sm);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.sug-add:hover { background: var(--accent-softer); color: var(--accent-600); }
+.sug-add:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sug-add:disabled { opacity: .5; pointer-events: none; }

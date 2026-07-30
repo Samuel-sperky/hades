@@ -1,0 +1,28 @@
+/* ---------------------------------------------------------------------------
+   VIEW SWITCH (#view-switch) — segmented control, lives in the header flow
+   --------------------------------------------------------------------------- */
+#view-switch {
+    display: flex; gap: var(--sp-0); padding: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+}
+#view-switch button {
+    border: none; background: none;
+    color: var(--muted);
+    border-radius: var(--r-sm);
+    padding: 3px 14px;
+    min-height: 26px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                box-shadow var(--dur-fast) var(--ease);
+}
+#view-switch button:hover { background: var(--hover-fill); color: var(--text); }
+#view-switch button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#view-switch button.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: var(--fw-semibold);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+}

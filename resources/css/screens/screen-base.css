@@ -1,0 +1,51 @@
+body:not([data-screen="graf"]) #mind { visibility: hidden; }
+body:not([data-screen="graf"]) #zoomctl,
+body:not([data-screen="graf"]) #view-switch,
+body:not([data-screen="graf"]) #graph-tools,
+body:not([data-screen="graf"]) #header-metrics,
+body:not([data-screen="graf"]) #local-chip { display: none !important; }
+
+/* Chat je schovaný, kým ho v Nastaveniach nezapneš (nefunguje bez API kľúča) */
+body:not(.chat-on) #prompt { display: none !important; }
+
+/* Kontajner obrazoviek — obsahová plocha za railom, pod hlavičkou */
+#screens {
+    position: fixed;
+    left: 104px; right: var(--edge);
+    top: calc(var(--edge) + 44px + var(--sp-1));
+    bottom: var(--edge);
+    overflow-y: auto;
+    z-index: var(--z-panel);
+}
+body[data-screen="graf"] #screens { display: none; }
+
+.screen { display: none; max-width: 920px; padding-right: var(--sp-1); }
+.screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
+
+.screen-head { margin-bottom: var(--sp-3); }
+.screen-head h1 {
+    font-family: var(--serif);
+    font-size: 28px; font-weight: 600;
+    color: var(--text); line-height: 1.2;
+}
+.screen-head .screen-sub {
+    margin-top: var(--sp-0);
+    color: var(--muted);
+    font-size: var(--fs-base);
+}
+#library-search {
+    display: block;
+    margin-top: var(--sp-2);
+    width: 100%; max-width: 420px;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--fs-base);
+    font-family: var(--font);
+    color: var(--text);
+}
+#library-search:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+
+/* Denník obrazovka — filter dostane vzduch nad zoznamom */
+#screen-dennik #journal-filter { margin-bottom: var(--sp-2); }

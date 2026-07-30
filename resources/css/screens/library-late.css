@@ -1,0 +1,23 @@
+/* ---- Riadok zoznamu s pack tlačidlom (Dnes / Denník / Knižnica) ---- */
+.li-wrap { display: flex; align-items: stretch; gap: 2px; }
+.li-wrap > .today-item,
+.li-wrap > .record,
+.li-wrap > .lib-skill { flex: 1 1 auto; min-width: 0; width: auto; }
+
+.pack-btn {
+    flex: 0 0 auto; align-self: center;
+    width: 34px; min-height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: none; border: none;
+    border-radius: var(--r-sm);
+    color: var(--muted); font-size: 18px;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+}
+.li-wrap:hover .pack-btn,
+.today-card-wrap:hover .pack-btn,
+.pack-btn:focus-visible,
+.pack-btn.in-pack { opacity: 1; }
+.pack-btn:hover { background: var(--accent-softer); color: var(--accent-600); }
+.pack-btn.in-pack { color: var(--accent-600); }

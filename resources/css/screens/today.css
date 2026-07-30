@@ -1,0 +1,53 @@
+/* ---- obrazovka Dnes ---- */
+.today-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+}
+.today-card {
+    display: flex; flex-direction: column; gap: var(--sp-0);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+}
+.tc-val {
+    font-family: var(--mono); font-size: 30px; font-weight: 600;
+    color: var(--text); font-variant-numeric: tabular-nums; line-height: 1;
+}
+.tc-label { font-size: var(--fs-small); color: var(--muted); }
+.today-sec { margin-bottom: var(--sp-3); }
+.today-sec h2 { font-size: var(--fs-title); color: var(--text); margin-bottom: var(--sp-1); }
+.today-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.today-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    padding: 4px 10px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-small); color: var(--text-secondary);
+}
+.today-chip .n { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.today-list { display: flex; flex-direction: column; gap: 2px; }
+.today-item {
+    display: flex; align-items: center; gap: var(--sp-2);
+    width: 100%; text-align: left;
+    padding: var(--sp-1);
+    background: none; border: none;
+    border-radius: var(--r-md); color: var(--text);
+}
+.today-item:hover, .today-item:focus-visible { background: var(--accent-softer); outline: none; }
+.ti-ico { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.ti-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ti-title { font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ti-snip { font-size: var(--fs-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ti-tag {
+    font-size: var(--fs-caption); color: var(--muted);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    padding: 1px 8px; flex-shrink: 0;
+}
+.ti-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }

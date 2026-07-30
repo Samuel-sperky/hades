@@ -1,0 +1,64 @@
+/* ---- Cmd-K paleta (overlay) ---- */
+#cmdk {
+    position: fixed; inset: 0;
+    z-index: var(--z-overlay);
+    background: var(--scrim);
+    backdrop-filter: var(--blur-1);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding-top: 12vh;
+}
+#cmdk-card {
+    width: min(600px, 92vw);
+    max-height: 70vh;
+    display: flex; flex-direction: column;
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-3);
+    overflow: hidden;
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+.cmdk-input-row {
+    display: flex; align-items: center; gap: var(--sp-1);
+    padding: var(--sp-2);
+    border-bottom: 1px solid var(--border);
+}
+.cmdk-input-row .ms { color: var(--muted); }
+#cmdk-input {
+    flex: 1;
+    background: none; border: none;
+    font-size: var(--fs-title);
+    font-family: var(--font);
+    color: var(--text);
+}
+#cmdk-input::placeholder { color: var(--muted); }
+#cmdk-input:focus { outline: none; }
+.cmdk-input-row kbd {
+    font-family: var(--mono); font-size: 10px;
+    padding: 1px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    color: var(--muted); background: var(--surface-2);
+}
+#cmdk-results { overflow-y: auto; padding: var(--sp-1); }
+.cmdk-group {
+    font-size: var(--fs-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-caps);
+    color: var(--muted);
+    padding: var(--sp-1) var(--sp-1) var(--sp-0);
+}
+.cmdk-item {
+    display: flex; align-items: center; gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-1);
+    border: none; background: none;
+    border-radius: var(--r-md);
+    text-align: left; color: var(--text);
+}
+.cmdk-item:hover, .cmdk-item:focus-visible { background: var(--accent-softer); outline: none; }
+.cmdk-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.cmdk-text { display: flex; flex-direction: column; min-width: 0; }
+.cmdk-title { font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmdk-sub { font-size: var(--fs-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmdk-hint-row { padding: var(--sp-2); font-size: var(--fs-small); color: var(--muted); text-align: center; }

@@ -1,0 +1,52 @@
+/* ---------------------------------------------------------------------------
+   RESET & BASE
+   --------------------------------------------------------------------------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: var(--fs-base);
+    line-height: var(--lh-base);
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.hidden { display: none !important; }
+
+.ms {
+    font-family: 'Material Symbols Rounded';
+    font-weight: normal;
+    font-style: normal;
+    font-size: var(--icon-md);
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    direction: ltr;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Shared technical readout treatment — Geist Mono + aligned figures.
+   Quarantined to numeric/coordinate/stat/label surfaces; prose stays Geist. */
+#tl-label,
+.stat-row .val,
+#node-meta,
+.badge,
+.hist .ts,
+.hist .time,
+.search-item .sub,
+.key-row kbd,
+label.slider output,
+#hover-card .m,
+#status-chip {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--ls-mono);
+}

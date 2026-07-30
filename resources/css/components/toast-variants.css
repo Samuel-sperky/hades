@@ -1,0 +1,18 @@
+/* ---------------------------------------------------------------------------
+   TOAST VARIANTS (E7) — recolor the inset bar + icon; base .toast unchanged
+   --------------------------------------------------------------------------- */
+.toast.success::before { background: var(--success); }
+.toast.success .ms { color: var(--success); }
+.toast.warn::before { background: var(--warn); }
+.toast.warn .ms { color: var(--warn); }
+.toast.error::before { background: var(--danger); }
+.toast.error .ms { color: var(--danger); }
+.toast.error { border-color: var(--danger-border); }
+/* Undo affordance inside a toast (F3 delete/skip) */
+.toast .toast-undo {
+    margin-left: var(--sp-1);
+    min-height: 24px; padding: 2px 10px;
+    font-size: var(--fs-small); font-weight: var(--fw-medium);
+    border-radius: var(--r-sm);
+    flex-shrink: 0;
+}

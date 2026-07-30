@@ -1,0 +1,125 @@
+/* ---------------------------------------------------------------------------
+   LEFT RAIL (#rail) — crisp white slab, gold breathing core, teal active-pill
+   --------------------------------------------------------------------------- */
+#rail {
+    position: fixed;
+    top: var(--edge); left: var(--edge); bottom: var(--edge);
+    width: 72px;
+    display: flex; flex-direction: column; align-items: center;
+    padding: var(--sp-1) 0; gap: var(--sp-1);
+    /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur — GPU nerozmazáva pozadie
+       každý frame (plynulejšie), rail je čitateľnejší. Blur ostáva len na plávajúcich kartách. */
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+    z-index: var(--z-chrome);
+}
+
+/* The breathing consciousness core — the ONE reserved gold moment. */
+#brand-core {
+    position: relative;
+    color: var(--brand-gold);
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: none;
+    filter: drop-shadow(0 1px 2px rgba(138, 100, 23, .35));
+    animation: core-pulse 4s var(--ease) infinite;
+    transition: filter var(--dur-ambient) var(--ease), opacity var(--dur-ambient) var(--ease);
+    padding-bottom: var(--sp-1);
+    margin-bottom: var(--sp-0);
+}
+#brand-core::after {
+    content: "";
+    position: absolute;
+    left: 8px; right: 8px; bottom: 0;
+    height: 1px;
+    background: var(--border);
+}
+#brand-core:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-md); }
+#brand-core.asleep {
+    animation-play-state: paused;
+    opacity: .5;
+    filter: drop-shadow(0 0 2px rgba(216, 184, 120, .25));
+}
+
+@keyframes core-pulse {
+    0%, 100% { filter: drop-shadow(0 0 6px rgba(216, 184, 120, .45)); }
+    50%      { filter: drop-shadow(0 0 14px rgba(216, 184, 120, .85)); }
+}
+
+.rail-group { display: flex; flex-direction: column; gap: var(--sp-1); }
+.rail-group.bottom {
+    margin-top: auto;
+    padding-top: var(--sp-1);
+    position: relative;
+}
+.rail-group.bottom::before {
+    content: "";
+    position: absolute;
+    left: 8px; right: 8px; top: 0;
+    height: 1px;
+    background: var(--border);
+}
+
+#rail .rail-group button {
+    position: relative;
+    background: none; border: none;
+    border-radius: var(--r-md);
+    width: 40px; height: 40px;
+    min-height: 40px;
+    padding: 0;
+    color: var(--muted);
+    font-size: var(--icon-md);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                box-shadow var(--dur-fast) var(--ease);
+}
+#rail .rail-group button:hover { background: var(--hover-fill); color: var(--text); }
+#rail .rail-group button:active { background: var(--accent-soft); }
+#rail .rail-group button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Active state — solid tint + inset teal ring, no additive glow */
+#rail .rail-group button.active {
+    color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+}
+/* persistent left active-pill */
+#rail .rail-group button.active::before {
+    content: "";
+    position: absolute;
+    left: -6px; top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 20px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+/* FÁZA SHELL: pomenované destinácie — ikona + text pod ňou */
+#rail .rail-group button.dest {
+    width: 60px; height: auto; min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: var(--sp-1) 2px;
+    border-radius: var(--r-md);
+}
+#rail .rail-group button.dest .ms { font-size: 22px; line-height: 1; }
+#rail .rail-group button.dest .lbl {
+    font-size: 10px;
+    font-weight: var(--fw-medium);
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+    text-align: center;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* denník unread dot — small teal marker on the destination */
+#rail .rail-group button.dest .dot {
+    position: absolute;
+    top: 6px; right: 10px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}

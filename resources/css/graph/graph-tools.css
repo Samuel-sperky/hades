@@ -1,0 +1,18 @@
+/* ---- graph-tools (v hlavičke, len na Grafe) ---- */
+#graph-tools { display: flex; gap: var(--sp-0); }
+#app-header .h-center { display: flex; align-items: center; gap: var(--sp-2); }
+#header-metrics { flex: 0 0 auto; text-align: right; }
+#graph-tools button {
+    background: none; border: none;
+    color: var(--muted);
+    width: 32px; height: 32px; min-height: 32px;
+    border-radius: var(--r-sm);
+    font-size: var(--icon-sm);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#graph-tools button:hover { background: var(--hover-fill); color: var(--text); }
+#graph-tools button.active {
+    background: var(--accent-soft); color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+}
+#graph-tools button:focus-visible { outline: none; box-shadow: var(--focus-ring); }

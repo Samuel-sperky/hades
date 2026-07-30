@@ -1,0 +1,185 @@
+/* ---------------------------------------------------------------------------
+   CHAT LOG (#chat-log) — unified with prompt into one white-glass surface
+   --------------------------------------------------------------------------- */
+#chat-log {
+    max-height: 44vh; overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding: var(--sp-2);
+    margin-bottom: -1px;
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+@keyframes rise-fade {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.msg {
+    max-width: 88%;
+    padding: var(--sp-1) 12px;
+    border-radius: var(--r-md);
+    font-size: var(--fs-base);
+    line-height: var(--lh-prose);
+    white-space: pre-wrap;
+    user-select: text;
+}
+.msg.me { align-self: flex-end; background: var(--accent-soft); color: var(--text); }
+.msg.hades {
+    align-self: flex-start;
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+/* Hades reply row — gold-ring avatar + bubble (user messages stay avatar-less, right) */
+.msg-row {
+    display: flex; align-items: flex-start; gap: var(--sp-1);
+    align-self: flex-start;
+    max-width: 88%;
+}
+.msg-row .msg { max-width: 100%; }
+.avatar {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid var(--gold-text);
+    background: none;
+    color: var(--gold-text);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: var(--fw-semibold);
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 4px;
+    user-select: none;
+}
+.msg.sys {
+    align-self: center;
+    color: var(--muted);
+    font-size: var(--fs-small);
+    background: none;
+    padding: var(--sp-0);
+}
+.msg.sys--error {
+    align-self: stretch;
+    color: var(--text-secondary);
+    background: var(--danger-soft);
+    border-left: 2px solid var(--danger);
+}
+.msg.thinking { color: var(--muted); font-style: normal; }
+.msg.thinking .dot {
+    display: inline-block;
+    animation: thinking-pulse 1.2s var(--ease) infinite;
+    opacity: .25;
+}
+.msg.thinking .dot:nth-child(2) { animation-delay: .2s; }
+.msg.thinking .dot:nth-child(3) { animation-delay: .4s; }
+@keyframes thinking-pulse {
+    0%, 100% { opacity: .25; }
+    50%      { opacity: .8; }
+}
+
+/* ---------------------------------------------------------------------------
+   CHAT KONTEXT (#chat-context) — priložené uzly nad promptom (E3)
+   --------------------------------------------------------------------------- */
+#chat-context {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0);
+    padding: var(--sp-1) 12px;
+    margin-bottom: var(--sp-1);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-1);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+#chat-context.hidden { display: none; }
+
+.ctx-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-0);
+    max-width: 100%;
+    padding: 2px 4px 2px 10px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+}
+.ctx-label {
+    min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 180px;
+}
+.ctx-x {
+    flex-shrink: 0;
+    width: 18px; height: 18px; min-height: 18px;
+    padding: 0;
+    border-radius: 50%;
+    color: var(--muted);
+    font-size: 14px;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.ctx-x:hover { background: var(--accent-soft); color: var(--accent-600); }
+.ctx-x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ctx-clear {
+    background: none; border: none;
+    color: var(--muted);
+    font-size: var(--fs-small);
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: var(--r-sm);
+    transition: color var(--dur-fast) var(--ease);
+}
+.ctx-clear:hover { color: var(--text); }
+.ctx-clear:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---------------------------------------------------------------------------
+   POTVRDZOVACIA KARTA (.suggest-card) — „Zapamätať" v chate (E2)
+   --------------------------------------------------------------------------- */
+.suggest-card {
+    align-self: stretch;
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-md);
+    box-shadow: var(--elev-1);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+.sc-head {
+    display: flex; align-items: center; gap: var(--sp-1);
+    color: var(--text);
+    font-weight: var(--fw-medium);
+    font-size: var(--fs-body);
+}
+.sc-head .ms { font-size: var(--icon-sm); color: var(--gold-text); }
+.suggest-card .sc-label {
+    width: 100%;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: var(--sp-1) 10px;
+    font-family: var(--font);
+    font-size: var(--fs-base);
+    color: var(--text);
+}
+.suggest-card .sc-label:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+.sc-row { display: flex; gap: var(--sp-1); }
+.suggest-card select {
+    flex: 1;
+    min-width: 0;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: var(--sp-1) 10px;
+    font-family: var(--font);
+    font-size: var(--fs-small);
+    color: var(--text);
+}
+.suggest-card select:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+.sc-actions { display: flex; gap: var(--sp-1); }
+.sc-actions button { flex: 1; }

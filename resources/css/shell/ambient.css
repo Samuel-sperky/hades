@@ -1,0 +1,14 @@
+/* ---------------------------------------------------------------------------
+   AMBIENT MODE — all chrome recedes on one long fade
+   --------------------------------------------------------------------------- */
+body.ambient #rail,
+body.ambient #app-header,
+body.ambient #dock,
+body.ambient #node-panel,
+body.ambient #zoomctl,
+body.ambient #prompt,
+body.ambient #toasts {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-ambient) var(--ease);
+}

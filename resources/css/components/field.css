@@ -1,0 +1,8 @@
+/* ---------------------------------------------------------------------------
+   FIELD HEIGHT (C2) — unify text inputs / selects to a 34px field rhythm
+   (range sliders + textareas keep their own sizing)
+   --------------------------------------------------------------------------- */
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+select {
+    min-height: 34px;
+}

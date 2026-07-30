@@ -1,0 +1,82 @@
+/* ---------------------------------------------------------------------------
+   APP HEADER (#app-header) — fixed top bar past the rail; hosts brand,
+   breadcrumb, view switch and the mono mini-metrics
+   --------------------------------------------------------------------------- */
+#app-header {
+    position: fixed;
+    top: var(--edge); left: 104px; right: var(--edge);
+    height: 44px;
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: 0 var(--edge);
+    /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur (viď #rail). */
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+    z-index: calc(var(--z-panel) - 1);
+}
+#app-header .h-left {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: var(--sp-2);
+    overflow: hidden;
+}
+#app-header .h-center { flex: 0 0 auto; }
+#brand-name {
+    font-family: var(--mono);
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-body);
+    letter-spacing: var(--ls-mono);
+    color: var(--text);
+    flex-shrink: 0;
+}
+#breadcrumb {
+    display: flex; align-items: center; gap: 2px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: var(--fs-small);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+#breadcrumb .crumb {
+    background: none; border: none;
+    min-height: auto;
+    padding: 2px 6px;
+    border-radius: var(--r-sm);
+    font-family: var(--mono);
+    font-size: var(--fs-small);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+#breadcrumb .crumb:hover { background: var(--hover-fill); color: var(--text); }
+#breadcrumb .crumb:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#breadcrumb .current { color: var(--text); padding: 2px 6px; }
+#breadcrumb .sep { color: var(--border-strong); flex-shrink: 0; }
+#breadcrumb .crumb-idle { color: var(--muted); padding: 2px 6px; }
+#header-metrics {
+    flex: 1;
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--ls-mono);
+    font-size: var(--fs-small);
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* Stavový čip (bdie / spí) — malá bodka + mono text vedľa breadcrumbu */
+#status-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    flex-shrink: 0;
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    white-space: nowrap;
+}
+#status-chip .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+}
+#status-chip.awake .dot { background: var(--success); }

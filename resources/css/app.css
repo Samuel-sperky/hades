@@ -1,9 +1,72 @@
-@import 'tailwindcss';
+/* AuraAI — design system entry point.
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
+   This file is ONLY an @import list and the order below IS the cascade: it is the
+   exact section order of the original public/css/mind.css. Reordering changes
+   specificity outcomes. Colour values live in tokens.css / dark.css; no other
+   partial may contain a raw hex or rgba().
 
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
-}
+   Partials suffixed -late are later occurrences of an already-imported component
+   (the monolith revisited them further down). Merging them is W2 work — moving
+   them now would change the cascade. */
+
+@import './tokens.css';
+@import './dark.css';
+@import './base/reset.css';
+@import './graph/canvas.css';
+@import './graph/local-chip.css';
+@import './components/buttons.css';
+@import './shell/rail.css';
+@import './shell/header.css';
+@import './shell/view-switch.css';
+@import './components/panel.css';
+@import './components/forms.css';
+@import './components/slider.css';
+@import './components/switch.css';
+@import './components/badge.css';
+@import './shell/dock.css';
+@import './shell/node-panel.css';
+@import './graph/timeline.css';
+@import './graph/zoom.css';
+@import './chat/composer.css';
+@import './chat/chat.css';
+@import './components/toasts.css';
+@import './graph/hover-card.css';
+@import './shell/help.css';
+@import './components/md.css';
+@import './shell/hint.css';
+@import './components/empty.css';
+@import './shell/ambient.css';
+@import './base/scrollbars.css';
+@import './base/motion.css';
+@import './components/cards.css';
+@import './screens/journal.css';
+@import './shell/node-record.css';
+@import './dock/structure.css';
+@import './components/select.css';
+@import './dock/duplicates.css';
+@import './graph/filters.css';
+@import './shell/legend.css';
+@import './graph/connect-mode.css';
+@import './shell/node-panel-late.css';
+@import './screens/screen-base.css';
+@import './graph/graph-tools.css';
+@import './shell/header-late.css';
+@import './shell/cmdk.css';
+@import './screens/today.css';
+@import './screens/library.css';
+@import './screens/today-late.css';
+@import './screens/library-late.css';
+@import './shell/pack-drawer.css';
+@import './responsive.css';
+@import './components/toast-variants.css';
+@import './components/skeleton.css';
+@import './components/field.css';
+@import './components/cards-late.css';
+@import './components/kpi.css';
+@import './charts.css';
+@import './components/cert-badge.css';
+@import './screens/origin-badge.css';
+@import './screens/decisions.css';
+@import './screens/review.css';
+@import './shell/rail-badge.css';
+@import './screens/sync-status.css';

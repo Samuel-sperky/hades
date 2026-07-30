@@ -1,0 +1,29 @@
+/* ---------------------------------------------------------------------------
+   SHIMMER SKELETON (E8) — neutral raised base + single ink sweep
+   Size it with inline width/height or utility spans; respects reduced-motion.
+   --------------------------------------------------------------------------- */
+@keyframes hades-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.shimmer {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--r-sm);
+    background: var(--surface-raised);
+    color: transparent !important;
+    user-select: none;
+    pointer-events: none;
+}
+.shimmer::after {
+    content: "";
+    position: absolute; inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent,
+        rgba(16, 29, 27, .06), transparent);
+    animation: hades-shimmer 1.4s var(--ease) infinite;
+}
+:root[data-theme="dark"] .shimmer::after {
+    background: linear-gradient(90deg, transparent,
+        rgba(255, 255, 255, .07), transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+    .shimmer::after { animation: none; }
+}

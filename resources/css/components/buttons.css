@@ -1,0 +1,67 @@
+/* ---------------------------------------------------------------------------
+   BASE BUTTON + VARIANTS (no transform lift anywhere — chrome recedes)
+   --------------------------------------------------------------------------- */
+button {
+    background: var(--panel-solid);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) 12px;
+    min-height: 32px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    font-family: var(--font);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-1);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease),
+                box-shadow var(--dur-fast) var(--ease);
+}
+button:hover { background: var(--hover-fill); border-color: var(--border-strong); }
+button:active { background: var(--accent-soft); transition-duration: 80ms; }
+button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+button:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
+
+/* Accent-filled primary action */
+button.primary {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: var(--on-accent);
+    font-weight: var(--fw-semibold);
+}
+button.primary:hover { background: var(--accent-600); border-color: var(--accent-600); }
+button.primary:active { background: var(--accent-600); }
+button.primary:disabled { background: rgba(var(--accent-rgb), .35); border-color: transparent; }
+
+/* Ghost */
+button.ghost { background: none; border: none; color: var(--muted); }
+button.ghost:hover { background: var(--accent-softer); color: var(--text); }
+
+/* Quiet destructive */
+button.danger {
+    background: none;
+    border: 1px solid var(--danger-border);
+    color: var(--danger);
+    flex: 0 0 auto;
+}
+button.danger:hover { border-color: var(--danger-border-hover); background: var(--danger-soft); }
+
+/* Icon-button (close + borderless icon controls) */
+button.close {
+    border: none;
+    background: none;
+    color: var(--muted);
+    border-radius: var(--r-sm);
+    min-height: auto;
+    padding: var(--sp-0);
+    width: 32px;
+    height: 32px;
+    font-size: var(--icon-sm);
+}
+button.close:hover { background: var(--hover-fill); color: var(--text); border-color: transparent; }
+button.close:active { background: var(--accent-soft); }
+button.close:focus-visible { box-shadow: var(--focus-ring); }

@@ -1,0 +1,39 @@
+/* ---------------------------------------------------------------------------
+   KPI GRID (.kpi-*) — compact mono readouts, one row across the dashboard top
+   --------------------------------------------------------------------------- */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--sp-1);
+    margin-bottom: var(--gutter);
+}
+.kpi-card {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+}
+.kpi-label {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+    order: 2;
+}
+.kpi-val {
+    font-family: var(--mono);
+    font-size: var(--fs-kpi); line-height: var(--lh-kpi);
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    order: 1;
+}
+.kpi-suffix {
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin-left: 3px;
+}

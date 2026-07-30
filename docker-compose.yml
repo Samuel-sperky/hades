@@ -11,6 +11,14 @@ x-app: &app
   working_dir: /var/www/html
   volumes:
     - .:/var/www/html
+    # node_modules žije VO VOLUME kontajnera, nie na hostiteľovi. Vite 8 stojí na
+    # rolldown, ktorý má natívnu binárku per platforma: `npm install` spustený vo
+    # Windows dotiahne len @rolldown/binding-win32-x64-msvc a `npm run build`
+    # v Linux kontajneri padne na "Cannot find module '../rolldown-binding.linux-x64-gnu.node'".
+    # Volume oddelí obe inštalácie — host aj kontajner si držia svoje binárky
+    # z toho istého package-lock.json. Po `docker compose down -v` treba znovu
+    # `docker compose exec app npm ci`.
+    - nodemodules:/var/www/html/node_modules
     - "${CC_TRANSCRIPTS:-C:/Users/Ucet/.claude/projects}:/transcripts:ro"
     # Zapisovateľný mount pre export vedomia späť do Claude memory.
     # Cesta je Claude Code konvencia: názov projektového adresára s / a : nahradenými -.
@@ -125,3 +133,4 @@ volumes:
   dbdata:
   redisdata:
   ollamadata:
+  nodemodules:

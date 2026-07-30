@@ -1,0 +1,71 @@
+/* Dark theme — tokens are the only switch point, no selector renames.
+   JS (HADES.setTheme) stamps data-theme="dark" on :root and persists hades.theme.
+   Values follow the canvas THEMES.dark family (paper #0e1413, ink #eaf3f1).
+   Node identity colors (--node-*) stay untouched. */
+:root[data-theme="dark"] {
+    --bg-rgb: 14, 20, 19;                 /* dark paper, matches canvas T.paper */
+    --panel-rgb: 19, 27, 26;
+    /* --panel-alpha stays slider-owned (applyOpts sets it inline on :root) */
+    --surface-2: #16201f;
+    --field-bg: #121b1a;
+    --scrim: rgba(6, 10, 9, .55);
+    --border: rgba(255, 255, 255, .10);
+    --border-strong: rgba(255, 255, 255, .16);
+    --line-soft: rgba(255, 255, 255, .07);
+    --top-rim: rgba(255, 255, 255, .06);
+    --hover-fill: rgba(255, 255, 255, .06);
+    --surface-subtle: rgba(255, 255, 255, .08);
+    --scroll-thumb: rgba(255, 255, 255, .16);
+    --text: #eaf3f1;
+    --text-secondary: #c3d1ce;
+    --muted: #8a9b98;
+    --muted-strong: #b9c7c4;
+    --on-accent: #0e1413;
+    --accent-300: #05bcc4;
+    --accent-400: #05bcc4;
+    --accent: #05bcc4;
+    --accent-600: #03797e;
+    --accent-rgb: 5, 188, 196;
+    --accent-soft: rgba(5, 188, 196, .16);
+    --accent-softer: rgba(5, 188, 196, .10);
+    --accent-press: rgba(5, 188, 196, .24);
+    --border-accent: rgba(5, 188, 196, .45);
+    --focus-ring: 0 0 0 3px rgba(5, 188, 196, .32);
+    --glow-accent: 0 1px 2px rgba(0, 0, 0, .30), 0 6px 18px -10px rgba(5, 188, 196, .35);
+    --glow-accent-lg: 0 8px 24px -12px rgba(5, 188, 196, .30);
+    --gold-text: #d8b878;
+    --gold-soft: rgba(184, 138, 58, .18);
+    --success: #34d399;
+    --success-soft: rgba(52, 211, 153, .18);
+    --danger: #f07575;
+    --danger-rgb: 240, 117, 117;
+    --danger-soft: rgba(240, 117, 117, .16);
+    --danger-border: rgba(240, 117, 117, .34);
+    --danger-border-hover: rgba(240, 117, 117, .60);
+    --warn: #f59e0b;
+    --elev-1: 0 1px 2px rgba(0, 0, 0, .40), inset 0 1px 0 var(--top-rim);
+    --elev-2: 0 1px 2px rgba(0, 0, 0, .40), 0 8px 24px -14px rgba(0, 0, 0, .50), inset 0 1px 0 var(--top-rim);
+    --elev-3: 0 2px 4px rgba(0, 0, 0, .45), 0 24px 56px -22px rgba(0, 0, 0, .60), inset 0 1px 0 var(--top-rim);
+    --elev-tooltip: 0 2px 4px rgba(0, 0, 0, .45), 0 12px 28px -16px rgba(0, 0, 0, .55), inset 0 1px 0 var(--top-rim);
+
+    /* ---- APOLLO INTEGRATION tokens — dark mirror ---- */
+    --surface-raised: #1a2322;            /* one step above panel #131b1a */
+    --track: rgba(255, 255, 255, .08);
+
+    /* certainty ramp — lighter tints, read 5.7–9.2:1 on dark panel/surface */
+    --cert-overene: #5cc48d;              /* 8.12 on panel */
+    --cert-hypoteza: #d8b878;             /* 9.21 on panel */
+    --cert-pasca: #f07575;                /* 6.26 on panel */
+    --cert-none: #9aa1ad;                 /* 6.73 on panel */
+    --cert-overene-soft: rgba(92, 196, 141, .16);
+    --cert-hypoteza-soft: rgba(216, 184, 120, .16);
+    --cert-pasca-soft: rgba(240, 117, 117, .16);
+    --cert-none-soft: rgba(154, 161, 173, .14);
+
+    /* heat ramp — dark cells climb from a low neutral to bright accent cyan */
+    --heat-0: #1c2726;
+    --heat-1: #26504f;
+    --heat-2: #2f7d7f;
+    --heat-3: #3aa7ab;
+    --heat-4: #4fd0d4;                    /* 9.43 on panel */
+}

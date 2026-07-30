@@ -1,0 +1,22 @@
+/* ---------------------------------------------------------------------------
+   SELECT — shared field treatment (node move + dept move)
+   --------------------------------------------------------------------------- */
+#node-form select, .dept-actions select {
+    width: 100%;
+    background: var(--field-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) 12px;
+    font-family: var(--font);
+    font-size: var(--fs-base);
+    cursor: pointer;
+    transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+}
+#node-form select:hover, .dept-actions select:hover { border-color: var(--border-strong); }
+#node-form select:focus-visible, .dept-actions select:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+#node-form label select { margin-top: var(--sp-1); }

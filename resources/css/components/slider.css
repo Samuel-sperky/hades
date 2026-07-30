@@ -1,0 +1,61 @@
+/* ---------------------------------------------------------------------------
+   SLIDER — one shared custom treatment (#tl-range + settings sliders)
+   JS sets --pct on the element for the teal fill.
+   --------------------------------------------------------------------------- */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    margin: 0;
+    border: none;
+    border-radius: var(--r-pill);
+    background: linear-gradient(to right,
+        var(--accent) 0 var(--pct, 100%),
+        var(--line-soft) var(--pct, 100%));
+    cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid var(--accent);
+    margin-top: -5px;
+    cursor: pointer;
+    transition: box-shadow var(--dur-fast) var(--ease);
+}
+input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid var(--accent);
+    cursor: pointer;
+    transition: box-shadow var(--dur-fast) var(--ease);
+}
+input[type="range"]::-webkit-slider-thumb:hover,
+input[type="range"]::-webkit-slider-thumb:active { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .16); }
+input[type="range"]::-moz-range-thumb:hover,
+input[type="range"]::-moz-range-thumb:active { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .16); }
+input[type="range"]:focus-visible { outline: none; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .30); }
+input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .30); }
+input[type="range"]:disabled { opacity: .5; }
+
+label.slider {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+    font-size: var(--fs-body);
+    color: var(--muted);
+    font-weight: var(--fw-medium);
+}
+label.slider input[type="range"] { width: 130px; flex: 0 0 auto; }
+label.slider output {
+    color: var(--text);
+    font-weight: var(--fw-medium);
+    min-width: 44px;
+    text-align: right;
+    flex-shrink: 0;
+}

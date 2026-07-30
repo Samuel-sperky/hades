@@ -2,7 +2,10 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => view('mind'));
+// Koreňová šablóna je resources/views/app.blade.php — len zoznam @include
+// partialov s jednoznačnými vlastníkmi (CLAUDE.md §4). Pôvodný monolit
+// mind.blade.php (417 riadkov) tým zanikol.
+Route::get('/', fn () => view('app'));
 
 if (app()->environment('local')) {
     Route::post('/debug/snapshot', function (Illuminate\Http\Request $request) {

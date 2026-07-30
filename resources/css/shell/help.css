@@ -1,0 +1,46 @@
+/* ---------------------------------------------------------------------------
+   HELP OVERLAY (#help-overlay / #help-card / .key-row)
+   --------------------------------------------------------------------------- */
+#help-overlay {
+    position: fixed; inset: 0;
+    z-index: var(--z-overlay);
+    background: var(--scrim);
+    backdrop-filter: var(--blur-scrim);
+    display: flex; align-items: center; justify-content: center;
+    animation: fade-in var(--dur-base) var(--ease);
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+#help-card {
+    width: 380px; max-height: 70vh; overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-3);
+    backdrop-filter: var(--blur-3);
+    box-shadow: var(--elev-3);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+#help-card h2 { color: var(--text); font-weight: var(--fw-semibold); }
+
+.key-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-0);
+    font-size: var(--fs-body);
+    border-bottom: 1px solid var(--border);
+}
+.key-row:last-child { border-bottom: none; }
+.key-row .label, .key-row > span { color: var(--text-secondary); font-weight: var(--fw-regular); }
+.key-row kbd {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; height: 22px;
+    padding: 0 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font-weight: var(--fw-medium);
+    font-size: var(--fs-small);
+}
+.key-row .sep { color: var(--muted); margin: 0 var(--sp-0); }

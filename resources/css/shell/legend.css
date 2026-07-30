@@ -1,0 +1,32 @@
+/* ---------------------------------------------------------------------------
+   LEGENDA — klikateľné oblasti (.legend-area) — toggle viditeľnosti na plátne
+   --------------------------------------------------------------------------- */
+#legend-areas .legend-area {
+    width: 100%;
+    min-height: auto;
+    justify-content: flex-start;
+    text-align: left;
+    background: none;
+    border: none;
+    font-family: var(--font);
+    font-weight: var(--fw-regular);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+#legend-areas .legend-area:hover { background: var(--hover-fill); }
+#legend-areas .legend-area:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#legend-areas .legend-area .la-name {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#legend-areas .legend-area .la-eye {
+    font-size: 16px;
+    color: var(--muted);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+#legend-areas .legend-area:hover .la-eye,
+#legend-areas .legend-area:focus-visible .la-eye { opacity: 1; }
+#legend-areas .legend-area.off { opacity: .4; }
+#legend-areas .legend-area.off .la-eye { opacity: 1; }

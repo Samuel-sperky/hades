@@ -1,0 +1,39 @@
+/* ---------------------------------------------------------------------------
+   INPUTS / TEXTAREA / LABELS
+   --------------------------------------------------------------------------- */
+input:not([type="range"]), textarea {
+    width: 100%;
+    background: var(--field-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) 12px;
+    font-family: var(--font);
+    font-size: var(--fs-base);
+    transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+}
+input:not([type="range"])::placeholder, textarea::placeholder { color: var(--muted); }
+input:not([type="range"]):hover, textarea:hover { border-color: var(--border-strong); }
+input:not([type="range"]):focus-visible, textarea:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+input:not([type="range"]):focus, textarea:focus { outline: none; border-color: var(--accent); }
+input:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
+
+textarea {
+    line-height: var(--lh-prose);
+    resize: vertical;
+    min-height: 72px;
+}
+
+label {
+    display: block;
+    font-size: var(--fs-small);
+    color: var(--muted);
+    font-weight: var(--fw-medium);
+    margin-bottom: var(--sp-1);
+}
+#node-form label { margin-bottom: var(--sp-2); }
+#node-form label input, #node-form label textarea { margin-top: var(--sp-1); }

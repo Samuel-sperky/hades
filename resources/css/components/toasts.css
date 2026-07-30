@@ -1,0 +1,49 @@
+/* ---------------------------------------------------------------------------
+   TOASTS (#toasts) — white glass, inset teal bar, pause-on-hover
+   --------------------------------------------------------------------------- */
+#toasts {
+    position: fixed;
+    bottom: calc(var(--edge) + 128px); right: var(--edge);
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    z-index: var(--z-toast);
+    pointer-events: none;
+}
+/* Toast je <button> (klávesnica) — reset button chrómu, vlastný glass vzhľad */
+.toast {
+    position: relative;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    text-align: left;
+    width: auto; min-height: auto;
+    font-family: var(--font);
+    font-weight: var(--fw-regular);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) 12px var(--sp-1) 16px;
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    font-size: var(--fs-body);
+    color: var(--text-secondary);
+    cursor: pointer;
+    pointer-events: auto;
+    max-width: 320px;
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+.toast::before {
+    content: "";
+    position: absolute;
+    left: 0; top: var(--sp-1); bottom: var(--sp-1);
+    width: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+.toast .ms { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
+.toast strong { color: var(--text); font-weight: var(--fw-semibold); }
+.toast:hover { border-color: var(--border-accent); background: var(--panel-solid); }
+.toast:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.toast.leaving {
+    opacity: 0;
+    transform: translateY(var(--motion-shift));
+    transition: opacity var(--dur-slow) var(--ease-in), transform var(--dur-slow) var(--ease-in);
+}

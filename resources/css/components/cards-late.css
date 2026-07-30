@@ -1,0 +1,37 @@
+/* ---------------------------------------------------------------------------
+   DASHBOARD CARD (.dash-card) + grid — flat at rest (B6), hairline lift on hover
+   --------------------------------------------------------------------------- */
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--gutter);
+    margin-bottom: var(--gutter);
+    align-items: start;
+}
+.dash-card {
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: none;                     /* flattened resting card */
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.dash-card.span-2 { grid-column: span 2; }
+.dash-card > .dash-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-1);
+}
+.dash-card .dash-title {
+    font-size: var(--fs-h2); font-weight: var(--fw-semibold); color: var(--text);
+    line-height: var(--lh-title);
+}
+.dash-card .dash-note {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+/* Flatten the older resting cards too (B6) — border-defined, no ambient shadow */
+.today-card, .today-search, .today-card-link, .dir-group, .dir-preview-wrap, .dir-saved-item {
+    box-shadow: none;
+}

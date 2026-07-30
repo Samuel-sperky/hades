@@ -1,0 +1,186 @@
+/* ============================================================================
+   HADES — AI mind design system · AURA-LIGHT
+   "A precision loupe over a living network on warm paper."
+   Light theme (default) · Geist / Geist Mono / Playfair · Material Symbols Rounded
+   ONE teal accent = interactive chrome · gold = reserved brand/core moment only
+   Retheme of token VALUES + canvas literals — all IDs/classes/JS hooks preserved.
+   ============================================================================ */
+
+/* ---------------------------------------------------------------------------
+   TOKENS — single source of truth. No raw hex/rgba outside :root.
+   --------------------------------------------------------------------------- */
+:root {
+    /* ---- background & surface layers (warm paper, one RGB source) ---- */
+    --bg-rgb: 248, 244, 247;              /* paper #f8f4f7 */
+    --bg: rgb(var(--bg-rgb));
+    --panel-rgb: 255, 255, 255;           /* white surface */
+    --panel-alpha: 0.92;                  /* near-solid; glass-on-dark reads as milk on light */
+    --panel: rgba(var(--panel-rgb), var(--panel-alpha));
+    --panel-solid: rgb(var(--panel-rgb));
+    --surface-2: #fbf7f9;
+    --field-bg: #fbf7f9;                  /* --surface-2, not a bg-alpha */
+    --scrim: rgba(16, 29, 27, .32);       /* ink #101d1b @32%, not black */
+
+    /* ---- borders & neutral interactive surfaces (SOLID Aura lines) ---- */
+    --border: #e6dee3;                    /* --line */
+    --border-strong: #d9ced6;             /* darker line for strong edges / kbd */
+    --line-soft: #f0e9ee;                 /* --line-soft */
+    --top-rim: rgba(255, 255, 255, .7);   /* faint white inset highlight for raised white panels */
+    --hover-fill: rgba(16, 29, 27, .05);  /* ink @5% neutral hover wash */
+    --surface-subtle: #eef9f9;            /* --accent-tint for chips/badges/track */
+    --scroll-thumb: rgba(86, 105, 100, .32); /* --muted @32% */
+
+    /* ---- text roles (Aura ink ramp) ---- */
+    --text: #101d1b;                      /* --ink (15.8:1 on paper) */
+    --text-secondary: #2d3a38;            /* --ink-soft (11.3:1) */
+    --muted: #566964;                     /* --muted (5.3:1, passes AA) */
+    --muted-strong: #2d3a38;
+    --on-accent: #ffffff;                 /* white on #03797e, passes AA at 13px/600 */
+
+    /* ---- Aura teal accent ramp (ONE ramp, chrome only) ---- */
+    --accent-300: #05bcc4;                /* --accent2, light hover ink */
+    --accent-400: #05bcc4;
+    --accent: #03797e;                    /* --accent */
+    --accent-600: #05666a;                /* --accent-ink, pressed/darker */
+    --accent-rgb: 3, 121, 126;            /* JS-facing triplet: slider fill, msg.me, rings */
+    --accent-soft: #d6f5f6;               /* --accent-soft, solid tint for active pills */
+    --accent-softer: #eef9f9;             /* --accent-tint */
+    --accent-press: #a9dedf;              /* --accent-line, pressed */
+    --border-accent: #a9dedf;             /* --accent-line */
+    --focus-ring: 0 0 0 3px rgba(3, 121, 126, .28);
+    /* glows are now soft teal-tinted RINGS/SHADOWS, never additive blooms */
+    --glow-accent: 0 1px 2px rgba(15, 40, 38, .05), 0 6px 18px -10px rgba(3, 121, 126, .30);
+    --glow-accent-lg: 0 8px 24px -12px rgba(3, 121, 126, .28);
+
+    /* ---- reserved jewelry gold (brand/core ONLY) ---- */
+    --gold: #b88a3a;
+    --brand-gold: #d8b878;
+    --gold-text: #8a6417;
+    --gold-soft: #f3e7cf;
+    --glow-gold: 0 1px 2px rgba(138, 100, 23, .10), 0 8px 22px -12px rgba(184, 138, 58, .40);
+
+    /* ---- semantic (read on paper) ---- */
+    --success: #0f8c5a;                   /* --ok */
+    --success-soft: #dcf3e8;
+    --danger: #d64545;
+    --danger-rgb: 214, 69, 69;            /* JS/derived triplet: msg.sys--error, danger btn */
+    --danger-soft: #fde8e8;
+    --danger-border: rgba(214, 69, 69, .34);
+    --danger-border-hover: rgba(214, 69, 69, .60);
+    --warn: #d97706;
+
+    /* ---- canvas identity colors (JS on #mind only; NOT chrome) ---- */
+    --node-core: #b88a3a;                 /* gold — brand core */
+    --node-skill: #03797e;                /* teal accent */
+    --node-memory: #2f6d8f;               /* steel-teal, distinct from accent */
+    --node-project: #c2761c;              /* warm amber, darker than --warn for fill legibility */
+    --node-relation: #05bcc4;             /* accent2 cyan */
+
+    /* ---- radius set (Aura 8/10/14 ladder) ---- */
+    --r-sm: 8px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --r-pill: 999px;
+
+    /* ---- 8px spacing scale (+ one 4px sub-step) ---- */
+    --sp-0: 4px;
+    --sp-1: 8px;
+    --sp-2: 16px;
+    --sp-3: 24px;
+    --sp-4: 32px;
+    --sp-5: 40px;
+    --edge: 16px;
+
+    /* ---- type scale ---- */
+    --fs-caption: 11px;   --lh-caption: 1.4;
+    --fs-small: 12px;     --lh-small: 1.4;
+    --fs-body: 13px;      --lh-body: 1.5;
+    --fs-base: 14px;      --lh-base: 1.5;
+    --fs-title: 16px;     --lh-title: 1.3;
+    --fs-display: 20px;   --lh-display: 1.25;
+    --lh-prose: 1.6;
+    --ls-caps: 0.08em;
+    --ls-normal: 0;
+    --ls-mono: 0.01em;                    /* mono tracking for readouts */
+    --ls-mono-caps: 0.06em;               /* mono + uppercase micro-labels */
+    --fw-regular: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+
+    /* ---- icon size tiers ---- */
+    --icon-sm: 18px;
+    --icon-md: 20px;
+
+    /* ---- fonts ---- */
+    --font: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SFMono-Regular", "Cascadia Code", monospace;
+    --serif: "Playfair Display", Georgia, serif;
+
+    /* ---- elevation ladder — soft teal-tinted, low-opacity, negative-spread ---- */
+    --elev-1: 0 1px 2px rgba(15, 40, 38, .05), inset 0 1px 0 var(--top-rim);
+    --elev-2: 0 1px 2px rgba(15, 40, 38, .05), 0 8px 24px -14px rgba(15, 40, 38, .12), inset 0 1px 0 var(--top-rim);
+    --elev-3: 0 2px 4px rgba(15, 40, 38, .06), 0 24px 56px -22px rgba(15, 40, 38, .20), inset 0 1px 0 var(--top-rim);
+    --elev-tooltip: 0 2px 4px rgba(15, 40, 38, .06), 0 12px 28px -16px rgba(15, 40, 38, .18), inset 0 1px 0 var(--top-rim);
+
+    /* ---- blur — dialed down; heavy saturate() muddies white panels on paper ---- */
+    --blur-1: blur(6px);
+    --blur-2: blur(10px);
+    --blur-3: blur(16px);
+    --blur-scrim: blur(4px);
+
+    /* ---- motion ---- */
+    --dur-fast: 150ms;
+    --dur-base: 180ms;
+    --dur-slow: 200ms;
+    --dur-ambient: 400ms;
+    --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --motion-shift: 8px;
+
+    /* ---- z-index ladder ---- */
+    --z-canvas: 0;
+    --z-vignette: 1;
+    --z-chrome: 10;
+    --z-panel: 20;
+    --z-toast: 30;
+    --z-tooltip: 40;
+    --z-overlay: 50;
+
+    /* ======================================================================
+       APOLLO INTEGRATION — brain-indexer tokens (Apollo discipline, Aura hue).
+       Layered neutral surfaces, certainty ramp, teal heat ramp, dashboard type.
+       Light values here; dark override mirrors them in :root[data-theme="dark"].
+       ====================================================================== */
+
+    /* ---- layered neutral surfaces (one step above paper/white) ---- */
+    --surface-raised: #f1ebef;            /* fill above white panels: kpi inner, shimmer base */
+    --track: #ece4ea;                     /* inset track for dbar / progress (neutral, de-tealed) */
+
+    /* ---- certainty ramp (semantic, reads >=4.5:1 on paper AND white)
+           overene 4.88 · hypoteza 5.30 · pasca 4.98 · none 5.35 on paper ---- */
+    --cert-overene: #1f7a4d;              /* ✅ overené — deep green */
+    --cert-hypoteza: #8f5a12;             /* 🧪 hypotéza — deep amber */
+    --cert-pasca: #c0392f;                /* ⚠️ pasca — deep red */
+    --cert-none: #566964;                 /* structured, no certainty — muted ink */
+    /* soft badge fills — low-alpha hue washes, text color stays the cert-* above */
+    --cert-overene-soft: rgba(31, 122, 77, .12);
+    --cert-hypoteza-soft: rgba(143, 90, 18, .12);
+    --cert-pasca-soft: rgba(192, 57, 47, .12);
+    --cert-none-soft: rgba(86, 105, 100, .10);
+
+    /* ---- activity heat ramp (0 = empty neutral, 1..4 = teal saturation climb) ---- */
+    --heat-0: #e9f1f1;                    /* empty cell — neutral-teal whisper */
+    --heat-1: #b6e0e1;
+    --heat-2: #6fc3c5;
+    --heat-3: #189aa0;
+    --heat-4: #036d72;                    /* densest — deep accent teal (5.61:1 on paper) */
+
+    /* ---- dashboard type scale ---- */
+    --fs-kpi: 30px;   --lh-kpi: 1;        /* big mono KPI readouts */
+    --fs-h1: 28px;                        /* screen title (serif) */
+    --fs-h2: 16px;                        /* dashboard block / section heading */
+
+    /* ---- spacing extras ---- */
+    --sp-2h: 12px;                        /* half-step between sp-1(8) and sp-2(16) */
+    --gutter: 20px;                       /* dashboard grid gutter */
+}

@@ -1,0 +1,62 @@
+/* ---------------------------------------------------------------------------
+   DOCK + NODE-PANEL — shared white-glass primitive
+   --------------------------------------------------------------------------- */
+#dock, #node-panel {
+    position: fixed;
+    top: calc(var(--edge) + 44px + var(--sp-1)); bottom: var(--edge);
+    width: 300px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    z-index: var(--z-panel);
+    padding: var(--sp-2);
+    overflow-y: auto;
+}
+#dock { left: 104px; animation: panel-in-l var(--dur-slow) var(--ease); }
+#node-panel {
+    right: var(--edge);
+    animation: panel-in-r var(--dur-slow) var(--ease);
+    /* left color-rail echoing the selected node; --node-c set inline by JS */
+    border-left: 2px solid var(--node-c, var(--border));
+}
+
+@keyframes panel-in-l {
+    from { opacity: 0; transform: translateX(calc(-1 * var(--motion-shift))); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes panel-in-r {
+    from { opacity: 0; transform: translateX(var(--motion-shift)); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.dock-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--sp-2);
+    gap: var(--sp-1);
+}
+.dock-head h2 {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding-right: var(--sp-1);
+    font-size: var(--fs-title);
+    line-height: var(--lh-title);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+}
+
+/* Section headings — technical mono micro-labels */
+h3 {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin: var(--sp-3) 0 var(--sp-1);
+}
+section > h3:first-child, #node-view > h3:first-child { margin-top: 0; }
+
+p { font-size: var(--fs-base); }

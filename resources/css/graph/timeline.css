@@ -1,0 +1,25 @@
+/* ---------------------------------------------------------------------------
+   TIMELINE (#timeline) — kompaktne v hlavičke, pred metrikami
+   --------------------------------------------------------------------------- */
+#timeline {
+    display: flex; align-items: center; gap: var(--sp-1);
+    flex: 0 0 auto;
+}
+#tl-play {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: var(--on-accent);
+    border-radius: var(--r-pill);
+    width: 26px; height: 26px; min-height: 26px;
+    padding: 0;
+    font-size: var(--icon-sm);
+    flex-shrink: 0;
+}
+#tl-play:hover { background: var(--accent-600); border-color: var(--accent-600); }
+#tl-range { width: clamp(120px, 16vw, 220px); }
+#tl-label {
+    font-size: var(--fs-small);
+    color: var(--muted);
+    min-width: 56px;
+    flex-shrink: 0;
+}

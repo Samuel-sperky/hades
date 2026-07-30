@@ -1,0 +1,6 @@
+/* ---------------------------------------------------------------------------
+   CONNECT MODE — kurzor krížika počas ručného prepájania uzlov
+   --------------------------------------------------------------------------- */
+#mind.linking,
+#mind.linking.dragging,
+#mind.linking.grabbing { cursor: crosshair; }

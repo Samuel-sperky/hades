@@ -1,0 +1,56 @@
+/* .tag — NEUTRAL at rest (business-clean); teal only as --accent / active.
+   Contract §4.5: .tag / .tag--accent own tag styling (aliases .tag-chip NOT used). */
+.tag {
+    display: inline-flex; align-items: center;
+    font-size: var(--fs-caption); font-family: var(--mono);
+    letter-spacing: var(--ls-mono);
+    padding: 1px 8px; border-radius: var(--r-pill);
+    background: var(--surface-2); color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+/* Teal accent variant — active filter / selected tag */
+.tag--accent, .tag.active {
+    background: var(--accent-soft); color: var(--accent-600);
+    border-color: var(--border-accent);
+}
+.tag.muted { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
+
+#journal-filter { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-bottom: var(--sp-2); }
+
+/* Active filter chip (project filter in the journal) */
+.chip.active {
+    background: var(--accent-soft);
+    border-color: var(--border-accent);
+    color: var(--accent-600);
+    font-weight: var(--fw-semibold);
+}
+
+/* Day group header in the journal timeline — mono micro-label + hairline rule */
+.day-head {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin: var(--sp-2) 0 var(--sp-0);
+}
+.day-head::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+#journal-list .day-head:first-child { margin-top: 0; }
+
+/* Unread journal dot on the rail button */
+#btn-journal .dot {
+    position: absolute;
+    top: 7px; right: 7px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    pointer-events: none;
+}

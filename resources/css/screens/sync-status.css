@@ -1,0 +1,19 @@
+/* ---------------------------------------------------------------------------
+   SYNC STATUS DOT (.status-dot) — shared indicator for the Dnes Sync card
+   data-status = ok | partial | error | running
+   --------------------------------------------------------------------------- */
+.status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; background: var(--muted);
+}
+.status-dot[data-status="ok"] { background: var(--success); }
+.status-dot[data-status="partial"] { background: var(--warn); }
+.status-dot[data-status="error"] { background: var(--danger); }
+.status-dot[data-status="running"] {
+    background: var(--accent);
+    animation: sync-pulse 1.2s var(--ease) infinite;
+}
+@keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+    .status-dot[data-status="running"] { animation: none; }
+}

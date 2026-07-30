@@ -1,0 +1,50 @@
+/* ---------------------------------------------------------------------------
+   SIEŤ — FILTER (label.check + .check-cap) — vlastný 18px checkbox, teal check
+   --------------------------------------------------------------------------- */
+.check-cap {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin: var(--sp-2) 0 var(--sp-1);
+}
+
+label.check {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: var(--sp-1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-regular);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+label.check input {
+    position: absolute;
+    opacity: 0;
+    width: 1px; height: 1px;
+    pointer-events: none;
+}
+label.check .box {
+    width: 18px; height: 18px;
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--field-bg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+label.check:hover .box { border-color: var(--accent); }
+label.check input:checked + .box {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+label.check input:checked + .box::after {
+    content: "";
+    width: 9px; height: 5px;
+    border-left: 2px solid var(--on-accent);
+    border-bottom: 2px solid var(--on-accent);
+    transform: translateY(-1px) rotate(-45deg);
+}
+label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }

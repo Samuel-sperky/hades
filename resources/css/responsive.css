@@ -1,0 +1,177 @@
+/* ---------------------------------------------------------------------------
+   RESPONSIVE — užšie panely a redukovaná hlavička na menších oknách
+   --------------------------------------------------------------------------- */
+@media (max-width: 1280px) {
+    #dock, #node-panel { width: min(300px, 26vw); }
+    #prompt.open,
+    #prompt:focus-within { width: min(600px, calc(100vw - 96px - min(300px, 26vw) - 48px)); }
+    #header-metrics { display: none; }
+}
+
+@media (max-width: 900px) {
+    #dock, #node-panel {
+        left: auto; right: var(--edge);
+        width: min(340px, calc(100vw - 104px));
+        z-index: var(--z-panel);
+    }
+    #brand-name { display: none; }
+    #cmdk-trigger .cmdk-hint,
+    #cmdk-trigger kbd { display: none; }
+}
+
+/* ===========================================================================
+   FÁZA SMERNICA — obrazovka prompt builderu (šablóny / návrh / náhľad / uložené)
+   =========================================================================== */
+
+/* Šablóny — rýchle štarty ako čipy */
+.dir-templates { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: var(--sp-2); }
+.dir-tpl {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-body); color: var(--text-secondary);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.dir-tpl:hover, .dir-tpl:focus-visible {
+    border-color: var(--border-accent); background: var(--accent-soft); color: var(--text); outline: none;
+}
+.dir-tpl .ms { font-size: var(--icon-sm); color: var(--accent); }
+
+/* Vstup úlohy + tlačidlo Poskladať */
+.dir-input-row { display: flex; gap: var(--sp-1); margin-bottom: var(--sp-3); }
+.dir-task {
+    flex: 1; min-width: 0;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) var(--sp-2); min-height: 40px;
+    font-size: var(--fs-base); font-family: var(--font);
+    color: var(--text);
+}
+.dir-task::placeholder { color: var(--muted); }
+.dir-task:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
+.dir-input-row .primary { flex-shrink: 0; }
+
+/* Dva stĺpce: návrh (checklist) vľavo, náhľad vpravo */
+.dir-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-3);
+    align-items: start;
+}
+
+/* Návrh — skupiny s checkboxmi */
+.dir-suggest { display: flex; flex-direction: column; gap: var(--sp-2); }
+.dir-group {
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-2);
+    box-shadow: var(--elev-1);
+}
+.dir-group-head {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-size: var(--fs-body); font-weight: var(--fw-medium);
+    color: var(--text); margin-bottom: var(--sp-1);
+}
+.dir-group-head .ms { font-size: var(--icon-sm); color: var(--accent); }
+.dir-group-n { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
+
+/* Položka návrhu — reuse label.check (18px teal box), vlastný text layout */
+label.check.dir-check {
+    align-items: flex-start; gap: 10px;
+    padding: var(--sp-1);
+    border-radius: var(--r-md);
+    margin-bottom: 0;
+    transition: background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+label.check.dir-check:hover { background: var(--accent-softer); }
+label.check.dir-check .box { margin-top: 1px; }
+label.check.dir-check.off { opacity: .5; }
+.dir-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dir-item-label {
+    display: flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap;
+    font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text);
+}
+.dir-sub {
+    font-size: var(--fs-small); color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.dir-path {
+    font-family: var(--mono); font-size: var(--fs-caption);
+    color: var(--accent); word-break: break-all;
+}
+.dir-badge {
+    font-size: 10px; font-weight: var(--fw-medium);
+    text-transform: uppercase; letter-spacing: var(--ls-caps);
+    padding: 1px 7px; border-radius: var(--r-pill); flex-shrink: 0;
+}
+.dir-badge.ok { color: var(--accent); background: var(--surface-subtle); border: 1px solid var(--border-accent); }
+.dir-badge.warn { color: var(--muted); background: var(--surface-subtle); border: 1px solid var(--border); }
+
+/* Náhľad smernice */
+.dir-preview-wrap {
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+    overflow: hidden;
+    position: sticky; top: 0;
+}
+.dir-preview-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2);
+    border-bottom: 1px solid var(--border);
+}
+.dir-preview-head h2 { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); }
+.dir-actions { display: flex; gap: var(--sp-0); }
+.dir-actions .ms {
+    width: 32px; height: 32px; min-height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: var(--icon-sm); border-radius: var(--r-sm);
+}
+.dir-actions .ms:hover { background: var(--accent-softer); color: var(--accent); }
+.dir-preview.md-body {
+    flex: none; padding: var(--sp-2) var(--sp-3);
+    max-height: 60vh; overflow-y: auto;
+}
+
+/* Uložené smernice */
+.dir-saved-sec h2 { font-size: var(--fs-title); color: var(--text); margin-bottom: var(--sp-2); }
+.dir-saved {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--sp-1);
+}
+.dir-saved-item {
+    display: flex; align-items: center; gap: var(--sp-2);
+    text-align: left; width: 100%;
+    padding: var(--sp-1) var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md); color: var(--text);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.dir-saved-item:hover, .dir-saved-item:focus-visible {
+    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+}
+.dir-saved-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.dsi-text { display: flex; flex-direction: column; min-width: 0; }
+.dsi-title { font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dsi-path { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 860px) {
+    .dir-cols { grid-template-columns: 1fr; }
+    .dir-preview-wrap { position: static; }
+}
+
+/* ###########################################################################
+   APOLLO INTEGRATION — component library (Agent D1)
+   Business-clean: layered neutral surfaces, flat resting cards, one teal accent.
+   Consumed by charts.js (F1), renderToday (F2), Rozhodnutia/Kontrola (F3),
+   canvas + library + panel (F4). Contract §4.5 class names are binding.
+   ########################################################################### */

@@ -1,0 +1,12 @@
+/* ---------------------------------------------------------------------------
+   CANVAS + MATTED-STAGE VIGNETTE (canvas is the hero, now warm paper)
+   --------------------------------------------------------------------------- */
+#mind {
+    position: fixed;
+    inset: 0;
+    display: block;
+    cursor: grab;
+    z-index: var(--z-canvas);
+}
+#mind.dragging { cursor: grabbing; }
+#mind.grabbing { cursor: grabbing; } /* ťahanie uzla (grab & fling) */

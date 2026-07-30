@@ -1,0 +1,26 @@
+/* ---------------------------------------------------------------------------
+   HOVER CARD (#hover-card) — tooltip
+   --------------------------------------------------------------------------- */
+#hover-card {
+    position: fixed;
+    z-index: var(--z-tooltip);
+    pointer-events: none;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 10px 14px;
+    backdrop-filter: var(--blur-1);
+    box-shadow: var(--elev-tooltip);
+    max-width: 240px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
+}
+#hover-card.show { opacity: 1; transform: translateY(0); }
+#hover-card .t { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--text); }
+#hover-card .m {
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    margin-top: 3px;
+}

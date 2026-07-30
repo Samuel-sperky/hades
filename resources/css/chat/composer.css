@@ -1,0 +1,68 @@
+/* ---------------------------------------------------------------------------
+   PROMPT BAR (#prompt) — owns bottom-center; white glass, teal focus ring
+   --------------------------------------------------------------------------- */
+#prompt {
+    position: fixed;
+    bottom: var(--edge); left: 50%;
+    transform: translateX(-50%);
+    width: 320px;
+    z-index: var(--z-chrome);
+    transition: width var(--dur-slow) var(--ease);
+}
+#prompt.open { width: min(600px, 60vw); }
+
+#prompt-form {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) 16px;
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    transition: border-color var(--dur-slow) var(--ease), box-shadow var(--dur-slow) var(--ease);
+}
+#prompt-form:focus-within {
+    border-color: var(--border-accent);
+    box-shadow: var(--elev-2), 0 0 0 3px rgba(var(--accent-rgb), .16);
+}
+/* Open prompt emits a soft teal ring echoing node rings */
+#prompt.open #prompt-form {
+    border-color: var(--border-accent);
+    box-shadow: var(--elev-2), 0 0 0 4px rgba(var(--accent-rgb), .10);
+}
+
+/* spark echoes the gold core — --gold-text passes contrast in both themes */
+#prompt-form .spark { color: var(--gold-text); font-size: var(--icon-sm); flex-shrink: 0; }
+
+#prompt-input {
+    flex: 1;
+    background: none; border: none; margin: 0;
+    padding: var(--sp-1) 0;
+    font-size: var(--fs-base);
+    font-family: var(--font);
+    color: var(--text);
+}
+#prompt-input::placeholder { color: var(--muted); }
+#prompt-input:focus { outline: none; }
+
+/* Send button: muted teal-tint at rest, promoted to solid accent when input has text */
+#prompt-form button {
+    border: 1px solid transparent;
+    background: var(--accent-softer);
+    color: rgba(var(--accent-rgb), .75);
+    border-radius: var(--r-md);
+    width: 40px; height: 40px; min-height: 40px;
+    padding: 0;
+    flex-shrink: 0;
+    font-size: var(--icon-md);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease);
+}
+#prompt-form button:hover { background: var(--accent-soft); color: var(--accent-600); }
+#prompt-form.has-text button {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+}
+#prompt-form.has-text button:hover { background: var(--accent-600); border-color: var(--accent-600); }
+#prompt-form button:focus-visible { outline: none; box-shadow: var(--focus-ring); }

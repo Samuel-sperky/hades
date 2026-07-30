@@ -1,0 +1,41 @@
+/* ---------------------------------------------------------------------------
+   ONBOARDING HINT (#hint)
+   --------------------------------------------------------------------------- */
+#hint {
+    position: fixed;
+    z-index: var(--z-overlay);
+    width: 260px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-2);
+    backdrop-filter: var(--blur-2);
+    box-shadow: var(--elev-2);
+    animation: rise-fade var(--dur-base) var(--ease);
+}
+#hint p {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--text);
+    margin-bottom: var(--sp-2);
+}
+#hint .hint-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-2);
+}
+#hint .step {
+    font-size: var(--fs-small);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+}
+#hint button#hint-next {
+    min-height: 32px;
+    font-size: var(--fs-body);
+    border-radius: var(--r-md);
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: var(--on-accent);
+    font-weight: var(--fw-semibold);
+}
+#hint button#hint-next:hover { background: var(--accent-600); border-color: var(--accent-600); }

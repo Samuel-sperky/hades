@@ -1,0 +1,65 @@
+/* ---- Dnes: veľké hľadacie pole (primárny prvok) + jednoriadok ---- */
+.today-search {
+    display: flex; align-items: center; gap: var(--sp-2);
+    width: 100%;
+    padding: var(--sp-2);
+    margin-bottom: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-1);
+    color: var(--muted); text-align: left;
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.today-search:hover, .today-search:focus-visible {
+    border-color: var(--border-accent); box-shadow: var(--focus-ring); outline: none;
+}
+.today-search .ms { font-size: var(--icon-md); color: var(--accent); flex-shrink: 0; }
+.ts-text {
+    flex: 1; min-width: 0;
+    font-size: var(--fs-title); color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.today-search kbd {
+    font-family: var(--mono); font-size: 10px;
+    padding: 2px 6px; flex-shrink: 0;
+    border: 1px solid var(--border-strong); border-radius: 5px;
+    color: var(--muted); background: var(--surface-2);
+}
+.today-line { margin-bottom: var(--sp-3); color: var(--text-secondary); font-size: var(--fs-base); }
+.today-line strong { color: var(--text); font-family: var(--mono); font-weight: 600; }
+
+/* Dnes: "Naposledy si robil na…" — karty sessions */
+.today-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--sp-1);
+}
+.today-card-wrap { display: flex; align-items: stretch; gap: 2px; }
+.today-card-link {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    text-align: left;
+    padding: var(--sp-2);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    color: var(--text);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.today-card-link:hover, .today-card-link:focus-visible {
+    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+}
+.tcl-title {
+    font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text);
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.tcl-meta { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.tcl-proj {
+    font-size: var(--fs-caption); color: var(--muted);
+    background: var(--surface-subtle); border: 1px solid var(--border);
+    border-radius: var(--r-pill); padding: 1px 8px;
+    max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tcl-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }

@@ -17,3 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
+
+# Assets are NOT baked into the image on purpose: docker-compose bind-mounts the
+# project over /var/www/html, so anything COPYed here would be shadowed at runtime.
+# public/build/ is produced from the host or inside the container before serving:
+#
+#   docker compose exec -T app npm ci
+#   docker compose exec -T app npm run build
+#
+# The app fails loudly (Vite manifest not found) if this step is skipped, so a
+# missing build can never be mistaken for a working deploy. See CLAUDE.md.

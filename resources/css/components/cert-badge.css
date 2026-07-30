@@ -1,0 +1,30 @@
+/* ---------------------------------------------------------------------------
+   CERT BADGE (.cert) — certainty pill; double-encoded (icon + color).
+   data-cert = overene | hypoteza | pasca | bez | none | pending
+   .cert--icon = icon-only variant (dense contexts: library rows, panels)
+   --------------------------------------------------------------------------- */
+.cert {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 1px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid transparent;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    white-space: nowrap;
+    color: var(--cert-none);
+    background: var(--cert-none-soft);
+}
+.cert .ms { font-size: 14px; line-height: 1; }
+.cert[data-cert="overene"] { color: var(--cert-overene); background: var(--cert-overene-soft); }
+.cert[data-cert="hypoteza"] { color: var(--cert-hypoteza); background: var(--cert-hypoteza-soft); }
+.cert[data-cert="pasca"] { color: var(--cert-pasca); background: var(--cert-pasca-soft); }
+.cert[data-cert="bez"],
+.cert[data-cert="none"],
+.cert[data-cert="pending"] { color: var(--cert-none); background: var(--cert-none-soft); }
+/* Icon-only — strips the pill, keeps just the colored glyph */
+.cert.cert--icon {
+    padding: 0; gap: 0;
+    background: none; border: none;
+}
+.cert.cert--icon .ms { font-size: var(--icon-sm); }

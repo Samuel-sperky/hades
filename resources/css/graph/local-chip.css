@@ -1,0 +1,71 @@
+/* ---------------------------------------------------------------------------
+   LOCAL GRAPH CHIP (#local-chip) — plávajúci indikátor režimu lokálneho grafu,
+   pod hlavičkou v strede; stavia ho JS (updateLocalChip), toggluje .hidden
+   --------------------------------------------------------------------------- */
+#local-chip {
+    position: fixed;
+    top: 68px; /* app-header: top 16px + výška 44px + 8px odstup */
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: 5px 6px 5px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    box-shadow: var(--elev-1);
+    z-index: var(--z-chrome);
+}
+#local-chip .lc-label {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+#local-chip .lc-depths {
+    display: flex;
+    gap: 2px;
+}
+#local-chip .lc-depth {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    color: var(--muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#local-chip .lc-depth:hover { background: var(--hover-fill); color: var(--text); }
+#local-chip .lc-depth.active {
+    background: var(--accent-soft);
+    border-color: var(--border-accent);
+    color: var(--accent-600);
+}
+#local-chip .lc-close {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: var(--fs-body);
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#local-chip .lc-close:hover { background: var(--hover-fill); color: var(--text); }
+#local-chip .lc-depth:focus-visible,
+#local-chip .lc-close:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+body.ambient #local-chip { opacity: 0; pointer-events: none; transition: opacity var(--dur-ambient) var(--ease); }

@@ -1,0 +1,59 @@
+/* ---------------------------------------------------------------------------
+   SUSEDIA V PANELI UZLA (.nb-row) — chip + tiché × na zrušenie spojenia
+   --------------------------------------------------------------------------- */
+#node-neighbors { display: flex; flex-direction: column; gap: 2px; }
+.nb-row { display: flex; align-items: center; gap: var(--sp-0); min-width: 0; }
+.nb-row .chip {
+    flex: 1; min-width: 0;
+    margin: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-align: left;
+}
+.nb-row .nb-del {
+    width: 24px; height: 24px; min-height: 24px;
+    padding: 0;
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+}
+.nb-row:hover .nb-del,
+.nb-row .nb-del:focus-visible { opacity: 1; }
+.nb-row .nb-del:hover { color: var(--danger); background: var(--danger-soft); }
+
+/* Prepojiť s uzlom / dokument / do balíka — štvorcové ghost tlačidlá medzi Upraviť a mazaním */
+#node-connect,
+#node-md,
+#node-pack {
+    flex: 0 0 auto;
+    width: 40px; height: 40px; min-height: 40px;
+    padding: 0;
+    font-size: var(--icon-md);
+}
+#node-md.hidden { display: none; }
+#node-pack.in-pack { color: var(--accent-600); background: var(--accent-soft); }
+
+/* ---------------------------------------------------------------------------
+   NOVÝ UZOL (#btn-new-node) — tichá prerušovaná výzva pod stromom štruktúry
+   --------------------------------------------------------------------------- */
+#btn-new-node {
+    width: 100%;
+    margin-top: var(--sp-2);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-md);
+    color: var(--muted);
+}
+#btn-new-node:hover {
+    background: var(--accent-softer);
+    border-color: var(--border-accent);
+    color: var(--accent-600);
+}
+
+/* ===========================================================================
+   FÁZA SHELL — obrazovky Dnes / Denník / Graf / Knižnica
+   Plátno (Graf) je hrdina len na svojej obrazovke; ostatné sú DOM na papieri.
+   =========================================================================== */
+
+/* Plátno + jeho chrome žijú len na obrazovke Graf */

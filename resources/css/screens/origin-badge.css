@@ -1,0 +1,23 @@
+/* ---------------------------------------------------------------------------
+   ORIGIN BADGE (.origin) — brain (.md) vs session (DB) provenance, monochrome.
+   §4.8 icons: menu_book (brain) / bolt (session).
+   --------------------------------------------------------------------------- */
+.origin {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 1px 8px;
+    border-radius: var(--r-pill);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    white-space: nowrap;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+.origin .ms { font-size: 14px; line-height: 1; }
+/* brain reads a touch stronger (indexed source of truth) */
+.origin[data-origin="brain"] {
+    color: var(--text-secondary);
+    border-color: var(--border-strong);
+}
+.origin[data-origin="session"] { color: var(--muted); }
