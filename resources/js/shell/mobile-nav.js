@@ -13,6 +13,7 @@ import { EV } from '../core/events.js';
 import { S } from '../core/state/index.js';
 import { trapFocus } from './focus-trap.js';
 import { setScreen } from './router.js';
+import { register as registerViewport } from './viewport.js';
 
 let releaseTrap = null;
 
@@ -63,6 +64,10 @@ export function mobileSheetOpen() {
 
 
 export function register(root) {
+    // Sleduje výšku virtuálnej klávesnice (--kb-inset). Musí ísť pred early
+    // returnom — s klávesnicou súvisí composer chatu, nie prítomnosť bottom navu.
+    registerViewport();
+
     const nav = root.querySelector('#mobile-nav');
     if (!nav) return;
 

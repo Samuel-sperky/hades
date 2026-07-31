@@ -20,7 +20,12 @@
     border-radius: var(--r-lg);
     box-shadow: var(--elev-1);
     z-index: var(--z-chrome);
-    transition: width var(--dur-base) var(--ease);
+    /* ŽIADNY `transition: width`. `width` číta var(--rail-w) a rozbalenie railu
+       mení práve ten token — Chrome v takom prípade prechod nespustí a šírka
+       zostane visieť na starej hodnote (overené na 1280 px: --rail-w = 208px,
+       ale element meral 72px aj po 1,5 s), takže rozhodnutie #54 nefungovalo
+       vôbec. Bez prechodu sa rail rozbalí okamžite a správne. Rovnaký dôvod
+       platí pre `left` v shell/header.css a components/page.css. */
 }
 
 /* ---- hlava railu: jadro + prepínač šírky ---- */
@@ -191,31 +196,43 @@
     background: var(--accent);
 }
 
-/* ---- EXPANDED (208 px): ikona vľavo, label vedľa, viditeľné eyebrow grupy ---- */
-:root[data-rail="expanded"] { --rail-w: var(--rail-w-expanded); }
+/* ---- EXPANDED (208 px): ikona vľavo, label vedľa, viditeľné eyebrow grupy ----
 
-[data-rail="expanded"] #rail { padding: var(--sp-1); }
-[data-rail="expanded"] #brand-core { justify-content: flex-start; padding-left: var(--sp-0); }
-[data-rail="expanded"] #brand-core .brand-word { display: inline; }
-[data-rail="expanded"] #rail .rail-cap { display: block; }
-[data-rail="expanded"] #rail .rail-toggle .ms { transform: rotate(180deg); }
-[data-rail="expanded"] #rail .rail-group button.dest {
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: center;
-    gap: var(--sp-2h);
-    min-height: 38px;
-    padding: var(--sp-1) var(--sp-1);
-    text-align: left;
+   Celý blok platí až od 901 px. Rozbalený stav sa persistuje (aura.rail.expanded),
+   takže používateľ, ktorý si rail rozbalil na desktope, by ho dostal aj na 700 px
+   tablete: 208 px rail + 340 px dock zo 700 px nechá obsahu ~444 px. Miesto
+   čiastočného vracania jednotlivých deklarácií (to v testovaní vyrobilo nekonzistentný
+   stav — šírka zbalená, ale labely inak) sa pravidlá pod 901 px vôbec neaplikujú,
+   takže rail je tam garantovane identický so zbaleným. Prepínač sa v tom pásme
+   skrýva, aby nebol mŕtvym ovládačom (pod 640 px ho skrýva už #rail{display:none}). */
+@media (min-width: 901px) {
+    :root[data-rail="expanded"] { --rail-w: var(--rail-w-expanded); }
+
+    [data-rail="expanded"] #rail { padding: var(--sp-1); }
+    [data-rail="expanded"] #brand-core { justify-content: flex-start; padding-left: var(--sp-0); }
+    [data-rail="expanded"] #brand-core .brand-word { display: inline; }
+    [data-rail="expanded"] #rail .rail-cap { display: block; }
+    [data-rail="expanded"] #rail .rail-toggle .ms { transform: rotate(180deg); }
+    [data-rail="expanded"] #rail .rail-group button.dest {
+        flex-direction: row;
+        justify-content: flex-start;
+        align-items: center;
+        gap: var(--sp-2h);
+        min-height: 38px;
+        padding: var(--sp-1) var(--sp-1);
+        text-align: left;
+    }
+    [data-rail="expanded"] #rail .rail-group button.dest .ms { font-size: 20px; }
+    [data-rail="expanded"] #rail .rail-group button.dest .lbl {
+        font-size: var(--fs-body);
+        text-align: left;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    [data-rail="expanded"] #rail .rail-group button.dest .dot { position: static; margin-left: auto; }
 }
-[data-rail="expanded"] #rail .rail-group button.dest .ms { font-size: 20px; }
-[data-rail="expanded"] #rail .rail-group button.dest .lbl {
-    font-size: var(--fs-body);
-    text-align: left;
-    flex: 1 1 auto;
-    min-width: 0;
-}
-[data-rail="expanded"] #rail .rail-group button.dest .dot { position: static; margin-left: auto; }
 
 /* Prepínač je viditeľný len tam, kde má zmysel (nie na mobile — tam je bottom nav). */
 #rail .rail-toggle { display: inline-flex; }
+
+@media (max-width: 900px) { #rail .rail-toggle { display: none; } }

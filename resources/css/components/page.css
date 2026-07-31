@@ -16,7 +16,9 @@
 #screens {
     left: var(--shell-left);
     top: var(--shell-top);
-    transition: left var(--dur-base) var(--ease);
+    /* Bez `transition: left` — rovnaký dôvod ako v shell/rail.css: prechod na
+       property odvodenej z meniaceho sa custom property Chrome nespustí a obsah
+       zostal visieť pri starom okraji, takže expand railu neposunul obrazovky. */
 }
 
 /* ---- vertikálny flow stránky ---- */

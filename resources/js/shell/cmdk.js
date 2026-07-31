@@ -1,5 +1,6 @@
 import { $, emptyHtml, esc } from '../core/dom.js';
 import { certTagMatch, parseQueryFilter } from '../core/query-filter.js';
+import { SCREEN_ICONS, SCREEN_LABELS, SCREENS } from '../core/screens.js';
 import { gotoDirective } from '../screens/directive.js';
 import { certBadge } from '../screens/shared/cert.js';
 import { trapFocus } from './focus-trap.js';
@@ -8,15 +9,14 @@ import { openNodeFromAnywhere, setScreen } from './router.js';
 
 /* ---------- Cmd-K paleta (zjednotené hľadanie + navigácia) ---------- */
 
-const CMDK_NAV = [
-    { screen: 'dnes', label: 'Dnes', icon: 'wb_sunny' },
-    { screen: 'dennik', label: 'Denník', icon: 'receipt_long' },
-    { screen: 'graf', label: 'Graf', icon: 'hub' },
-    { screen: 'kniznica', label: 'Knižnica', icon: 'menu_book' },
-    { screen: 'rozhodnutia', label: 'Rozhodnutia', icon: 'gavel' },
-    { screen: 'kontrola', label: 'Kontrola', icon: 'fact_check' },
-    { screen: 'smernica', label: 'Smernica', icon: 'assignment' },
-];
+/* Odvodené zo zamknutého rozhrania #16, nie opísané ručne. Predtým tu bol vlastný
+   sedemprvkový zoznam z čias pred pridaním obrazoviek Chat a E-shop, takže sa na ne
+   paletou nedalo dostať — bolo to posledné miesto, kde duplikát whitelistu prežil. */
+const CMDK_NAV = SCREENS.map((screen) => ({
+    screen,
+    label: SCREEN_LABELS[screen],
+    icon: SCREEN_ICONS[screen],
+}));
 
 let cmdkTimer = null, cmdkSeq = 0;
 

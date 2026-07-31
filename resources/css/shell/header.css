@@ -7,7 +7,9 @@
     /* left je odvodené z --rail-w (collapse railu 72 ↔ 208 px posúva celý shell) */
     top: var(--edge); left: var(--shell-left); right: var(--edge);
     height: var(--header-h);
-    transition: left var(--dur-base) var(--ease);
+    /* Bez `transition: left` — left číta var(--shell-left), ktorý sa pri rozbalení
+       railu mení, a prechod na property odvodenej z meniaceho sa tokenu Chrome
+       nespustí, takže hlavička zostala visieť pri starom okraji. Viď shell/rail.css. */
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
     /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur (viď #rail). */

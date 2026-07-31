@@ -31,4 +31,10 @@
 _ide_helper.php
 Homestead.json
 Homestead.yaml
-Thumbs.db
+Thumbs.db
+# Playwright artefakty. `test-results/` sa plni trace zipmi (megabajty) a
+# screenshotmi az pri PADNUTOM teste, takze pri zelenom behu je prazdne a je
+# lahke prehliadnut, ze nie je ignorovane.
+/test-results/
+/playwright-report/
+/blob-report/

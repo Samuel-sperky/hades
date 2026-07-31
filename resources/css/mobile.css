@@ -25,7 +25,21 @@
         /* rail sa skryje → shell začína na okraji viewportu */
         --shell-left: var(--edge);
         --header-h: 44px;
+
+        /* Výška virtuálnej klávesnice. Default 0, reálnu hodnotu píše
+           shell/viewport.js z visualViewport API (inline style na :root, teda
+           prebije tento default). */
+        --kb-inset: 0px;
+
+        /* Spodná rezerva shellu — jediný zdroj pravdy pre #screens, #prompt,
+           #dock a #node-panel. Bez klávesnice je to bottom nav + bezpečná zóna. */
+        --mobile-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px));
     }
+
+    /* Otvorená klávesnica: bottom nav je pod ňou (nedosiahnuteľný), takže ide von
+       a rezervu preberá výška klávesnice. Vďaka tomu composer zostane nad ňou. */
+    body.kb-open { --mobile-bottom: var(--kb-inset); }
+    body.kb-open #mobile-nav { display: none; }
 
     /* ---- rail von, bottom nav dovnútra ---- */
     #rail { display: none; }
@@ -85,8 +99,11 @@
     #screens {
         left: var(--edge); right: var(--edge);
         top: var(--shell-top);
-        bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-0));
+        bottom: calc(var(--mobile-bottom) + var(--sp-0));
         -webkit-overflow-scrolling: touch;
+        /* Telo stránky nikdy nescrolluje vodorovne — široký obsah (tabuľky,
+           vlákna chatu) scrolluje vo vlastnom kontejneri. */
+        overflow-x: hidden;
     }
     .screen { max-width: none; padding-right: 0; }
     .screen-head h1, .page-head h1, .page-title { font-size: 24px; }
@@ -104,8 +121,12 @@
     #dock, #node-panel {
         left: var(--edge); right: var(--edge); width: auto;
         top: auto;
-        bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-0));
+        bottom: calc(var(--mobile-bottom) + var(--sp-0));
+        /* dvh, nie vh — vh na mobile znamená viewport s vysunutým adresným
+           riadkom, takže spodok panelu by vyliezol pod okraj obrazovky.
+           Prvý riadok je fallback pre prehliadače bez dvh. */
         max-height: 62vh;
+        max-height: 62dvh;
         border-radius: var(--r-lg);
     }
 
@@ -115,9 +136,16 @@
     body[data-screen="graf"] #mobile-graph-note { display: flex; }
 
     /* ---- chat: fullscreen, klávesnica nesmie prekryť composer ---- */
+    /* iOS drží position:fixed na layout viewporte, takže composer sa pri otvorenej
+       klávesnici sám nezdvihne — rezervu preto počíta --mobile-bottom.
+
+       ŽIADNY `transition: bottom`. Overené na 390 px: keď `bottom` prechádza medzi
+       dvoma calc() hodnotami odvodenými z custom property, Chrome prechod nedokončí
+       a element zostane visieť na starej hodnote (64 px) aj po 1,5 s — composer sa
+       teda nezdvihne vôbec. Bez prechodu skočí správne na 340 px. */
     #prompt {
         left: var(--edge); right: var(--edge); width: auto;
-        bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px) + var(--sp-0));
+        bottom: calc(var(--mobile-bottom) + var(--sp-0));
     }
 
     /* ---- overlaye na celú plochu ---- */
@@ -126,8 +154,35 @@
         width: auto; max-width: none;
     }
 
-    /* dotykové cieľové plochy ≥ 40 px */
-    button, .dest, .chip, .tab { min-height: 40px; }
+    /* -----------------------------------------------------------------------
+       DOTYKOVÉ CIEĽOVÉ PLOCHY — 44 × 44 px (akceptačné kritérium 6).
+       Blanket pravidlo má nízku špecificitu (0,0,1), takže komponenty s vlastnou
+       výškou (#mobile-nav .mdest, .dir-actions .ms) si ju držia — to je zámer.
+       ----------------------------------------------------------------------- */
+    button, .dest, .chip, .tab { min-height: 44px; }
+
+    /* Šírka ikonových tlačidiel sa zväčšuje LEN v shelli, ktorý vlastní P9.
+       Globálny `button.ms` (0,1,1) by prebil `.msg-act` (0,1,0) z chat/mobile.css
+       a vyrobil tlačidlo 44 × 32 — nekonzistentnejšie než ktorákoľvek z tých dvoch
+       hodnôt. Chatové ovládače pod 44 px sú preto patch pre P6 v reporte, nie
+       tichý override odtiaľto (kontrakt §5). */
+    #rail button.ms,
+    #app-header button.ms,
+    #dock button.ms,
+    #node-panel button.ms,
+    #mobile-sheet button,
+    #cmdk-card button.ms,
+    #cmdk-trigger { min-width: 44px; }
+
+    /* #cmdk-trigger mal 40 × 32 — jediný prvok chrome shellu pod limitom. */
+    #cmdk-trigger { min-height: 44px; }
+
+    /* Vlastné komponenty P9, ktoré si na desktope výšku zámerne vypínajú:
+       .record má min-height:auto (components/cards.css → 39 px) a .dir-actions .ms
+       je 32 px ikona (responsive.css). Na dotyk potrebujú plný cieľ; desktop
+       zostáva nedotknutý, lebo pravidlá žijú len v tomto media query. */
+    .record { min-height: 44px; }
+    .dir-actions .ms { width: 44px; height: 44px; min-height: 44px; }
 }
 
 /* Výzva namiesto prázdneho plátna na obrazovke Graf.

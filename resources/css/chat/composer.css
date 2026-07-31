@@ -8,7 +8,15 @@
     bottom: var(--edge); left: 50%;
     transform: translateX(-50%);
     width: 320px;
-    z-index: var(--z-chrome);
+    /* NAD obsahovou plochou, nie v jej vrstve. Ostatné chrome prvky (rail, nástroje
+       grafu, zoom) sú na `--z-chrome` a s `#screens` sa geometricky neprekrývajú —
+       ležia mimo obsahového obdĺžnika. Quickbar je výnimka: stojí v jeho dolnom
+       strede, takže na `--z-chrome` (10) ho `#screens` (`--z-panel`, 20) prekryl
+       a `#chat-expand` aj `#chat-send` boli nekliknuteľné na každej obsahovej
+       obrazovke — klik zachytil obsah. Na obrazovke Chat sa problém neprejavil,
+       lebo tam composer prechádza do `#chat-screen-composer`.
+       +2 drží quickbar aj nad pack-drawerom (--z-panel + 1) a stále pod toastmi. */
+    z-index: calc(var(--z-panel) + 2);
     transition: width var(--dur-slow) var(--ease);
 }
 #prompt.open { width: min(600px, 60vw); }
