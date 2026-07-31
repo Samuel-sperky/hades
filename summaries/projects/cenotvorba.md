@@ -3,7 +3,7 @@ title: "Cenotvorba"
 type: project-rollup
 sessions: 2
 range: 24.7.2026
-updated: 2026-07-26T05:15:12+02:00
+updated: 2026-07-31T15:17:03+02:00
 ---
 
 # Cenotvorba

@@ -9,12 +9,12 @@ This file is the source of truth for the 10 parallel W2 packages. **Read §3 (ow
 
 **State after W2 (verified 2026-07-31 against the code, not from memory):**
 
-- Gate green: **467 PHP tests / 1 630 assertions** and **370 Vitest across 31 files**, 0 skipped.
+- Gate green: **473 PHP tests / 1 766 assertions** and **380 Vitest across 32 files**, 0 skipped.
   (The older "446 PHP" figure circulating in agent briefs is stale — packages added tests.)
 - Route `/` now renders `app.blade.php`; `mind.blade.php` **no longer exists** (§7.1 done).
 - All 18 locked interfaces in §4 re-verified present with unchanged signatures.
-- Destructive maintenance jobs remain **off** (§6) — network intact at 709 nodes / 2 170 edges /
-  6 563 activations.
+- Destructive maintenance jobs remain **off** (§6) — network intact at 710 nodes / 2 177 edges /
+  7 055 activations.
 - `eshop` is now a real screen with a service layer, not an open question (§7.2 done).
 
 ---
@@ -27,7 +27,7 @@ docker compose up -d
 docker compose ps
 docker compose logs -f app
 
-# PHP tests — the gate. Must stay green, 0 skipped. Today: 467 tests / 1 630 assertions.
+# PHP tests — the gate. Must stay green, 0 skipped. Today: 473 tests / 1 766 assertions.
 docker compose exec -T app php artisan test
 docker compose exec -T app php artisan test --testsuite=Unit
 docker compose exec -T app php artisan test --filter=SomeTest
@@ -46,7 +46,7 @@ npm ci
 npm run build                 # -> public/build/manifest.json + assets
 npm run dev                   # Vite dev server with HMR
 
-# JS tests — 370 across 31 files. Run them in the container so the node_modules volume is used.
+# JS tests — 380 across 32 files. Run them in the container so the node_modules volume is used.
 docker compose exec -T app npx vitest run     # unit, jsdom
 npm run lint:css                              # stylelint — guards the "no raw hex" rule
 npx playwright test           # smoke, needs the stack running (host-side browsers)

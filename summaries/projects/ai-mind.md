@@ -1,18 +1,20 @@
 ---
 title: "AI-mind"
 type: project-rollup
-sessions: 12
-range: 15.7.2026 – 23.7.2026
-updated: 2026-07-26T05:15:12+02:00
+sessions: 14
+range: 15.7.2026 – 27.7.2026
+updated: 2026-07-31T15:17:03+02:00
 ---
 
 # AI-mind
 
-**Sessions:** 12  ·  **Obdobie:** 15.7.2026 – 23.7.2026
+**Sessions:** 14  ·  **Obdobie:** 15.7.2026 – 27.7.2026
 
-**Technológie:** docker, mariadb, api, mcp, reverb, seo, ads, javascript, git, github, oauth
+**Technológie:** docker, mariadb, api, mcp, reverb, seo, ads, javascript, python, git, github, oauth
 
 ## Záznamy
+- 27.7.2026 — použi mcp hades a vypracuj mi UX plán pre applikaciu tak
+- 27.7.2026 — aký jazykový model by bolo možné spustiť na tomto pc
 - 23.7.2026 — potrbeujem prirpaviť excel tabulku všetkých appiek ktoré su
 - 23.7.2026 — rozpracovali sme niekedy aplikáciu na meranie KPI ?
 - 23.7.2026 — ako by som sa mal pripojiť na hades pre bežne používanie ak

@@ -3,7 +3,7 @@ title: "Šperky Aura app"
 type: project-rollup
 sessions: 8
 range: 15.7.2026 – 22.7.2026
-updated: 2026-07-26T05:15:12+02:00
+updated: 2026-07-31T15:17:03+02:00
 ---
 
 # Šperky Aura app
