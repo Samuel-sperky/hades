@@ -10,6 +10,7 @@ import { emitFlows } from './pulses.js';
 import { requestDraw } from './render/frame.js';
 import { cancelConnect, createEdge } from '../node/edge-admin.js';
 import { closeNodePanel, selectNode } from '../node/node-panel.js';
+import { isMapActive } from './map/active.js';
 
 
 /* ---------- vstupná vrstva plátna ----------
@@ -61,6 +62,7 @@ export function setupInput() {
     };
 
     canvas.addEventListener('pointerdown', (e) => {
+        if (isMapActive()) return; // W1: mapa má vlastný input (graph/map/input.js)
         if (!isMouseLike(e) || e.button !== 0) return;
         dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
         pointerId = e.pointerId;
@@ -83,6 +85,7 @@ export function setupInput() {
     // FÁZA ANIMÁCIE (Living): kurzor pre gravitáciu/parallax uzlov. Aktívny len keď NIE je drag/pan
     // (počas ťahania sa gravitácia uvoľní). Odchod z plátna ju uvoľní a schová hover kartu.
     canvas.addEventListener('pointerleave', () => {
+        if (isMapActive()) return;
         if (dragging) return; // capture: pointer smie opustiť plátno a ťahanie beží ďalej
         S.cursor.on = false;
         S.hover = null;
@@ -92,6 +95,7 @@ export function setupInput() {
     });
 
     canvas.addEventListener('pointermove', (e) => {
+        if (isMapActive()) return;
         if (!isMouseLike(e)) return;
         if (dragging && e.pointerId !== pointerId) return;
         S.cursor.sx = e.clientX; S.cursor.sy = e.clientY;
@@ -127,6 +131,7 @@ export function setupInput() {
     });
 
     canvas.addEventListener('pointerup', (e) => {
+        if (isMapActive()) return;
         if (!isMouseLike(e) || (pointerId !== null && e.pointerId !== pointerId)) return;
         const wasDragging = dragging, wasMoved = moved;
         releaseDragNode();
@@ -157,6 +162,7 @@ export function setupInput() {
 
     // Dvojklik pri kotve oblasti (do 260 world-jednotiek) prepína focus mód
     canvas.addEventListener('dblclick', (e) => {
+        if (isMapActive()) return;
         const w = screenToWorld(e.clientX, e.clientY);
         let best = null, bestD = 260;
         for (const area of S.areas.values()) {
@@ -168,6 +174,7 @@ export function setupInput() {
     });
 
     canvas.addEventListener('wheel', (e) => {
+        if (isMapActive()) return; // mapa má vlastný wheel handler
         e.preventDefault();
         zoomAt(e.clientX, e.clientY, Math.pow(1.0015, -e.deltaY));
     }, { passive: false });
@@ -176,6 +183,7 @@ export function setupInput() {
     // Navigácia MEDZI uzlami je zámerne mimo rozsahu (samostatný balík) —
     // tu ide o to, aby sa používateľ klávesnice vôbec dostal ku kamere.
     canvas.addEventListener('keydown', (e) => {
+        if (isMapActive()) return; // mapa má vlastné klávesy (šípky = súrodenci)
         const step = e.shiftKey ? PAN_STEP * 3 : PAN_STEP;
         switch (e.key) {
             case 'ArrowLeft': panBy(step, 0); break;

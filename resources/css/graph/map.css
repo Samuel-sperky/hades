@@ -1,0 +1,45 @@
+/* Radiálna MAPA mysle (W1) — DOM chróm nad plátnom.
+
+   Vlastník: graph/map/*. Farby výhradne z tokenov (tokens.css). Mapa je
+   desktop-only; na mobile sa šípky skryjú (appka nespadne, layout mapy nerobíme). */
+
+/* Súrodenecké / rotačné šípky ‹ › nad plátnom */
+#map-arrows { position: fixed; inset: 0; pointer-events: none; z-index: 30; }
+
+.map-arrow {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 60px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: 30px;
+    line-height: 1;
+    color: color-mix(in srgb, var(--muted) 85%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .35s ease, color .2s ease, translate .3s ease;
+}
+
+.map-arrow.on { opacity: 1; pointer-events: auto; }
+.map-arrow:hover { color: var(--ink); }
+.map-arrow.prev { left: 8px; }
+.map-arrow.next { right: 8px; }
+.map-arrow.prev:hover { translate: -4px 0; }
+.map-arrow.next:hover { translate: 4px 0; }
+.map-arrow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* W1: na obrazovke 'graf' hostí plátno MAPU, nie starý d3-force graf — starý
+   prepínač náhľadu (Mapa/Sieť/Vrstvy) a časová os sú pre mapu neaktívne, preto
+   sa skryjú (3-pill MAP/DASHBOARDS/CHART príde v ďalšej vlne). */
+body[data-screen="graf"] #view-switch,
+body[data-screen="graf"] #timeline { display: none; }
+
+@media (max-width: 720px) {
+    .map-arrow { display: none; }
+}

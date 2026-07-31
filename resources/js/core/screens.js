@@ -53,7 +53,9 @@ export const SCREEN_ICONS = {
     smernica: 'assignment',
 };
 
-export const DEFAULT_SCREEN = 'dnes';
+// W1: MAPA (radiálna konštelácia mysle) je domovská obrazovka — príchod do appky
+// ukáže mapu. Obrazovka 'graf' hostí nový mapový render (graph/map/*).
+export const DEFAULT_SCREEN = 'graf';
 
 /** Vráti platný názov obrazovky; neznámy vstup padne na DEFAULT_SCREEN. */
 export function normalizeScreen(name) {

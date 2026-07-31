@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hades · Aura pohľad na graf vedomia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#0e1413;
+    --paper-2:#121a19;
+    --line:#22302e;
+    --teal:#05bcc4;
+    --teal-deep:#03797e;
+    --gold:#d8b878;
+    --gold-text:#c9a869;
+    --ink:#e8efee;
+    --ink-dim:#7e908d;
+    --coral:#e2705f;
+    --violet:#9a86d8;
+    --mint:#63c9a0;
+    --display:"Playfair Display",Georgia,serif;
+    --body:"Inter",system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--paper);color:var(--ink);font-family:var(--body);
+    overflow:hidden;-webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    position:fixed;inset:0 0 auto 0;z-index:20;
+    display:flex;align-items:center;gap:18px;
+    padding:14px 18px;
+    background:linear-gradient(180deg,rgba(14,20,19,.96),rgba(14,20,19,.72) 70%,transparent);
+    pointer-events:none;
+  }
+  header > *{pointer-events:auto}
+  .crown{
+    width:34px;height:34px;flex:0 0 auto;border-radius:50%;
+    display:grid;place-items:center;
+    border:1px solid color-mix(in srgb,var(--gold) 45%,transparent);
+    color:var(--gold);font-size:15px;
+    background:radial-gradient(circle at 50% 40%,color-mix(in srgb,var(--gold) 16%,transparent),transparent 70%);
+  }
+  .brand h1{
+    font-family:var(--display);font-weight:400;font-size:18px;letter-spacing:.16em;
+    margin:0;text-transform:uppercase;
+  }
+  .brand p{
+    margin:2px 0 0;font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--ink-dim);
+  }
+  .stats{display:flex;gap:0;margin-left:auto;align-items:stretch}
+  .stat{
+    padding:0 16px;border-left:1px solid var(--line);text-align:right;
+  }
+  .stat b{display:block;font-family:var(--display);font-size:18px;font-weight:500;letter-spacing:.02em}
+  .stat span{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-dim)}
+  .stat.review b{color:var(--gold-text)}
+
+  /* ---------- canvas ---------- */
+  #stage{position:absolute;inset:0;cursor:grab;touch-action:none}
+  #stage.dragging{cursor:grabbing}
+  svg{display:block;width:100%;height:100%}
+  .halo{opacity:.5}
+  .edge{stroke:color-mix(in srgb,var(--ink) 26%,transparent);fill:none;stroke-width:1}
+  .edge.trunk{stroke-width:1.6}
+  .spoke{stroke:color-mix(in srgb,var(--ink) 14%,transparent);stroke-dasharray:2 7;fill:none}
+  .ring{fill:none;stroke:color-mix(in srgb,var(--ink) 8%,transparent)}
+  .leaf{cursor:pointer}
+  .hub circle.disc{fill:var(--paper-2)}
+  .hub text{font-family:var(--body);font-size:13px;font-weight:600;text-anchor:middle}
+  .dept circle{fill:var(--paper)}
+  .areaLabel text.name{
+    font-family:var(--display);font-size:26px;letter-spacing:.34em;text-transform:uppercase;
+    text-anchor:middle;fill:color-mix(in srgb,var(--ink) 82%,transparent);
+  }
+  .areaLabel text.sub{
+    font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;text-anchor:middle;
+    fill:var(--ink-dim);
+  }
+  .areaLabel{cursor:pointer}
+  .dim{opacity:.13;transition:opacity .35s}
+  .lit{opacity:1;transition:opacity .35s}
+  .pulse{animation:pulse 5.5s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35;r:26}50%{opacity:.9;r:34}}
+
+  /* ---------- navigácia hĺbky ---------- */
+  .nav{
+    position:fixed;top:64px;left:0;right:0;z-index:22;
+    display:flex;align-items:center;gap:14px;padding:10px 18px;
+    opacity:0;transform:translateY(-10px);pointer-events:none;
+    transition:opacity .45s ease,transform .5s cubic-bezier(.16,1,.3,1);
+  }
+  .nav.on{opacity:1;transform:none}
+  .nav.on > *{pointer-events:auto}
+  .crumb{
+    background:none;border:0;cursor:pointer;color:var(--ink-dim);font-family:var(--body);
+    font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;padding:6px 0;
+    display:flex;align-items:center;gap:8px;
+  }
+  .crumb:hover{color:var(--ink)}
+  .crumbNow{
+    font-family:var(--display);font-size:15px;letter-spacing:.1em;
+    padding-left:14px;border-left:1px solid var(--line);
+  }
+  .crumbCount{
+    margin-left:auto;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--ink-dim);display:flex;align-items:baseline;gap:7px;
+  }
+  .crumbCount b{font-family:var(--display);font-size:16px;color:var(--gold-text);font-weight:400}
+  .side{
+    position:fixed;top:50%;z-index:22;width:44px;height:56px;translate:0 -50%;
+    background:none;border:0;color:color-mix(in srgb,var(--ink-dim) 80%,transparent);
+    font-size:30px;line-height:1;cursor:pointer;font-family:var(--display);
+    opacity:0;pointer-events:none;transition:opacity .4s ease,color .2s,translate .3s;
+  }
+  .side.on{opacity:1;pointer-events:auto}
+  .side:hover{color:var(--ink)}
+  .side.prev{left:6px}.side.next{right:6px}
+  .side.prev:hover{translate:-4px -50%}.side.next:hover{translate:4px -50%}
+  @media (max-width:720px){.crumbNow{font-size:13px}.side{width:36px}}
+
+  /* ---------- animácie prechodov ---------- */
+  .anim{opacity:0}
+  .anim.on{opacity:1}
+  .hub,.dept,.areaLabel,.lbl{transition:opacity .7s ease,transform .8s cubic-bezier(.16,1,.3,1)}
+  .hub.anim,.dept.anim{transform:scale(.4);transform-box:fill-box;transform-origin:center}
+  .hub.anim.on,.dept.anim.on{transform:scale(1)}
+  .areaLabel.anim{transform:translateY(14px)}
+  .areaLabel.anim.on{transform:none}
+  .lbl.anim{transform:translateX(-8px)}
+  .lbl.anim.on{transform:none}
+  circle.leaf{
+    transform-box:fill-box;transform-origin:center;
+    transition:opacity .55s ease,transform .6s cubic-bezier(.2,1.6,.35,1),r .18s ease,fill .3s;
+  }
+  circle.leaf.anim{transform:scale(0)}
+  circle.leaf.anim.on{transform:scale(1)}
+  circle.leaf:hover{r:7}
+  .edge{transition:stroke-dashoffset 1.1s cubic-bezier(.3,.9,.2,1),stroke-opacity .5s}
+  .ring,.spoke{transition:opacity .9s ease,stroke-dashoffset 1.4s ease}
+  #gCoreWrap{transition:opacity 1.1s ease,transform 1.2s cubic-bezier(.16,1,.3,1)}
+  #gCoreWrap.anim{opacity:0;transform:scale(.55);transform-box:fill-box;transform-origin:center}
+  #gCoreWrap.anim.on{opacity:1;transform:none}
+
+  /* vlna po zaostrení oblasti */
+  @keyframes ping{0%{transform:scale(1)}38%{transform:scale(2.4)}100%{transform:scale(1)}}
+  circle.leaf.ping{animation:ping .62s cubic-bezier(.3,.9,.3,1) both}
+  @keyframes hubPing{0%{transform:scale(1)}45%{transform:scale(1.14)}100%{transform:scale(1)}}
+  .hub.ping{animation:hubPing .7s ease both;transform-box:fill-box;transform-origin:center}
+
+  /* vlnka po kliku */
+  @keyframes ripple{from{r:6;opacity:.55}to{r:170;opacity:0}}
+  circle.ripple{animation:ripple .85s cubic-bezier(.2,.8,.2,1) forwards;fill:none;stroke-width:1.2}
+
+  .dim{opacity:.1;transition:opacity .55s ease}
+  .lit{opacity:1;transition:opacity .55s ease}
+
+  @keyframes rowIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+  /* ---------- tooltip ---------- */
+  #tip{
+    position:fixed;z-index:40;pointer-events:none;opacity:0;transform:translateY(4px);
+    transition:opacity .12s;max-width:300px;
+    background:rgba(9,14,13,.96);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;box-shadow:0 18px 40px rgba(0,0,0,.5);
+  }
+  #tip.on{opacity:1;transform:none}
+  #tip .t{font-size:13px;font-weight:600;line-height:1.3}
+  #tip .m{margin-top:5px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+  #tip .bar{margin-top:8px;height:3px;border-radius:2px;background:var(--line);overflow:hidden}
+  #tip .bar i{display:block;height:100%;background:var(--gold)}
+
+  /* ---------- menovky oddelení vo scéne ---------- */
+  .dLbl{opacity:0;transition:opacity .5s ease}
+  .dLbl.lit{opacity:1}
+  .dLbl.dim{opacity:0}
+  .dLbl text.dn{
+    font-family:var(--body);font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;
+    fill:color-mix(in srgb,var(--ink) 78%,transparent);transition:font-size .45s ease,fill .3s;
+  }
+  .dLbl text.dm{
+    font-family:var(--body);font-size:6.5px;letter-spacing:.18em;text-transform:uppercase;
+    fill:var(--ink-dim);opacity:0;transition:opacity .4s ease .15s,font-size .45s ease;
+  }
+  .dLbl.big text.dn{font-size:15px;fill:var(--ink)}
+  .dLbl.big text.dm{opacity:1;font-size:8px}
+  #gCard{transition:opacity .45s ease}
+  #gCard text.cT{font-family:var(--display);font-size:11px;letter-spacing:.04em}
+  #gCard text.cM{font-family:var(--body);font-size:6px;letter-spacing:.2em;
+    text-transform:uppercase;fill:var(--ink)}
+  #gCard text.cA{font-family:var(--body);font-size:5.5px;letter-spacing:.2em;
+    text-transform:uppercase;fill:var(--ink-dim)}
+  #gCard circle.cR{stroke-width:.8;stroke-opacity:.7}
+  .stat{animation:rowIn .45s cubic-bezier(.16,1,.3,1) both}
+
+  /* ---------- bottom controls ---------- */
+  .dock{
+    position:fixed;z-index:25;bottom:16px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:2px;
+    background:rgba(9,14,13,.9);border:1px solid var(--line);border-radius:999px;
+    padding:5px 6px;backdrop-filter:blur(8px);
+  }
+  .dock button{
+    background:none;border:0;color:var(--ink-dim);font-family:var(--body);
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    padding:7px 13px;border-radius:999px;cursor:pointer;
+  }
+  .dock button:hover{color:var(--ink);background:rgba(255,255,255,.05)}
+  .dock button.on{color:var(--paper);background:var(--ink)}
+  .dock .zoom{
+    font-family:var(--body);font-size:11.5px;color:var(--ink);min-width:52px;text-align:center;
+    font-variant-numeric:tabular-nums;letter-spacing:.06em;
+  }
+  .dock .sep{width:1px;height:18px;background:var(--line);margin:0 5px}
+  .legend{
+    position:fixed;z-index:25;bottom:18px;left:18px;
+    display:flex;flex-direction:column;gap:7px;font-size:10px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-dim);
+  }
+  .legend div{display:flex;align-items:center;gap:8px}
+  .legend i{width:7px;height:7px;border-radius:50%;display:block}
+  .hint{
+    position:fixed;z-index:25;bottom:20px;right:18px;font-size:10px;letter-spacing:.16em;
+    text-transform:uppercase;color:color-mix(in srgb,var(--ink-dim) 70%,transparent);
+  }
+  @media (max-width:720px){
+    .stats .stat:nth-child(n+4){display:none}
+    .areaLabel text.name{font-size:22px}
+    .legend{display:none}
+    .hint{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .pulse{animation:none}
+    #tip,.dim,.lit,.dLbl{transition:none}
+  }
+  :focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="crown">♛</div>
+  <div class="brand">
+    <h1>Hades · graf vedomia</h1>
+    <p>Aura AI · 5 oblastí · 72 oddelení</p>
+  </div>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div id="stage">
+  <svg id="svg" aria-label="Radiálny graf oblastí a oddelení Hadesa"></svg>
+</div>
+
+<div id="tip"></div>
+
+<div class="nav" id="nav">
+  <button class="crumb" id="crumbBack">←<span id="crumbBackTxt">Všetky oblasti</span></button>
+  <div class="crumbNow" id="crumbNow">—</div>
+  <div class="crumbCount" id="crumbCount"></div>
+</div>
+<button class="side prev" id="bPrev" aria-label="Predošlé oddelenie">‹</button>
+<button class="side next" id="bNext" aria-label="Ďalšie oddelenie">›</button>
+
+
+
+<div class="dock">
+  <button id="bFit">Fit</button>
+  <div class="sep"></div>
+  <button id="bOut" aria-label="Oddialiť">−</button>
+  <div class="zoom" id="zoomLbl">100 %</div>
+  <button id="bIn" aria-label="Priblížiť">+</button>
+  <div class="sep"></div>
+  <button id="bLabels" class="on">Názvy</button>
+</div>
+
+<div class="legend">
+  <div><i style="background:var(--teal)"></i>skill</div>
+  <div><i style="background:var(--gold)"></i>memory</div>
+  <div><i style="background:var(--coral)"></i>project</div>
+  <div><i style="background:#3c4b49"></i>ostatné uzly</div>
+</div>
+<div class="hint">Klik = zanorenie · klik do prázdna = späť · šípky = susedné oddelenie</div>
+
+<script>
+/* =========================================================
+   1. DÁTA — presne z Hades mind_overview (31. 7. 2026)
+   ========================================================= */
+const MIND = {
+  totals:{nodes:714,edges:2141,needs_review:5},
+  areas:[
+    {name:"Vývoj & kód", nodes:271, accent:"#05bcc4", glyph:"⟨⟩",
+     depts:["Backend","DevOps","Frontend","Záznamy — AI-mind","Knižnica","Nezaradené","Security","AI nástroje","IT","Databázy","AI engineering","AI agenti","Automatizácie","Záznamy — Retuš porduktov","Záznamy — Widget AI","Záznamy — Cenotvorba","Záznamy — AuraAI","Záznamy — adoring-driscoll","Záznamy — modest-cartwright","Záznamy — charming-chaum","Záznamy — eager-satoshi","Záznamy — aura-prototype","Záznamy — objective-faraday","Záznamy — quizzical-clarke","Záznamy — nice-pasteur","Záznamy — modest-wiles"]},
+    {name:"Biznis & projekty", nodes:160, accent:"#d8b878", glyph:"◈",
+     depts:["Aplikácie","Záznamy — Banner Gennerator","Záznamy — Šperky Aura app","Knižnica","Sklad & cenotvorba","Biznis šperky","Financie & ekonomika","Plánovanie & predikcia","E-commerce playbooky","Podpora & CX","Právne & účtovné","Logistika & fulfillment","Aura ekosystém","Záznamy — Aura","Aura sperky-ai"]},
+    {name:"Marketing & SEO", nodes:152, accent:"#e2705f", glyph:"◇",
+     depts:["SEO","Knižnica","Nezaradené","Marketing","Stratégia","Metriky & KPI","Reporting & dataviz","Obsah & copywriting","CRO & experimenty","Email & lifecycle","redizajn","AI-mind","Aplikácie","React","Docker","DevOps","Dizajn systém","Accessibility"]},
+    {name:"Osobné & preferencie", nodes:91, accent:"#9a86d8", glyph:"○",
+     depts:["Preferencie","Práca","Knižnica","Súhrny","Claude memory","Produktivita","Rozhodovanie & predikcia","Ľudia & tím"]},
+    {name:"Dizajn & kreatíva", nodes:36, accent:"#63c9a0", glyph:"△",
+     depts:["Nástroje","Know-how","Knižnica","Design"]}
+  ]
+};
+
+/* Reálne uzly z mind_recall — dostanú menovku v grafe */
+const NAMED = [
+  {a:"Biznis & projekty",d:"Aplikácie",l:"Aura KPI appka",t:"project",s:7},
+  {a:"Biznis & projekty",d:"Aplikácie",l:"Aura Retouch Studio",t:"project",s:3},
+  {a:"Biznis & projekty",d:"Aplikácie",l:"AuraAI (refactor Hadesa)",t:"project",s:1},
+  {a:"Biznis & projekty",d:"Aplikácie",l:"Aura Roadmap",t:"project",s:4},
+  {a:"Biznis & projekty",d:"Aplikácie",l:"Aura Zápis z porady",t:"project",s:3},
+  {a:"Biznis & projekty",d:"Aplikácie",l:"Aura Banner Studio",t:"project",s:2},
+  {a:"Vývoj & kód",d:"AI nástroje",l:"AI agenti + MCP",t:"skill",s:5},
+  {a:"Vývoj & kód",d:"AI nástroje",l:"AI automatizácie",t:"skill",s:5},
+  {a:"Vývoj & kód",d:"Backend",l:"MCP server development",t:"skill",s:8},
+  {a:"Vývoj & kód",d:"Backend",l:"MariaDB",t:"skill",s:5},
+  {a:"Vývoj & kód",d:"DevOps",l:"Docker Compose",t:"skill",s:9},
+  {a:"Vývoj & kód",d:"Nezaradené",l:"Agent Notch",t:"project",s:2},
+  {a:"Marketing & SEO",d:"Marketing",l:"SEO + Email + Analytics",t:"skill",s:5},
+  {a:"Marketing & SEO",d:"Reporting & dataviz",l:"CEO porada report",t:"skill",s:4},
+  {a:"Osobné & preferencie",d:"Produktivita",l:"Rozhodovanie + delegovanie",t:"skill",s:7},
+  {a:"Osobné & preferencie",d:"Produktivita",l:"Organizácia práce",t:"skill",s:6},
+  {a:"Osobné & preferencie",d:"Súhrny",l:"Súhrn týždňa 29/2026",t:"memory",s:4}
+];
+const TYPE_COLOR={skill:"#05bcc4",memory:"#d8b878",project:"#e2705f"};
+
+/* =========================================================
+   2. LAYOUT — deterministický rast vetiev
+   ========================================================= */
+const rand=(seed=>()=>((seed=seed*16807%2147483647)/2147483647))(20260731);
+const TAU=Math.PI*2, SVGNS="http://www.w3.org/2000/svg";
+const el=(n,attrs={})=>{const e=document.createElementNS(SVGNS,n);
+  for(const k in attrs)e.setAttribute(k,attrs[k]);return e;};
+
+const nodes=[], edges=[], hubs=[];
+
+function grow(parent,x,y,ang,budget,depth,area,dept){
+  if(budget<=0)return;
+  const step=(46-depth*5)*(0.75+rand()*0.6);
+  const nx=x+Math.cos(ang)*step, ny=y+Math.sin(ang)*step;
+  const n={x:nx,y:ny,area,dept,depth,r:depth<2?3.4:2.5,type:null,label:null};
+  nodes.push(n); edges.push({a:parent,b:n,depth});
+  const rest=budget-1; if(rest<=0)return;
+  const kids=rest<3?1:(rand()<.42?2:1);
+  let left=rest;
+  for(let i=0;i<kids;i++){
+    const share=i===kids-1?left:Math.max(1,Math.round(left*(0.4+rand()*0.3)));
+    left-=share;
+    grow(n,nx,ny,ang+(rand()-.5)*(kids>1?1.05:0.55),share,depth+1,area,dept);
+    if(left<=0)break;
+  }
+}
+
+MIND.areas.forEach((area,ai)=>{
+  const a0=-Math.PI/2+ai*TAU/MIND.areas.length;
+  const R=250;
+  const hub={x:Math.cos(a0)*R,y:Math.sin(a0)*R,area:area.name,accent:area.accent,
+             glyph:area.glyph,angle:a0,depts:[]};
+  hubs.push(hub);
+
+  // rozdelenie uzlov oblasti medzi oddelenia (klesajúca váha, prvé sú najväčšie)
+  const w=area.depts.map((_,i)=>1/Math.pow(i+1,.72)+rand()*.12);
+  const sum=w.reduce((p,c)=>p+c,0);
+  let assigned=0;
+  const counts=w.map((v,i)=>{
+    const c=i===w.length-1?area.nodes-assigned:Math.max(2,Math.round(area.nodes*v/sum));
+    assigned+=c;return c;
+  });
+
+  const span=TAU/MIND.areas.length*0.92;
+  area.depts.forEach((dname,di)=>{
+    const frac=area.depts.length===1?.5:di/(area.depts.length-1);
+    const ang=a0-span/2+span*frac+(rand()-.5)*0.05;
+    const dr=98+rand()*26;
+    const dx=hub.x+Math.cos(ang)*dr, dy=hub.y+Math.sin(ang)*dr;
+    const dept={x:dx,y:dy,name:dname,area:area.name,accent:area.accent,count:counts[di]};
+    hub.depts.push(dept);
+    edges.push({a:hub,b:dept,depth:0,trunk:true});
+    grow(dept,dx,dy,ang,Math.max(1,counts[di]-1),1,area.name,dname);
+  });
+});
+
+/* menovky reálnych uzlov na najsilnejšie listy daného oddelenia */
+NAMED.forEach(nm=>{
+  const cand=nodes.filter(n=>n.area===nm.a&&n.dept===nm.d&&!n.label)
+                  .sort((p,q)=>p.depth-q.depth);
+  const target=cand[0];
+  if(target){target.label=nm.l;target.type=nm.t;target.strength=nm.s;
+             target.r=4+Math.min(nm.s,9)*0.32;}
+});
+
+/* =========================================================
+   3. KRESLENIE
+   ========================================================= */
+const svg=document.getElementById("svg");
+const gRoot=el("g"), gRings=el("g"), gSpokes=el("g"), gEdges=el("g"),
+      gLeaves=el("g"), gDepts=el("g"), gHubs=el("g"), gLabels=el("g"),
+      gCore=el("g",{id:"gCoreWrap"}), gDust=el("g");
+gRoot.append(gRings,gSpokes,gEdges,gLeaves,gDepts,gHubs,gCore,gLabels);
+svg.append(gRoot);
+
+[200,400,600].forEach(r=>gRings.append(el("circle",{class:"ring",cx:0,cy:0,r})));
+hubs.forEach(h=>gSpokes.append(el("line",{class:"spoke",x1:0,y1:0,x2:h.x,y2:h.y})));
+
+edges.forEach(e=>{
+  const l=el("line",{class:"edge"+(e.trunk?" trunk":""),x1:e.a.x,y1:e.a.y,x2:e.b.x,y2:e.b.y});
+  l.setAttribute("stroke-opacity",e.trunk?.5:Math.max(.12,.42-e.depth*.05));
+  l.dataset.area=e.b.area; l.dataset.dept=e.b.dept||e.b.name||"";
+  e._el=l; gEdges.append(l);
+});
+
+nodes.forEach(n=>{
+  const c=el("circle",{class:"leaf",cx:n.x,cy:n.y,r:n.r});
+  const accent=MIND.areas.find(a=>a.name===n.area).accent;
+  c.setAttribute("fill",n.type?TYPE_COLOR[n.type]:"#3c4b49");
+  if(n.depth<2&&!n.type)c.setAttribute("fill",`color-mix(in srgb,${accent} 45%,#2b3634)`);
+  if(n.type)c.setAttribute("stroke",n.type?TYPE_COLOR[n.type]:"none"),
+            c.setAttribute("stroke-opacity",.35),c.setAttribute("stroke-width",4);
+  c.dataset.area=n.area; c.dataset.dept=n.dept; c._n=n; n._el=c; gLeaves.append(c);
+
+  if(n.label){
+    const t=el("text",{x:n.x+9,y:n.y+3.6,class:"lbl"});
+    t.textContent=n.label;
+    t.setAttribute("font-size","9.5");t.setAttribute("fill","#c8d5d3");
+    t.setAttribute("letter-spacing",".02em");
+    t.dataset.area=n.area;t.dataset.dept=n.dept;
+    n._lbl=t; gLabels.append(t);
+  }
+});
+
+hubs.forEach(h=>{
+  h.depts.forEach(d=>{
+    const g=el("g",{class:"dept"}); g.dataset.area=d.area; g.dataset.dept=d.name;
+    const c=el("circle",{cx:d.x,cy:d.y,r:7.5});
+    c.setAttribute("stroke",d.accent);c.setAttribute("stroke-opacity",.65);
+    c.setAttribute("stroke-width",1.2);
+    const dot=el("circle",{cx:d.x,cy:d.y,r:2.4,fill:d.accent});
+    dot.setAttribute("fill-opacity",.85);
+    g.append(c,dot); g._d=d; d._g=g; gDepts.append(g);
+  });
+
+  const g=el("g",{class:"hub"}); g.dataset.area=h.area;
+  const halo=el("circle",{class:"halo",cx:h.x,cy:h.y,r:30,fill:h.accent});
+  halo.setAttribute("fill-opacity",.07);
+  const disc=el("circle",{class:"disc",cx:h.x,cy:h.y,r:19});
+  const ring=el("circle",{cx:h.x,cy:h.y,r:19,fill:"none"});
+  ring.setAttribute("stroke",h.accent);ring.setAttribute("stroke-width",1.5);
+  const t=el("text",{x:h.x,y:h.y+4.5,fill:h.accent});t.textContent=h.glyph;
+  g.append(halo,disc,ring,t); g._h=h; gHubs.append(g);
+
+  // menovka oblasti na obvode
+  const lr=470;
+  const lx=Math.cos(h.angle)*lr, ly=Math.sin(h.angle)*lr;
+  const lg=el("g",{class:"areaLabel"}); lg.dataset.area=h.area;
+  const parts=h.area.split(" & ");
+  const name=el("text",{class:"name",x:lx,y:ly});
+  name.textContent=parts[0].toUpperCase();
+  const sub=el("text",{class:"sub",x:lx,y:ly+20});
+  const A=MIND.areas.find(a=>a.name===h.area);
+  sub.textContent=(parts[1]?parts[1]+" · ":"")+A.nodes+" uzlov · "+A.depts.length+" oddelení";
+  lg.append(name,sub); lg._h=h; gLabels.append(lg);
+});
+
+/* jadro */
+/* menovky oddelení — vo scéne, objavia sa až pri zanorení (ako v hernom menu) */
+hubs.forEach(h=>{
+  h.depts.forEach(d=>{
+    const dx=d.x-h.x, dy=d.y-h.y, L=Math.hypot(dx,dy)||1;
+    const ox=d.x+dx/L*20, oy=d.y+dy/L*20;
+    const g=el("g",{class:"dLbl"});
+    g.dataset.area=d.area; g.dataset.dept=d.name;
+    const anchor=dx/L>0.35?"start":dx/L<-0.35?"end":"middle";
+    const t=el("text",{class:"dn",x:ox,y:oy,"text-anchor":anchor});
+    t.textContent=d.name;
+    const m=el("text",{class:"dm",x:ox,y:oy+11,"text-anchor":anchor});
+    m.textContent=d.count+" uzlov";
+    g.append(t,m); d.lbl=g; gLabels.append(g);
+  });
+});
+function big(d){
+  gLabels.querySelectorAll(".dLbl.big").forEach(g=>g.classList.remove("big"));
+  if(d&&d.lbl)d.lbl.classList.add("big");
+}
+
+/* rodič a deti pre zanorenie na úroveň uzla */
+edges.forEach(e=>{
+  if(e.b.depth===undefined)return;
+  e.b._parent=e.a;
+  (e.a._children||(e.a._children=[])).push(e.b);
+});
+
+/* karta uzla vo scéne (úroveň 3) */
+const gCard=el("g",{id:"gCard",opacity:0});
+const cardT=el("text",{class:"cT"}),cardM=el("text",{class:"cM"}),
+      cardA=el("text",{class:"cA"}),cardRing=el("circle",{class:"cR",fill:"none"});
+gCard.append(cardRing,cardT,cardM,cardA);
+gLabels.append(gCard);
+function card(n){
+  if(!n){gCard.setAttribute("opacity",0);return;}
+  const acc=n.type?TYPE_COLOR[n.type]:MIND.areas.find(a=>a.name===n.area).accent;
+  const flip=n.x>0?1:-1, ox=n.x+16*flip, anchor=flip>0?"start":"end";
+  [cardT,cardM,cardA].forEach(t=>t.setAttribute("text-anchor",anchor));
+  cardT.setAttribute("x",ox);cardT.setAttribute("y",n.y-2);
+  cardM.setAttribute("x",ox);cardM.setAttribute("y",n.y+9);
+  cardA.setAttribute("x",ox);cardA.setAttribute("y",n.y+18);
+  cardT.textContent=n.label||"Nepomenovaný uzol";
+  cardM.textContent=(n.type||"uzol")+" · úroveň "+(n.depth+2)
+    +(n.strength?" · sila "+n.strength:"");
+  cardA.textContent=n.dept+" · "+n.area;
+  cardT.setAttribute("fill",acc);
+  cardRing.setAttribute("cx",n.x);cardRing.setAttribute("cy",n.y);
+  cardRing.setAttribute("r",11);cardRing.setAttribute("stroke",acc);
+  gCard.setAttribute("opacity",1);
+}
+
+gCore.append(el("circle",{class:"pulse",cx:0,cy:0,r:28,fill:"#d8b878","fill-opacity":".18"}));
+
+/* JADRO = kombinácia všetkých grafov: každý uzol mysle je sem
+   premietnutý v miniatúre, takže stred je doslova všetkých 5 grafov naraz */
+const maxR=Math.max(...nodes.map(n=>Math.hypot(n.x,n.y)));
+const CORE_R=86;
+const proj=n=>{
+  const a=Math.atan2(n.y,n.x), d=Math.hypot(n.x,n.y);
+  const rr=7+Math.pow(d/maxR,.8)*CORE_R;
+  return{x:Math.cos(a)*rr+(rand()-.5)*4,y:Math.sin(a)*rr+(rand()-.5)*4};
+};
+const gCoreEdges=el("g"),gCoreDots=el("g");
+gDust.append(gCoreEdges,gCoreDots);
+const pm=new Map();
+nodes.forEach(n=>pm.set(n,proj(n)));
+edges.forEach(e=>{
+  if(e.depth>2)return;
+  const A=pm.get(e.a)||(e.a.x!==undefined?proj(e.a):null), B=pm.get(e.b);
+  if(!A||!B)return;
+  gCoreEdges.append(el("line",{x1:A.x,y1:A.y,x2:B.x,y2:B.y,
+    stroke:"#dfe8e7","stroke-opacity":".07"}));
+});
+const dust=[];
+nodes.forEach(n=>{
+  const p=pm.get(n), acc=MIND.areas.find(a=>a.name===n.area).accent;
+  const c=el("circle",{cx:p.x,cy:p.y,r:n.type?2.2:(1+rand()*1.5)});
+  c.setAttribute("fill",n.type?TYPE_COLOR[n.type]:acc);
+  const base=n.type?.95:(.3+rand()*.55);
+  c.setAttribute("fill-opacity",base.toFixed(2));
+  dust.push({e:c,base,ph:rand()*TAU,sp:.5+rand()*1.7});
+  gCoreDots.append(c);
+});
+/* zlaté iskry medzi oblasťami vo vnútri jadra */
+for(let i=0;i<26;i++){
+  const a=rand()*TAU,d=4+rand()*16;
+  const s=el("circle",{cx:Math.cos(a)*d,cy:Math.sin(a)*d,r:.7+rand()*1.6,fill:"#d8b878"});
+  const base=.5+rand()*.5;s.setAttribute("fill-opacity",base.toFixed(2));
+  dust.push({e:s,base,ph:rand()*TAU,sp:1.4+rand()*2.2});
+  gCoreDots.append(s);
+}
+gCore.append(gDust);
+/* pomaly rotujúci prstenec atmosféry */
+const atmo=el("circle",{cx:0,cy:0,r:120,fill:"none",stroke:"#05bcc4",
+  "stroke-opacity":".12","stroke-width":"1","stroke-dasharray":"1 13"});
+gRings.append(atmo);
+const coreRing=el("circle",{cx:0,cy:0,r:14,fill:"#0e1413"});
+coreRing.setAttribute("stroke","#d8b878");coreRing.setAttribute("stroke-width",1.4);
+const coreT=el("text",{x:0,y:4.5,"text-anchor":"middle",fill:"#d8b878","font-size":"12"});
+coreT.textContent="♛";
+gCore.append(coreRing,coreT);
+const coreLbl=el("text",{x:0,y:-46,"text-anchor":"middle",fill:"#c9a869","font-size":"10",
+  "letter-spacing":".3em"});
+coreLbl.textContent="HADES";
+gCore.append(coreLbl);
+
+/* =========================================================
+   4. STATS
+   ========================================================= */
+const S=[["714","uzlov"],["2 141","spojení"],["5","oblastí"],["72","oddelení"],["5","na kontrolu"]];
+document.getElementById("stats").innerHTML=S.map(([b,s],i)=>
+  `<div class="stat${i===4?" review":""}"><b>${b}</b><span>${s}</span></div>`).join("");
+
+/* =========================================================
+   5. VIEW — pan / zoom / fit
+   ========================================================= */
+let k=1,tx=0,ty=0;
+function apply(){
+  gRoot.setAttribute("transform",`translate(${tx} ${ty}) scale(${k})`);
+  document.getElementById("zoomLbl").textContent=Math.round(k*100)+" %";
+}
+const REDUCED=matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+/* plynulý prelet kamery namiesto skoku */
+let cam=null;
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+function animateTo(nk,ntx,nty,ms=720){
+  if(REDUCED){k=nk;tx=ntx;ty=nty;apply();return;}
+  cam={t0:performance.now(),ms,k0:k,x0:tx,y0:ty,k1:nk,x1:ntx,y1:nty};
+}
+function stepCam(now){
+  if(!cam)return;
+  const p=Math.min(1,(now-cam.t0)/cam.ms), e=ease(p);
+  k=cam.k0+(cam.k1-cam.k0)*e;
+  tx=cam.x0+(cam.x1-cam.x0)*e;
+  ty=cam.y0+(cam.y1-cam.y0)*e;
+  apply(); if(p>=1)cam=null;
+}
+function fitVals(){
+  const w=innerWidth,h=innerHeight;
+  let nk=Math.min(w/1200,(h-140)/1180);nk=Math.max(.18,Math.min(nk,1.6));
+  return[nk,w/2,h/2+18];
+}
+function fit(anim=true){
+  const[nk,nx,ny]=fitVals();
+  if(anim)animateTo(nk,nx,ny,760); else{k=nk;tx=nx;ty=ny;apply();}
+}
+addEventListener("resize",()=>fit(false));
+
+const stage=document.getElementById("stage");
+let drag=null;
+stage.addEventListener("pointerdown",e=>{
+  cam=null;
+  drag={x:e.clientX,y:e.clientY,tx,ty,moved:false};
+  stage.classList.add("dragging");stage.setPointerCapture(e.pointerId);
+});
+stage.addEventListener("pointermove",e=>{
+  if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;
+  tx=drag.tx+dx;ty=drag.ty+dy;apply();
+});
+stage.addEventListener("pointerup",()=>{drag=null;stage.classList.remove("dragging")});
+stage.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const f=Math.exp(-e.deltaY*0.0016), nk=Math.max(.12,Math.min(4,k*f));
+  tx=e.clientX-(e.clientX-tx)*(nk/k); ty=e.clientY-(e.clientY-ty)*(nk/k);
+  k=nk;apply();
+},{passive:false});
+function zoomBy(f){
+  const nk=Math.max(.12,Math.min(4,k*f)),cx=innerWidth/2,cy=innerHeight/2;
+  animateTo(nk,cx-(cx-tx)*(nk/k),cy-(cy-ty)*(nk/k),380);
+}
+document.getElementById("bIn").onclick=()=>zoomBy(1.3);
+document.getElementById("bOut").onclick=()=>zoomBy(.77);
+document.getElementById("bFit").onclick=()=>go({level:0});
+const bLabels=document.getElementById("bLabels");
+bLabels.onclick=()=>{
+  const on=bLabels.classList.toggle("on");
+  gLabels.style.transition="opacity .45s ease";
+  gLabels.style.opacity=on?"1":"0";
+  gLabels.style.pointerEvents=on?"":"none";
+};
+
+/* =========================================================
+   6. HĹBKA: 0 mapa → 1 oblasť → 2 oddelenie · C jadro
+   ========================================================= */
+const all=()=>[...svg.querySelectorAll("[data-area]")];
+const nav=document.getElementById("nav"),
+      crumbBack=document.getElementById("crumbBack"),
+      crumbBackTxt=document.getElementById("crumbBackTxt"),
+      crumbNow=document.getElementById("crumbNow"),
+      crumbCount=document.getElementById("crumbCount"),
+      bPrev=document.getElementById("bPrev"),
+      bNext=document.getElementById("bNext");
+
+let view={level:0,area:null,dept:null,node:null};
+let coreScale=1, coreTarget=1;
+
+function litIf(fn){
+  all().forEach(n=>{
+    const on=fn(n.dataset.area||"",n.dataset.dept||"",n);
+    n.classList.toggle("dim",!on);n.classList.toggle("lit",on);
+  });
+}
+function litSet(set){
+  all().forEach(n=>{
+    const on=set.has(n);
+    n.classList.toggle("dim",!on);n.classList.toggle("lit",on);
+  });
+}
+function backdrop(o){
+  [gRings,gSpokes].forEach(g=>{g.style.transition="opacity .55s ease";g.style.opacity=o;});
+  gCore.style.opacity=o<1?Math.max(o,.25):1;
+}
+function frameTo(pts,pad,ms){
+  if(!pts.length)return;
+  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+  const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const bw=Math.max(60,x1-x0)+pad, bh=Math.max(60,y1-y0)+pad;
+  const nk=Math.max(.14,Math.min(2.6,Math.min(innerWidth/bw,(innerHeight-170)/bh)));
+  animateTo(nk,innerWidth/2-(x0+x1)/2*nk,(innerHeight+70)/2-(y0+y1)/2*nk,ms);
+}
+/* vlna „ping" od zdroja von */
+function wave(list,src,delay=90,speed=1.15){
+  if(REDUCED)return;
+  list.forEach(c=>{
+    const n=c._n||{x:0,y:0};
+    c.classList.remove("ping");
+    c.style.animationDelay=(delay+Math.hypot(n.x-src.x,n.y-src.y)*speed)+"ms";
+    void c.getBoundingClientRect();
+    c.classList.add("ping");
+  });
+  setTimeout(()=>list.forEach(c=>{c.classList.remove("ping");c.style.animationDelay="";}),2000);
+}
+/* prekreslenie vetiev — hrany sa nakreslia znova od hubu von */
+function redraw(lines,src,delay=60,speed=.9){
+  if(REDUCED)return;
+  lines.forEach(l=>{
+    const len=Math.hypot(l.x2.baseVal.value-l.x1.baseVal.value,
+                         l.y2.baseVal.value-l.y1.baseVal.value)+2;
+    l.setAttribute("stroke-dasharray",len);
+    l.style.transition="none";
+    l.setAttribute("stroke-dashoffset",len);
+    void l.getBoundingClientRect();
+    l.style.transition="";
+    l.style.transitionDelay=(delay+Math.hypot(l.x1.baseVal.value-src.x,
+                                              l.y1.baseVal.value-src.y)*speed)+"ms";
+    l.setAttribute("stroke-dashoffset",0);
+  });
+  setTimeout(()=>lines.forEach(l=>{
+    l.style.transitionDelay="";l.removeAttribute("stroke-dasharray");
+    l.removeAttribute("stroke-dashoffset");}),2400);
+}
+function hubPing(area){
+  const hg=[...gHubs.children].find(g=>g._h&&g._h.area===area);
+  if(hg&&!REDUCED){hg.classList.remove("ping");void hg.getBoundingClientRect();
+                   hg.classList.add("ping");}
+}
+function ripple(x,y,color){
+  if(REDUCED)return;
+  const c=el("circle",{class:"ripple",cx:x,cy:y,r:6,stroke:color||"#05bcc4"});
+  gRings.append(c);setTimeout(()=>c.remove(),900);
+}
+
+/* ---------- prepínač pohľadov ---------- */
+function go(next){
+  const prev={...view};
+  view={level:next.level,area:next.area??view.area,dept:next.dept??view.dept,
+        node:next.node??(next.level===3?view.node:null)};
+  if(view.level===0){view.area=null;view.dept=null;}
+  if(view.level===1)view.dept=null;
+  const L=view.level;
+
+  nav.classList.toggle("on",L===1||L===2||L===3);
+  bPrev.classList.toggle("on",L===2||L===3);
+  bNext.classList.toggle("on",L===2||L===3);
+  if(L!==3)card(null);
+  coreTarget=L==="core"?3.4:1;
+
+  if(L===0){
+    litIf(()=>true);backdrop(1);big(null);setStats(STATS0);
+    fit();
+    if(prev.level!==0)setTimeout(()=>wave([...gLeaves.children],{x:0,y:0},120,.75),260);
+    return;
+  }
+  if(L==="core"){
+    litIf(()=>false);backdrop(.12);
+    nav.classList.add("on");bPrev.classList.remove("on");bNext.classList.remove("on");
+    crumbBackTxt.textContent="Celá mapa";
+    crumbNow.textContent="Jadro · všetkých 5 grafov naraz";
+    crumbCount.innerHTML="<b>714</b> uzlov v miniatúre";
+    big(null);
+    setStats([["714","uzlov v jadre"],["2 141","spojení"],["5","grafov naraz"]]);
+    animateTo(Math.min(2.2,Math.min(innerWidth,innerHeight)/420),
+              innerWidth/2,(innerHeight+70)/2,950);
+    return;
+  }
+  if(L===1){
+    const A=MIND.areas.find(a=>a.name===view.area), h=hubs.find(x=>x.area===view.area);
+    litIf(a=>a===view.area);backdrop(.5);
+    crumbBackTxt.textContent="Celá mapa";
+    crumbNow.textContent=A.name;
+    crumbCount.innerHTML=`<b>${A.depts.length}</b> oddelení · klik do vetvy`;
+    frameTo(nodes.filter(n=>n.area===view.area).concat([{x:0,y:0},h]),260,
+            prev.area===view.area?480:900);
+    hubPing(view.area);
+    const leaves=[...gLeaves.querySelectorAll(`[data-area="${cssq(view.area)}"]`)];
+    setTimeout(()=>wave(leaves,h,80,1.1),200);
+    big(null);
+    setStats([[A.nodes,"uzlov"],[A.depts.length,"oddelení"],
+              [Math.round(A.nodes/MIND.totals.nodes*100)+" %","mysle"]]);
+    return;
+  }
+  if(L===3){
+    const n=view.node, h3=hubs.find(x=>x.area===n.area);
+    const d3=h3.depts.find(x=>x.name===n.dept);
+    const kin=[n,...(n._children||[]),...(n._parent?[n._parent]:[])];
+    const set=new Set();
+    kin.forEach(x=>{[x._el,x._g,x._lbl].forEach(e2=>e2&&set.add(e2));});
+    edges.forEach(e2=>{
+      if(e2._el&&(kin.includes(e2.a)&&kin.includes(e2.b)))set.add(e2._el);
+    });
+    if(d3&&d3.lbl)set.add(d3.lbl);
+    litSet(set);backdrop(.12);
+    crumbBackTxt.textContent=n.dept;
+    crumbNow.textContent=n.label||"Uzol · úroveň "+(n.depth+2);
+    const kids=(n._children||[]).length;
+    crumbCount.innerHTML=`<b>${kids}</b> ${kids===1?"potomok":"potomkov"} · úroveň ${n.depth+2}`;
+    frameTo(kin,140,prev.level===3?520:820);
+    card(n);
+    setStats([[kids,"potomkov"],[n.depth+2,"úroveň"],[n.type||"uzol","typ"]]);
+    setTimeout(()=>wave(kin.map(x=>x._el).filter(Boolean),n,60,1.6),140);
+    return;
+  }
+  /* L === 2 — oddelenie, ideme do hĺbky */
+  const h=hubs.find(x=>x.area===view.area);
+  const d=h.depts.find(x=>x.name===view.dept);
+  litIf((a,dp,n)=>a===view.area&&(dp===view.dept||n.classList.contains("hub")
+        ||n.classList.contains("areaLabel")));
+  backdrop(.3);
+  crumbBackTxt.textContent=view.area;
+  crumbNow.textContent=view.dept;
+  const idx=h.depts.indexOf(d)+1;
+  crumbCount.innerHTML=`<b>${d.count}</b> uzlov · oddelenie ${idx} z ${h.depts.length}`;
+  const sub=nodes.filter(n=>n.area===view.area&&n.dept===view.dept);
+  frameTo(sub.concat([d,{x:h.x,y:h.y}]),170,prev.level===2?620:900);
+  const lines=[...gEdges.querySelectorAll(
+    `[data-area="${cssq(view.area)}"][data-dept="${cssq(view.dept)}"]`)];
+  const leaves=[...gLeaves.querySelectorAll(
+    `[data-area="${cssq(view.area)}"][data-dept="${cssq(view.dept)}"]`)];
+  redraw(lines,d,80,1.0);
+  setTimeout(()=>wave(leaves,d,140,1.25),120);
+  big(d);
+  const lv=new Set(sub.map(n=>n.depth)).size+1;
+  setStats([[d.count,"uzlov"],[lv,"úrovní"],[idx+" / "+h.depts.length,"oddelenie"]]);
+}
+const cssq=s=>s.replace(/(["\\])/g,"\\$1");
+
+crumbBack.onclick=()=>{
+  if(view.level===3){
+    const p=view.node._parent;
+    if(p&&p.depth!==undefined)go({level:3,node:p});
+    else go({level:2,area:view.node.area,dept:view.node.dept});
+  }
+  else if(view.level===2)go({level:1,area:view.area});
+  else go({level:0});
+};
+function shiftDept(step){
+  const h=hubs.find(x=>x.area===view.area);
+  const i=h.depts.findIndex(x=>x.name===view.dept);
+  const n=h.depts[(i+step+h.depts.length)%h.depts.length];
+  go({level:2,area:view.area,dept:n.name});
+}
+function shiftNode(step){
+  const n=view.node, p=n._parent;
+  const sib=(p&&p._children&&p._children.length>1)?p._children
+            :(n._children&&n._children.length?n._children:[n]);
+  const i=Math.max(0,sib.indexOf(n));
+  go({level:3,node:sib[(i+step+sib.length)%sib.length]});
+}
+const shift=step=>view.level===3?shiftNode(step):shiftDept(step);
+bPrev.onclick=()=>shift(-1);
+bNext.onclick=()=>shift(1);
+addEventListener("keydown",e=>{
+  if(e.key==="Escape")crumbBack.onclick();
+  if((view.level===2||view.level===3)&&e.key==="ArrowLeft")shift(-1);
+  if((view.level===2||view.level===3)&&e.key==="ArrowRight")shift(1);
+  if((view.level===2||view.level===3)&&e.key==="ArrowDown"&&view.level===2){
+    const h=hubs.find(x=>x.area===view.area);
+    const d=h.depts.find(x=>x.name===view.dept);
+    if(d._children&&d._children.length)go({level:3,node:d._children[0]});
+  }
+});
+
+/* ---------- HUD čísla podľa úrovne ---------- */
+function setStats(pairs){
+  document.getElementById("stats").innerHTML=pairs.map(([b,t],i)=>
+    `<div class="stat" style="animation-delay:${i*45}ms"><b>${b}</b><span>${t}</span></div>`).join("");
+}
+const STATS0=[["714","uzlov"],["2 141","spojení"],["5","oblastí"],["72","oddelení"]];
+
+const tip=document.getElementById("tip");
+function showTip(e,html){
+  tip.innerHTML=html;tip.classList.add("on");
+  const r=tip.getBoundingClientRect();
+  tip.style.left=Math.min(e.clientX+14,innerWidth-r.width-12)+"px";
+  tip.style.top=Math.min(e.clientY+14,innerHeight-r.height-12)+"px";
+}
+const hideTip=()=>tip.classList.remove("on");
+
+svg.addEventListener("mousemove",e=>{
+  const t=e.target;
+  if(t.classList.contains("leaf")){
+    const n=t._n;
+    showTip(e,`<div class="t">${n.label||"Nepomenovaný uzol"}</div>
+      <div class="m">${n.type||"uzol"} · ${n.dept}</div>
+      <div class="m" style="margin-top:2px">${n.area}</div>
+      ${n.strength?`<div class="bar"><i style="width:${Math.min(100,n.strength*11)}%"></i></div>`:""}`);
+    return;
+  }
+  const dg=t.closest?.(".dept"), hg=t.closest?.(".hub"), ag=t.closest?.(".areaLabel");
+  if(dg){const d=dg._d;showTip(e,`<div class="t">${d.name}</div><div class="m">oddelenie · ${d.count} uzlov</div><div class="m">klik = vetva do hĺbky</div>`);return;}
+  if(hg||ag){const h=(hg||ag)._h;const A=MIND.areas.find(a=>a.name===h.area);
+    showTip(e,`<div class="t">${A.name}</div><div class="m">${A.nodes} uzlov · ${A.depts.length} oddelení</div><div class="m">klik = oblasť</div>`);return;}
+  if(Math.hypot((e.clientX-tx)/k,(e.clientY-ty)/k)<CORE_R+18){
+    showTip(e,`<div class="t">Jadro</div><div class="m">všetkých 5 grafov v miniatúre</div><div class="m">klik = kombinovaný pohľad</div>`);return;}
+  hideTip();
+});
+svg.addEventListener("mouseleave",hideTip);
+
+svg.addEventListener("click",e=>{
+  if(drag&&drag.moved)return;
+  const wx=(e.clientX-tx)/k, wy=(e.clientY-ty)/k;
+  const hg=e.target.closest?.(".hub"), ag=e.target.closest?.(".areaLabel"),
+        dg=e.target.closest?.(".dept"), leaf=e.target.classList.contains("leaf");
+  const inCore=!hg&&!ag&&!dg&&!leaf&&Math.hypot(wx,wy)<CORE_R+18;
+
+  if(inCore){ripple(wx,wy,"#d8b878");go({level:"core"});return;}
+  if(hg||ag){const h=(hg||ag)._h;ripple(wx,wy,h.accent);go({level:1,area:h.area});return;}
+  if(dg){const d=dg._d;ripple(wx,wy,d.accent);go({level:2,area:d.area,dept:d.name});return;}
+  if(leaf){
+    const n=e.target._n, acc=MIND.areas.find(a=>a.name===n.area).accent;
+    ripple(wx,wy,acc);
+    if(view.level>=2)go({level:3,node:n});
+    else go({level:2,area:n.area,dept:n.dept});
+    return;
+  }
+  ripple(wx,wy,"#05bcc4");
+  if(view.level===3)crumbBack.onclick();
+  else go({level:view.level==="core"?0:Math.max(0,(view.level|0)-1)});
+});
+
+/* =========================================================
+   7. ENTRANCE — choreografia nabehnutia grafu
+   ========================================================= */
+function entrance(){
+  const[nk,nx,ny]=fitVals();
+  if(REDUCED){k=nk;tx=nx;ty=ny;apply();return;}
+  k=nk*0.86;tx=nx;ty=ny+26;apply();
+
+  const dist=(x,y)=>Math.hypot(x,y);
+  const ai=name=>MIND.areas.findIndex(a=>a.name===name);
+  const items=[];
+
+  gCore.classList.add("anim");items.push(gCore);
+  [...gRings.children,...gSpokes.children].forEach((n,i)=>{
+    n.classList.add("anim");n.style.transitionDelay=(140+i*55)+"ms";items.push(n);
+  });
+  [...gHubs.children].forEach(g=>{
+    g.classList.add("anim");g.style.transitionDelay=(420+ai(g.dataset.area)*130)+"ms";items.push(g);
+  });
+  [...gDepts.children].forEach((g,i)=>{
+    g.classList.add("anim");
+    g.style.transitionDelay=(560+ai(g.dataset.area)*130+(i%20)*16)+"ms";items.push(g);
+  });
+  [...gEdges.children].forEach(l=>{
+    const len=Math.hypot(l.x2.baseVal.value-l.x1.baseVal.value,
+                         l.y2.baseVal.value-l.y1.baseVal.value)+2;
+    l.setAttribute("stroke-dasharray",len);
+    l.setAttribute("stroke-dashoffset",len);
+    l.style.transitionDelay=(500+ai(l.dataset.area)*130
+      +dist(l.x1.baseVal.value,l.y1.baseVal.value)*0.55)+"ms";
+    items.push(l);
+  });
+  [...gLeaves.children].forEach(c=>{
+    c.classList.add("anim");
+    c.style.transitionDelay=(620+ai(c.dataset.area)*130+dist(c._n.x,c._n.y)*0.85)+"ms";
+    items.push(c);
+  });
+  [...gLabels.children].forEach(n=>{
+    if(n.classList.contains("dLbl"))return;
+    n.classList.add("anim");
+    const isArea=n.classList.contains("areaLabel");
+    n.style.transitionDelay=(isArea?900+ai(n.dataset.area)*130:1500)+"ms";
+    items.push(n);
+  });
+
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    items.forEach(n=>n.classList.add("on"));
+    [...gEdges.children].forEach(l=>l.setAttribute("stroke-dashoffset",0));
+    animateTo(nk,nx,ny,1500);
+  }));
+
+  setTimeout(()=>{
+    items.forEach(n=>{n.classList.remove("anim","on");n.style.transitionDelay="";});
+    [...gEdges.children].forEach(l=>{
+      l.removeAttribute("stroke-dasharray");l.removeAttribute("stroke-dashoffset");});
+  },3800);
+}
+
+/* =========================================================
+   8. AMBIENT — nepretržitý pohyb
+   ========================================================= */
+const halos=[...gHubs.querySelectorAll(".halo")].map((e,i)=>({e,ph:i*1.3}));
+let frame=0;
+function loop(now){
+  stepCam(now);
+  if(!REDUCED){
+    const t=now/1000;
+    coreScale+=(coreTarget-coreScale)*0.055;
+    gDust.setAttribute("transform",
+      "rotate("+(t*2.6).toFixed(2)+") scale("+coreScale.toFixed(3)+")");
+    gCoreEdges.setAttribute("stroke-opacity",coreScale>1.5?".16":".07");
+    atmo.setAttribute("transform","rotate("+(-t*5).toFixed(2)+")");
+    halos.forEach(h=>h.e.setAttribute("r",(30+Math.sin(t*0.8+h.ph)*4.5).toFixed(1)));
+    if((frame++&1)===0){
+      for(let i=0;i<dust.length;i+=1){
+        const d=dust[i];
+        d.e.setAttribute("fill-opacity",
+          Math.max(.06,d.base*(0.55+0.45*Math.sin(t*d.sp+d.ph))).toFixed(2));
+      }
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+entrance();
+</script>
+</body>
+</html>

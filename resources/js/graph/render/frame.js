@@ -9,6 +9,8 @@ import { stopReplay, updateTimelineLabel } from '../timeline.js';
 import { syncSlider } from '../../shell/settings.js';
 import { updateStateUi } from '../../shell/status-chip.js';
 import { applyReadableZoom } from './zoom.js';
+import { isMapActive } from '../map/active.js';
+import { mapStep } from '../map/index.js';
 
 
 /* ---------- render ---------- */
@@ -40,6 +42,13 @@ export function frame() {
     framePending = false;
     // FÁZA SHELL: ak sme medzitým opustili Graf, slučka zaparkuje bez kreslenia.
     if (S.screen !== 'graf') return;
+    // FÁZA W1 (MAPA): radiálna mapa je domovský render obrazovky 'graf' a NAHRÁDZA
+    // starú d3-force vetvu. Kreslí sama a povie, či má slučka bežať ďalej (dirty-driven).
+    if (isMapActive()) {
+        lastFrame = now();
+        if (mapStep()) scheduleFrame();
+        return;
+    }
     if (readableFitPending && S.nodes.length) {
         readableFitPending = false;
         if (applyReadableZoom()) S._dirty = true;

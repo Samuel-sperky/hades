@@ -45,7 +45,7 @@ describe('core/screens — register obrazoviek', () => {
     });
 
     it('normalizeScreen padne na predvolenú pri neznámom/prázdnom vstupe', () => {
-        expect(DEFAULT_SCREEN).toBe('dnes');
+        expect(DEFAULT_SCREEN).toBe('graf');
         expect(normalizeScreen('neexistuje')).toBe(DEFAULT_SCREEN);
         expect(normalizeScreen(null)).toBe(DEFAULT_SCREEN);
         expect(normalizeScreen(undefined)).toBe(DEFAULT_SCREEN);

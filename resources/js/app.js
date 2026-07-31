@@ -40,6 +40,8 @@ import { register as registerMdOverlay } from './node/md-overlay.js';
 import { register as registerLibrary } from './screens/library.js';
 import { register as registerEshop } from './screens/eshop.js';
 import { register as registerGraphInput } from './graph/input.js';
+import { register as registerMap } from './graph/map/index.js';
+import { drawMap } from './graph/map/render.js';
 import { register as registerShortcuts } from './shell/shortcuts.js';
 import { register as registerCmdk } from './shell/cmdk.js';
 import { register as registerPack } from './dock/pack.js';
@@ -82,6 +84,7 @@ async function boot() {
     registerLibrary(root);
     registerEshop(root);
     registerGraphInput(canvas);
+    registerMap(root);           // W1: radiálna MAPA = render obrazovky 'graf'
     registerShortcuts(root);
     registerCmdk(root);
     registerPack(root);
@@ -124,7 +127,7 @@ async function boot() {
 
     // Debug hook. window.HADES zostáva vo W0 nezmenené; window.AURA je alias
     // na ten istý objekt, aby existujúce konzolové skripty fungovali.
-    window.HADES = { S, draw, frame, setTheme, setFocus, fitView, setLocal, clearLocal };
+    window.HADES = { S, draw, frame, setTheme, setFocus, fitView, setLocal, clearLocal, drawMap };
     window.AURA = window.HADES;
 
     scheduleFrame();

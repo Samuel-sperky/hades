@@ -33,6 +33,10 @@ beforeEach(() => {
     S.local = null;
     S.connectFrom = null;
     S.view = 'map';
+    // W1: starý vstup plátna je aktívny len MIMO mapy (na 'graf' ho vypína
+    // graph/map/active.js). Tieto testy overujú starý input, preto simulujeme
+    // inú obrazovku, aby guard isMapActive() nezhltol udalosti.
+    S.screen = 'dnes';
     S.cam = { x: 0, y: 0, k: 0.85 };
     S._interacting = false;
     for (const k of ['types', 'sources', 'areas', 'tags']) S.filter[k].clear();
