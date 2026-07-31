@@ -33,7 +33,7 @@
     font-size: var(--icon-md);
 }
 #node-md.hidden { display: none; }
-#node-pack.in-pack { color: var(--accent-600); background: var(--accent-soft); }
+#node-pack.in-pack { color: var(--accent-text); background: var(--accent-soft); }
 
 /* ---------------------------------------------------------------------------
    NOVÝ UZOL (#btn-new-node) — tichá prerušovaná výzva pod stromom štruktúry
@@ -48,7 +48,7 @@
 #btn-new-node:hover {
     background: var(--accent-softer);
     border-color: var(--border-accent);
-    color: var(--accent-600);
+    color: var(--accent-text);
 }
 
 /* ===========================================================================

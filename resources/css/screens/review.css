@@ -41,7 +41,7 @@
 }
 .queue-actions button:hover { background: var(--hover-fill); color: var(--text); }
 .queue-actions button.act-verify:hover { color: var(--cert-overene); background: var(--cert-overene-soft); }
-.queue-actions button.act-resolve:hover { color: var(--accent-600); background: var(--accent-softer); }
+.queue-actions button.act-resolve:hover { color: var(--accent-text); background: var(--accent-softer); }
 .queue-actions button.act-skip:hover { color: var(--danger); background: var(--danger-soft); }
 .queue-actions button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* armed inline (Preskočiť / Delete) — no native confirm() */

@@ -12,7 +12,10 @@ export function showToast(text, nodeId, variant) {
     // button — prístupné z klávesnice, klik naviguje na uzol
     const el = document.createElement('button');
     el.type = 'button';
-    el.setAttribute('role', 'status');
+    // Chybu treba oznámiť dôraznejšie než potvrdenie — role="alert" prečíta čítač
+    // hneď, role="status" počká na pauzu v reči. Kontejner #toasts má aria-live="polite",
+    // assertive rola na dieťati ho pre tento toast prebije.
+    el.setAttribute('role', variant === 'error' ? 'alert' : 'status');
     el.className = 'toast' + (variant ? ' ' + variant : '');
     // variantná ikona (success/warn/error); default hub
     const icon = { success: 'check_circle', warn: 'warning', error: 'error' }[variant] || 'hub';
@@ -38,6 +41,10 @@ export function showToast(text, nodeId, variant) {
     };
     el.addEventListener('mouseenter', () => clearTimeout(el._t));
     el.addEventListener('mouseleave', () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 2500); });
+    // Myš toast pozastaví, klávesnica doteraz nie — používateľ, ktorý sa naň
+    // dotabuje, mu zmizol pod rukou (WCAG 2.2.1). Fókus sa chová ako hover.
+    el.addEventListener('focus', () => clearTimeout(el._t));
+    el.addEventListener('blur', () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 2500); });
 
     wrap.appendChild(el);
     while (wrap.children.length > 3) wrap.firstChild.remove();

@@ -46,7 +46,7 @@
     font-size: var(--icon-sm);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.ctx-x:hover { background: var(--accent-soft); color: var(--accent-600); }
+.ctx-x:hover { background: var(--accent-soft); color: var(--accent-text); }
 .ctx-x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* Indikátor využitia kontextu (rozhodnutie 93) */

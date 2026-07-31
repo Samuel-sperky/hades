@@ -202,6 +202,16 @@
     --line2: var(--border-strong);
     --accent2: var(--accent-300);
     --accent-ink: var(--accent-600);
+
+    /* Akcentový TEXT na svetlom podklade panela — nie fill.
+       Existuje preto, že tmavá téma invertuje akcentový rebrík: `--accent-600` je
+       tam TMAVŠÍ než podklad, takže „silnejší inkoust" dával 3,27:1 na paneli, kým
+       WCAG AA žiada 4,5:1. Postihnuté boli aj markdown odkazy, teda výstup chatu.
+       Alias to rieši bez zmeny jedinej farebnej hodnoty Aura palety: vo svetlej téme
+       ukazuje na tmavší odtieň, v tmavej na svetlejší.
+       Použi na `color:`. Na `background:` a `border-color:` používaj `--accent-600`
+       priamo — tam je kontrast v poriadku, lebo text na ňom je svetlý. */
+    --accent-text: var(--accent-600);
     --accent-tint: var(--accent-softer);
     --accent-line: var(--border-accent);
     --ok: var(--success);

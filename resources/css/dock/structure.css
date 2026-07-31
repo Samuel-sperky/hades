@@ -38,9 +38,9 @@
 /* Active row — teal left accent-line like .record */
 .tree-row.active {
     background: var(--accent-softer);
-    color: var(--accent-600);
+    color: var(--accent-text);
 }
-.tree-row.active .count { color: var(--accent-600); }
+.tree-row.active .count { color: var(--accent-text); }
 .tree-row.active::before {
     content: "";
     position: absolute;

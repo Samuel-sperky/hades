@@ -1,41 +1,99 @@
 /* ---------------------------------------------------------------------------
-   FONTY — vendoring pre offline režim (rozhodnutie #142, akceptačné kritérium 10)
+   FONTY — vendorované lokálne, appka je offline-ready (rozhodnutie #142,
+   akceptačné kritérium 10).
 
-   STAV: PRIPRAVENÉ, NEAKTÍVNE. Vlastník P9.
+   STAV: AKTÍVNE. Žiadny request na fonts.googleapis.com ani fonts.gstatic.com.
 
-   Appka dnes načítava fonty z `fonts.googleapis.com` (partials/head.blade.php),
-   takže NIE JE offline-ready. Najhoršia časť zlyhania: `--font` / `--mono` /
-   `--serif` majú systémové fallbacky, ale **Material Symbols Rounded nemá žiadny**
-   — pri nedostupnom CDN sa všetky ikony vykreslia ako textové názvy
-   („wb_sunny", „hub", „close"). To je viditeľný rozpad UI, nie kozmetika.
+   Súbory sú v `resources/fonts/`, Vite ich hashuje do `public/build/assets/`.
+   Rodiny sa menujú presne tak, ako ich servovali Google Fonts (`Geist`,
+   `Geist Mono`, `Playfair Display`, `Material Symbols Rounded`), takže
+   tokens.css ani reset.css netreba meniť.
 
-   PREČO TO P9 NEDOKONČILA:
-     · `package.json` + `package-lock.json` sú zdieľané súbory (kontrakt §3.1,
-       integrátor only) — bez nich sa balíčky fontov nedajú pridať;
-     · `partials/head.blade.php` je zdieľaný súbor — `<link>` na Google Fonts
-       z neho smie odstrániť len integrátor;
-     · sťahovanie .woff2 priamo z webu je mimo mandátu agenta.
+   LICENCIE (redistribúcia je v poriadku, texty licencií sú v resources/fonts/):
+     · Geist, Geist Mono ........ SIL OFL 1.1  → LICENSE-geist(-mono).txt
+     · Playfair Display ......... SIL OFL 1.1  → LICENSE-playfair-display.txt
+     · Material Symbols Rounded . Apache-2.0   → LICENSE-material-symbols.txt
 
-   AKTIVÁCIA — 3 kroky, presný postup je aj v W2-P9-REPORT.md:
+   PODMNOŽINY: len `latin` + `latin-ext` (latin-ext je pre slovenčinu povinný —
+   č, š, ž, ť, ď, ň, ľ, ĺ, ŕ, ô). Kurzívy sa nevendorovali, appka ich nepoužíva
+   (prehliadač si prípadnú kurzívu odvodí synteticky).
 
-     1) npm i -D @fontsource-variable/geist @fontsource-variable/geist-mono \
-                @fontsource-variable/playfair-display material-symbols
-     2) odkomentuj 4 @import riadky nižšie
-     3) v partials/head.blade.php zmaž 3 riadky:
-          <link rel="preconnect" href="https://fonts.googleapis.com">
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist…">
-
-   Vite prepíše `url()` vnútri týchto balíčkových CSS na hashované assety v
-   public/build, takže po builde nezostane ani jeden externý request.
-   Overenie: `grep -r "fonts.googleapis.com" resources/views/` → 0 výskytov
-   a načítanie stránky s odpojeným internetom.
+   IKONOVÝ FONT: originál má 5 224 KB, vendorovaná verzia 315 KB — nepoužité
+   variabilné osi (FILL, GRAD, opsz) sú zapečené, viď
+   `resources/fonts/subset-material-symbols.mjs`. Všetky ikony zostali dostupné.
 
    Tento súbor je importovaný z base/reset.css (slot 14 — @font-face musí byť
-   pred prvým použitím), takže po odkomentovaní netreba nič ďalšie drôtovať.
+   pred prvým použitím).
    --------------------------------------------------------------------------- */
 
-/* @import '@fontsource-variable/geist/index.css'; */
-/* @import '@fontsource-variable/geist-mono/index.css'; */
-/* @import '@fontsource-variable/playfair-display/index.css'; */
-/* @import 'material-symbols/rounded.css'; */
+/* --- Geist (--font) ------------------------------------------------------- */
+@font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../../fonts/geist-latin-wght-normal.woff2") format("woff2-variations");
+    unicode-range: u+0000-00ff, u+0131, u+0152-0153, u+02bb-02bc, u+02c6, u+02da, u+02dc, u+0304, u+0308, u+0329, u+2000-206f, u+20ac, u+2122, u+2191, u+2193, u+2212, u+2215, u+feff, u+fffd;
+}
+
+@font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../../fonts/geist-latin-ext-wght-normal.woff2") format("woff2-variations");
+    unicode-range: u+0100-02ba, u+02bd-02c5, u+02c7-02cc, u+02ce-02d7, u+02dd-02ff, u+0304, u+0308, u+0329, u+1d00-1dbf, u+1e00-1e9f, u+1ef2-1eff, u+2020, u+20a0-20ab, u+20ad-20c0, u+2113, u+2c60-2c7f, u+a720-a7ff;
+}
+
+/* --- Geist Mono (--mono) -------------------------------------------------- */
+@font-face {
+    font-family: "Geist Mono";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../../fonts/geist-mono-latin-wght-normal.woff2") format("woff2-variations");
+    unicode-range: u+0000-00ff, u+0131, u+0152-0153, u+02bb-02bc, u+02c6, u+02da, u+02dc, u+0304, u+0308, u+0329, u+2000-206f, u+20ac, u+2122, u+2191, u+2193, u+2212, u+2215, u+feff, u+fffd;
+}
+
+@font-face {
+    font-family: "Geist Mono";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../../fonts/geist-mono-latin-ext-wght-normal.woff2") format("woff2-variations");
+    unicode-range: u+0100-02ba, u+02bd-02c5, u+02c7-02cc, u+02ce-02d7, u+02dd-02ff, u+0304, u+0308, u+0329, u+1d00-1dbf, u+1e00-1e9f, u+1ef2-1eff, u+2020, u+20a0-20ab, u+20ad-20c0, u+2113, u+2c60-2c7f, u+a720-a7ff;
+}
+
+/* --- Playfair Display (--serif) ------------------------------------------- */
+@font-face {
+    font-family: "Playfair Display";
+    font-style: normal;
+    font-weight: 400 900;
+    font-display: swap;
+    src: url("../../fonts/playfair-display-latin-wght-normal.woff2") format("woff2-variations");
+    unicode-range: u+0000-00ff, u+0131, u+0152-0153, u+02bb-02bc, u+02c6, u+02da, u+02dc, u+0304, u+0308, u+0329, u+2000-206f, u+20ac, u+2122, u+2191, u+2193, u+2212, u+2215, u+feff, u+fffd;
+}
+
+@font-face {
+    font-family: "Playfair Display";
+    font-style: normal;
+    font-weight: 400 900;
+    font-display: swap;
+    src: url("../../fonts/playfair-display-latin-ext-wght-normal.woff2") format("woff2-variations");
+    unicode-range: u+0100-02ba, u+02bd-02c5, u+02c7-02cc, u+02ce-02d7, u+02dd-02ff, u+0304, u+0308, u+0329, u+1d00-1dbf, u+1e00-1e9f, u+1ef2-1eff, u+2020, u+20a0-20ab, u+20ad-20c0, u+2113, u+2c60-2c7f, u+a720-a7ff;
+}
+
+/* --- Material Symbols Rounded (.ms v base/reset.css) ---------------------- */
+
+/* `font-display: block`, nie `swap`: ikony sa v HTML píšu ako názov ligatúry
+   („wb_sunny"), takže pri swape by na okamih presvitol textový názov ikony.
+   Font je lokálny a malý, takže blokovacia fáza je nepostrehnuteľná.
+   Rozsah hmotnosti 300–400 = presne to, čo appka používa (reset.css 400,
+   components/empty.css 300); ostatné osi sú zapečené pri subsetovaní. */
+@font-face {
+    font-family: "Material Symbols Rounded";
+    font-style: normal;
+    font-weight: 300 400;
+    font-display: block;
+    src: url("../../fonts/material-symbols-rounded-subset.woff2") format("woff2-variations");
+}

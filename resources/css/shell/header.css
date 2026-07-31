@@ -17,6 +17,36 @@
     box-shadow: var(--elev-1);
     z-index: calc(var(--z-panel) - 1);
 }
+
+/* ---- SKIP LINK (#skip-to-main) — WCAG 2.4.1 ------------------------------
+   Mimo fokusu ho neschovávame cez display:none ani visibility:hidden (to by ho
+   vyradilo z tabulátora), ale odsunutím mimo obrazovku. Pri fokuse sa vykreslí
+   ako plný chip v ľavom hornom rohu shellu. */
+#app-header .skip-link {
+    position: absolute;
+    left: -10000px; top: auto;
+    width: 1px; height: 1px;
+    overflow: hidden;
+}
+#app-header .skip-link:focus-visible,
+#app-header .skip-link:focus {
+    position: fixed;
+    left: var(--edge); top: var(--edge);
+    width: auto; height: auto;
+    z-index: var(--z-panel);
+    display: inline-flex; align-items: center;
+    padding: var(--sp-1) var(--sp-2);
+    background: var(--panel-solid);
+    color: var(--text);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-md);
+    box-shadow: var(--focus-ring), var(--elev-1);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    text-decoration: none;
+    outline: none;
+}
+
 #app-header .h-left {
     flex: 1; min-width: 0;
     display: flex; align-items: center; gap: var(--sp-2);

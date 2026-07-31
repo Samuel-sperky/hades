@@ -10,7 +10,7 @@
 }
 /* Teal accent variant — active filter / selected tag */
 .tag--accent, .tag.active {
-    background: var(--accent-soft); color: var(--accent-600);
+    background: var(--accent-soft); color: var(--accent-text);
     border-color: var(--border-accent);
 }
 .tag.muted { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
@@ -23,7 +23,7 @@
 .chip.active {
     background: var(--accent-soft);
     border-color: var(--border-accent);
-    color: var(--accent-600);
+    color: var(--accent-text);
     font-weight: var(--fw-semibold);
 }
 

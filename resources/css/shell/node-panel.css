@@ -29,7 +29,7 @@
                 border-color var(--dur-fast) var(--ease),
                 color var(--dur-fast) var(--ease);
 }
-.chip:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent-600); }
+.chip:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent-text); }
 .chip:active { background: var(--accent-soft); transform: scale(.97); }
 .chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
@@ -101,6 +101,6 @@
     font-size: var(--icon-sm);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.sug-add:hover { background: var(--accent-softer); color: var(--accent-600); }
+.sug-add:hover { background: var(--accent-softer); color: var(--accent-text); }
 .sug-add:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .sug-add:disabled { opacity: .5; pointer-events: none; }

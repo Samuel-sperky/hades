@@ -19,5 +19,5 @@
 .today-card-wrap:hover .pack-btn,
 .pack-btn:focus-visible,
 .pack-btn.in-pack { opacity: 1; }
-.pack-btn:hover { background: var(--accent-softer); color: var(--accent-600); }
-.pack-btn.in-pack { color: var(--accent-600); }
+.pack-btn:hover { background: var(--accent-softer); color: var(--accent-text); }
+.pack-btn.in-pack { color: var(--accent-text); }

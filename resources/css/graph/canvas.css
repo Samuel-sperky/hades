@@ -11,6 +11,16 @@
 #mind.dragging { cursor: grabbing; }
 #mind.grabbing { cursor: grabbing; } /* ťahanie uzla (grab & fling) */
 
+/* A11Y: plátno je fokusovateľné (graph/input.js mu nastavuje role="img" + tabindex="0")
+   a je PRVÁ tabulátorová zastávka dokumentu — musí teda mať viditeľný focus ring,
+   inak padá WCAG 2.4.7. Outline kreslíme dovnútra (negatívny offset), pretože
+   #mind je position:fixed inset:0 a vonkajší prstenec by skončil mimo viewportu.
+   Inset box-shadow sa použiť nedá — bitmapa plátna je nepriehľadná a prekryla by ho. */
+#mind:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+}
+
 /* ---------------------------------------------------------------------------
    CANVAS TUNING TOKENS (§7.4) — graph/canvas-colors.js číta tieto hodnoty cez
    getComputedStyle, takže JS už nemá vlastný zdroj pravdy (rozhodnutie 62).

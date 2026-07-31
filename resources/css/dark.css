@@ -31,6 +31,10 @@
     --accent-400: #05bcc4;
     --accent: #05bcc4;
     --accent-600: #03797e;
+    /* Akcentový text musí byť v tmavej téme SVETLEJŠÍ než podklad — `--accent-600`
+       (#03797e) na paneli dáva 3,27:1, čo AA nesplní. `--accent` dáva 7,29:1.
+       Farebné hodnoty palety sa nemenia, mení sa len to, ktorá z nich je „text". */
+    --accent-text: var(--accent);
     --accent-rgb: 5, 188, 196;
     --accent-soft: rgba(5, 188, 196, .16);
     --accent-softer: rgba(5, 188, 196, .10);

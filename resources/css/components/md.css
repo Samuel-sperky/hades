@@ -108,7 +108,7 @@
 .md-body .md-quote > :last-child { margin-bottom: 0; }
 
 .md-body .md-link {
-    color: var(--accent-600);
+    color: var(--accent-text);
     text-decoration: underline;
     text-underline-offset: 2px;
     overflow-wrap: anywhere;
@@ -160,7 +160,7 @@
 }
 .md-body .md-codewrap:hover .md-copy,
 .md-body .md-copy:focus-visible { opacity: 1; }
-.md-body .md-copy:hover { color: var(--accent-600); }
+.md-body .md-copy:hover { color: var(--accent-text); }
 .md-body .md-copy:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 #md-foot {

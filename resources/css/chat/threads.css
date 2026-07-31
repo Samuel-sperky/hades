@@ -31,7 +31,7 @@
     cursor: pointer;
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.th-new:hover { background: var(--accent-softer); color: var(--accent-600); }
+.th-new:hover { background: var(--accent-softer); color: var(--accent-text); }
 .th-new:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .th-list {

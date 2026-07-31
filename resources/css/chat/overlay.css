@@ -72,7 +72,7 @@
     flex-shrink: 0;
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.comp-btn:hover { background: var(--accent-softer); color: var(--accent-600); }
+.comp-btn:hover { background: var(--accent-softer); color: var(--accent-text); }
 .comp-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* Quickbar sa v ostatných režimoch nekreslí — composer v nej fyzicky nie je */

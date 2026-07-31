@@ -4,7 +4,7 @@
     margin-right: var(--sp-1);
     background: var(--accent-soft);
     border: 1px solid var(--border-accent);
-    color: var(--accent-600);
+    color: var(--accent-text);
     border-radius: var(--r-md);
     padding: 5px 10px; min-height: 32px;
     font-family: var(--mono); font-size: var(--fs-body); font-weight: 600;
@@ -49,4 +49,4 @@
 /* ---- Čítačka: pätička s viacerými akciami ---- */
 #md-foot { gap: var(--sp-1); align-items: center; }
 #md-copypath { margin-right: auto; }
-#md-pack.in-pack { background: var(--accent-softer); color: var(--accent-600); border-color: var(--border-accent); }
+#md-pack.in-pack { background: var(--accent-softer); color: var(--accent-text); border-color: var(--border-accent); }

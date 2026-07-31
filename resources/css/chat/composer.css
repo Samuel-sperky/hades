@@ -84,7 +84,7 @@
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
                 border-color var(--dur-fast) var(--ease);
 }
-#prompt-form .send-btn:hover { background: var(--accent-soft); color: var(--accent-600); }
+#prompt-form .send-btn:hover { background: var(--accent-soft); color: var(--accent-text); }
 #prompt-form.has-text #chat-send {
     background: var(--accent);
     border-color: var(--accent);

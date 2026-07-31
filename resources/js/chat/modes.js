@@ -12,6 +12,7 @@ import { bus } from '../core/bus.js';
 import { $ } from '../core/dom.js';
 import { EV } from '../core/events.js';
 import { S } from '../core/state/index.js';
+import { trapFocus } from '../shell/focus-trap.js';
 import { setScreen } from '../shell/router.js';
 import { autoresize, collapsePrompt, composerEl, focusComposer } from './composer.js';
 import { renderLog } from './log.js';
@@ -66,13 +67,32 @@ export function applyMode(mode, { focus = false, streamingId = null } = {}) {
     return next;
 }
 
+/* Overlay sa hlási ako `role="dialog" aria-modal="true"`, čo asistenčnej technike
+   povie, že obsah za ním je nedostupný. Bez pasce fokusu sa tam ale Tabom dostať dá,
+   takže by používateľ klávesnice skončil v niečom, čo čítačka obrazovky považuje za
+   skryté. Rovnaký mechanizmus používajú cmdk, help a md-overlay. */
+let releaseOverlayTrap = null;
+
 export function openOverlay() {
     lastFocused = document.activeElement;
     applyMode('overlay', { focus: true });
+
+    const ov = $('chat-overlay');
+    if (ov && !releaseOverlayTrap) {
+        releaseOverlayTrap = trapFocus(ov, { initial: $('chat-composer') ?? undefined });
+    }
+
     bus.emit(EV.CHAT_OPENED, { mode: 'overlay' });
 }
 
 export function closeOverlay() {
+    // Pascu treba uvoľniť PRED presunom fokusu — inak ho vráti dovnútra zatvoreného
+    // dialógu.
+    if (releaseOverlayTrap) {
+        releaseOverlayTrap();
+        releaseOverlayTrap = null;
+    }
+
     // Zavretie overlayu sa vracia tam, odkiaľ prišlo: na obrazovke Chat je to
     // režim `screen` (inak by composer skončil v spodnej lište a log obrazovky
     // by zostal prázdny), inde quickbar.

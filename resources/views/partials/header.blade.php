@@ -2,6 +2,11 @@
      Nástroje grafu (#graph-tools, #view-switch) sú vlastnené A4 a vkladajú sa
      ako samostatný partial — A5 určuje len ich miesto v layoute. --}}
 <header id="app-header">
+    {{-- WCAG 2.4.1 (Bypass Blocks): rail má 15 tabulátorových zastávok, bez tohto
+         odkazu sa klávesnicou k obsahu nedá dostať skratkou. Odkaz je prvým dieťaťom
+         hlavičky, teda hneď za plátnom (app.blade.php má canvas pred hlavičkou —
+         to je zdieľaný súbor, poradie nemením). Viditeľný je len pri fokuse. --}}
+    <a id="skip-to-main" class="skip-link" href="#screens">Preskočiť na obsah</a>
     <div class="h-left">
         <span id="brand-name">AuraAI</span>
         <nav id="breadcrumb" aria-label="Aktuálny kontext"></nav>
