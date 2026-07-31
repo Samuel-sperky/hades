@@ -89,7 +89,7 @@ class MindExportMemory extends Command
         }
 
         // vlastný index Hadesa (NIE hlavné MEMORY.md)
-        $index = "# Hades — exportované vedomie\n\n"
+        $index = "# AuraAI — exportované vedomie\n\n"
             .'Jadro, projekty a najsilnejšie fakty ('.$exported." uzlov). Skilly sú v skills/*.md.\n\n"
             .implode("\n", $bullets)."\n";
         @file_put_contents($exportPath.'/INDEX.md', $index);

@@ -13,7 +13,7 @@ export function updateStateUi() {
     const brand = document.getElementById('brand-core');
     brand.classList.toggle('awake', awake);
     brand.classList.toggle('asleep', !awake);
-    brand.title = awake ? 'Hades — bdie' : 'Hades — spí';
+    brand.title = awake ? 'AuraAI — bdie' : 'AuraAI — spí';
 
     // stavový čip v hlavičke (bdie / spí)
     const chip = document.getElementById('status-chip');

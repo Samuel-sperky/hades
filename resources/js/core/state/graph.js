@@ -2,7 +2,10 @@
    Mutable plain object by design (the render pipeline reads it every frame). */
 
 export const graph = {
-    name: 'Hades',
+    // Default platí len do prvej odpovede /api/mind (`S.name = data.name` v
+    // graph/loader.js). Aj tak musí byť správny: feeduje aria popis plátna
+    // v graph/input.js, ktorý screen reader prečíta ešte pred načítaním dát.
+    name: 'AuraAI',
     nodes: [],
     edges: [],
     areas: new Map(),

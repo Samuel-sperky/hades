@@ -37,7 +37,7 @@ export function renderInitError() {
     el.className = 'empty empty-network';
     el.innerHTML = '<span class="ms" aria-hidden="true">cloud_off</span>'
         + '<h4 class="title">Vedomie sa nepodarilo prebudiť</h4>'
-        + '<p class="hint">Server neodpovedá — skontroluj, či Hades beží.</p>'
+        + '<p class="hint">Server neodpovedá — skontroluj, či AuraAI beží.</p>'
         + '<button type="button" class="primary" id="retry-init">Skúsiť znova</button>';
     document.body.appendChild(el);
     el.querySelector('#retry-init').onclick = () => location.reload();

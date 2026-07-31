@@ -52,4 +52,4 @@ export async function findDuplicates() {
 /* ---------- F4: prepínač Značky istoty + filter podľa značiek ----------
    Blade patrí F1, preto obidve UI injektujem z JS do existujúceho #sec-settings.
    Prepínač riadi S.certRings (canvas prstence); filter značiek plní S.filter.tags
-   dynamickými checkboxami z /api/tags (pozitívny filter, perzistuje v hades.filter). */
+   dynamickými checkboxami z /api/tags (pozitívny filter, perzistuje v aura.filter). */

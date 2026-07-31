@@ -3,7 +3,7 @@ import { store } from '../core/store.js';
 
 
 const HINTS = [
-    { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš obrazovky — Dnes, Denník, Graf a Knižnica. Hades sa otvorí na Dnes.' },
+    { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš obrazovky — Dnes, Denník, Graf a Knižnica. AuraAI sa otvorí na Dnes.' },
     { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
     { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Na obrazovke Graf klik na uzol otvorí detail. Dvojklik na oblasť ju zaostrí — Esc zaostrenie zruší.' },
     { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, sieť, chat) a Pomocníka.' },

@@ -14,7 +14,7 @@ export function renderBreadcrumb() {
         return;
     }
 
-    let html = '<button type="button" class="crumb" data-bc="root">Hades</button><span class="sep">/</span>';
+    let html = '<button type="button" class="crumb" data-bc="root">AuraAI</button><span class="sep">/</span>';
     if (dept) {
         html += '<button type="button" class="crumb" data-bc="area">' + esc(area.name) + '</button>'
             + '<span class="sep">/</span><span class="current">' + esc(dept.name) + '</span>';
