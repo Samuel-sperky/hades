@@ -93,6 +93,17 @@ Route::post('/nodes/{node}/verify', [ReviewController::class, 'verify']);
 Route::post('/nodes/{node}/resolve-review', [ReviewController::class, 'resolveReview']);
 
 // ---------------------------------------------------------------------------
+// Agent command centre (obrazovky DASHBOARDS + CHART). Interné /api/* bez
+// tokenu (SPA). Spustenie/pozastavenie sú side-effect operácie → $throttleWrite.
+// Register agentov je statický (AgentRegistry); behy žijú v agent_runs.
+// ---------------------------------------------------------------------------
+Route::get('/agents', [AgentController::class, 'index']);
+Route::post('/agents/{key}/run', [AgentController::class, 'run'])->middleware($throttleWrite);
+Route::post('/agents/{key}/pause', [AgentController::class, 'pause'])->middleware($throttleWrite);
+Route::get('/agents/{key}/runs', [AgentController::class, 'runs']);
+Route::get('/agent-runs/{id}', [AgentController::class, 'showRun']);
+
+// ---------------------------------------------------------------------------
 // Externé /api/v1/* — programatický mirror. Health bez tokenu, zvyšok
 // auth.token (Bearer, fail-closed). Rovnaké controllery ako interné.
 // ---------------------------------------------------------------------------
