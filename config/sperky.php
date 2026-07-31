@@ -5,10 +5,15 @@
 | SPERKY e-shop (sperky-eshop.sk) — READ-ONLY integrácia
 |--------------------------------------------------------------------------
 |
-| Jediný konzument tejto konfigurácie je `App\Services\Sperky\SperkyClient`.
-| Všetky hodnoty vychádzajú z overenia proti ŽIVEJ produkcii
-| (refactor-auraai/08-SPERKY-API-SPEC.md, nálezy N1–N8) — nie z dokumentácie,
-| ktorá sa na viacerých miestach mýli.
+| Konzumenti: `App\Services\Sperky\SperkyClient` (transport) a
+| `App\Services\Sperky\OrderWindowReader` (okná, obrat po menách, krajiny).
+| Hodnoty vychádzajú z overenia proti ŽIVEJ produkcii 31. 7. 2026
+| (refactor-auraai/08b-SPERKY-API-SPEC-V2.md), nie z dokumentácie e-shopu.
+|
+| MAPOVANIE KRAJINA→MENA TU UŽ NIE JE a nesmie sa vrátiť ani „ako fallback"
+| (rozhodnutie 7). API vracia `currency` v zozname aj v detaile, a staré
+| mapovanie neobsahovalo RON ani PLN — 27 % vzorky preto dostalo NESPRÁVNU menu,
+| prezentovanú ako odhad. Tichý fallback na nesprávnu menu je horší než chyba.
 |
 | BEZPEČNOSŤ: `api_key` má scope `orders:read`. Nikdy sa nesmie dostať do
 | kódu, testu, logu, cache kľúča, výnimky ani API odpovede. V testoch sa
@@ -32,8 +37,7 @@ return [
     /*
     | Throttle pre `/api/eshop/*` v tvare "<pokusov>,<minút>" (čítané v
     | bootstrap/app.php). Nižšie než MCP, lebo za každým našim requestom môže
-    | stáť viac requestov na e-shop a jeho rate limit je NEZNÁMY (nález: presný
-    | limit sa nezisťoval, aby sa produkcia netestovala do zablokovania).
+    | stáť viac requestov na e-shop a jeho rate limit je NEZNÁMY.
     */
     'throttle' => (string) env('SPERKY_THROTTLE', '60,1'),
 
@@ -59,7 +63,7 @@ return [
     /*
     | Cache v Redise (v testoch `array`). Žiadna lokálna kópia dát — len krátke
     | okno, aby preklikávanie obrazovky nezavalilo e-shop.
-    | Kľúč = prefix + endpoint + sha1(parametre). NIKDY nie API kľúč.
+    | Kľúč = prefix + endpoint + sha1(parametre vrátane filtrov). NIKDY nie API kľúč.
     */
     'cache' => [
         'prefix' => 'sperky',
@@ -73,69 +77,63 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Mena — ODHAD z krajiny (nález N1)
+    | Krajiny pre PRESNÝ rozpad (rozhodnutie 3)
     |--------------------------------------------------------------------------
     |
-    | `total_paid` je v mene objednávky, ale API menu NEVRACIA. Zmerané:
-    | id 1763724 = 11215 HU (HUF), 1763723 = 4253 CZ (CZK), 1763720 = 14.85 SK (EUR).
+    | Filter `country` funguje, takže rozpad je presný: jeden dopyt na krajinu
+    | vráti `total` pre danú krajinu a okno. Žiadna vzorka detailov, žiadny odhad.
     |
-    | Toto mapovanie je HEURISTIKA — zákazník z HU mohol zaplatiť v EUR. Každá
-    | suma odvodená týmto mapovaním musí byť označená `currency_is_estimate`.
-    | Prepočet na jednu menu je ZAKÁZANÝ (appka nemá kurzy) a súčet `total_paid`
-    | naprieč krajinami je nezmyselné číslo.
-    |
-    | Neznáma krajina → `null`, čo znamená „menu nevieme" (nie EUR).
+    | Zoznam je krátky zámerne — každá položka je jedna požiadavka na e-shop.
+    | Zvyšok okna sa dopočíta ako `other` (počty sa sčítavať smú, sumy v rôznych
+    | menách nie). Vo vzorke 100 objednávok boli meny EUR/HUF/RON/PLN/CZK, teda
+    | dodacie krajiny SK, HU, RO, PL, CZ.
     */
-    'currencies' => [
-        'SK' => 'EUR', 'SI' => 'EUR', 'AT' => 'EUR', 'DE' => 'EUR', 'IT' => 'EUR',
-        'FR' => 'EUR', 'ES' => 'EUR', 'PT' => 'EUR', 'NL' => 'EUR', 'BE' => 'EUR',
-        'IE' => 'EUR', 'FI' => 'EUR', 'GR' => 'EUR', 'HR' => 'EUR', 'EE' => 'EUR',
-        'LV' => 'EUR', 'LT' => 'EUR', 'LU' => 'EUR', 'CY' => 'EUR', 'MT' => 'EUR',
-        'CZ' => 'CZK',
-        'HU' => 'HUF',
-        'PL' => 'PLN',
-        'RO' => 'RON',
-        'BG' => 'BGN',
-        'DK' => 'DKK',
-        'SE' => 'SEK',
-        'GB' => 'GBP',
-        'CH' => 'CHF',
-        'UA' => 'UAH',
-    ],
+    'countries' => array_values(array_filter(array_map(
+        fn (string $iso) => strtoupper(trim($iso)),
+        explode(',', (string) env('SPERKY_COUNTRIES', 'SK,HU,CZ,RO,PL')),
+    ))),
 
     /*
     |--------------------------------------------------------------------------
     | Mesačný agregát (`sperky:aggregate`)
     |--------------------------------------------------------------------------
     |
-    | Objednávky sú zoradené podľa `id` ZOSTUPNE (nález N4) a filtrovanie podľa
-    | dátumu neexistuje (nález N3), takže sa číta od `page=1` a scan sa zastaví
-    | pri prvej objednávke staršej než okno. Archív má 1,76 M objednávok —
-    | `max_requests` je tvrdý strop, ktorý bráni prechodu celého archívu.
+    | Počet objednávok za mesiac = JEDEN dopyt (`date_from`+`date_to`, `total`
+    | z odpovede). Rozpad podľa krajín = jeden dopyt na krajinu.
     |
-    | `sample_details` je počet objednávok, pre ktoré sa dotiahne DETAIL. Krajina
-    | (`country_iso`) je len v detaile, takže rozpad podľa krajín je ZO VZORKY,
-    | nikdy nie z celého mesiaca — inak by mesiac s 5 000 objednávkami znamenal
-    | 5 000 requestov na produkciu.
+    | Obrat po menách je jediné, čo sa musí sčítať z riadkov — API súčet
+    | neposkytuje. Riadky sa preto stránkujú po 100 a `revenue_max_requests` je
+    | strop. Pri ~250 objednávkach denne má mesiac ~7 500 objednávok, teda
+    | ~75 strán; strop 150 pokryje aj dvojnásobne silný mesiac. Keď sa nevyčerpá,
+    | obrat je presný (`revenue_meta.complete: true`).
     */
     'aggregate' => [
         'per_page' => 100,
-        'max_requests' => (int) env('SPERKY_AGGREGATE_MAX_REQUESTS', 80),
+        'revenue_max_requests' => (int) env('SPERKY_AGGREGATE_MAX_REQUESTS', 150),
         'sleep_ms' => (int) env('SPERKY_AGGREGATE_SLEEP_MS', 250),
-        'sample_details' => (int) env('SPERKY_AGGREGATE_SAMPLE', 60),
         'area' => 'Biznis & projekty',
         'department' => 'E-shop',
     ],
 
     /*
-    | Živý súhrn pre obrazovku (`GET /api/eshop/summary`). Vlastný, nižší strop
-    | requestov — beží na klik používateľa, nie v noci.
+    | Živý súhrn pre obrazovku (`GET /api/eshop/summary`). Beží na klik
+    | používateľa, preto nižší strop a bez páuz. Okno 7 dní má ~1 700 objednávok,
+    | teda ~17 strán; strop 25 to pokryje a odpoveď sa cachuje 5 minút.
     */
     'summary' => [
         'days' => (int) env('SPERKY_SUMMARY_DAYS', 7),
         'per_page' => 100,
-        'max_requests' => (int) env('SPERKY_SUMMARY_MAX_REQUESTS', 8),
-        'sample_details' => (int) env('SPERKY_SUMMARY_SAMPLE', 0),
+        'revenue_max_requests' => (int) env('SPERKY_SUMMARY_MAX_REQUESTS', 25),
+    ],
+
+    /*
+    | Chat (`SperkyDomainAnswerer`). Obrat aj krajiny sa počítajú z rovnakých
+    | filtrov ako obrazovka, len s tvrdším stropom — chatová odpoveď musí prísť
+    | rýchlo. Keď sa strop vyčerpá, odpoveď to prizná.
+    */
+    'chat' => [
+        'days' => (int) env('SPERKY_CHAT_DAYS', 7),
+        'revenue_max_requests' => (int) env('SPERKY_CHAT_MAX_REQUESTS', 12),
     ],
 
 ];

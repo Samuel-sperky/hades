@@ -33,6 +33,9 @@
             <button class="dest" data-screen="graf" type="button" aria-label="Graf">
                 <span class="ms" aria-hidden="true">hub</span><span class="lbl">Graf</span>
             </button>
+            <button class="dest" data-screen="agenti" type="button" aria-label="Agenti">
+                <span class="ms" aria-hidden="true">smart_toy</span><span class="lbl">Agenti</span>
+            </button>
             <button class="dest" data-screen="chat" type="button" aria-label="Chat">
                 <span class="ms" aria-hidden="true">forum</span><span class="lbl">Chat</span>
             </button>

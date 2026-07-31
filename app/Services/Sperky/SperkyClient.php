@@ -18,17 +18,27 @@ use Throwable;
  * Obrazovka „E-shop", chatový nástroj, MCP tooly aj nočný agregát idú cez tento
  * klient a jeho cache — nikto neobchádza rate limit e-shopu vlastným `Http::get()`.
  *
- * Vychádza z overenia proti ŽIVEJ produkcii (08-SPERKY-API-SPEC.md):
+ * Vychádza z overenia proti ŽIVEJ produkcii (08b-SPERKY-API-SPEC-V2.md):
  *
  *   N6  HTTP status NIE JE zdroj pravdy. `forbidden` aj `no id` prichádzajú
  *       s kódom 200 a chybou v tele. Preto sa VŽDY parsuje telo a rozlišuje sa
  *       doménová chyba (`not found` → null) od infrastruktúrnej
  *       (`forbidden` / `rate_limited` / timeout / malformed → výnimka).
  *   N5/N8 `per_page` je clampované na 100 na oboch stranách.
- *   N2  `has_attributes` ani `attributes` API nevracia → varianty sa nikde
- *       nedopĺňajú ani nepredstierajú.
  *   N7  `total` sa vždy prečíta z odpovede, nikdy z konštanty.
  *   N8  Server posiela `Set-Cookie` (PHPSESSID + PrestaShop) — ignorujeme ich.
+ *
+ * Čo sa MEDZI v1 A v2 ZMENILO (a čo preto tento klient robí inak):
+ *
+ *   - `currency` (ISO kód) je v ZOZNAME aj v DETAILE. Mena sa už nikdy neodhaduje
+ *     z krajiny — API je jediný zdroj pravdy (rozhodnutie 7).
+ *   - Filtre `date_from`, `date_to`, `country`, `total_min`, `total_max` FUNGUJÚ,
+ *     takže okno sa vyžiada jedným dopytom namiesto prechodu stránkami.
+ *     Ich validáciu vrátane rozhodnutia 8 drží {@see OrderFilters}.
+ *   - Detail objednávky má `products: [{id, qty}]`, nie `product_ids: [...]`.
+ *   - `has_attributes` a `attributes` sa VRACAJÚ (produkt 49 má 12 variantov,
+ *     každý so `quantity`, `ean13`, `reference`, `price_impact`, `is_default`,
+ *     `values`), takže varianty sa preposielajú do UI.
  *
  * Cesta k objednávkam je SINGULÁR `/api/order`, nie `/api/orders`.
  *
@@ -92,15 +102,26 @@ class SperkyClient
     /**
      * Zoznam objednávok (najnovšie prvé — zoradenie podľa `id` ZOSTUPNE, nález N4).
      *
-     * @return array{orders: list<array<string, mixed>>, page: int, per_page: int, total: ?int, count: int}
+     * `$filters` je ľubovoľná kombinácia `date_from`, `date_to`, `country`,
+     * `total_min`, `total_max` — validáciu robí {@see OrderFilters}, ktorý zamietne
+     * sumu bez krajiny (rozhodnutie 8) aj neznámy kľúč. `total` v odpovedi patrí
+     * FILTROVANÉMU výberu, nie celému archívu, takže počet za okno je presný
+     * po jedinom dopyte.
+     *
+     * @param  OrderFilters|array<string, mixed>|null  $filters
+     * @return array{orders: list<array<string, mixed>>, page: int, per_page: int, total: ?int, count: int, filters: array<string, string>}
+     *
+     * @throws SperkyApiException|SperkyDomainException
      */
-    public function orders(int $page = 1, ?int $perPage = null): array
+    public function orders(int $page = 1, ?int $perPage = null, OrderFilters|array|null $filters = null): array
     {
         $page = $this->clampPage($page);
         $perPage = $this->clampPerPage($perPage);
+        $applied = OrderFilters::from($filters)->toQuery();
+        $query = ['page' => $page, 'per_page' => $perPage] + $applied;
 
-        $result = $this->cached('orders', ['page' => $page, 'per_page' => $perPage], 'list', function () use ($page, $perPage) {
-            return $this->fetch(self::PATH_ORDERS, ['page' => $page, 'per_page' => $perPage], withKey: true);
+        $result = $this->cached('orders', $query, 'list', function () use ($query) {
+            return $this->fetch(self::PATH_ORDERS, $query, withKey: true);
         });
 
         $rows = $this->extractList($result, 'orders');
@@ -111,7 +132,23 @@ class SperkyClient
             'per_page' => $this->readInt($result, 'per_page') ?? $perPage,
             'total' => $this->readInt($result, 'total'),
             'count' => count($rows),
+            // späť do odpovede, aby obrazovka vedela, čo sa reálne poslalo
+            'filters' => $applied,
         ];
+    }
+
+    /**
+     * PRESNÝ počet objednávok pre filter — jeden dopyt, jeden riadok, `total`
+     * z odpovede. Toto nahradilo prechod stránkami (rozhodnutie 2): mesiac stojí
+     * jednu požiadavku namiesto štyridsiatich a nemá „dolnú hranicu".
+     *
+     * @param  OrderFilters|array<string, mixed>|null  $filters
+     *
+     * @throws SperkyApiException|SperkyDomainException
+     */
+    public function ordersTotal(OrderFilters|array|null $filters = null): ?int
+    {
+        return $this->orders(1, 1, $filters)['total'];
     }
 
     /**
@@ -157,8 +194,8 @@ class SperkyClient
     /**
      * Detail produktu. `null` = neexistujúce id.
      *
-     * Varianty sa NEVRACAJÚ — API kľúče `has_attributes` ani `attributes`
-     * neposkytuje (nález N2), takže by sme si ich museli vymyslieť.
+     * Varianty sa VRACAJÚ (spec v2, N2): `has_attributes` + `attributes` so
+     * siedmimi poľami vrátane `quantity` (stav zásoby, rozhodnutie 4).
      *
      * @return array<string, mixed>|null
      */
@@ -585,8 +622,11 @@ class SperkyClient
     }
 
     /**
-     * Riadok zoznamu objednávok: API tu dáva LEN id, date_add a total_paid.
-     * Krajina (a teda odhad meny) je výhradne v detaile — nedopĺňame ju.
+     * Riadok zoznamu objednávok: id, date_add, total_paid a — po zmene API —
+     * `currency` (ISO). Merané: `[(1764146, 73.9, 'EUR'), (1764145, 11.6, 'EUR')]`.
+     *
+     * Mena sa ČÍTA, nikdy nehádame z krajiny. Keď ju API nepošle, zostáva `null`
+     * a taká objednávka sa do žiadneho súčtu nezaradí.
      *
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>
@@ -599,6 +639,7 @@ class SperkyClient
             'total_paid' => $this->readFloat($row, 'total_paid'),
             // presná hodnota tak, ako ju drží e-shop (bez float zaokrúhlenia)
             'total_paid_raw' => $this->readString($row, 'total_paid'),
+            'currency' => $this->readCurrency($row),
         ];
     }
 
@@ -615,12 +656,11 @@ class SperkyClient
             'date_add' => $this->readString($result, 'date_add'),
             'total_paid' => $this->readFloat($result, 'total_paid'),
             'total_paid_raw' => $this->readString($result, 'total_paid'),
+            'currency' => $this->readCurrency($result),
             'country' => $this->readString($result, 'country'),
             'country_iso' => $countryIso !== '' ? $countryIso : null,
-            // Mena je ODHAD z krajiny (nález N1) — API ju nevracia.
-            'currency_estimate' => SperkyCurrency::fromConfig()->guess($countryIso),
-            'currency_is_estimate' => true,
-            'product_ids' => $this->readIds($result['product_ids'] ?? null),
+            // `products: [{id, qty}]` nahradilo `product_ids: [...]` — pribudlo množstvo
+            'products' => $this->readProductLines($result['products'] ?? $result['product_ids'] ?? null),
         ];
     }
 
@@ -630,33 +670,44 @@ class SperkyClient
      */
     private function normalizeProductRow(array $row): array
     {
-        // Zámerne bez `has_attributes` — API kľúč vôbec neposiela (nález N2).
         return [
             'id' => (int) ($row['id'] ?? 0),
             'name' => $this->readString($row, 'name'),
             'price' => $this->readFloat($row, 'price'),
+            'has_attributes' => $this->readBool($row, 'has_attributes'),
         ];
     }
 
     /**
+     * Detail produktu vrátane variantov (spec v2, N2). Produkt 49 má
+     * `has_attributes: true` a 12 variantov.
+     *
      * @param  array<string, mixed>  $result
      * @return array<string, mixed>
      */
     private function normalizeProductDetail(array $result, int $fallbackId): array
     {
-        // Bez variantov: `attributes` API nevracia (nález N2), takže by sme
-        // museli vymyslieť prázdne pole a UI by ukázalo sekciu, ktorá nič nevie.
+        $attributes = $this->readAttributes($result['attributes'] ?? null);
+
         return [
             'id' => (int) ($result['id'] ?? $fallbackId),
             'name' => $this->readString($result, 'name'),
             'price' => $this->readFloat($result, 'price'),
             'description' => $this->readString($result, 'description'),
             'description_short' => $this->readString($result, 'description_short'),
+            // keď príznak chýba, odvodí sa z toho, či varianty naozaj prišli
+            'has_attributes' => $this->readBool($result, 'has_attributes') ?? ($attributes !== []),
+            'attributes' => $attributes,
         ];
     }
 
-    /** @return list<int> */
-    private function readIds(mixed $value): array
+    /**
+     * Riadky objednávky: `products: [{id, qty}]`. Starý tvar `product_ids: [30582]`
+     * sa ešte prečíta (qty = 1), aby detail nespadol na tranzitnej odpovedi.
+     *
+     * @return list<array{id: int, qty: int}>
+     */
+    private function readProductLines(mixed $value): array
     {
         if (is_string($value)) {
             $value = preg_split('/[^0-9]+/', $value, -1, PREG_SPLIT_NO_EMPTY) ?: [];
@@ -666,17 +717,110 @@ class SperkyClient
             return [];
         }
 
-        $ids = [];
+        $lines = [];
         foreach ($value as $item) {
-            if (is_array($item)) {
-                $item = $item['id'] ?? null;
+            $id = is_array($item) ? ($item['id'] ?? null) : $item;
+            if (! is_numeric($id) || (int) $id < 1) {
+                continue;
             }
-            if (is_numeric($item) && (int) $item > 0) {
-                $ids[] = (int) $item;
+
+            $qty = is_array($item) ? ($item['qty'] ?? $item['quantity'] ?? 1) : 1;
+            $id = (int) $id;
+
+            // to isté id na dvoch riadkoch = jedna položka s vyšším množstvom
+            $lines[$id] = ['id' => $id, 'qty' => ($lines[$id]['qty'] ?? 0) + max(1, (int) $qty)];
+        }
+
+        return array_values($lines);
+    }
+
+    /**
+     * Varianty produktu — sedem polí, ktoré API reálne posiela. `quantity` je
+     * stav zásoby a rozhodnutie 4 ho výslovne žiada zobraziť.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function readAttributes(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $variants = [];
+        foreach ($value as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $id = $row['id_product_attribute'] ?? $row['id'] ?? null;
+
+            $variants[] = [
+                'id_product_attribute' => is_numeric($id) ? (int) $id : null,
+                'reference' => $this->readString($row, 'reference'),
+                'ean13' => $this->readString($row, 'ean13'),
+                'price_impact' => $this->readFloat($row, 'price_impact'),
+                'quantity' => $this->readInt($row, 'quantity'),
+                'is_default' => $this->readBool($row, 'is_default') ?? false,
+                'values' => $this->readValues($row['values'] ?? null),
+            ];
+        }
+
+        return $variants;
+    }
+
+    /**
+     * `values` variantu. Tvar sa môže líšiť (zoznam objektov aj mapa
+     * skupina→hodnota), takže sa normalizuje na `[{group, value}]`.
+     *
+     * @return list<array{group: ?string, value: ?string}>
+     */
+    private function readValues(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $rows[] = [
+                    'group' => $this->readString($item, 'group') ?? $this->readString($item, 'name'),
+                    'value' => $this->readString($item, 'value'),
+                ];
+
+                continue;
+            }
+
+            if (is_scalar($item)) {
+                $rows[] = [
+                    'group' => is_string($key) ? $key : null,
+                    'value' => trim((string) $item) === '' ? null : (string) $item,
+                ];
             }
         }
 
-        return array_values(array_unique($ids));
+        return $rows;
+    }
+
+    /**
+     * Mena z odpovede — ISO kód, veľkými písmenami. `null` znamená „API menu
+     * nepovedalo", NIKDY nie odhad z krajiny (rozhodnutie 7: mapovanie
+     * krajina→mena je zmazané, lebo RON ani PLN v ňom neboli a 27 % vzorky
+     * dostalo nesprávnu menu).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function readCurrency(array $data): ?string
+    {
+        $raw = $data['currency'] ?? $data['currency_iso'] ?? $data['iso_code'] ?? null;
+
+        if (! is_string($raw)) {
+            return null;
+        }
+
+        $iso = strtoupper(trim($raw));
+
+        return preg_match('/^[A-Z]{3}$/', $iso) === 1 ? $iso : null;
     }
 
     /** @param  array<string, mixed>|null  $data */
@@ -705,6 +849,24 @@ class SperkyClient
         }
 
         return is_numeric($value) ? (string) $value : null;
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function readBool(array $data, string $key): ?bool
+    {
+        $value = $data[$key] ?? null;
+
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+        if (is_string($value)) {
+            return in_array(strtolower(trim($value)), ['1', 'true', 'yes'], true);
+        }
+
+        return null;
     }
 
     /** @return array<string, int> */

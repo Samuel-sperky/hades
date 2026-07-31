@@ -11,22 +11,14 @@ use Illuminate\Support\Facades\Log;
 /**
  * Napojenie chatu na SPERKY e-shop — implementácia {@see DomainAnswerer} pre `shop.*`.
  *
- * Toto je spojka, ktorú si dva balíky navzájom prehodili: SPERKY-BE ju nechal P5
- * („patrí chatu"), P5 ju nechal P11 („dodá dátový zdroj"), takže ju nenapísal nikto
- * a chat na každú otázku o e-shope odpovedal čestnou, ale zbytočnou šablónou
- * „napojenie ešte nie je aktívne".
- *
  * NAJDÔLEŽITEJŠIE PRAVIDLO: **čísla skladá kód, nikdy model.** Text sa tu zostavuje
  * z hodnôt vrátených API a model ho môže najviac preformulovať (a to len pod dohľadom
  * `NumberGuard`, ktorý zmenu čísla odmietne).
  *
- * DRUHÉ PRAVIDLO — mena (nález N1 z 08-SPERKY-API-SPEC.md): `total_paid` je v mene
- * objednávky, ale API menu NEVRACIA. Na vzorke 100 objednávok bolo 37 hodnôt nad 1000,
- * lebo HU platí v HUF a CZ v CZK. Súčet cez objednávky je preto nezmyselné číslo a
- * tento answerer ho **nikdy nevytvorí**:
- *   - `shop.revenue` odpovie POČTAMI a vysvetlí, prečo súhrnný obrat nedáva zmysel
- *   - suma sa uvedie len pri JEDNEJ objednávke, kde krajinu poznáme z detailu, a vždy
- *     s menou označenou ako odhad
+ * DRUHÉ PRAVIDLO — mena (rozhodnutie 1 a 5): API vracia `currency` v zozname aj
+ * v detaile, takže obrat sa DÁ povedať — ale výhradne PO MENÁCH, každá mena na
+ * vlastnom riadku. Súčet EUR + HUF tu nevznikne nikdy a prepočet na jednu menu je
+ * zakázaný. Staré vysvetlenie „menu API neuvádza" je zmazané — už by bolo nepravdivé.
  *
  * Keď je API nedostupné, vráti `null` → chat použije šablónu. Nikdy nevyhodí výnimku
  * do chatovej cesty.
@@ -42,18 +34,10 @@ final class SperkyDomainAnswerer implements DomainAnswerer
         'shop.countries',
     ];
 
-    private readonly SperkyCurrency $currency;
-
-    /**
-     * `SperkyCurrency` sa nedá autowirovať — berie mapu `country_iso → mena` z configu,
-     * takže sa stavia rovnako ako v `SperkyAggregator` a `SperkyClient`.
-     */
     public function __construct(
         private readonly SperkyClient $client,
-        private readonly OrderScanner $scanner,
-    ) {
-        $this->currency = SperkyCurrency::fromConfig();
-    }
+        private readonly OrderWindowReader $reader,
+    ) {}
 
     public function handles(Intent $intent): bool
     {
@@ -85,7 +69,7 @@ final class SperkyDomainAnswerer implements DomainAnswerer
 
     // ---------------------------------------------------------------- zámery
 
-    /** Detail jednej objednávky — jediné miesto, kde smie byť suma s menou. */
+    /** Detail jednej objednávky — mena je z API, nie z krajiny. */
     private function orderDetail(Intent $intent): ?ChatAnswer
     {
         $id = $this->intParam($intent, 'order_id');
@@ -101,7 +85,8 @@ final class SperkyDomainAnswerer implements DomainAnswerer
         $iso = is_string($order['country_iso'] ?? null) ? $order['country_iso'] : null;
         $country = is_string($order['country'] ?? null) ? $order['country'] : null;
         $paid = $order['total_paid'] ?? null;
-        $products = is_array($order['product_ids'] ?? null) ? $order['product_ids'] : [];
+        $currency = is_string($order['currency'] ?? null) ? $order['currency'] : null;
+        $products = is_array($order['products'] ?? null) ? $order['products'] : [];
 
         $lines = ["**Objednávka #{$id}**"];
 
@@ -110,7 +95,7 @@ final class SperkyDomainAnswerer implements DomainAnswerer
         }
 
         if (is_numeric($paid)) {
-            $lines[] = '- Zaplatené: '.$this->amount((float) $paid, $iso);
+            $lines[] = '- Zaplatené: '.$this->amount((float) $paid, $currency);
         }
 
         if ($country !== null || $iso !== null) {
@@ -118,15 +103,18 @@ final class SperkyDomainAnswerer implements DomainAnswerer
         }
 
         if ($products !== []) {
-            $lines[] = '- Produktov v objednávke: '.count($products)
-                .' (id: '.implode(', ', array_map('strval', array_slice($products, 0, 12)))
-                .(count($products) > 12 ? ', …' : '').')';
+            $items = [];
+            foreach (array_slice($products, 0, 12) as $line) {
+                $items[] = '#'.(int) ($line['id'] ?? 0).'×'.(int) ($line['qty'] ?? 1);
+            }
+            $lines[] = '- Položiek v objednávke: '.count($products)
+                .' ('.implode(', ', $items).(count($products) > 12 ? ', …' : '').')';
         }
 
         return $this->answerText($intent, implode("\n", $lines));
     }
 
-    /** Produkt podľa id. Varianty sa nezobrazujú — API ich nevracia (nález N2). */
+    /** Produkt podľa id — vrátane variantov so stavom zásoby (rozhodnutie 4). */
     private function productLookup(Intent $intent): ?ChatAnswer
     {
         $id = $this->intParam($intent, 'product_id');
@@ -148,10 +136,21 @@ final class SperkyDomainAnswerer implements DomainAnswerer
 
         $lines = ['**'.$this->text($product['name'] ?? "Produkt #{$id}").'**', "- Id: {$id}"];
 
-        // Cena produktu je v mene e-shopu a API pri produktoch krajinu nemá, takže menu
-        // neuvádzam vôbec — radšej žiadna než nesprávna.
+        // Cena produktu je v mene katalógu; produktový endpoint menu neuvádza,
+        // takže tu ju zámerne nepíšem — radšej žiadna než nesprávna.
         if (is_numeric($product['price'] ?? null)) {
             $lines[] = '- Cena: '.number_format(round((float) $product['price'], 2), 2, ',', ' ');
+        }
+
+        $variants = is_array($product['attributes'] ?? null) ? $product['attributes'] : [];
+        if ($variants !== []) {
+            $lines[] = '- Variantov: **'.$this->num(count($variants)).'**';
+            foreach (array_slice($variants, 0, 8) as $variant) {
+                $lines[] = '  - '.$this->variantLine($variant);
+            }
+            if (count($variants) > 8) {
+                $lines[] = '  - … a ďalších '.$this->num(count($variants) - 8);
+            }
         }
 
         $short = $this->text($product['description_short'] ?? '');
@@ -163,152 +162,176 @@ final class SperkyDomainAnswerer implements DomainAnswerer
         return $this->answerText($intent, implode("\n", $lines));
     }
 
-    /** Počty objednávok — hlavné číslo e-shopu (nález N1). */
+    /** Počty objednávok za okno — presné, jeden dopyt. */
     private function ordersCount(Intent $intent): ?ChatAnswer
     {
-        $scan = $this->scanWindow();
-        $total = $scan->totalOrders;
-
-        // Zlyhanie API sa NESMIE prezentovať ako nula. Keď scan neprešiel do konca,
-        // nevrátil ani jednu objednávku a nepozná ani celkový počet, nemáme čo povedať —
-        // `null` pošle chat na čestnú šablónu „napojenie nie je dostupné".
-        if ($total === null && $scan->count() === 0 && ! $scan->isComplete()) {
+        $window = $this->window();
+        if (! $window->available()) {
+            // Zlyhanie API sa NESMIE prezentovať ako nula — `null` pošle chat na
+            // čestnú šablónu „napojenie nie je dostupné".
             return null;
         }
 
         $lines = [];
+
+        $total = $this->totalInShop();
         if ($total !== null) {
             $lines[] = 'V e-shope je celkovo **'.$this->num($total).'** objednávok.';
         }
 
-        // Denné počty sa musia spočítať tu — scan vracia surové objednávky, nie agregát.
-        $today = $this->countForDay($scan, now()->toDateString());
+        // Dnešný počet je presný, keď sa prečítalo celé okno; inak sa radšej
+        // nepovie nič, než by sa uvádzala dolná hranica ako fakt.
+        $today = $this->countFor($window->byDay, now()->toDateString());
         if ($today !== null) {
             $lines[] = 'Dnes ich prišlo **'.$this->num($today).'**.';
         }
 
-        $days = $this->windowDays();
-        $lines[] = 'Za posledných '.$days.' dní '
-            .($scan->isComplete() ? '**' : 'aspoň **').$this->num($scan->count()).'**.';
+        $lines[] = 'Za posledných '.$this->windowDays().' dní **'.$this->num((int) $window->orders).'**.';
 
-        if (! $scan->isComplete()) {
+        return $this->answerText($intent, implode("\n", $lines));
+    }
+
+    /**
+     * OBRAT PO MENÁCH (rozhodnutie 1 a 5). Každá mena vlastný riadok, žiadny
+     * súčet naprieč menami, žiadny prepočet na EUR.
+     */
+    private function revenue(Intent $intent): ?ChatAnswer
+    {
+        $window = $this->window();
+        if (! $window->available() || $window->revenue === []) {
+            return null;
+        }
+
+        $lines = ['Obrat za posledných '.$this->windowDays().' dní **po menách** '
+            .'(sumy v rôznych menách sa nesčítavajú):'];
+
+        foreach ($window->revenue as $row) {
+            $lines[] = '- **'.number_format((float) $row['total'], 2, ',', ' ').' '.(string) $row['currency'].'**'
+                .' — '.$this->num((int) $row['orders']).' obj.';
+        }
+
+        if (! $window->complete) {
             $lines[] = '';
-            $lines[] = '_Sken sa zastavil na strope požiadaviek, takže čísla za okno sú dolná hranica._';
+            $lines[] = '_Sumy pokrývajú '.$this->num($window->ordersRead).' z '
+                .$this->num((int) $window->orders).' objednávok okna — strop požiadaviek sa vyčerpal._';
+        }
+
+        if ($window->withoutCurrency > 0) {
+            $lines[] = '';
+            $lines[] = '_'.$this->num($window->withoutCurrency).' objednávok neprišlo s menou, '
+                .'takže nie sú v žiadnej sume._';
         }
 
         return $this->answerText($intent, implode("\n", $lines));
     }
 
-    /** Okno posledných N dní. Scanner využíva zostupné radenie podľa id a zastaví na
-     *  prvej objednávke pred hranicou (nález N4), takže to nie sú tisíce requestov. */
-    private function scanWindow(): OrderScan
-    {
-        $days = $this->windowDays();
-
-        return $this->scanner->scan(
-            now()->subDays($days)->startOfDay(),
-            now()->endOfDay(),
-            ['max_requests' => (int) config('sperky.summary.max_requests', 12)],
-        );
-    }
-
-    private function windowDays(): int
-    {
-        return max(1, (int) config('sperky.summary.days', 7));
-    }
-
-    /** Počet objednávok pre konkrétny deň zo surového scanu. */
-    private function countForDay(OrderScan $scan, string $date): ?int
-    {
-        $n = 0;
-        $seen = false;
-
-        foreach ($scan->orders as $order) {
-            $added = $order['date_add'] ?? null;
-            if (! is_string($added) || $added === '') {
-                continue;
-            }
-            $seen = true;
-            if (str_starts_with($added, $date)) {
-                $n++;
-            }
-        }
-
-        return $seen ? $n : null;
-    }
-
-    /**
-     * Obrat. ZÁMERNE nevracia jedno číslo — pozri N1 v hlavičke triedy.
-     * Namiesto toho vysvetlí, prečo, a dá to, čo zmysel má: počty.
-     */
-    private function revenue(Intent $intent): ?ChatAnswer
-    {
-        $counts = $this->ordersCount($intent);
-        if (! $counts instanceof ChatAnswer) {
-            return null;
-        }
-
-        return $counts->withText(
-            $counts->text."\n\n"
-            .'_Súhrnný obrat ti nepoviem, a nie je to chyba: API vracia `total_paid` v mene '
-            .'objednávky, ale samotnú menu neuvádza. Slovensko a Slovinsko platia v eurách, '
-            .'Maďarsko vo forintoch, Česko v korunách — súčet cez objednávky by teda spočítal '
-            .'HUF s EUR a dal nezmysel. Rozpad podľa krajín s odhadnutou menou nájdeš na '
-            .'obrazovke E-shop._'
-        );
-    }
-
-    /** Rozpad podľa krajín zo vzorky — krajina je len v detaile, takže celé okno by
-     *  stálo jeden request na každú objednávku. */
+    /** Rozpad podľa krajín — PRESNE, jeden dopyt na krajinu (rozhodnutie 3). */
     private function countries(Intent $intent): ?ChatAnswer
     {
-        $scan = $this->scanWindow();
-        $sample = max(1, (int) config('sperky.chat.country_sample', 15));
+        [$from, $to] = $this->windowDates();
+        $total = $this->reader->count($from, $to);
 
-        // details() rešpektuje pauzy medzi requestmi aj rate limit (nález N5) a vracia
-        // obálku {details, requests, stopped_by} — nie plochý zoznam.
-        $batch = $this->scanner->details($scan->ids(), $sample);
-        $details = is_array($batch['details'] ?? null) ? $batch['details'] : [];
-        if ($details === []) {
+        $breakdown = $this->reader->countries($from, $to, (array) config('sperky.countries', []), $total);
+        if ($breakdown['countries'] === []) {
             return null;
         }
 
-        $byIso = [];
-        foreach ($details as $d) {
-            if (! is_array($d)) {
+        $lines = ['Krajiny podľa počtu objednávok za posledných '.$this->windowDays().' dní (presné počty):'];
+
+        foreach ($breakdown['countries'] as $row) {
+            $orders = $row['orders'];
+            if ($orders === null) {
                 continue;
             }
-            $iso = is_string($d['country_iso'] ?? null) && $d['country_iso'] !== ''
-                ? $d['country_iso']
-                : '??';
-            $name = is_string($d['country'] ?? null) && $d['country'] !== '' ? $d['country'] : $iso;
-            $byIso[$iso] ??= ['n' => 0, 'name' => $name];
-            $byIso[$iso]['n']++;
+            $lines[] = '- '.(string) $row['country_iso'].' — **'.$this->num((int) $orders).'**';
         }
 
-        if ($byIso === []) {
-            return null;
+        if ($breakdown['other'] !== null) {
+            $lines[] = '- ostatné krajiny — **'.$this->num((int) $breakdown['other']).'**';
         }
-
-        uasort($byIso, fn (array $a, array $b) => $b['n'] <=> $a['n']);
-
-        $lines = ['Krajiny podľa počtu objednávok (vzorka '.count($details)
-            .' z posledných '.$this->windowDays().' dní):'];
-
-        foreach (array_slice($byIso, 0, 8, true) as $iso => $row) {
-            $code = $this->currency->guess($iso === '??' ? null : $iso);
-            $lines[] = '- '.$row['name'].' — **'.$this->num($row['n']).'**'
-                .($code !== null ? ' _(platí v '.$code.')_' : '');
-        }
-
-        $lines[] = '';
-        $lines[] = '_Je to vzorka, nie celé okno: krajina je len v detaile objednávky, takže '
-            .'presný rozpad by stál jeden request na každú objednávku. Mena je odhad z krajiny._';
 
         return $this->answerText($intent, implode("\n", $lines));
     }
 
     // ---------------------------------------------------------------- pomocné
+
+    /** Okno posledných N dní. Jeden dopyt na počet, stránkovanie len pre obrat. */
+    private function window(): OrderWindow
+    {
+        [$from, $to] = $this->windowDates();
+
+        return $this->reader->read($from, $to, [
+            'max_requests' => max(1, (int) config('sperky.chat.revenue_max_requests', 12)),
+            'sleep_ms' => 0,
+        ]);
+    }
+
+    /** @return array{0: string, 1: string} */
+    private function windowDates(): array
+    {
+        $days = $this->windowDays();
+
+        return [now()->subDays($days - 1)->toDateString(), now()->toDateString()];
+    }
+
+    private function windowDays(): int
+    {
+        return max(1, (int) config('sperky.chat.days', config('sperky.summary.days', 7)));
+    }
+
+    /** Celkový počet objednávok v e-shope — bez filtra, `total` z API (nález N7). */
+    private function totalInShop(): ?int
+    {
+        try {
+            return $this->client->ordersTotal();
+        } catch (SperkyException) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  list<array{date: string, orders: int}>  $byDay
+     */
+    private function countFor(array $byDay, string $date): ?int
+    {
+        foreach ($byDay as $row) {
+            if (($row['date'] ?? null) === $date) {
+                return (int) $row['orders'];
+            }
+        }
+
+        return null;
+    }
+
+    /** @param  array<string, mixed>  $variant */
+    private function variantLine(array $variant): string
+    {
+        $labels = [];
+        foreach ((array) ($variant['values'] ?? []) as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            $labels[] = trim(($value['group'] !== null ? $value['group'].': ' : '').(string) ($value['value'] ?? ''));
+        }
+
+        $head = $labels === []
+            ? '#'.(int) ($variant['id_product_attribute'] ?? 0)
+            : implode(', ', array_filter($labels));
+
+        $parts = [];
+        if ($variant['quantity'] !== null) {
+            $parts[] = 'na sklade '.$this->num((int) $variant['quantity']).' ks';
+        }
+        if (is_numeric($variant['price_impact'] ?? null) && (float) $variant['price_impact'] !== 0.0) {
+            $parts[] = 'cena '.($variant['price_impact'] > 0 ? '+' : '')
+                .number_format((float) $variant['price_impact'], 2, ',', ' ');
+        }
+        if (($variant['is_default'] ?? false) === true) {
+            $parts[] = 'predvolený';
+        }
+
+        return $head.($parts === [] ? '' : ' ('.implode(' · ', $parts).')');
+    }
 
     private function answerText(Intent $intent, string $text): ChatAnswer
     {
@@ -321,15 +344,14 @@ final class SperkyDomainAnswerer implements DomainAnswerer
         );
     }
 
-    /** Suma vždy s menou a vždy s priznaním, že mena je odhad z krajiny (nález N1). */
-    private function amount(float $value, ?string $iso): string
+    /** Suma vždy s menou, a mena vždy z API — nikdy odhad z krajiny. */
+    private function amount(float $value, ?string $currency): string
     {
         $formatted = number_format(round($value, 2), 2, ',', ' ');
-        $code = $this->currency->guess($iso);
 
-        return $code === null
-            ? $formatted.' (menu API neuvádza)'
-            : $formatted.' '.$code.' (mena odhadnutá z krajiny)';
+        return $currency === null
+            ? $formatted.' (menu e-shop k tejto objednávke nevrátil)'
+            : $formatted.' '.$currency;
     }
 
     private function num(int $value): string

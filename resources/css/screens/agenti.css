@@ -1,0 +1,205 @@
+/* ===========================================================================
+   OBRAZOVKA AGENTI — živé command centre (W2)
+
+   Karty agentov po kategóriách + živý progres/stav + log drawer. Farby výhradne
+   z tokenov (tokens.css); color-no-hex je brána. Vzor rytmu z screens/today.css.
+   =========================================================================== */
+
+/* ---------- súhrnná poistka (deštruktívne vypnuté) ---------- */
+.ag-safety {
+    display: flex; align-items: center; gap: var(--sp-1);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--fs-small);
+    color: var(--muted-strong);
+}
+.ag-safety .ms { font-size: var(--icon-sm); color: var(--accent-text); }
+
+/* ---------- kategória ---------- */
+.ag-cat { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.ag-cat-title {
+    display: flex; align-items: center; gap: var(--sp-1);
+    font-family: var(--serif); font-weight: var(--fw-semibold);
+    font-size: var(--fs-title); color: var(--text);
+}
+.ag-cat-title .ms { font-size: var(--icon-md); color: var(--muted); }
+
+/* ---------- mriežka kariet ---------- */
+.ag-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--grid-gap);
+    min-width: 0;
+}
+
+/* ---------- karta ---------- */
+.ag-card {
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: var(--card-pad);
+    box-shadow: var(--elev-1);
+    min-width: 0;
+    transition: box-shadow var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
+}
+.ag-card:hover { box-shadow: var(--elev-2); }
+/* Práve beží — jemné akcentové orámovanie (nie fill). */
+.ag-card[data-status="running"],
+.ag-card[data-status="queued"] { border-color: var(--border-accent); }
+.ag-card[data-status="failed"] { border-color: var(--danger-border); }
+/* Placeholder (workforce koncept) — vizuálne stlmený, prerušovaná linka. */
+.ag-card--placeholder {
+    border-style: dashed;
+    background: var(--surface-2);
+    opacity: .85;
+}
+/* Deštruktívny agent — decentný červený náznak vľavo. */
+.ag-card--destructive { border-left: 3px solid var(--danger-border); }
+
+.ag-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-1); }
+.ag-name {
+    font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text);
+    line-height: var(--lh-title); min-width: 0;
+}
+.ag-badges { display: flex; flex-wrap: wrap; gap: var(--sp-0); justify-content: flex-end; }
+
+.ag-desc {
+    font-size: var(--fs-small); line-height: var(--lh-body); color: var(--muted);
+    margin: 0;
+}
+
+/* ---------- badge ---------- */
+.ag-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: var(--fs-caption); line-height: 1;
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--ls-mono-caps); text-transform: uppercase;
+    padding: 3px 8px; border-radius: var(--r-pill);
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+.ag-badge .ms { font-size: 13px; }
+
+/* autonómia */
+.ag-badge--auto-manual { background: var(--surface-subtle); color: var(--muted-strong); border-color: var(--line-soft); }
+.ag-badge--auto-assisted { background: var(--surface-subtle); color: var(--accent-text); border-color: var(--border-accent); }
+.ag-badge--auto-autonomous { background: var(--accent-soft); color: var(--accent-text); border-color: var(--border-accent); }
+
+/* stav */
+.ag-badge--status-queued { background: var(--surface-subtle); color: var(--muted-strong); border-color: var(--border); }
+.ag-badge--status-running { background: var(--accent-soft); color: var(--accent-text); border-color: var(--border-accent); }
+.ag-badge--status-paused { background: var(--surface-subtle); color: var(--warn); border-color: var(--border); }
+.ag-badge--status-done { background: var(--success-soft); color: var(--success); border-color: var(--success-soft); }
+.ag-badge--status-failed { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-border); }
+
+/* deštruktívny + čoskoro */
+.ag-badge--destructive { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-border); }
+.ag-badge--soon { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
+
+/* pulzujúca bodka pri „Beží" */
+.ag-badge--status-running::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); margin-right: 2px;
+    animation: ag-pulse 1.6s var(--ease) infinite;
+}
+@keyframes ag-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* ---------- progres + krok ---------- */
+.ag-progress {
+    height: 6px; border-radius: var(--r-pill);
+    background: var(--track); overflow: hidden;
+}
+.ag-progress-bar {
+    height: 100%; border-radius: var(--r-pill);
+    background: var(--accent);
+    transition: width var(--dur-slow) var(--ease);
+}
+.ag-step {
+    margin: 0; font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+
+/* ---------- meta ---------- */
+.ag-meta {
+    display: flex; flex-wrap: wrap; gap: var(--sp-0) var(--sp-3);
+    margin: 0; padding-top: var(--sp-0);
+    border-top: 1px solid var(--line-soft);
+}
+.ag-meta dt {
+    font-size: var(--fs-caption); text-transform: uppercase;
+    letter-spacing: var(--ls-caps); color: var(--muted);
+}
+.ag-meta dd { margin: 0; font-size: var(--fs-small); color: var(--text-secondary); }
+
+/* ---------- akcie ---------- */
+.ag-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: auto; padding-top: var(--sp-1); }
+.ag-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: var(--fs-small); font-weight: var(--fw-medium);
+    padding: 6px 12px; border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: var(--panel-solid); color: var(--text-secondary);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease);
+}
+.ag-btn .ms { font-size: var(--icon-sm); }
+.ag-btn:hover:not(:disabled) { background: var(--hover-fill); color: var(--text); }
+.ag-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ag-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ag-btn--run { color: var(--accent-text); border-color: var(--border-accent); }
+.ag-btn--run:hover:not(:disabled) { background: var(--accent-soft); }
+.ag-btn[hidden] { display: none; }
+
+/* ===========================================================================
+   LOG DRAWER
+   =========================================================================== */
+.ag-log {
+    position: fixed; inset: 0;
+    z-index: var(--z-overlay);
+    display: flex; justify-content: flex-end;
+}
+.ag-log.hidden { display: none; }
+.ag-log-backdrop { position: absolute; inset: 0; background: var(--scrim); }
+.ag-log-card {
+    position: relative;
+    width: min(560px, 92vw); height: 100%;
+    display: flex; flex-direction: column;
+    background: var(--panel-solid);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--elev-3);
+    animation: ag-slide-in var(--dur-base) var(--ease);
+}
+@keyframes ag-slide-in { from { transform: translateX(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+.ag-log-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-1); padding: var(--sp-2);
+    border-bottom: 1px solid var(--border);
+}
+.ag-log-title {
+    font-family: var(--serif); font-weight: var(--fw-semibold);
+    font-size: var(--fs-title); color: var(--text);
+}
+.ag-log-close {
+    border: none; background: none; cursor: pointer;
+    color: var(--muted); font-size: var(--icon-md);
+    padding: var(--sp-0); border-radius: var(--r-sm);
+}
+.ag-log-close:hover { background: var(--hover-fill); color: var(--text); }
+.ag-log-close:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ag-log-body { flex: 1; overflow: auto; padding: var(--sp-2); }
+.ag-log-pre {
+    margin: 0; white-space: pre-wrap; word-break: break-word;
+    font-family: var(--mono); font-size: var(--fs-caption); line-height: 1.6;
+    color: var(--text-secondary);
+}
+.ag-log-empty { font-size: var(--fs-small); color: var(--muted); }
+
+/* ---------- mobil ---------- */
+@media (max-width: 640px) {
+    .ag-grid { grid-template-columns: 1fr; }
+    .ag-log-card { width: 100vw; border-left: none; }
+}

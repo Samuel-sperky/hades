@@ -7,6 +7,7 @@ import { store } from '../core/store.js';
 import { focusNode } from '../graph/camera.js';
 import { requestDraw, scheduleFrame } from '../graph/render/frame.js';
 import { closeNodePanel, selectNode } from '../node/node-panel.js';
+import { renderAgenti } from '../screens/agenti.js';
 import { renderDecisions } from '../screens/decisions.js';
 import { renderDirective } from '../screens/directive.js';
 import { renderJournal } from '../screens/journal.js';
@@ -44,6 +45,8 @@ export function setScreen(name) {
         // plátno je hotové z kola 1 — len prebuď slučku (dirty + scheduleFrame)
         requestDraw();
         scheduleFrame();
+    } else if (name === 'agenti') {
+        renderAgenti();
     } else if (name === 'dnes') {
         renderToday();
     } else if (name === 'dennik') {

@@ -48,6 +48,9 @@
             <button class="msheet-item" data-screen="graf" type="button">
                 <span class="ms" aria-hidden="true">hub</span><span>Graf</span>
             </button>
+            <button class="msheet-item" data-screen="agenti" type="button">
+                <span class="ms" aria-hidden="true">smart_toy</span><span>Agenti</span>
+            </button>
             <button class="msheet-item" data-screen="rozhodnutia" type="button">
                 <span class="ms" aria-hidden="true">gavel</span><span>Rozhodnutia</span>
             </button>

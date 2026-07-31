@@ -13,11 +13,12 @@ import {
    zmení bez zápisu do CLAUDE.md. */
 
 describe('core/screens — register obrazoviek', () => {
-    it('obsahuje presne 9 zamknutých obrazoviek v definovanom poradí', () => {
+    it('obsahuje presne 10 zamknutých obrazoviek v definovanom poradí', () => {
         expect(SCREENS).toEqual([
             'dnes',
             'dennik',
             'graf',
+            'agenti',
             'kniznica',
             'chat',
             'eshop',

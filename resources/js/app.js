@@ -22,6 +22,7 @@ import { setLocal, clearLocal } from './graph/local.js';
 import { isAwake } from './graph/awake.js';
 import { loadGraph } from './graph/loader.js';
 import { connectWs } from './graph/ws.js';
+import { initRealtime } from './core/realtime.js';
 import { computeReplayBounds, register as registerTimeline } from './graph/timeline.js';
 import { updateStateUi } from './shell/status-chip.js';
 
@@ -39,6 +40,8 @@ import { register as registerEdgeAdmin } from './node/edge-admin.js';
 import { register as registerMdOverlay } from './node/md-overlay.js';
 import { register as registerLibrary } from './screens/library.js';
 import { register as registerEshop } from './screens/eshop.js';
+import { register as registerAgenti } from './screens/agenti.js';
+import { register as registerModeSwitch } from './shell/mode-switch.js';
 import { register as registerGraphInput } from './graph/input.js';
 import { register as registerMap } from './graph/map/index.js';
 import { drawMap } from './graph/map/render.js';
@@ -83,6 +86,8 @@ async function boot() {
     registerMdOverlay(root);
     registerLibrary(root);
     registerEshop(root);
+    registerAgenti(root);          // W2: DASHBOARDS — živé command centre agentov
+    registerModeSwitch(root);      // W2: 3-pill prepínač MAP / DASHBOARDS / CHART
     registerGraphInput(canvas);
     registerMap(root);           // W1: radiálna MAPA = render obrazovky 'graf'
     registerShortcuts(root);
@@ -107,6 +112,7 @@ async function boot() {
     if (S.sim && S.view !== 'layers') { S.sim.tick(120); fitView(); }
     registerHints(root);
     connectWs(data.ws);
+    initRealtime(data.ws);   // W2: druhý Pusher pre kanál 'agents' (nezávislý od graph/ws.js)
     checkJournalUnread();
 
     // FÁZA SHELL: aktivuj uloženú obrazovku (default 'dnes'). Na 'graf' prebudí slučku,

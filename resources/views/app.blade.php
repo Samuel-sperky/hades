@@ -19,6 +19,7 @@
 
     @include('partials.header')
     @include('partials.rail')
+    @include('partials.mode-switch')
 
     <main id="screens">
         @include('partials.screens.dnes')
@@ -29,6 +30,7 @@
         @include('partials.screens.rozhodnutia')
         @include('partials.screens.kontrola')
         @include('partials.screens.smernica')
+        @include('partials.screens.agenti')
     </main>
 
     @include('partials.dock')

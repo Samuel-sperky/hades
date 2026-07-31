@@ -392,3 +392,20 @@ Schedule::command('mind:rollup')
 // Rotácia auditu údržby (sync_runs) — mimo okna ostatných jobov, aby nesúťažila
 // o zámky. Maže len riadky auditu, nikdy dáta vedomia. Rozhodnutie #36.
 $nightly('aura:sync-runs-prune', '05:30');
+
+// Mesačný súhrn e-shopu do vedomia (uzol `sperky:month:YYYY-MM`). Rozhodnutie 6
+// zo 08b-SPERKY-API-SPEC-V2.md ho ZAPÍNA: dovtedy bola registrácia zámerne vypnutá,
+// lebo scan mesiaca stál 40–100 strán zoznamu pri neznámom rate limite e-shopu.
+// Po prechode na dátumové filtre je počet objednávok presný po JEDNOM dopyte,
+// takže nočný beh už produkciu neohrozuje.
+//
+// Druhý deň mesiaca o 02:30 (pred ostatnými nočnými jobmi, ktoré začínajú 03:00):
+// prvý deň by mohol prísť o objednávky dobehnuté po polnoci. `withoutOverlapping`
+// bráni prekrytiu seba samého, keby e-shop odpovedal pomaly.
+//
+// Historické mesiace sa NEDOPOČÍTAVAJÚ — objednávky existujú od 2020, čo je ~80
+// ďalších uzlov, a to je samostatná úloha (rozhodnutie 6).
+Schedule::command('sperky:aggregate')
+    ->monthlyOn(2, '02:30')
+    ->timezone('Europe/Bratislava')
+    ->withoutOverlapping(60);

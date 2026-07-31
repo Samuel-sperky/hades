@@ -72,3 +72,5 @@
 @import './shell/rail-badge.css';
 @import './screens/sync-status.css';
 @import './graph/map.css';
+@import './shell/mode-switch.css';
+@import './screens/agenti.css';

@@ -1,43 +1,37 @@
-/* E-shop — čistá dátová vrstva obrazovky: mena, formátovanie, normalizácia
-   odpovedí `api/eshop/*` a jediná povolená cesta k vykresleniu peňažnej sumy.
+/* E-shop — čistá dátová vrstva obrazovky: formátovanie, normalizácia odpovedí
+   `api/eshop/*` a jediná povolená cesta k vykresleniu peňažnej sumy.
 
    Prečo samostatný súbor: kontrakt §2 drží ≤ 400 LOC na súbor. Delenie je
    rovnaké ako pri `screens/today/**` a `screens/review/**` — obrazovka si drží
-   vlastný podpriečinok, `screens/eshop.js` je už len render a zapojenie.
+   vlastný podpriečinok, `screens/eshop.js` je už len zapojenie a orchestrácia.
 
    Kontrakt backendu (EshopController): `{ok, data, meta}` / `{ok, data:null,
    error:{code, message}}`. `data` býva ešte raz zabalené (`data.product`,
    `data.order`), preto `unwrap()` odlupuje viac vrstiev.
 
-   POVINNÉ OBMEDZENIA z refactor-auraai/08-SPERKY-API-SPEC.md:
-   N1  `total_paid` je v mene objednávky, ale API menu NEVRACIA. HU=HUF, CZ=CZK,
-       SK/SI=EUR. Súčet naprieč objednávkami je preto nezmyselné číslo.
-       → tu NIE JE a nikdy nesmie byť funkcia, ktorá sčítava sumy alebo
-         prepočítava menu; `amountHtml()` povinne vypíše ISO kód a značku „odhad"
-       → keď backend prizná `currency_is_estimate`, mena sa berie ako ODHAD aj
-         vtedy, keď prišla v poli `currency`
-   N2  `has_attributes` ani `attributes` sa z odpovede NEČÍTAJÚ — API ich nevracia
-   N7  chýbajúca hodnota je „—", nikdy dopočítaná nula ani konštanta */
+   POVINNÉ OBMEDZENIA z refactor-auraai/08b-SPERKY-API-SPEC-V2.md:
+   R1  `currency` (ISO) je v zozname objednávok, v detaile aj v rozpade obratu,
+       takže mena je AUTORITATÍVNA — žiadne hádanie z krajiny, žiadna značka
+       „odhad". Mapovanie krajina→mena je zmazané (rozhodnutie 7); pokrývalo len
+       SK/SI/HU/CZ, a keďže 27 % vzorky je RON alebo PLN, hádalo NESPRÁVNE.
+   R2  Obrat sa vracia rozpadnutý po menách (`revenue[{currency,total,orders}]`).
+       V tomto súbore preto NIE JE a nikdy nesmie byť funkcia, ktorá sčítava
+       peňažné hodnoty ani prepočítava menu — súčet naprieč menami zostáva
+       zakázaný (rozhodnutie 1), lebo HUF + EUR nedáva zmysel.
+   R3  Suma sa NIKDY nevykreslí bez meny — `amountHtml()` je jediná cesta a vždy
+       pripojí ISO kód, alebo prizná „mena neuvedená".
+   R4  `attributes` sa vracia → varianty sa čítajú vrátane `quantity` (zásoba).
+   R7  chýbajúca hodnota je „—", nikdy dopočítaná nula. */
 
 import { esc } from '../../core/dom.js';
 
-/** Priznanie k nálezu N1 — visí nad každým rozpadom súm a v každom tooltipe. */
-export const CURRENCY_NOTE = 'Sumy sú v mene objednávky. API menu nevracia, preto je '
-    + 'odhadnutá z krajiny — nesčítavame ich a neprepočítavame na jednu menu.';
+/** Priznanie k rozhodnutiu 1 — visí nad rozpadom obratu. */
+export const REVENUE_NOTE = 'Každá mena má vlastný riadok. Sumy v rôznych menách sa '
+    + 'nesčítavajú ani neprepočítavajú na jednu menu — súčet HUF a EUR by nič neznamenal.';
 
-/** Priznanie k nálezu N3/N5 — okno sa skenuje, sken sa môže zastaviť na strope. */
-export const SCAN_NOTE = 'Okno sa počíta prechodom zoznamu od najnovšej objednávky a sken sa '
-    + 'zastavil na strope požiadaviek — počty za okno a po dňoch sú dolná hranica, nie presné čísla. '
-    + 'Dni, ku ktorým sken nedošiel, sa nezobrazujú: nula by predstierala, že v nich nič nebolo.';
-
-/* Heuristika, nie pravda. Zdroj pravdy je backend (config/sperky.php): keď pošle
-   `currency_estimate`, použije sa jeho hodnota, ale stále ako odhad. */
-const CURRENCY_BY_COUNTRY = { SK: 'EUR', SI: 'EUR', HU: 'HUF', CZ: 'CZK' };
-
-/** @returns {?string} ISO kód meny odhadnutý z krajiny, alebo null. */
-export function currencyForCountry(iso) {
-    return CURRENCY_BY_COUNTRY[String(iso || '').trim().toUpperCase()] || null;
-}
+/** Priznanie k rozhodnutiu 8 — prečo je filter sumy zamknutý bez krajiny. */
+export const TOTAL_MIN_NOTE = 'Filter sumy funguje len pri vybranej krajine: „nad 100" je '
+    + 'v HUF drobné a v EUR veľká objednávka, takže naprieč menami by vyrobil zavádzajúce číslo.';
 
 
 /* ---------- drobní pomocníci ---------- */
@@ -72,7 +66,7 @@ export function unwrap(payload, keys) {
 
 const fmtNum = (n) => new Intl.NumberFormat('sk-SK', { maximumFractionDigits: 2 }).format(n);
 
-/** Počet z API, alebo „—". Nikdy nedopĺňa nulu (nález N7). */
+/** Počet z API, alebo „—". Nikdy nedopĺňa nulu (R7). */
 export function fmtCount(v) {
     const n = num(v);
     return n === null ? '—' : fmtNum(n);
@@ -88,6 +82,20 @@ export function fmtDateTime(s) {
 
 /** PrestaShop vracia popisy ako HTML — zbavíme ich značiek, escapuje volajúci. */
 export const plain = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** `YYYY-MM-DD` v lokálnom čase (API berie dátumy vrátane oboch krajov). */
+export function ymd(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+/** Okno N dní končiace dneškom → `{from, to}` pre `date_from` / `date_to`. */
+export function windowRange(days, today = new Date()) {
+    const to = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const from = new Date(to);
+    from.setDate(from.getDate() - (Math.max(1, num(days) || 1) - 1));
+    return { from: ymd(from), to: ymd(to) };
+}
 
 
 /* ---------- chybové kódy backendu ----------
@@ -128,42 +136,34 @@ export function reasonForCode(code) {
 
 /* ---------- suma (jediná cesta, ktorou sa smie vykresliť peňažná hodnota) ----------
    Kontrakt tejto funkcie: NIKDY nevykreslí len číslo. Vždy pripojí ISO kód meny
-   (alebo „mena neuvedená") a pri odhade aj značku „odhad". Symbol meny sa
-   nepoužíva vôbec — „€" by zamlčal, že ide o odhad z krajiny.
+   z API, alebo prizná „mena neuvedená". Symbol meny sa nepoužíva vôbec — pri
+   piatich menách (EUR, HUF, RON, PLN, CZK) by „€" bol len ďalšia príležitosť
+   pomýliť si menu; ISO kód je jednoznačný.
 
-   `opts` je priamo normalizovaný objekt (objednávka / krajina / produkt), takže
-   volajúci nemá šancu zabudnúť menu podať. */
+   `opts` je priamo normalizovaný objekt (objednávka / obrat / produkt / variant),
+   takže volajúci nemá šancu zabudnúť menu podať. `opts.sign` pridá „+" pri
+   kladnom čísle (príplatok variantu). */
 export function amountHtml(value, opts = {}) {
     const n = num(value);
     if (n === null) return '<span class="es-amount es-amount--na">—</span>';
 
-    const exact = upper(opts.currency);
-    const guess = exact ? null : (upper(opts.currencyEstimate) || currencyForCountry(opts.iso));
-    const cur = exact || guess;
-
-    let h = '<span class="es-amount"><span class="es-sum tnum">' + esc(fmtNum(n)) + '</span>';
-    h += cur
-        ? '<span class="es-cur">' + esc(cur) + '</span>'
-        : '<span class="es-cur es-cur--unknown" title="API menu nevracia">mena neuvedená</span>';
-    if (guess) h += '<span class="es-est" title="' + esc(CURRENCY_NOTE) + '">odhad</span>';
-    return h + '</span>';
-}
-
-/* Mena je autoritatívna len vtedy, keď backend NEPRIZNÁVA odhad. `currency_is_estimate`
-   preto prebíja pole `currency` — inak by sa odhad vykreslil ako fakt (nález N1). */
-function currencyOf(src, forceEstimate) {
-    const estimate = forceEstimate || pick(src, ['currency_is_estimate']) === true;
-    const given = pick(src, ['currency', 'currency_iso']);
-    return {
-        currency: estimate ? null : given,
-        currencyEstimate: pick(src, ['currency_estimate']) || (estimate ? given : null),
-    };
+    const cur = upper(opts.currency);
+    const sign = opts.sign && n > 0 ? '+' : '';
+    return '<span class="es-amount">'
+        + '<span class="es-sum tnum">' + esc(sign + fmtNum(n)) + '</span>'
+        + (cur
+            ? '<span class="es-cur">' + esc(cur) + '</span>'
+            : '<span class="es-cur es-cur--unknown" title="API pri tejto hodnote menu neposlalo">'
+              + 'mena neuvedená</span>')
+        + '</span>';
 }
 
 
 /* ---------- normalizácia odpovedí ---------- */
 
-export function normalizeCountries(raw, forceEstimate = false) {
+/** Rozpad podľa krajín — LEN počty. Peniaze idú cez `revenue` (po menách),
+    takže tu žiadna suma nie je a nemôže vzniknúť ani omylom. */
+export function normalizeCountries(raw) {
     if (!raw) return [];
     const list = Array.isArray(raw) ? raw : Object.entries(raw).map(([k, v]) => (
         v && typeof v === 'object' ? { country_iso: k, ...v } : { country_iso: k, orders: v }
@@ -172,9 +172,20 @@ export function normalizeCountries(raw, forceEstimate = false) {
         iso: upper(pick(c, ['country_iso', 'iso', 'code'])) || '—',
         name: pick(c, ['country', 'name']),
         orders: num(pick(c, ['orders', 'count', 'orders_count'])) || 0,
-        amount: num(pick(c, ['total_paid', 'amount', 'sum'])),
-        ...currencyOf(c, forceEstimate),
     })).sort((a, b) => b.orders - a.orders);
+}
+
+/** Obrat po menách (rozhodnutie 1). Riadky sa NEZLUČUJÚ a NESČÍTAVAJÚ — každý
+    prichádza z API hotový a zostáva samostatný. Poradie: podľa počtu objednávok,
+    pri rovnosti podľa ISO kódu, aby bolo vykreslenie deterministické. */
+export function normalizeRevenue(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(Boolean).map((r) => ({
+        currency: upper(pick(r, ['currency', 'currency_iso'])),
+        total: num(pick(r, ['total', 'total_paid', 'sum'])),
+        orders: num(pick(r, ['orders', 'count', 'orders_count'])),
+    })).filter((r) => r.currency && r.total !== null)
+        .sort((a, b) => (b.orders || 0) - (a.orders || 0) || a.currency.localeCompare(b.currency));
 }
 
 export function normalizeByDay(raw) {
@@ -183,80 +194,108 @@ export function normalizeByDay(raw) {
         .filter((r) => r.date);
 }
 
-/** Dni, ktoré sken naozaj pokryl.
-
-    Backend vypĺňa celé okno a nescanované dni majú `orders: 0`. Pri neúplnom
-    skene to ale nie je „nula objednávok", ale „sken tam nedošiel" — a nula by
-    o biznise lhala. Sken ide od najnovšej objednávky dozadu (nález N4), takže
-    neznáme sú práve úvodné (najstaršie) nuly a tie sa zahodia. */
-export function coveredDays(summary) {
-    const rows = (summary && summary.byDay) || [];
-    if (!rows.length || (summary && summary.complete)) return rows;
-    const first = rows.findIndex((r) => r.orders > 0);
-    return first < 0 ? [] : rows.slice(first);
-}
-
-/** Súhrn: iba POČTY ako hlavné čísla (N1) — žiadny agregovaný obrat.
-    Keď živý rozpad krajín chýba (`sample_details=0`), berie sa z najnovšieho
-    mesačného súhrnu v pamäti — je to jediné miesto, kde krajiny vôbec sú. */
+/** Súhrn: hlavné čísla sú POČTY, obrat je samostatná sekcia po menách. */
 export function normalizeSummary(payload) {
     const d = unwrap(payload, ['summary', 'data', 'result']);
     const counts = objOf(d.orders).total_in_shop !== undefined || objOf(d.orders).today !== undefined
         ? objOf(d.orders)
         : (d.counts && typeof d.counts === 'object' ? d.counts : d);
-    const meta = objOf(d.countries_meta);
-    const live = normalizeCountries(pick(d, ['countries', 'by_country']), meta.currency_is_estimate === true);
-    const months = Array.isArray(d.months) ? d.months : [];
-    const month = live.length ? null
-        : months.find((m) => Array.isArray(m && m.countries) && m.countries.length) || null;
+    const win = objOf(d.window);
 
     return {
         ordersTotal: num(pick(counts, ['total_in_shop', 'total'])) ?? num(pick(d, ['orders_total', 'total_orders'])),
         ordersDay: num(pick(counts, ['today', 'day', 'orders_day'])),
         ordersWindow: num(pick(counts, ['in_window', 'week', 'last_7_days', 'orders_week'])),
-        windowDays: num(pick(objOf(d.window), ['days'])),
-        complete: pick(counts, ['complete']) !== false,
+        windowDays: num(pick(win, ['days'])),
+        windowFrom: pick(win, ['from']),
+        /* Backend zmenil `until` na `to` — čítame obidve, aby obrazovka fungovala
+           pred aj po nasadení backendu. */
+        windowUntil: pick(win, ['to', 'until']),
         productsTotal: num(pick(d, ['products_total', 'total_products'])),
-        countries: live.length ? live : normalizeCountries(month && month.countries, true),
-        countriesFrom: live.length ? 'live' : (month ? (month.label || month.month || null) : null),
-        countriesNote: pick(month ? objOf(month.countries_meta) : meta, ['note']),
+        countries: normalizeCountries(pick(d, ['countries', 'by_country'])),
+        revenue: normalizeRevenue(pick(d, ['revenue', 'by_currency'])),
         byDay: normalizeByDay(pick(d, ['by_day'])),
     };
 }
 
+/** Riadky objednávky. v2 posiela `products: [{id, qty}]`; starý tvar
+    `product_ids: [id]` sa ešte znesie, len bez množstva. */
+export function normalizeOrderProducts(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((p) => p !== null && p !== undefined).map((p) => (
+        typeof p === 'object'
+            ? { id: pick(p, ['id', 'id_product']), qty: num(pick(p, ['qty', 'quantity'])) }
+            : { id: p, qty: null }
+    )).filter((p) => p.id !== null && p.id !== undefined);
+}
+
 export function normalizeOrder(o) {
-    const ids = pick(o, ['product_ids', 'products']);
     return {
         id: pick(o, ['id', 'id_order']),
         date: pick(o, ['date_add', 'date', 'created_at']),
         totalPaid: num(pick(o, ['total_paid', 'total'])),
+        currency: pick(o, ['currency', 'currency_iso']),
         iso: upper(pick(o, ['country_iso', 'iso'])),
         country: pick(o, ['country', 'country_name']),
-        ...currencyOf(o, false),
-        productIds: Array.isArray(ids) ? ids : [],
+        products: normalizeOrderProducts(pick(o, ['products', 'product_ids'])),
     };
 }
 
 export function normalizeOrders(payload) {
     const d = unwrap(payload, ['data', 'result']);
     const raw = pick(d, ['orders', 'items', 'rows']) || (Array.isArray(d) ? d : []);
+    const applied = objOf(pick(d, ['filters', 'applied_filters']));
     return {
         orders: (Array.isArray(raw) ? raw : []).filter(Boolean).map(normalizeOrder),
         page: num(pick(d, ['page'])) || 1,
         total: num(pick(d, ['total'])),
+        /* Echo filtrov z API. Kým ho backend neposiela, je to prázdny objekt a
+           UI netvrdí, že sa filtrovalo — len že sa o filter požiadalo. */
+        filtered: Object.keys(applied).length > 0,
     };
 }
 
-/** Detail produktu. `attributes` / `has_attributes` sa ZÁMERNE nečítajú (N2). */
+/** Označenie variantu z `values`. API môže poslať pole textov, pole objektov
+    (`{group, value}`) alebo jeden text — znesieme všetky tri. */
+export function variantLabel(v) {
+    if (v === null || v === undefined) return '';
+    if (Array.isArray(v)) return v.map(variantLabel).filter(Boolean).join(' · ');
+    if (typeof v === 'object') {
+        const parts = [pick(v, ['group', 'attribute', 'group_name', 'name']), pick(v, ['value', 'val'])]
+            .filter(Boolean).map(String);
+        return [...new Set(parts)].join(': ');
+    }
+    return String(v).trim();
+}
+
+/** Varianty produktu (R4). `quantity` je stav zásoby a je to najužitočnejšie
+    pole — chýbajúce zostáva `null` („—"), nikdy sa nedopočíta na nulu, lebo
+    „0 ks" znamená vypredané a to je iné tvrdenie než „nevieme". */
+export function normalizeVariants(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((a) => a && typeof a === 'object').map((a) => ({
+        id: pick(a, ['id_product_attribute', 'id']),
+        label: variantLabel(pick(a, ['values', 'value', 'name'])),
+        priceImpact: num(pick(a, ['price_impact', 'priceImpact', 'impact'])),
+        reference: pick(a, ['reference']),
+        ean13: pick(a, ['ean13', 'ean']),
+        quantity: num(pick(a, ['quantity', 'qty', 'stock'])),
+        isDefault: pick(a, ['is_default']) === true || pick(a, ['is_default']) === 1,
+    }));
+}
+
 export function normalizeProduct(payload) {
     const d = unwrap(payload, ['product', 'data', 'result']);
     if (pick(d, ['id']) === null) return null;
+    const variants = normalizeVariants(pick(d, ['attributes', 'variants']));
     return {
         id: pick(d, ['id']),
         name: pick(d, ['name']) || '',
         price: num(pick(d, ['price'])),
-        ...currencyOf(d, false),
+        currency: pick(d, ['currency', 'currency_iso']),
         text: plain(pick(d, ['description_short']) || pick(d, ['description'])),
+        hasVariants: pick(d, ['has_attributes']) === true || variants.length > 0,
+        variants,
     };
 }
 

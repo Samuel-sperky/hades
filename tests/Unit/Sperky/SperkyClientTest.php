@@ -19,6 +19,9 @@ use Tests\TestCase;
  * Brána nálezu N6: HTTP status nie je zdroj pravdy. Väčšina scenárov nižšie
  * prichádza s kódom 200 a chybou v tele — keby klient veril statusu, „zlý kľúč"
  * by sa javil ako úspešná odpoveď.
+ *
+ * Oproti v1 sa PREPÍSALI tvrdenia o variantoch a o mene: `attributes` sa vracajú
+ * a `currency` sa čita z odpovede namiesto odhadu z krajiny (spec v2).
  */
 class SperkyClientTest extends TestCase
 {
@@ -45,7 +48,6 @@ class SperkyClientTest extends TestCase
             'sperky.cache.ttl.list' => 300,
             'sperky.cache.ttl.detail' => 900,
             'sperky.cache.ttl.health' => 60,
-            'sperky.currencies' => ['SK' => 'EUR', 'SI' => 'EUR', 'CZ' => 'CZK', 'HU' => 'HUF'],
         ]);
     }
 
@@ -55,14 +57,15 @@ class SperkyClientTest extends TestCase
     }
 
     /** Telo úspešnej odpovede zoznamu objednávok. */
-    private function ordersBody(int $perPage = 20, int $total = 1763711): array
+    private function ordersBody(int $perPage = 20, int $total = 1764133): array
     {
         $orders = [];
         for ($i = 0; $i < $perPage; $i++) {
             $orders[] = [
-                'id' => 1763724 - $i,
+                'id' => 1764146 - $i,
                 'date_add' => '2026-07-29 1'.($i % 10).':00:00',
                 'total_paid' => '14.85',
+                'currency' => 'EUR',
             ];
         }
 
@@ -76,9 +79,9 @@ class SperkyClientTest extends TestCase
         $result = $this->client()->orders(1, 2);
 
         $this->assertSame(2, $result['count']);
-        $this->assertSame(1763724, $result['orders'][0]['id']);
+        $this->assertSame(1764146, $result['orders'][0]['id']);
         // N7: total vždy z API
-        $this->assertSame(1763711, $result['total']);
+        $this->assertSame(1764133, $result['total']);
 
         Http::assertSent(function ($request) {
             // Cesta je v JEDNOTNOM čísle — dokumentácia sľubuje `/api/orders`.
@@ -115,7 +118,110 @@ class SperkyClientTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), 'per_page=100'));
     }
 
-    public function test_detail_objednavky_dopocita_odhad_meny_z_krajiny(): void
+    // ------------------------------------------------------------- filtre (v2)
+
+    public function test_datumove_filtre_idu_do_query_a_total_patri_vyberu(): void
+    {
+        // Overené na produkcii: date_from=2026-07-30&date_to=2026-07-30 → total 220,
+        // bez filtra 1 764 133. Filter sa teda NEZAHADZUJE (v1 nález N3 už neplatí).
+        Http::fake([self::BASE.'/api/order*' => Http::response(['result' => [
+            'orders' => [['id' => 1, 'date_add' => '2026-07-30 10:00:00', 'total_paid' => '10', 'currency' => 'EUR']],
+            'page' => 1, 'per_page' => 100, 'total' => 220,
+        ]])]);
+
+        $result = $this->client()->orders(1, 100, ['date_from' => '2026-07-30', 'date_to' => '2026-07-30']);
+
+        $this->assertSame(220, $result['total']);
+        $this->assertSame(['date_from' => '2026-07-30', 'date_to' => '2026-07-30'], $result['filters']);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'date_from=2026-07-30')
+            && str_contains($request->url(), 'date_to=2026-07-30'));
+    }
+
+    public function test_orders_total_je_jeden_dopyt_s_jednym_riadkom(): void
+    {
+        Http::fake([self::BASE.'/api/order*' => Http::response(['result' => [
+            'orders' => [], 'page' => 1, 'per_page' => 1, 'total' => 429015,
+        ]])]);
+
+        $this->assertSame(429015, $this->client()->ordersTotal(['country' => 'hu']));
+
+        Http::assertSentCount(1);
+        // krajina sa posiela veľkými písmenami, per_page=1 (stačí `total`)
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'country=HU')
+            && str_contains($request->url(), 'per_page=1'));
+    }
+
+    public function test_total_min_bez_krajiny_je_zamietnute_a_nevola_eshop(): void
+    {
+        // ROZHODNUTIE 8: „nad 100" znamená pri HUF drobné a pri EUR veľkú objednávku.
+        Http::fake();
+
+        try {
+            $this->client()->orders(1, 100, ['total_min' => 100]);
+            $this->fail('total_min bez country musí byť zamietnuté');
+        } catch (SperkyDomainException $e) {
+            $this->assertSame('filter_needs_country', $e->errorCode);
+            $this->assertSame(400, $e->httpStatus);
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_total_min_s_krajinou_prejde(): void
+    {
+        Http::fake([self::BASE.'/api/order*' => Http::response(['result' => ['orders' => [], 'total' => 7]])]);
+
+        $this->client()->orders(1, 100, ['country' => 'SK', 'total_min' => 100, 'total_max' => 250.5]);
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'total_min=100')
+            && str_contains($request->url(), 'total_max=250.5')
+            && str_contains($request->url(), 'country=SK'));
+    }
+
+    public function test_neplatny_filter_je_domenova_chyba_a_nevola_eshop(): void
+    {
+        Http::fake();
+        $client = $this->client();
+
+        $cases = [
+            ['date_from' => '30.7.2026'],
+            ['date_from' => '2026-02-30'],
+            ['country' => 'Slovensko'],
+            ['date_from' => '2026-07-31', 'date_to' => '2026-07-01'],
+            ['country' => 'SK', 'total_min' => -1],
+            ['country' => 'SK', 'total_min' => 500, 'total_max' => 100],
+            ['currency' => 'EUR'],   // neznámy kľúč — e-shop by ho tichým spôsobom zahodil
+        ];
+
+        foreach ($cases as $filters) {
+            try {
+                $client->orders(1, 10, $filters);
+                $this->fail('neplatný filter musí vyhodiť doménovú výnimku: '.json_encode($filters));
+            } catch (SperkyDomainException $e) {
+                $this->assertContains($e->errorCode, ['bad_filter', 'filter_needs_country']);
+            }
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_filtrovany_dopyt_ma_vlastny_cache_kluc(): void
+    {
+        Http::fake([self::BASE.'/api/order*' => Http::response($this->ordersBody(1, 220))]);
+
+        $client = $this->client();
+        $client->orders(1, 1);
+        $client->orders(1, 1, ['date_from' => '2026-07-30']);
+
+        // Iný filter = iný dopyt. Keby filtre neboli v kľúči, druhé volanie by
+        // vrátilo cachovaný nefiltrovaný výsledok.
+        Http::assertSentCount(2);
+    }
+
+    // ------------------------------------------------------------ mena a detail
+
+    public function test_detail_objednavky_cita_menu_z_odpovede(): void
     {
         Http::fake([self::BASE.'/api/order/get*' => Http::response([
             'result' => [
@@ -123,9 +229,10 @@ class SperkyClientTest extends TestCase
                 'id' => 1763724,
                 'date_add' => '2026-07-29 12:00:00',
                 'total_paid' => '11215',
+                'currency' => 'huf',
                 'country' => 'Maďarsko',
                 'country_iso' => 'hu',
-                'product_ids' => [22, 23, 22],
+                'products' => [['id' => 22, 'qty' => 2], ['id' => 23, 'qty' => 1]],
             ],
         ])]);
 
@@ -133,43 +240,106 @@ class SperkyClientTest extends TestCase
 
         $this->assertNotNull($order);
         $this->assertSame('HU', $order['country_iso']);
-        // N1: mena je ODHAD z krajiny, API ju nevracia
-        $this->assertSame('HUF', $order['currency_estimate']);
-        $this->assertTrue($order['currency_is_estimate']);
+        // Mena je z API, nie odhad z krajiny (rozhodnutie 7).
+        $this->assertSame('HUF', $order['currency']);
+        $this->assertArrayNotHasKey('currency_estimate', $order);
+        $this->assertArrayNotHasKey('currency_is_estimate', $order);
         $this->assertSame(11215.0, $order['total_paid']);
-        $this->assertSame([22, 23], $order['product_ids']);
+        // `products: [{id, qty}]` nahradilo `product_ids`
+        $this->assertSame([['id' => 22, 'qty' => 2], ['id' => 23, 'qty' => 1]], $order['products']);
+        $this->assertArrayNotHasKey('product_ids', $order);
     }
 
-    public function test_neznama_krajina_nedostane_menu_namiesto_odhadu_eur(): void
+    public function test_chybajuca_mena_je_null_a_nikdy_sa_nehada_z_krajiny(): void
     {
+        // Mapovanie krajina→mena je zmazané. SK by staré mapovanie doplnilo na EUR;
+        // dnes zostáva null, čo znamená „API menu nepovedalo".
         Http::fake([self::BASE.'/api/order/get*' => Http::response([
-            'result' => ['ok' => true, 'id' => 5, 'total_paid' => '10', 'country_iso' => 'XX'],
+            'result' => ['ok' => true, 'id' => 5, 'total_paid' => '10', 'country_iso' => 'SK'],
         ])]);
 
         $order = $this->client()->order(5);
 
-        $this->assertNull($order['currency_estimate']);
-        $this->assertTrue($order['currency_is_estimate']);
+        $this->assertNull($order['currency']);
+        $this->assertSame('SK', $order['country_iso']);
     }
 
-    public function test_detail_produktu_nikdy_neposiela_varianty(): void
+    public function test_zoznam_objednavok_nesie_menu_pri_kazdom_riadku(): void
     {
-        // N2: API tieto kľúče nevracia. Keby ich jedného dňa začalo vracať,
-        // klient ich stále nepreposiela — UI nemá na čom postaviť sekciu variantov.
+        Http::fake([self::BASE.'/api/order*' => Http::response(['result' => [
+            'orders' => [
+                ['id' => 1764146, 'total_paid' => 73.9, 'currency' => 'EUR', 'date_add' => '2026-07-31 09:00:00'],
+                ['id' => 1764145, 'total_paid' => 11.6, 'currency' => 'EUR', 'date_add' => '2026-07-31 08:00:00'],
+                ['id' => 1764144, 'total_paid' => 20965, 'currency' => 'HUF', 'date_add' => '2026-07-31 07:00:00'],
+            ],
+            'total' => 3,
+        ]])]);
+
+        $rows = $this->client()->orders(1, 100)['orders'];
+
+        $this->assertSame(['EUR', 'EUR', 'HUF'], array_column($rows, 'currency'));
+    }
+
+    // ---------------------------------------------------------------- varianty
+
+    public function test_detail_produktu_vracia_varianty_vratane_stavu_zasoby(): void
+    {
+        // Spec v2 N2: produkt 49 má has_attributes:true a 12 variantov.
         Http::fake([self::BASE.'/api/products/get*' => Http::response([
             'result' => [
-                'ok' => true, 'id' => 22, 'name' => 'Prsteň', 'price' => 19.9,
+                'ok' => true, 'id' => 49, 'name' => 'Náramok', 'price' => 12.3,
                 'description' => 'dlhý popis', 'description_short' => 'krátky',
-                'has_attributes' => true, 'attributes' => [['id' => 1]],
+                'has_attributes' => true,
+                'attributes' => [
+                    [
+                        'id_product_attribute' => 501, 'reference' => 'NR-49-S', 'ean13' => '1234567890123',
+                        'price_impact' => 0, 'quantity' => 7, 'is_default' => true,
+                        'values' => [['group' => 'Veľkosť', 'value' => 'S']],
+                    ],
+                    [
+                        'id_product_attribute' => 502, 'reference' => 'NR-49-M', 'ean13' => null,
+                        'price_impact' => '1.50', 'quantity' => 0, 'is_default' => false,
+                        'values' => [['group' => 'Veľkosť', 'value' => 'M']],
+                    ],
+                ],
             ],
+        ])]);
+
+        $product = $this->client()->product(49);
+
+        $this->assertTrue($product['has_attributes']);
+        $this->assertCount(2, $product['attributes']);
+
+        $first = $product['attributes'][0];
+        $this->assertSame(
+            ['id_product_attribute', 'reference', 'ean13', 'price_impact', 'quantity', 'is_default', 'values'],
+            array_keys($first),
+            'variant má sedem polí, ktoré API reálne posiela',
+        );
+        $this->assertSame(501, $first['id_product_attribute']);
+        $this->assertSame(7, $first['quantity'], 'quantity je stav zásoby (rozhodnutie 4)');
+        $this->assertTrue($first['is_default']);
+        $this->assertSame([['group' => 'Veľkosť', 'value' => 'S']], $first['values']);
+
+        // Nula na sklade musí zostať nulou, nie null — „vypredané" je informácia.
+        $this->assertSame(0, $product['attributes'][1]['quantity']);
+        $this->assertSame(1.5, $product['attributes'][1]['price_impact']);
+        $this->assertFalse($product['attributes'][1]['is_default']);
+    }
+
+    public function test_produkt_bez_variantov_ma_prazdne_pole_a_false(): void
+    {
+        Http::fake([self::BASE.'/api/products/get*' => Http::response([
+            'result' => ['ok' => true, 'id' => 22, 'name' => 'Prsteň', 'price' => 19.9],
         ])]);
 
         $product = $this->client()->product(22);
 
-        $this->assertArrayNotHasKey('has_attributes', $product);
-        $this->assertArrayNotHasKey('attributes', $product);
-        $this->assertSame('krátky', $product['description_short']);
+        $this->assertSame([], $product['attributes']);
+        $this->assertFalse($product['has_attributes']);
     }
+
+    // ------------------------------------------------------------------ chyby
 
     public function test_not_found_je_domenovy_stav_a_vracia_null(): void
     {
@@ -306,6 +476,8 @@ class SperkyClientTest extends TestCase
         }
     }
 
+    // ------------------------------------------------------------------- cache
+
     public function test_zlucena_stranka_sa_obsluzi_z_cache_a_neposle_druhy_request(): void
     {
         Http::fake([self::BASE.'/api/order*' => Http::response($this->ordersBody(2))]);
@@ -347,7 +519,7 @@ class SperkyClientTest extends TestCase
 
     public function test_cache_kluc_neobsahuje_api_kluc(): void
     {
-        $key = $this->client()->cacheKey('orders', ['page' => 1, 'per_page' => 100]);
+        $key = $this->client()->cacheKey('orders', ['page' => 1, 'per_page' => 100, 'date_from' => '2026-07-01']);
 
         $this->assertStringStartsWith('sperky:orders:', $key);
         $this->assertStringNotContainsString(self::KEY, $key);
@@ -384,6 +556,8 @@ class SperkyClientTest extends TestCase
         }
     }
 
+    // ------------------------------------------------------------------ health
+
     public function test_health_hlasi_vetvy_oddelene_a_nikdy_nevyhodi_vynimku(): void
     {
         Http::fake([
@@ -404,7 +578,7 @@ class SperkyClientTest extends TestCase
     public function test_health_je_ok_ked_odpovedaju_obe_vetvy(): void
     {
         Http::fake([
-            self::BASE.'/api/order*' => Http::response(['result' => ['orders' => [], 'total' => 1763711]]),
+            self::BASE.'/api/order*' => Http::response(['result' => ['orders' => [], 'total' => 1764133]]),
             self::BASE.'/api/products*' => Http::response(['result' => ['products' => [], 'total' => 41018]]),
         ]);
 
@@ -413,7 +587,7 @@ class SperkyClientTest extends TestCase
 
         $this->assertTrue($health['ok']);
         $this->assertTrue($client->available());
-        $this->assertSame(1763711, $health['totals']['orders']);
+        $this->assertSame(1764133, $health['totals']['orders']);
 
         // health je cachovaný 60 s — druhé volanie nesmie znovu sondovať
         Http::assertSentCount(2);

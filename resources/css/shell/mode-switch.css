@@ -1,0 +1,57 @@
+/* ---------------------------------------------------------------------------
+   MODE SWITCH (#mode-switch) — 3-pill prepínač pilierov MAP / DASHBOARDS / CHART.
+
+   Segmentovaný control (vzor #view-switch), fixný v hornom strede plochy.
+   Viditeľný LEN na obrazovkách rodiny graf/agenti/chart — inak display:none.
+   --------------------------------------------------------------------------- */
+#mode-switch {
+    position: fixed;
+    top: var(--edge);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-chrome);
+    display: none;
+    gap: var(--sp-0);
+    padding: 3px;
+    background: var(--panel);
+    backdrop-filter: var(--blur-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    box-shadow: var(--elev-2);
+}
+
+/* Viditeľnosť: len rodina pilierov. */
+body[data-screen="graf"] #mode-switch,
+body[data-screen="agenti"] #mode-switch,
+body[data-screen="chart"] #mode-switch { display: inline-flex; }
+
+/* hidden atribút (a11y poistka z JS) prebije všetko. */
+#mode-switch[hidden] { display: none !important; }
+
+#mode-switch button {
+    border: none; background: none;
+    color: var(--muted);
+    border-radius: var(--r-pill);
+    padding: 4px 16px;
+    min-height: 26px;
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--ls-caps);
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#mode-switch button:hover:not(:disabled) { background: var(--hover-fill); color: var(--text); }
+#mode-switch button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#mode-switch button.active {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+}
+#mode-switch button:disabled,
+#mode-switch button.coming-soon { opacity: .45; cursor: not-allowed; }
+
+/* Na úzkych plochách sa 3 piliere zmestia užšie. */
+@media (max-width: 640px) {
+    #mode-switch button { padding: 4px 10px; }
+}

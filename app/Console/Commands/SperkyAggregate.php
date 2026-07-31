@@ -11,13 +11,15 @@ use Illuminate\Support\Carbon;
  *
  * Idempotentné: druhý beh ten istý uzol prepíše, nikdy nevytvorí duplikát.
  *
- * REGISTRÁCIA V SCHEDULERI JE ZÁMERNE VYPNUTÁ. `routes/console.php` vlastní iný
- * balík a nočný beh sa nesmie zapnúť skôr, než sa overí rate limit e-shopu na
- * reálnych dátach (dnes je NEZNÁMY a produkcia sa netestovala do zablokovania).
- * Navrhovaný riadok je v reporte balíka SPERKY-BE — pridá ho integrátor.
+ * V SCHEDULERI JE ZAPNUTÝ (rozhodnutie 6): `routes/console.php`, `monthlyOn(2, '02:30')`,
+ * `withoutOverlapping`, timezone Europe/Bratislava. Druhý deň mesiaca preto, aby
+ * bol predchádzajúci mesiac uzavretý aj pri objednávkach dobehnutých po polnoci.
  *
- * Bez `--month` sa počíta PREDCHÁDZAJÚCI mesiac: nočný beh 1. augusta má
- * uzavrieť júl, nie rozpočítaný august.
+ * Historické mesiace sa NEDOPOČÍTAVAJÚ (rozhodnutie 6): objednávky existujú od
+ * roku 2020, takže by pribudlo ~80 uzlov — to je samostatná úloha.
+ *
+ * Bez `--month` sa počíta PREDCHÁDZAJÚCI mesiac: beh 2. augusta má uzavrieť júl,
+ * nie rozpočítaný august.
  */
 class SperkyAggregate extends Command
 {
@@ -46,28 +48,42 @@ class SperkyAggregate extends Command
         }
 
         $summary = (array) ($result['summary'] ?? []);
-        $orders = (int) ($summary['orders'] ?? 0);
+        $orders = $summary['orders'] ?? null;
         $requests = (int) ($summary['requests'] ?? 0);
-        $complete = ($summary['orders_complete'] ?? false) === true;
+        $complete = (bool) data_get($summary, 'revenue_meta.complete', true);
 
         $this->info(sprintf(
-            'sperky:aggregate %s: %d objednávok%s, %d requestov, %s.',
+            'sperky:aggregate %s: %s objednávok, %d requestov, %s.',
             (string) ($result['month'] ?? $month),
-            $orders,
-            $complete ? '' : ' (čiastočný scan: '.(string) data_get($summary, 'scan.stopped_by', '?').')',
+            $orders === null ? '?' : number_format((int) $orders, 0, ',', ' '),
             $requests,
             $write ? 'uzol zapísaný' : 'dry-run bez zápisu',
         ));
 
-        // Rozpad podľa krajín vypisujeme po riadkoch — jedno súhrnné číslo
-        // obratu neexistuje a vypísať by sa ani nedalo (mieša HUF/CZK/EUR).
+        // Obrat sa vypisuje PO MENÁCH, každá mena na vlastnom riadku. Jedno
+        // súhrnné číslo naprieč menami neexistuje a vypísať by sa ani nedalo.
+        foreach ((array) ($summary['revenue'] ?? []) as $row) {
+            $this->line(sprintf(
+                '  obrat %s: %s (%d obj.)',
+                (string) ($row['currency'] ?? '???'),
+                number_format((float) ($row['total'] ?? 0), 2, ',', ' '),
+                (int) ($row['orders'] ?? 0),
+            ));
+        }
+
+        if (! $complete) {
+            $this->warn(sprintf(
+                '  obrat pokrýva len %d z %s objednávok — strop požiadaviek sa vyčerpal.',
+                (int) data_get($summary, 'revenue_meta.orders_covered', 0),
+                (string) (data_get($summary, 'revenue_meta.orders_in_window') ?? '?'),
+            ));
+        }
+
         foreach ((array) ($summary['countries'] ?? []) as $row) {
             $this->line(sprintf(
-                '  %s: %d obj. · %s %s (mena odhad)',
+                '  %s: %s obj.',
                 (string) ($row['country_iso'] ?? '??'),
-                (int) ($row['orders'] ?? 0),
-                number_format((float) ($row['total_paid'] ?? 0), 2, ',', ' '),
-                (string) ($row['currency_estimate'] ?? 'neznáma mena'),
+                number_format((int) ($row['orders'] ?? 0), 0, ',', ' '),
             ));
         }
 

@@ -20,28 +20,21 @@ use Throwable;
  * Idempotencia: `external_key = sperky:month:YYYY-MM`. Druhý beh ten istý uzol
  * PREPÍŠE, nikdy nevytvorí duplikát a nikdy nenaskladá popis do seba.
  *
- * NÁLEZ N1 — čo tu ZÁMERNE nie je: jeden súhrnný obrat. `total_paid` je v mene
- * objednávky, ale API menu nevracia (HU=HUF, CZ=CZK, SK/SI=EUR; na 100
- * objednávkach 37 hodnôt nad 1000). Súčet naprieč krajinami by bol nepravdivé
- * číslo, prepočet na EUR je zakázaný (appka nemá kurzy). Do uzla ide POČET
- * objednávok (bezpečný) a obrat výhradne rozpadnutý podľa `country_iso`
- * s príznakom, že mena je ODHAD.
+ * Po prechode na filtre (rozhodnutie 2) je počet objednávok presný po JEDNOM
+ * dopyte a rozpad podľa krajín po jednom dopyte na krajinu. Príznaky o vzorke
+ * („basis: sample", „sample_size") zmizli — už nie sú pravdivé.
  *
- * Krajina je len v detaile objednávky, nie v zozname — rozpad podľa krajín je
- * preto zo VZORKY (`sperky.aggregate.sample_details`) a je tak aj označený.
- * Inak by mesiac s 5 000 objednávkami znamenal 5 000 requestov na produkciu.
+ * OBRAT (rozhodnutie 1): uzol obsahuje `revenue` = samostatný riadok pre každú
+ * menu (`{currency, total, orders}`). Jedno číslo naprieč menami tu NEVZNIKNE:
+ * sčítať EUR s HUF nemá zmysel a prepočet na EUR je zakázaný. Meny sa čítajú
+ * z API — mapovanie krajina→mena je zmazané (rozhodnutie 7).
  */
 class SperkyAggregator
 {
-    /** Odhad meny z krajiny — mapovanie žije v configu, nie v kóde (nález N1). */
-    private readonly SperkyCurrency $currency;
-
     public function __construct(
-        private readonly OrderScanner $scanner,
+        private readonly OrderWindowReader $reader,
         private readonly TaxonomyResolver $taxonomy = new TaxonomyResolver,
-    ) {
-        $this->currency = SperkyCurrency::fromConfig();
-    }
+    ) {}
 
     /**
      * Spočíta mesiac a zapíše/aktualizuje uzol.
@@ -57,35 +50,37 @@ class SperkyAggregator
         }
 
         $month = $start->format('Y-m');
-        $until = $start->copy()->addMonth();
+        $from = $start->toDateString();
+        $to = $start->copy()->endOfMonth()->toDateString();
 
         $config = (array) config('sperky.aggregate', []);
 
-        $scan = $this->scanner->scan($start, $until, [
+        $window = $this->reader->read($from, $to, [
             'per_page' => (int) ($config['per_page'] ?? 100),
-            'max_requests' => (int) ($config['max_requests'] ?? 80),
+            'max_requests' => (int) ($config['revenue_max_requests'] ?? 150),
             'sleep_ms' => (int) ($config['sleep_ms'] ?? 250),
         ]);
 
-        $sample = $this->scanner->details(
-            $scan->ids(),
-            (int) ($config['sample_details'] ?? 60),
-            (int) ($config['sleep_ms'] ?? 250),
+        $countries = $this->reader->countries(
+            $from,
+            $to,
+            (array) config('sperky.countries', []),
+            $window->orders,
         );
 
-        $summary = $this->summarize($month, $start, $until, $scan, $sample);
+        $summary = $this->summarize($month, $window, $countries);
 
         if (! $write) {
             return ['ok' => true, 'month' => $month, 'summary' => $summary, 'node' => null, 'written' => false];
         }
 
-        // Bez jedinej objednávky sa uzol nezakladá — prázdny „0 objednávok" uzol
-        // pri nedostupnom API by bola nepravdivá znalosť.
-        if ($scan->count() === 0 && ! $scan->isComplete()) {
+        // Bez počtu z API sa uzol nezakladá — „0 objednávok" pri nedostupnom
+        // e-shope by bola nepravdivá znalosť.
+        if (! $window->available()) {
             return [
                 'ok' => false,
-                'error' => 'scan_failed',
-                'reason' => $scan->stoppedBy,
+                'error' => 'window_failed',
+                'reason' => $window->error ?? 'unavailable',
                 'month' => $month,
                 'summary' => $summary,
                 'written' => false,
@@ -105,111 +100,32 @@ class SperkyAggregator
     }
 
     /**
-     * Súhrn mesiaca. POČTY sú z celého okna, OBRAT výhradne zo vzorky detailov
-     * a výhradne po krajinách.
+     * Súhrn mesiaca. POČTY sú presné z API, OBRAT je po menách.
      *
-     * @param  array{details: list<array<string, mixed>>, requests: int, stopped_by: ?string}  $sample
+     * @param  array{countries: list<array{country_iso: string, orders: ?int}>, other: ?int, error: ?string}  $countries
      * @return array<string, mixed>
      */
-    public function summarize(string $month, Carbon $from, Carbon $until, OrderScan $scan, array $sample): array
+    public function summarize(string $month, OrderWindow $window, array $countries): array
     {
-        $countries = $this->countries($sample['details']);
-
         return [
             'month' => $month,
-            'window' => ['from' => $from->toDateString(), 'until' => $until->toDateString()],
-            // POČET je jediné bezpečné súhrnné číslo (nález N1)
-            'orders' => $scan->count(),
-            'orders_complete' => $scan->isComplete(),
-            'total_orders_in_shop' => $scan->totalOrders,
-            'countries' => $countries,
-            'countries_meta' => [
-                // rozpad je zo VZORKY, nie z celého mesiaca — krajina je len v detaile
-                'basis' => 'sample',
-                'sample_size' => count($sample['details']),
-                'sample_of' => $scan->count(),
-                'sample_stopped_by' => $sample['stopped_by'],
-                'currency_is_estimate' => true,
-                'note' => 'Mena je odhad z krajiny — API ju nevracia. Sumy sa nesčítavajú '
-                    .'naprieč krajinami ani neprepočítavajú na jednu menu.',
-            ],
-            'top_products' => $this->topProducts($sample['details']),
-            'scan' => $scan->meta(),
-            'requests' => $scan->requests + (int) $sample['requests'],
+            'window' => ['from' => $window->from, 'to' => $window->to],
+            // presný počet z `total` filtrovanej odpovede, nie z prejdených strán
+            'orders' => $window->orders,
+            'countries' => $countries['countries'],
+            'countries_other' => $countries['other'],
+            // Obrat VÝHRADNE po menách. Súčet naprieč menami je zakázaný a
+            // prepočet na jednu menu takisto (rozhodnutie 1).
+            'revenue' => $window->revenue,
+            'revenue_meta' => $window->revenueMeta(),
+            'requests' => $window->requests + count($countries['countries']),
             'generated_at' => now()->toIso8601String(),
         ];
     }
 
     /**
-     * Rozpad podľa `country_iso`: počet objednávok a súčet `total_paid`
-     * V RÁMCI JEDNEJ KRAJINY (a teda jednej odhadnutej meny). Nikdy naprieč.
-     *
-     * @param  list<array<string, mixed>>  $details
-     * @return list<array<string, mixed>>
-     */
-    public function countries(array $details): array
-    {
-        $buckets = [];
-
-        foreach ($details as $detail) {
-            $iso = strtoupper(trim((string) ($detail['country_iso'] ?? '')));
-            $key = $iso !== '' ? $iso : 'UNKNOWN';
-
-            $buckets[$key] ??= [
-                'country_iso' => $iso !== '' ? $iso : null,
-                'country' => $detail['country'] ?? null,
-                'orders' => 0,
-                'total_paid' => 0.0,
-                'currency_estimate' => $this->currency->guess($iso),
-                'currency_is_estimate' => true,
-            ];
-
-            $buckets[$key]['orders']++;
-            $buckets[$key]['total_paid'] += (float) ($detail['total_paid'] ?? 0);
-        }
-
-        $rows = array_values($buckets);
-        usort($rows, fn (array $a, array $b) => $b['orders'] <=> $a['orders']);
-
-        return array_map(function (array $row) {
-            $row['total_paid'] = round((float) $row['total_paid'], 2);
-
-            return $row;
-        }, $rows);
-    }
-
-    /**
-     * Najčastejšie produkty vo vzorke (podľa výskytu v `product_ids`).
-     *
-     * @param  list<array<string, mixed>>  $details
-     * @return list<array{id: int, orders: int}>
-     */
-    public function topProducts(array $details, int $limit = 10): array
-    {
-        $counts = [];
-
-        foreach ($details as $detail) {
-            foreach ((array) ($detail['product_ids'] ?? []) as $id) {
-                $id = (int) $id;
-                if ($id > 0) {
-                    $counts[$id] = ($counts[$id] ?? 0) + 1;
-                }
-            }
-        }
-
-        arsort($counts);
-
-        $top = [];
-        foreach (array_slice($counts, 0, max(1, $limit), true) as $id => $orders) {
-            $top[] = ['id' => (int) $id, 'orders' => (int) $orders];
-        }
-
-        return $top;
-    }
-
-    /**
-     * Popis uzla po slovensky. Obrat LEN po krajinách a vždy s priznaním, že
-     * mena je odhad — bez toho by bol text nepravdivý.
+     * Popis uzla po slovensky. Obrat po menách, každá mena na vlastnom riadku —
+     * jedna veta so súčtom EUR a HUF by bola nepravdivá.
      *
      * @param  array<string, mixed>  $summary
      */
@@ -217,43 +133,50 @@ class SperkyAggregator
     {
         $lines = [];
 
-        $orders = (int) ($summary['orders'] ?? 0);
+        $orders = $summary['orders'] ?? null;
         $lines[] = sprintf(
-            '%s — %s objednávok%s.',
+            '%s — %s objednávok.',
             $this->monthLabel((string) $summary['month']),
-            number_format($orders, 0, ',', ' '),
-            ($summary['orders_complete'] ?? true) ? '' : ' (čiastočný scan)',
+            $orders === null ? 'neznámy počet' : number_format((int) $orders, 0, ',', ' '),
         );
+
+        $revenue = (array) ($summary['revenue'] ?? []);
+        if ($revenue !== []) {
+            $parts = [];
+            foreach ($revenue as $row) {
+                $parts[] = sprintf(
+                    '%s %s (%s obj.)',
+                    number_format((float) $row['total'], 2, ',', ' '),
+                    (string) $row['currency'],
+                    number_format((int) $row['orders'], 0, ',', ' '),
+                );
+            }
+            $lines[] = 'Obrat po menách: '.implode(' · ', $parts);
+        }
+
+        if (($summary['revenue_meta']['complete'] ?? true) !== true) {
+            $lines[] = 'Obrat pokrýva '.number_format((int) ($summary['revenue_meta']['orders_covered'] ?? 0), 0, ',', ' ')
+                .' z '.number_format((int) ($summary['revenue_meta']['orders_in_window'] ?? 0), 0, ',', ' ')
+                .' objednávok mesiaca — strop požiadaviek sa vyčerpal.';
+        }
 
         $countries = (array) ($summary['countries'] ?? []);
         if ($countries !== []) {
             $parts = [];
             foreach ($countries as $row) {
-                $iso = (string) ($row['country_iso'] ?? '??');
-                $money = $row['currency_estimate'] !== null
-                    ? sprintf(
-                        ' · %s %s',
-                        number_format((float) $row['total_paid'], 2, ',', ' '),
-                        (string) $row['currency_estimate'],
-                    )
-                    : ' · mena neznáma';
-                $parts[] = sprintf('%s %d obj.%s', $iso, (int) $row['orders'], $money);
+                $parts[] = sprintf(
+                    '%s %s obj.',
+                    (string) $row['country_iso'],
+                    number_format((int) ($row['orders'] ?? 0), 0, ',', ' '),
+                );
             }
-
-            $sampleSize = (int) data_get($summary, 'countries_meta.sample_size', 0);
-            $lines[] = 'Rozpad podľa krajín zo vzorky '.$sampleSize.' objednávok: '.implode(' · ', $parts);
+            if (($summary['countries_other'] ?? null) !== null) {
+                $parts[] = 'ostatné '.number_format((int) $summary['countries_other'], 0, ',', ' ').' obj.';
+            }
+            $lines[] = 'Krajiny (presné počty): '.implode(' · ', $parts);
         }
 
-        $lines[] = 'Mena je ODHADNUTÁ z country_iso — API ju nevracia. Súhrnný obrat sa '
-            .'zámerne nepočíta a prepočet na jednu menu je zakázaný.';
-
-        $top = (array) ($summary['top_products'] ?? []);
-        if ($top !== []) {
-            $lines[] = 'Najčastejšie produkty vo vzorke: '.implode(', ', array_map(
-                fn (array $p) => '#'.$p['id'].' ('.$p['orders'].'×)',
-                array_slice($top, 0, 5),
-            ));
-        }
+        $lines[] = 'Sumy sa NIKDY nesčítavajú naprieč menami a neprepočítavajú na jednu menu.';
 
         return implode("\n", $lines);
     }
@@ -288,12 +211,13 @@ class SperkyAggregator
                 'department_id' => $placement['department_id'],
                 'label' => 'E-shop '.$this->monthLabel($month),
                 'description' => $this->describe($summary),
-                'certainty' => ($summary['orders_complete'] ?? true) ? 'confirmed' : 'assumed',
+                'certainty' => ($summary['revenue_meta']['complete'] ?? true) ? 'confirmed' : 'assumed',
                 'meta' => $summary + [
                     'source' => 'sperky-eshop.sk',
-                    // Explicitný príznak pre kontrolu aj pre UI: jedno súhrnné
-                    // číslo obratu v tomto uzle NEEXISTUJE a existovať nesmie.
-                    'revenue_total_forbidden' => true,
+                    // Explicitný príznak pre kontrolu aj pre UI: jedno číslo,
+                    // ktoré by sčítalo sumy v rôznych menách, tu neexistuje
+                    // a existovať nesmie.
+                    'cross_currency_sum_forbidden' => true,
                 ],
                 'strength' => 2,
                 'last_activated_at' => now(),

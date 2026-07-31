@@ -6,31 +6,35 @@ import { bus } from '../../resources/js/core/bus.js';
 import { EV } from '../../resources/js/core/events.js';
 import { findProduct, register, renderEshop } from '../../resources/js/screens/eshop.js';
 import {
-    amountHtml, coveredDays, currencyForCountry, fmtCount, normalizeCountries, normalizeHealth,
-    normalizeOrders, normalizeProduct, normalizeSummary,
+    amountHtml, fmtCount, normalizeCountries, normalizeHealth, normalizeOrder, normalizeOrders,
+    normalizeProduct, normalizeRevenue, normalizeSummary, normalizeVariants, variantLabel,
+    windowRange,
 } from '../../resources/js/screens/eshop/data.js';
+import { filters, orderQuery } from '../../resources/js/screens/eshop/filters.js';
 
 /* Obrazovka E-shop (balík P11, agent SPERKY-FE).
 
-   Najdôležitejšie testy tohto súboru NIE SÚ o vykreslení, ale o nálezoch z
-   overenia proti živej produkcii (refactor-auraai/08-SPERKY-API-SPEC.md):
+   Najdôležitejšie testy tohto súboru NIE SÚ o vykreslení, ale o obmedzeniach
+   z refactor-auraai/08b-SPERKY-API-SPEC-V2.md (overené proti živej produkcii):
 
-   N1  `total_paid` je v mene objednávky, ale API menu nevracia → obrazovka nesmie
-       nikde ukázať jedno súhrnné číslo obratu ani prepočet na EUR, a pri každej
-       sume musí byť vidieť menu + to, že je odhadnutá. Testy „nikde jeden obrat"
-       a „mena pri každej sume" sú brána; keby ich niekto zmazal, vlna 3 nájde
+   R1  `currency` (ISO) je v zozname AJ v detaile → mena je AUTORITATÍVNA.
+       Mapovanie krajina→mena je zmazané: pokrývalo SK/SI/HU/CZ, ale 27 % vzorky
+       je RON alebo PLN, takže hádalo nesprávne. Značka „odhad" preto zmizla —
+       bola nepravdivá. Suma sa však NIKDY nesmie zobraziť bez meny.
+   R2  Obrat sa vracia po menách (EUR 40 · HUF 26 · RON 20 · PLN 7 · CZK 7).
+       Vykreslí sa jeden riadok na menu; SÚČET NAPRIEČ MENAMI SA NEVYKRESLÍ
+       NIKDE — to je brána tohto súboru. Keby ju niekto zmazal, ďalšia vlna nájde
        obrazovku, ktorá lže o peniazoch.
-   N2  varianty produktu API nevracia → nesmú sa zobraziť, ani keď ich odpoveď
-       (v rozpore s realitou) obsahuje.
-   N3/N5  okno sa skenuje so stropom requestov → neúplný sken sa musí priznať,
-       nesmie sa tváriť ako presné číslo.
-   N6  HTTP 200 s `ok:false` je chyba → indikátor musí ukázať nedostupnosť.
-   N7  chýbajúce číslo je „—", nikdy dopočítaná nula.
+   R3  `date_from`/`date_to`/`country`/`total_min` fungujú → okno je v UI a filter
+       sumy je aktívny LEN s krajinou (rozhodnutie 8).
+   R4  `attributes` sa vracia → varianty vrátane `quantity`; vypredaný variant
+       musí byť odlíšený.
+   R6  HTTP 200 s `ok:false` je chyba → indikátor musí ukázať nedostupnosť.
+   R7  chýbajúce číslo je „—", nikdy dopočítaná nula.
 
    Telá odpovedí sú odpísané z reálneho EshopController-a (obálka `{ok,data,meta}`,
-   `currency_estimate` + `currency_is_estimate`, `orders.total_in_shop`), nie
-   vymyslené. Markup sa načítava z reálneho blade súboru, takže preklep v `id`
-   položí test a nie až prehliadač. */
+   `orders.total_in_shop`), nie vymyslené. Markup sa načítava z reálneho blade
+   súboru, takže preklep v `id` položí test a nie až prehliadač. */
 
 const MARKUP = readFileSync(
     resolve(process.cwd(), 'resources/views/partials/screens/eshop.blade.php'), 'utf8',
@@ -45,6 +49,7 @@ const res = (status, body) => ({
 });
 
 let routes = [];
+let calls = [];
 
 /* Neskorší zápis prebíja skorší, aby si test vedel prepísať jednu cestu
    z happyPath() bez toho, aby ju celú prestavoval. */
@@ -52,12 +57,16 @@ function route(pattern, factory) { routes.unshift([pattern, factory]); }
 
 function installFetch() {
     routes = [];
+    calls = [];
     global.fetch = vi.fn(async (url) => {
         const path = String(url);
+        calls.push(path);
         for (const [pattern, factory] of routes) if (pattern.test(path)) return factory(path);
         throw new Error('neošetrená cesta v teste: ' + path);
     });
 }
+
+const called = (re) => calls.filter((c) => re.test(c));
 
 const HEALTH = /^\/api\/eshop\/health/;
 const SUMMARY = /^\/api\/eshop\/summary/;
@@ -70,54 +79,78 @@ const failBody = (code, message) => ({ ok: false, data: null, error: { code, mes
 
 const HEALTH_BODY = ok({
     ok: true, orders: true, products: true, error: null, latency_ms: 825,
-    checked_at: '2026-07-30T15:14:48+02:00',
-    totals: { orders: 1763914, products: 41018 }, key_configured: true,
+    checked_at: '2026-07-31T15:14:48+02:00',
+    totals: { orders: 1764137, products: 41018 }, key_configured: true,
 });
 
-/* Sumy sú zvolené tak, aby ich súčet (23 250) bol v DOM nezameniteľný —
-   keby ho niekto vykreslil, test „nikde jeden obrat" ho nájde. */
+/* Presne to rozdelenie, ktoré sa nameralo na vzorke 100 objednávok. */
 const COUNTRIES = [
-    { country_iso: 'SK', country: 'Slovensko', orders: 61, total_paid: 250, currency_estimate: 'EUR', currency_is_estimate: true },
-    { country_iso: 'HU', country: 'Maďarsko', orders: 22, total_paid: 20000, currency_estimate: 'HUF', currency_is_estimate: true },
-    { country_iso: 'CZ', country: 'Česká republika', orders: 17, total_paid: 3000, currency_estimate: 'CZK', currency_is_estimate: true },
+    { country_iso: 'SK', country: 'Slovensko', orders: 61 },
+    { country_iso: 'HU', country: 'Maďarsko', orders: 22 },
+    { country_iso: 'CZ', country: 'Česká republika', orders: 17 },
 ];
 
+/* Sumy sú zvolené tak, aby ich súčet (235 500) bol v DOM nezameniteľný —
+   keby ho niekto vykreslil, test „nikde jeden obrat" ho nájde. */
+const REVENUE = [
+    { currency: 'EUR', total: 1000, orders: 40 },
+    { currency: 'HUF', total: 200000, orders: 26 },
+    { currency: 'RON', total: 30000, orders: 20 },
+    { currency: 'PLN', total: 4000, orders: 7 },
+    { currency: 'CZK', total: 500, orders: 7 },
+];
+/* PLN a CZK majú v reálnej vzorke rovnaký počet (7), takže o poradí rozhoduje
+   ISO kód — CZK je pred PLN. Poradie musí byť deterministické, inak by sa
+   sekcia obratu pri každom načítaní preskládala. */
+const REV_ORDER = ['EUR', 'HUF', 'RON', 'CZK', 'PLN'];
+const CROSS_SUM = 235500;
+
 const SUMMARY_BODY = ok({
-    generated_at: '2026-07-30T15:14:50+02:00',
-    window: { days: 7, from: '2026-07-24', until: '2026-07-31' },
-    orders: { in_window: 800, today: 123, complete: true, total_in_shop: 1763914 },
+    generated_at: '2026-07-31T15:14:50+02:00',
+    window: { days: 7, from: '2026-07-25', until: '2026-08-01' },
+    orders: { in_window: 1010, today: 126, total_in_shop: 1764137 },
     by_day: [
-        { date: '2026-07-28', orders: 220 },
         { date: '2026-07-29', orders: 224 },
-        { date: '2026-07-30', orders: 123 },
+        { date: '2026-07-30', orders: 220 },
+        { date: '2026-07-31', orders: 126 },
     ],
     countries: COUNTRIES,
-    countries_meta: { basis: 'sample', sample_size: 100, currency_is_estimate: true, note: 'Rozpad je zo vzorky detailov.' },
-    months: [],
-    live: { available: true, stopped_by: null },
-    scan: { stopped_by: null, complete: true, requests: 8 },
+    revenue: REVENUE,
+    products_total: 41018,
 });
 
 const ORDERS_BODY = ok({
     orders: [
-        { id: 1763927, date_add: '2026-07-30 15:11:14', total_paid: 1169, total_paid_raw: '1169' },
-        { id: 1763926, date_add: '2026-07-30 14:52:25', total_paid: 33.4, total_paid_raw: '33.4' },
+        { id: 1764146, date_add: '2026-07-31 15:11:14', total_paid: 73.9, currency: 'EUR' },
+        { id: 1764145, date_add: '2026-07-31 14:52:25', total_paid: 20965, currency: 'HUF' },
     ],
-    page: 1, per_page: 20, total: 1763914, count: 2, sorted_by: 'id_desc',
+    page: 1, per_page: 20, total: 1764137, count: 2, sorted_by: 'id_desc',
 });
 
 const ORDER_BODY = ok({
     order: {
-        id: 1763927, date_add: '2026-07-30 15:11:14', total_paid: 1169,
+        id: 1764146, date_add: '2026-07-31 15:11:14', total_paid: 20965, currency: 'HUF',
         country: 'Maďarsko', country_iso: 'HU',
-        currency_estimate: 'HUF', currency_is_estimate: true, product_ids: [22, 23],
+        products: [{ id: 30582, qty: 2 }, { id: 22, qty: 1 }],
     },
 });
 
+/* Produkt 49 — 12 variantov, index 3 je vypredaný (quantity 0). */
+const VARIANTS = Array.from({ length: 12 }, (_, i) => ({
+    id_product_attribute: 500 + i,
+    values: [{ group: 'Veľkosť', value: (48 + i * 2) + ' cm' }],
+    price_impact: i === 0 ? 0 : i * 1.5,
+    reference: 'REF-' + (500 + i),
+    ean13: '85900000' + (1000 + i),
+    quantity: i === 3 ? 0 : 10 + i,
+    is_default: i === 0,
+}));
+
 const PRODUCT_BODY = ok({
     product: {
-        id: 22, name: 'Náramok z chirurgickej ocele', price: 20.666667,
-        description: '<h3>Dlhý popis</h3>', description_short: '<p>Ocelový <b>náramok</b></p>',
+        id: 49, name: 'Retiazka z chirurgickej ocele', price: 12.9, currency: 'EUR',
+        description: '<h3>Dlhý popis</h3>', description_short: '<p>Ocelová <b>retiazka</b></p>',
+        has_attributes: true, attributes: VARIANTS,
     },
 });
 
@@ -135,66 +168,58 @@ const tight = () => bodyText().replace(/\s/g, '');
 beforeEach(() => {
     document.body.innerHTML = MARKUP;
     installFetch();
+    filters.days = 7;
+    filters.country = '';
+    filters.totalMin = null;
 });
 
 
 /* ================= čisté helpery ================= */
 
-describe('mena (nález N1)', () => {
-    it('odhaduje menu z krajiny podľa zmeranej vzorky', () => {
-        expect(currencyForCountry('HU')).toBe('HUF');
-        expect(currencyForCountry('cz')).toBe('CZK');
-        expect(currencyForCountry('SK')).toBe('EUR');
-        expect(currencyForCountry('SI')).toBe('EUR');
-    });
-
-    it('neznámu krajinu NEHÁDA', () => {
-        expect(currencyForCountry('DE')).toBeNull();
-        expect(currencyForCountry('')).toBeNull();
-        expect(currencyForCountry(null)).toBeNull();
-    });
-
-    it('suma vždy nesie menu a pri odhade aj značku „odhad"', () => {
-        const hu = amountHtml(11215, { iso: 'HU' });
-        expect(hu).toContain('HUF');
-        expect(hu).toContain('odhad');
-        expect(hu).not.toContain('EUR');
-    });
-
-    it('mena z API bez príznaku odhadu sa neznačí ako odhad', () => {
-        const h = amountHtml(14.85, { currency: 'eur' });
-        expect(h).toContain('EUR');
+describe('mena je autoritatívna z API (R1)', () => {
+    it('suma nesie ISO kód z API a NIKDY značku „odhad"', () => {
+        const h = amountHtml(20965, { currency: 'huf' });
+        expect(h).toContain('HUF');
         expect(h).not.toContain('odhad');
+        expect(h).not.toContain('es-est');
     });
 
-    it('currency_is_estimate prebíja pole currency — odhad zostáva odhadom', () => {
-        const c = normalizeCountries([{ country_iso: 'SK', orders: 1, total_paid: 5, currency: 'EUR', currency_is_estimate: true }]);
-        expect(c[0].currency).toBeNull();
-        expect(c[0].currencyEstimate).toBe('EUR');
-        expect(amountHtml(5, c[0])).toContain('odhad');
+    it('krajina menu NEURČUJE — RON a PLN by staré mapovanie uhádlo nesprávne', () => {
+        for (const iso of ['RO', 'PL', 'HU', 'CZ', 'SK']) {
+            const h = amountHtml(500, { iso });
+            expect(h).toContain('mena neuvedená');
+            expect(h).not.toMatch(/EUR|HUF|CZK|RON|PLN/);
+        }
     });
 
-    it('bez krajiny a bez meny to prizná, nedomýšľa EUR', () => {
+    it('bez meny to prizná, nedomýšľa EUR', () => {
         const h = amountHtml(999);
         expect(h).toContain('mena neuvedená');
         expect(h).not.toContain('EUR');
     });
 
-    it('chýbajúca suma je „—", nie nula (nález N7)', () => {
+    it('chýbajúca suma je „—", nie nula (R7)', () => {
         expect(amountHtml(null)).toContain('—');
         expect(amountHtml(null)).not.toContain('0');
         expect(amountHtml(undefined)).toContain('es-amount--na');
     });
 
-    it('nikdy nevykreslí symbol meny — ten by zamlčal odhad', () => {
-        for (const h of [amountHtml(1, { iso: 'SK' }), amountHtml(1, { iso: 'HU' }), amountHtml(1)]) {
-            expect(h).not.toContain('€');
+    it('nikdy nevykreslí symbol meny — pri piatich menách je ISO jednoznačné', () => {
+        for (const c of ['EUR', 'HUF', 'CZK', 'RON', 'PLN']) {
+            expect(amountHtml(1, { currency: c })).not.toMatch(/€|Ft|Kč|zł|lei/);
         }
+    });
+
+    it('príplatok variantu má znak + a stále menu', () => {
+        const h = amountHtml(1.5, { currency: 'EUR', sign: true });
+        expect(h).toContain('+1,5');
+        expect(h).toContain('EUR');
+        expect(amountHtml(-2, { currency: 'EUR', sign: true })).toContain('-2');
     });
 });
 
 
-describe('fmtCount (nález N7)', () => {
+describe('fmtCount (R7)', () => {
     it('chýbajúce číslo je „—", nie nula', () => {
         expect(fmtCount(null)).toBe('—');
         expect(fmtCount(undefined)).toBe('—');
@@ -207,31 +232,45 @@ describe('fmtCount (nález N7)', () => {
 describe('normalizácia odpovedí', () => {
     it('súhrn vytiahne počty z obálky {ok,data} a orders.total_in_shop', () => {
         const s = normalizeSummary(SUMMARY_BODY);
-        expect(s.ordersTotal).toBe(1763914);
-        expect(s.ordersDay).toBe(123);
-        expect(s.ordersWindow).toBe(800);
+        expect(s.ordersTotal).toBe(1764137);
+        expect(s.ordersDay).toBe(126);
+        expect(s.ordersWindow).toBe(1010);
         expect(s.windowDays).toBe(7);
-        expect(s.complete).toBe(true);
+        expect(s.windowFrom).toBe('2026-07-25');
         expect(s.countries.map((c) => c.iso)).toEqual(['SK', 'HU', 'CZ']);
     });
 
-    it('súhrn NEOBSAHUJE žiadne agregované pole obratu', () => {
-        const s = normalizeSummary({ ok: true, data: { ...SUMMARY_BODY.data, revenue_total: 999999 } });
+    it('konec okna berie `to` aj starší `until`', () => {
+        expect(normalizeSummary(ok({ window: { days: 7, from: 'a', to: 'b' } })).windowUntil).toBe('b');
+        expect(normalizeSummary(ok({ window: { days: 7, from: 'a', until: 'c' } })).windowUntil).toBe('c');
+    });
+
+    it('súhrn NEOBSAHUJE žiadne pole s obratom naprieč menami', () => {
+        const s = normalizeSummary({ ok: true, data: { ...SUMMARY_BODY.data, revenue_total: CROSS_SUM } });
         expect(Object.keys(s)).toEqual(['ordersTotal', 'ordersDay', 'ordersWindow', 'windowDays',
-            'complete', 'productsTotal', 'countries', 'countriesFrom', 'countriesNote', 'byDay']);
-        expect(JSON.stringify(s)).not.toContain('999999');
+            'windowFrom', 'windowUntil', 'productsTotal', 'countries', 'revenue', 'byDay']);
+        expect(JSON.stringify(s)).not.toContain(String(CROSS_SUM));
     });
 
-    it('neúplný sken je označený', () => {
-        const s = normalizeSummary(ok({ orders: { in_window: 800, today: 12, complete: false, total_in_shop: 9 } }));
-        expect(s.complete).toBe(false);
+    it('obrat po menách zoradí podľa počtu objednávok, pri rovnosti podľa ISO', () => {
+        const r = normalizeRevenue(REVENUE);
+        expect(r.map((x) => x.currency)).toEqual(REV_ORDER);
+        expect(r.every((x) => x.currency && x.total !== null)).toBe(true);
+        // dvakrát to isté vstupné pole musí dať to isté poradie
+        expect(normalizeRevenue([...REVENUE].reverse()).map((x) => x.currency)).toEqual(REV_ORDER);
     });
 
-    it('znesie plochý tvar aj chýbajúce polia', () => {
-        expect(normalizeSummary({ counts: { total: 5 } }).ordersTotal).toBe(5);
-        expect(normalizeSummary({}).ordersTotal).toBeNull();
-        expect(normalizeSummary(null).countries).toEqual([]);
-        expect(normalizeSummary(null).byDay).toEqual([]);
+    it('riadok obratu bez meny sa zahodí — peniaze bez meny nemajú význam', () => {
+        expect(normalizeRevenue([{ total: 999 }, { currency: 'EUR', total: 1 }]))
+            .toEqual([{ currency: 'EUR', total: 1, orders: null }]);
+        expect(normalizeRevenue(null)).toEqual([]);
+        expect(normalizeRevenue(undefined)).toEqual([]);
+    });
+
+    it('krajiny sú LEN počty — žiadna suma sa k nim nepripája', () => {
+        const c = normalizeCountries([{ country_iso: 'SK', orders: 3, total_paid: 250, currency: 'EUR' }]);
+        expect(Object.keys(c[0])).toEqual(['iso', 'name', 'orders']);
+        expect(JSON.stringify(c)).not.toContain('250');
     });
 
     it('krajiny prijme aj ako mapu iso → počet', () => {
@@ -239,37 +278,74 @@ describe('normalizácia odpovedí', () => {
             .toEqual([['HU', 9], ['SK', 3]]);
     });
 
-    it('keď živé krajiny chýbajú, vezme ich z mesačného súhrnu', () => {
-        const s = normalizeSummary(ok({
-            countries: [],
-            countries_meta: { note: 'nič' },
-            months: [{ month: '2026-06', label: 'E-shop jún 2026', countries: COUNTRIES }],
-        }));
-        expect(s.countries).toHaveLength(3);
-        expect(s.countriesFrom).toBe('E-shop jún 2026');
-        expect(s.countries[0].currencyEstimate).toBe('EUR');
+    it('znesie plochý tvar aj chýbajúce polia', () => {
+        expect(normalizeSummary({ counts: { total: 5 } }).ordersTotal).toBe(5);
+        expect(normalizeSummary({}).ordersTotal).toBeNull();
+        expect(normalizeSummary(null).countries).toEqual([]);
+        expect(normalizeSummary(null).revenue).toEqual([]);
+        expect(normalizeSummary(null).byDay).toEqual([]);
     });
 
-    it('objednávky znesie obálku, plochý zoznam aj prázdno', () => {
+    it('objednávka nesie menu z API a products [{id, qty}]', () => {
+        const o = normalizeOrder(ORDER_BODY.data.order);
+        expect(o.currency).toBe('HUF');
+        expect(o.products).toEqual([{ id: 30582, qty: 2 }, { id: 22, qty: 1 }]);
+    });
+
+    it('starý tvar product_ids sa ešte znesie, len bez množstva', () => {
+        expect(normalizeOrder({ id: 1, product_ids: [22, 23] }).products)
+            .toEqual([{ id: 22, qty: null }, { id: 23, qty: null }]);
+    });
+
+    it('objednávky znesú obálku, plochý zoznam aj prázdno', () => {
         expect(normalizeOrders(ORDERS_BODY).orders).toHaveLength(2);
-        expect(normalizeOrders(ORDERS_BODY).total).toBe(1763914);
+        expect(normalizeOrders(ORDERS_BODY).total).toBe(1764137);
+        expect(normalizeOrders(ORDERS_BODY).filtered).toBe(false);
         expect(normalizeOrders({ data: [{ id: 1 }] }).orders[0].id).toBe(1);
         expect(normalizeOrders(null).orders).toEqual([]);
         expect(normalizeOrders({}).page).toBe(1);
     });
 
-    it('produkt sa vylúpne z dvojitej obálky data.product', () => {
-        expect(normalizeProduct(PRODUCT_BODY).id).toBe(22);
-        expect(normalizeProduct(PRODUCT_BODY).price).toBe(20.666667);
+    it('echo filtrov z API sa prizná, kým nedorazí netvrdí nič', () => {
+        expect(normalizeOrders(ok({ orders: [{ id: 1 }], filters: { country: 'SK' } })).filtered).toBe(true);
     });
 
-    it('produkt NEČÍTA attributes ani has_attributes (nález N2)', () => {
-        const p = normalizeProduct({
-            id: 22, name: 'X', price: 1, has_attributes: true,
-            attributes: [{ id: 1, name: 'Veľkosť' }],
-        });
-        expect(Object.keys(p)).toEqual(['id', 'name', 'price', 'currency', 'currencyEstimate', 'text']);
-        expect(JSON.stringify(p)).not.toContain('Veľkosť');
+    it('varianty sa čítajú vrátane zásoby (R4)', () => {
+        const v = normalizeVariants(VARIANTS);
+        expect(v).toHaveLength(12);
+        expect(v[0].label).toBe('Veľkosť: 48 cm');
+        expect(v[0].isDefault).toBe(true);
+        expect(v[3].quantity).toBe(0);
+        expect(v[1].priceImpact).toBe(1.5);
+        expect(v[1].reference).toBe('REF-501');
+        expect(v[1].ean13).toBe('859000001001');
+    });
+
+    it('chýbajúca zásoba je null („—"), nie dopočítaná nula (R7)', () => {
+        expect(normalizeVariants([{ id: 1 }])[0].quantity).toBeNull();
+        expect(normalizeVariants(null)).toEqual([]);
+    });
+
+    it('označenie variantu znesie pole textov, pole objektov aj jeden text', () => {
+        expect(variantLabel(['M', 'zlatá'])).toBe('M · zlatá');
+        expect(variantLabel({ group: 'Farba', value: 'zlatá' })).toBe('Farba: zlatá');
+        expect(variantLabel({ name: 'M' })).toBe('M');
+        expect(variantLabel('M')).toBe('M');
+        expect(variantLabel(null)).toBe('');
+    });
+
+    it('produkt sa vylúpne z dvojitej obálky a prizná varianty', () => {
+        const p = normalizeProduct(PRODUCT_BODY);
+        expect(p.id).toBe(49);
+        expect(p.currency).toBe('EUR');
+        expect(p.hasVariants).toBe(true);
+        expect(p.variants).toHaveLength(12);
+    });
+
+    it('produkt bez variantov ich nepredstiera', () => {
+        const p = normalizeProduct({ id: 22, name: 'X', price: 1 });
+        expect(p.hasVariants).toBe(false);
+        expect(p.variants).toEqual([]);
     });
 
     it('popis produktu je zbavený HTML značiek', () => {
@@ -294,6 +370,25 @@ describe('normalizácia odpovedí', () => {
 });
 
 
+describe('dátumové okno (R3)', () => {
+    it('okno N dní končí dneškom a je vrátane oboch krajov', () => {
+        const r = windowRange(7, new Date(2026, 6, 31));
+        expect(r).toEqual({ from: '2026-07-25', to: '2026-07-31' });
+        expect(windowRange(1, new Date(2026, 6, 31))).toEqual({ from: '2026-07-31', to: '2026-07-31' });
+        expect(windowRange(90, new Date(2026, 6, 31)).from).toBe('2026-05-03');
+    });
+
+    it('total_min sa do dotazu dostane LEN s krajinou (rozhodnutie 8)', () => {
+        filters.totalMin = 100;
+        expect(orderQuery(1, 20).total_min).toBeUndefined();
+        expect(orderQuery(1, 20).country).toBeUndefined();
+        filters.country = 'SK';
+        expect(orderQuery(1, 20).total_min).toBe(100);
+        expect(orderQuery(1, 20).country).toBe('SK');
+    });
+});
+
+
 /* ================= vykreslenie: úspešná odpoveď ================= */
 
 describe('render — úspešná odpoveď', () => {
@@ -308,71 +403,88 @@ describe('render — úspešná odpoveď', () => {
         expect(st.textContent).toContain('E-shop odpovedá');
     });
 
-    it('hlavné číslo je POČET objednávok, nie obrat (nález N1)', () => {
+    it('hlavné číslo je POČET objednávok, nie obrat', () => {
         const hero = document.querySelector('#eshop-kpi .kpi-hero');
         expect(hero.textContent).toContain('Objednávok v e-shope');
-        expect(hero.querySelector('.kpi-val').textContent.replace(/\s/g, '')).toContain('1763914');
+        expect(hero.querySelector('.kpi-val').textContent.replace(/\s/g, '')).toContain('1764137');
         expect(hero.querySelector('.es-amount')).toBeNull();
     });
 
-    it('KPI pás nesie len počty — žiadna KPI karta neobsahuje sumu', () => {
+    it('KPI pás nesie len počty — žiadna KPI karta neobsahuje peňažnú sumu', () => {
         const cards = [...document.querySelectorAll('#eshop-kpi .kpi-card')];
         expect(cards).toHaveLength(4);
         expect(cards.some((c) => c.querySelector('.es-amount'))).toBe(false);
-        expect(document.querySelector('#eshop-kpi').textContent).not.toMatch(/obrat/i);
+        const t = document.querySelector('#eshop-kpi').textContent;
+        expect(t).not.toMatch(/obrat/i);
+        expect(t).not.toMatch(/EUR|HUF|RON|PLN|CZK/);
     });
 
-    it('okno má popisku z API (days), nie zo konštanty (nález N7)', () => {
+    it('okno má popisku z API (window.days), nie z prepínača', () => {
         expect(document.querySelector('#eshop-kpi').textContent).toContain('Objednávky za 7 dní');
+        expect(document.querySelector('#eshop-kpi').textContent).not.toContain('≥');
+    });
+
+    it('obrat po menách sa vykreslí — jeden riadok na každú z piatich mien', () => {
+        const rows = [...document.querySelectorAll('#eshop-revenue .es-rev-row')];
+        expect(rows).toHaveLength(5);
+        expect(rows.map((r) => r.dataset.currency)).toEqual(REV_ORDER);
+        expect(document.querySelector('#eshop-revenue .section-title').textContent)
+            .toContain('Obrat po menách');
+    });
+
+    it('každý riadok obratu nesie svoju menu a počet objednávok', () => {
+        const rows = [...document.querySelectorAll('#eshop-revenue .es-rev-row')];
+        expect(rows[0].querySelector('.es-cur').textContent).toBe('EUR');
+        expect(rows[0].querySelector('.es-sum').textContent.replace(/\s/g, '')).toBe('1000');
+        expect(rows[0].querySelector('.es-rev-orders').textContent).toContain('40');
+        expect(rows[1].querySelector('.es-cur').textContent).toBe('HUF');
+        expect(rows[1].querySelector('.es-sum').textContent.replace(/\s/g, '')).toBe('200000');
+    });
+
+    it('nad obratom je pravidlo, že sa meny nesčítavajú ani neprepočítavajú', () => {
+        const note = document.querySelector('#eshop-revenue .es-note--rule');
+        expect(note.textContent).toContain('nesčítavajú');
+        expect(note.textContent).toContain('neprepočítavajú');
     });
 
     it('objednávky po dňoch sú počty, bez súm', () => {
         const rows = [...document.querySelectorAll('#eshop-days .es-bar')];
         expect(rows).toHaveLength(3);
-        expect(rows[2].querySelector('.db-n').textContent).toBe('123');
+        expect(rows[2].querySelector('.db-n').textContent).toBe('126');
         expect(document.querySelector('#eshop-days .es-amount')).toBeNull();
     });
 
-    it('rozpad podľa krajín je podľa počtu objednávok', () => {
+    it('krajiny sú presné počty — bez slova „vzorka" a bez sumy', () => {
         const rows = [...document.querySelectorAll('#eshop-countries .es-bar')];
         expect(rows).toHaveLength(3);
         expect(rows[0].querySelector('.db-name').textContent).toBe('Slovensko (SK)');
         expect(rows[0].querySelector('.db-n').textContent).toBe('61');
+        const t = document.querySelector('#eshop-countries').textContent;
+        expect(t).not.toMatch(/vzork/i);
+        expect(t).not.toMatch(/odhad/i);
+        expect(t).not.toMatch(/request/i);
+        expect(document.querySelector('#eshop-countries .es-amount')).toBeNull();
     });
 
-    it('každá krajinová suma nesie odhadnutú menu podľa country_iso', () => {
-        const sums = [...document.querySelectorAll('#eshop-countries .es-country-sum')];
-        expect(sums.map((s) => s.querySelector('.es-cur').textContent)).toEqual(['EUR', 'HUF', 'CZK']);
-        expect(sums.every((s) => s.querySelector('.es-est'))).toBe(true);
-    });
-
-    it('sumy sú presne z API — žiadny prepočet na jednu menu', () => {
-        const sums = [...document.querySelectorAll('#eshop-countries .es-country-sum .es-sum')];
-        expect(sums.map((s) => s.textContent.replace(/\s/g, ''))).toEqual(['250', '20000', '3000']);
-    });
-
-    it('nad rozpadom je priznanie, že mena je odhad', () => {
-        const note = document.querySelector('#eshop-countries .es-note--warn');
-        expect(note.textContent).toContain('API menu nevracia');
-        expect(note.textContent).toContain('neprepočítavame');
-    });
-
-    it('posledné objednávky nesú id, dátum a sumu', () => {
+    it('posledné objednávky nesú id, dátum a sumu s menou z API', () => {
         const rows = [...document.querySelectorAll('#eshop-orders .es-order')];
         expect(rows).toHaveLength(2);
-        expect(rows[0].querySelector('.es-o-id').textContent).toBe('#1763927');
+        expect(rows[0].querySelector('.es-o-id').textContent).toBe('#1764146');
         expect(rows[0].querySelector('.es-o-date').textContent).toContain('2026');
-        expect(rows[0].querySelector('.es-amount')).not.toBeNull();
+        expect(rows[0].querySelector('.es-cur').textContent).toBe('EUR');
+        expect(rows[1].querySelector('.es-cur').textContent).toBe('HUF');
+        expect(document.querySelectorAll('#eshop-orders .es-est')).toHaveLength(0);
     });
 
-    it('zoznam objednávok bez country_iso priznáva neznámu menu, nedomýšľa EUR', () => {
-        for (const r of document.querySelectorAll('#eshop-orders .es-order')) {
-            expect(r.querySelector('.es-cur--unknown')).not.toBeNull();
-            expect(r.textContent).toContain('mena neuvedená');
-        }
+    it('zoznam objednávok sa žiada s dátumovým oknom', () => {
+        const r = windowRange(7);
+        const q = called(ORDERS)[0];
+        expect(q).toContain('date_from=' + r.from);
+        expect(q).toContain('date_to=' + r.to);
+        expect(q).not.toContain('total_min');
     });
 
-    it('stránkovanie ide od najnovších (nález N4)', () => {
+    it('stránkovanie ide od najnovších', () => {
         expect(document.querySelector('#eshop-prev').disabled).toBe(true);
         expect(document.querySelector('#eshop-next').disabled).toBe(false);
         const t = document.querySelector('#eshop-orders').textContent;
@@ -380,15 +492,16 @@ describe('render — úspešná odpoveď', () => {
         expect(t).toContain('Staršie');
     });
 
-    it('detail objednávky doplní krajinu a odhadnutú menu', async () => {
+    it('detail objednávky doplní krajinu, menu z API a množstvá', async () => {
         const row = document.querySelector('#eshop-orders .es-order');
         await row.onclick();
         const det = document.querySelector('#eshop-order-detail .es-detail');
         expect(row.getAttribute('aria-expanded')).toBe('true');
         expect(det.textContent).toContain('Maďarsko (HU)');
         expect(det.querySelector('.es-cur').textContent).toBe('HUF');
-        expect(det.querySelector('.es-est')).not.toBeNull();
-        expect(det.querySelector('.es-pids').textContent).toBe('22, 23');
+        expect(det.querySelector('.es-est')).toBeNull();
+        expect([...det.querySelectorAll('.es-pid')].map((e) => e.textContent))
+            .toEqual(['#30582 × 2', '#22 × 1']);
     });
 
     it('druhý klik detail zavrie', async () => {
@@ -401,133 +514,251 @@ describe('render — úspešná odpoveď', () => {
 });
 
 
-/* ================= N1: nikde jeden súhrnný obrat ================= */
+/* ================= brána: žiadny súčet naprieč menami ================= */
 
-describe('nález N1 — obrazovka nikde nezobrazí jeden súhrnný obrat', () => {
+describe('SÚČET NAPRIEČ MENAMI SA NEVYKRESLÍ NIKDE', () => {
     beforeEach(async () => {
         happyPath();
         await renderEshop();
+        await findProduct(49);
     });
 
-    it('súčet krajinových súm (23 250) sa v DOM nevyskytuje', () => {
-        expect(tight()).not.toContain('23250');
-        expect(bodyText()).not.toContain('23 250');
+    it('súčet piatich mien (235 500) nie je v DOM v žiadnom formáte', () => {
+        expect(tight()).not.toContain(String(CROSS_SUM));
+        expect(bodyText()).not.toContain('235 500');
+        expect(bodyText()).not.toContain('235500');
     });
 
-    it('nikde nie je slovo „obrat" ako jedno číslo ani symbol €', () => {
-        expect(bodyText()).not.toContain('€');
+    it('nikde nie je súhrnný obrat ani symbol meny ani prepočet', () => {
+        expect(bodyText()).not.toMatch(/€/);
         expect(bodyText()).not.toMatch(/celkov[ýá]\s+obrat/i);
         expect(bodyText()).not.toMatch(/obrat\s+celkom/i);
+        expect(bodyText()).not.toMatch(/súhrnn[ýá]\s+obrat/i);
         expect(bodyText()).not.toMatch(/prepočítan/i);
     });
 
     it('každá vykreslená suma má menu — žiadne osamotené peňažné číslo', () => {
         const amounts = [...document.querySelectorAll('.es-amount:not(.es-amount--na)')];
-        expect(amounts.length).toBeGreaterThan(0);
+        expect(amounts.length).toBeGreaterThan(5);
         for (const a of amounts) expect(a.querySelector('.es-cur')).not.toBeNull();
     });
 
-    it('počet peňažných hodnôt = 3 krajiny + 2 objednávky, žiadna navyše', () => {
-        expect(document.querySelectorAll('.es-amount').length).toBe(5);
+    it('päť mien zostane piatimi menami — nikdy sa nezlúčia do jednej', () => {
+        const codes = [...document.querySelectorAll('#eshop-revenue .es-cur')].map((e) => e.textContent);
+        expect(codes).toEqual(REV_ORDER);
+        expect(new Set(codes).size).toBe(5);
     });
 
-    it('miešané meny sa nikdy nezlúčia do jednej', () => {
-        const codes = [...document.querySelectorAll('#eshop-countries .es-cur')].map((e) => e.textContent);
-        expect(new Set(codes).size).toBe(3);
+    it('sekcia obratu má presne 5 peňažných hodnôt — žiadna navyše (súčtová)', () => {
+        expect(document.querySelectorAll('#eshop-revenue .es-amount').length).toBe(5);
+    });
+
+    it('značka „odhad" zmizla z celej obrazovky — bola nepravdivá', () => {
+        expect(document.querySelectorAll('.es-est')).toHaveLength(0);
+        expect(bodyText()).not.toMatch(/odhad/i);
+        expect(bodyText()).not.toMatch(/odvoden[áé]\s+z\s+krajiny/i);
     });
 });
 
 
-describe('nález N1/N2 — zdrojový kód obrazovky', () => {
-    /* Komentáre sa odstraňujú — o nálezoch sa v nich písať MUSÍ, porušením
+describe('zdrojový kód obrazovky', () => {
+    /* Komentáre sa odstraňujú — o obmedzeniach sa v nich písať MUSÍ, porušením
        kontraktu je až kód. Rovnaký prístup ako css-tokens.test.js. */
     const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    const src = ['resources/js/screens/eshop.js', 'resources/js/screens/eshop/data.js']
-        .map((p) => stripComments(readFileSync(resolve(process.cwd(), p), 'utf8')));
+    const FILES = [
+        'resources/js/screens/eshop.js',
+        'resources/js/screens/eshop/data.js',
+        'resources/js/screens/eshop/filters.js',
+        'resources/js/screens/eshop/summary.js',
+        'resources/js/screens/eshop/orders.js',
+        'resources/js/screens/eshop/product.js',
+    ];
+    const src = FILES.map((p) => stripComments(readFileSync(resolve(process.cwd(), p), 'utf8')));
+    const cssRaw = readFileSync(resolve(process.cwd(), 'resources/css/screens/eshop.css'), 'utf8');
+    const css = stripComments(cssRaw);
 
     it('nepoužíva symbol meny (vždy len ISO kód)', () => {
         for (const s of src) expect(s).not.toContain('€');
-    });
-
-    it('nečíta attributes ani has_attributes (nález N2)', () => {
-        for (const s of src) expect(s).not.toMatch(/attributes/);
     });
 
     it('neobsahuje kurzový prepočet', () => {
         for (const s of src) expect(s).not.toMatch(/exchange|kurz|toEur|convertTo/i);
     });
 
+    it('mapovanie krajina→mena je zmazané (rozhodnutie 7)', () => {
+        for (const s of src) {
+            expect(s).not.toMatch(/CURRENCY_BY_COUNTRY|currencyForCountry|currency_is_estimate|currencyEstimate/);
+        }
+    });
+
     it('peňažná hodnota má jediné miesto vykreslenia — amountHtml()', () => {
         expect(src.join('\n').split('es-sum').length - 1).toBe(1);
     });
+
+    it('CSS už nedefinuje značku odhadu a tabuľka variantov roluje sama', () => {
+        // Komentár o zmazanej triede zostať SMIE, pravidlo nie.
+        expect(css).not.toContain('.es-est');
+        expect(css).toMatch(/\.es-var-wrap\s*\{[^}]*overflow:\s*auto/);
+        expect(css).toContain('--accent-text');
+    });
+
+    it('CSS nemá raw hex — farby idú len cez tokeny (kontrakt §4.8)', () => {
+        expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+        expect(css).not.toMatch(/rgba?\(\s*\d/);
+    });
 });
 
 
-/* ================= neúplný sken (nálezy N3/N5) ================= */
+/* ================= varianty ================= */
 
-describe('neúplný sken sa prizná', () => {
+describe('varianty produktu (R4)', () => {
     beforeEach(async () => {
         happyPath();
-        route(SUMMARY, () => res(200, ok({
-            ...SUMMARY_BODY.data,
-            orders: { in_window: 800, today: 123, complete: false, total_in_shop: 1763914 },
-            scan: { stopped_by: 'max_requests', complete: false, requests: 8 },
+        await findProduct(49);
+    });
+
+    it('vypíše všetkých 12 variantov s hlavičkou vrátane zásoby', () => {
+        const rows = [...document.querySelectorAll('#eshop-product-result .es-var-row')];
+        expect(rows).toHaveLength(12);
+        const heads = [...document.querySelectorAll('#eshop-product-result .es-var thead th')]
+            .map((h) => h.textContent);
+        expect(heads).toEqual(['Variant', 'Príplatok', 'Referencia', 'EAN13', 'Zásoba']);
+    });
+
+    it('riadok nesie hodnotu, príplatok s menou, referenciu, EAN13 a zásobu', () => {
+        const r = document.querySelectorAll('#eshop-product-result .es-var-row')[1];
+        expect(r.querySelector('.es-var-label').textContent).toContain('Veľkosť: 50 cm');
+        expect(r.querySelector('.es-var-impact .es-cur').textContent).toBe('EUR');
+        expect(r.querySelector('.es-var-impact .es-sum').textContent).toContain('+1,5');
+        expect(r.querySelector('.es-var-ref').textContent).toBe('REF-501');
+        expect(r.querySelector('.es-var-ean').textContent).toBe('859000001001');
+        expect(r.querySelector('.es-var-qty').textContent).toContain('11');
+        expect(r.querySelector('.es-stock--in')).not.toBeNull();
+    });
+
+    it('vypredaný variant je odlíšený triedou AJ slovom, nie iba farbou', () => {
+        const rows = [...document.querySelectorAll('#eshop-product-result .es-var-row')];
+        expect(rows[3].classList.contains('es-var-row--out')).toBe(true);
+        expect(rows[3].querySelector('.es-stock--out')).not.toBeNull();
+        expect(rows[3].textContent).toContain('vypredané');
+        expect(rows.filter((r) => r.classList.contains('es-var-row--out'))).toHaveLength(1);
+        expect(document.querySelector('.es-var-count').textContent).toContain('1 vypredaných');
+    });
+
+    it('predvolený variant je označený', () => {
+        const rows = [...document.querySelectorAll('#eshop-product-result .es-var-row')];
+        expect(rows[0].querySelector('.es-var-def').textContent).toBe('predvolený');
+        expect(rows[0].querySelector('.es-var-noimpact').textContent).toBe('bez príplatku');
+    });
+
+    it('dlhý zoznam roluje vo vlastnom kontejneri a je dosiahnuteľný klávesnicou', () => {
+        const wrap = document.querySelector('#eshop-product-result .es-var-wrap');
+        expect(wrap).not.toBeNull();
+        expect(wrap.getAttribute('tabindex')).toBe('0');
+        expect(wrap.getAttribute('aria-label')).toBe('Varianty produktu');
+        expect(wrap.querySelector('.es-var')).not.toBeNull();
+    });
+
+    it('produkt bez variantov tabuľku nevykreslí', async () => {
+        route(PRODUCT, () => res(200, ok({ product: { id: 22, name: 'X', price: 1, currency: 'EUR' } })));
+        await findProduct(22);
+        expect(document.querySelector('#eshop-product-result .es-var')).toBeNull();
+        expect(document.querySelector('#eshop-product-result .es-p-name')).not.toBeNull();
+    });
+
+    it('has_attributes bez attributes to prizná, netvári sa, že varianty nie sú', async () => {
+        route(PRODUCT, () => res(200, ok({
+            product: { id: 49, name: 'X', price: 1, currency: 'EUR', has_attributes: true, attributes: [] },
         })));
-        await renderEshop();
+        await findProduct(49);
+        expect(document.querySelector('#eshop-product-result .es-note--rule').textContent)
+            .toContain('nevrátilo');
     });
 
-    it('počet za okno je označený ako dolná hranica', () => {
-        expect(document.querySelector('#eshop-kpi').textContent).toContain('≥');
-    });
-
-    it('pod KPI je vysvetlenie, že sken sa zastavil na strope', () => {
-        expect(document.querySelector('#eshop-kpi .es-note').textContent).toContain('dolná hranica');
-    });
-
-    it('sekcia dní to zopakuje v poznámke', () => {
-        expect(document.querySelector('#eshop-days .sec-note').textContent).toBe('dolná hranica');
-    });
-
-    it('celkový počet v e-shope zostáva presný — je priamo z API', () => {
-        expect(document.querySelector('#eshop-kpi .kpi-hero').textContent).not.toContain('≥');
+    it('príplatok bez meny produktu to prizná, nedomýšľa EUR', async () => {
+        route(PRODUCT, () => res(200, ok({
+            product: {
+                id: 49, name: 'X', price: 1, has_attributes: true,
+                attributes: [{ id_product_attribute: 1, values: ['M'], price_impact: 3, quantity: 5 }],
+            },
+        })));
+        await findProduct(49);
+        expect(document.querySelector('.es-var-impact .es-cur--unknown')).not.toBeNull();
     });
 });
 
 
-describe('coveredDays — nescanovaný deň nie je nula', () => {
-    const rows = [
-        { date: '2026-07-24', orders: 0 },
-        { date: '2026-07-25', orders: 0 },
-        { date: '2026-07-26', orders: 231 },
-        { date: '2026-07-27', orders: 0 },
-        { date: '2026-07-28', orders: 220 },
-    ];
+/* ================= filtre v UI ================= */
 
-    it('pri úplnom skene sú nuly skutočné a zostávajú', () => {
-        expect(coveredDays({ byDay: rows, complete: true })).toHaveLength(5);
-    });
-
-    it('pri neúplnom skene zahodí len úvodné (najstaršie) nuly', () => {
-        const out = coveredDays({ byDay: rows, complete: false });
-        expect(out.map((r) => r.date)).toEqual(['2026-07-26', '2026-07-27', '2026-07-28']);
-    });
-
-    it('keď sken nenašiel nič, sekcia sa nevykreslí', () => {
-        expect(coveredDays({ byDay: [{ date: 'x', orders: 0 }], complete: false })).toEqual([]);
-        expect(coveredDays(null)).toEqual([]);
-    });
-
-    it('v DOM sa nevykreslia dni, ku ktorým sken nedošiel', async () => {
+describe('prepínač okna a filtre (R3, rozhodnutie 8)', () => {
+    beforeEach(async () => {
         happyPath();
-        route(SUMMARY, () => res(200, ok({
-            ...SUMMARY_BODY.data,
-            orders: { in_window: 800, today: 123, complete: false, total_in_shop: 1763914 },
-            by_day: [{ date: '2026-07-24', orders: 0 }, { date: '2026-07-29', orders: 224 }],
-        })));
         await renderEshop();
-        const bars = [...document.querySelectorAll('#eshop-days .es-bar')];
-        expect(bars).toHaveLength(1);
-        expect(bars[0].querySelector('.db-n').textContent).toBe('224');
+    });
+
+    it('okno má tri možnosti a 7 dní je stlačené', () => {
+        const btns = [...document.querySelectorAll('#eshop-window .es-win')];
+        expect(btns.map((b) => b.textContent)).toEqual(['7 dní', '30 dní', '90 dní']);
+        expect(btns.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+    });
+
+    it('prepnutie na 90 dní pošle nové okno do summary aj do objednávok', async () => {
+        calls.length = 0;
+        document.querySelectorAll('#eshop-window .es-win')[2].onclick();
+        await vi.waitFor(() => { expect(called(ORDERS).length).toBeGreaterThan(0); });
+        expect(called(SUMMARY)[0]).toContain('days=90');
+        expect(called(ORDERS)[0]).toContain('date_from=' + windowRange(90).from);
+        expect(document.querySelectorAll('#eshop-window .es-win')[2].getAttribute('aria-pressed'))
+            .toBe('true');
+    });
+
+    it('filter sumy je bez krajiny ZABLOKOVANÝ a povie prečo', () => {
+        const min = document.querySelector('#eshop-total-min');
+        expect(min.disabled).toBe(true);
+        const why = document.querySelector('#eshop-total-min-why');
+        expect(why.textContent).toContain('len pri vybranej krajine');
+        expect(why.textContent).toContain('HUF');
+        expect(min.getAttribute('aria-describedby')).toBe('eshop-total-min-why');
+    });
+
+    it('po výbere krajiny sa filter sumy odomkne a dostane do dotazu', async () => {
+        const sel = document.querySelector('#eshop-country');
+        expect([...sel.options].map((o) => o.value)).toEqual(['', 'SK', 'HU', 'CZ']);
+        sel.value = 'SK';
+        sel.onchange();
+        await vi.waitFor(() => { expect(document.querySelector('#eshop-total-min').disabled).toBe(false); });
+
+        calls.length = 0;
+        const min = document.querySelector('#eshop-total-min');
+        min.value = '100';
+        min.onchange();
+        await vi.waitFor(() => { expect(called(ORDERS).length).toBeGreaterThan(0); });
+        expect(called(ORDERS)[0]).toContain('country=SK');
+        expect(called(ORDERS)[0]).toContain('total_min=100');
+    });
+
+    it('zrušenie krajiny zruší aj sumu — filter sumy nikdy neprežije krajinu', async () => {
+        const sel = document.querySelector('#eshop-country');
+        sel.value = 'SK';
+        sel.onchange();
+        await vi.waitFor(() => { expect(document.querySelector('#eshop-total-min').disabled).toBe(false); });
+        const min = document.querySelector('#eshop-total-min');
+        min.value = '100';
+        min.onchange();
+
+        document.querySelector('#eshop-filter-reset').onclick();
+        expect(filters.country).toBe('');
+        expect(filters.totalMin).toBeNull();
+        expect(document.querySelector('#eshop-total-min').disabled).toBe(true);
+    });
+
+    it('bez rozpadu krajín je ponuka aj filter sumy zamknutý a vysvetlený', async () => {
+        route(SUMMARY, () => res(200, ok({ ...SUMMARY_BODY.data, countries: [] })));
+        await renderEshop();
+        expect(document.querySelector('#eshop-country').disabled).toBe(true);
+        expect(document.querySelector('#eshop-total-min').disabled).toBe(true);
+        expect(document.querySelector('#eshop-total-min-why').textContent)
+            .toContain('ponuka krajín je prázdna');
     });
 });
 
@@ -535,28 +766,32 @@ describe('coveredDays — nescanovaný deň nie je nula', () => {
 /* ================= prázdne stavy ================= */
 
 describe('prázdne stavy', () => {
-    it('prázdny zoznam objednávok má zmysluplný prázdny stav', async () => {
+    it('prázdny zoznam objednávok navrhne širšie okno', async () => {
         happyPath();
         route(ORDERS, () => res(200, ok({ page: 1, total: 0, orders: [] })));
         await renderEshop();
         expect(document.querySelector('#eshop-orders .empty-state').textContent)
-            .toContain('Žiadne objednávky');
+            .toContain('Vo vybranom okne nie sú objednávky');
         expect(document.querySelectorAll('#eshop-orders .es-order')).toHaveLength(0);
     });
 
-    it('chýbajúci rozpad krajín vysvetlí, prečo tam nie je', async () => {
+    it('chýbajúci obrat nevykreslí prázdnu sekciu ani nulu', async () => {
         happyPath();
-        route(SUMMARY, () => res(200, ok({
-            ...SUMMARY_BODY.data, countries: [],
-            countries_meta: { note: 'Rozpad podľa krajín je v mesačných súhrnoch.' },
-        })));
+        route(SUMMARY, () => res(200, ok({ ...SUMMARY_BODY.data, revenue: [] })));
         await renderEshop();
-        expect(document.querySelector('#eshop-countries .empty-state').textContent)
-            .toContain('mesačných súhrnoch');
+        expect(document.querySelector('#eshop-revenue').innerHTML).toBe('');
         expect(document.querySelector('#eshop-kpi .kpi-hero')).not.toBeNull();
     });
 
-    it('chýbajúce počty sú „—", nie vymyslené nuly (nález N7)', async () => {
+    it('chýbajúci rozpad krajín sekciu nevykreslí (žiadna veta o vzorke)', async () => {
+        happyPath();
+        route(SUMMARY, () => res(200, ok({ ...SUMMARY_BODY.data, countries: [] })));
+        await renderEshop();
+        expect(document.querySelector('#eshop-countries').innerHTML).toBe('');
+        expect(bodyText()).not.toMatch(/vzork/i);
+    });
+
+    it('chýbajúce počty sú „—", nie vymyslené nuly (R7)', async () => {
         happyPath();
         route(HEALTH, () => res(200, ok({ ok: true, orders: true, products: true, key_configured: true })));
         route(SUMMARY, () => res(200, ok({ countries: [] })));
@@ -577,6 +812,23 @@ describe('prázdne stavy', () => {
 /* ================= chybové stavy ================= */
 
 describe('chybové stavy — appka nespadne a povie to', () => {
+    it('starý tvar odpovede (bez revenue, s countries_meta) obrazovku nepoloží', async () => {
+        happyPath();
+        route(SUMMARY, () => res(200, ok({
+            window: { days: 7, from: '2026-07-25', until: '2026-08-01' },
+            orders: { in_window: 800, today: 126, complete: false, total_in_shop: 1764137 },
+            by_day: [{ date: '2026-07-31', orders: 126 }],
+            countries: [],
+            countries_meta: { basis: 'sample', sample_size: 0, currency_is_estimate: true },
+            months: [],
+        })));
+        await renderEshop();
+        expect(document.querySelector('#eshop-kpi .kpi-hero').textContent).toContain('Objednávok');
+        expect(document.querySelector('#eshop-revenue').innerHTML).toBe('');
+        expect(document.querySelectorAll('#eshop-orders .es-order')).toHaveLength(2);
+        expect(bodyText()).not.toMatch(/odhad/i);
+    });
+
     it('501 (backend ešte nie je hotový) povie stav aj v sekciách', async () => {
         route(HEALTH, () => res(501, failBody('not_implemented', 'x')));
         route(SUMMARY, () => res(501, failBody('not_implemented', 'x')));
@@ -602,7 +854,7 @@ describe('chybové stavy — appka nespadne a povie to', () => {
         expect(document.querySelector('#eshop-orders .empty-act')).not.toBeNull();
     });
 
-    it('HTTP 200 s ok:false je nedostupnosť (nález N6)', async () => {
+    it('HTTP 200 s ok:false je nedostupnosť (R6)', async () => {
         happyPath();
         route(HEALTH, () => res(200, ok({
             ok: false, orders: false, products: true, error: 'forbidden', key_configured: true,
@@ -634,51 +886,17 @@ describe('chybové stavy — appka nespadne a povie to', () => {
         expect(document.querySelector('#eshop-status').textContent).toContain('Skontroluj');
     });
 
-    it('padnutý súhrn nezhodí zoznam objednávok', async () => {
+    it('padnutý súhrn nezhodí zoznam objednávok ani filtre', async () => {
         happyPath();
         route(SUMMARY, () => res(503, failBody('unavailable', 'x')));
         await renderEshop();
         expect(document.querySelectorAll('#eshop-orders .es-order')).toHaveLength(2);
         expect(document.querySelector('#eshop-kpi .empty-state')).not.toBeNull();
-    });
-});
-
-
-/* ================= produkt podľa id ================= */
-
-describe('produkt podľa id', () => {
-    beforeEach(() => { happyPath(); });
-
-    it('vykreslí názov, cenu a popis', async () => {
-        await findProduct('22');
-        const card = document.querySelector('#eshop-product-result .es-pcard');
-        expect(card.querySelector('.es-p-name').textContent).toBe('Náramok z chirurgickej ocele');
-        expect(card.querySelector('.es-p-desc').textContent).toBe('Ocelový náramok');
-        expect(card.querySelector('.es-p-id').textContent).toBe('ID 22');
-        expect(card.querySelector('.es-p-price .es-sum').textContent).toContain('20,67');
+        expect(document.querySelector('#eshop-total-min').disabled).toBe(true);
     });
 
-    it('NEZOBRAZÍ varianty, ani keď ich odpoveď obsahuje (nález N2)', async () => {
-        route(PRODUCT, () => res(200, ok({
-            product: {
-                id: 22, name: 'Náramok', price: 12.5, has_attributes: true,
-                attributes: [{ id: 7, name: 'Veľkosť', value: 'M' }],
-            },
-        })));
-        await findProduct(22);
-        const html = document.querySelector('#eshop-product-result').innerHTML;
-        expect(html).not.toContain('Veľkosť');
-        expect(html).not.toMatch(/variant/i);
-        expect(html).not.toContain('attributes');
-        expect(document.querySelector('#eshop-product-result .es-p-name')).not.toBeNull();
-    });
-
-    it('cena bez meny v odpovedi to prizná', async () => {
-        await findProduct(22);
-        expect(document.querySelector('.es-p-price .es-cur--unknown')).not.toBeNull();
-    });
-
-    it('neexistujúce id je doménový stav, nie výnimka', async () => {
+    it('neexistujúci produkt je doménový stav, nie výnimka', async () => {
+        happyPath();
         route(PRODUCT, () => res(404, failBody('not_found', 'Produkt sa nenašiel.')));
         await findProduct(999999);
         expect(document.querySelector('#eshop-product-result .empty-state').textContent)
@@ -686,23 +904,31 @@ describe('produkt podľa id', () => {
     });
 
     it('nečíselný vstup nevolá API', async () => {
+        happyPath();
         await findProduct('abc');
         expect(global.fetch).not.toHaveBeenCalled();
         expect(document.querySelector('#eshop-product-result').textContent)
             .toContain('Zadaj číselné ID');
     });
 
-    it('HTML v popise sa nevykreslí ako značky (XSS)', async () => {
+    it('HTML v popise a vo variante sa nevykreslí ako značky (XSS)', async () => {
+        happyPath();
         route(PRODUCT, () => res(200, ok({
             product: {
-                id: 5, name: '<img src=x onerror=alert(1)>', price: 1,
+                id: 5, name: '<img src=x onerror=alert(1)>', price: 1, currency: 'EUR',
                 description_short: '<script>alert(2)</script>zlý popis',
+                has_attributes: true,
+                attributes: [{
+                    id_product_attribute: 1, values: ['<img src=y onerror=alert(3)>'],
+                    reference: '<b>ref</b>', quantity: 1, price_impact: 0,
+                }],
             },
         })));
         await findProduct(5);
         const host = document.querySelector('#eshop-product-result');
         expect(host.querySelector('img')).toBeNull();
         expect(host.querySelector('script')).toBeNull();
+        expect(host.querySelector('.es-var-label b')).toBeNull();
         expect(host.textContent).toContain('zlý popis');
     });
 });
@@ -714,7 +940,7 @@ describe('register a a11y', () => {
     it('formulár produktu volá hľadanie a nereloaduje stránku', async () => {
         happyPath();
         register(document.body);
-        document.querySelector('#eshop-product-id').value = '22';
+        document.querySelector('#eshop-product-id').value = '49';
         const ev = new window.Event('submit', { cancelable: true });
         document.querySelector('#eshop-product-form').dispatchEvent(ev);
         expect(ev.defaultPrevented).toBe(true);
@@ -739,9 +965,10 @@ describe('register a a11y', () => {
     });
 
     it('blade nesie stabilné id, ktoré JS hľadá', () => {
-        for (const id of ['screen-eshop', 'eshop-status', 'eshop-kpi', 'eshop-days', 'eshop-countries',
-            'eshop-orders', 'eshop-order-detail', 'eshop-product-form', 'eshop-product-id',
-            'eshop-product-result', 'eshop-refresh', 'eshop-checked']) {
+        for (const id of ['screen-eshop', 'eshop-status', 'eshop-window', 'eshop-kpi', 'eshop-revenue',
+            'eshop-days', 'eshop-countries', 'eshop-filters', 'eshop-orders', 'eshop-order-detail',
+            'eshop-product-form', 'eshop-product-id', 'eshop-product-result', 'eshop-refresh',
+            'eshop-checked']) {
             expect(document.getElementById(id), id).not.toBeNull();
         }
     });
@@ -752,21 +979,26 @@ describe('register a a11y', () => {
         expect(document.getElementById('eshop-order-detail').getAttribute('aria-live')).toBe('polite');
     });
 
-    it('vstup má priradený label a nadpisy idú h1 → h2 → h3', async () => {
+    it('vstupy majú label a nadpisy idú h1 → h2 → h3 → h4', async () => {
         expect(document.querySelector('label[for="eshop-product-id"]')).not.toBeNull();
         expect(document.querySelectorAll('#screen-eshop h1')).toHaveLength(1);
         happyPath();
         await renderEshop();
-        await findProduct(22);
-        expect(document.querySelectorAll('#screen-eshop h2').length).toBeGreaterThanOrEqual(3);
+        await findProduct(49);
+        expect(document.querySelector('label[for="eshop-country"]')).not.toBeNull();
+        expect(document.querySelector('label[for="eshop-total-min"]')).not.toBeNull();
+        expect(document.querySelectorAll('#screen-eshop h2').length).toBeGreaterThanOrEqual(4);
         expect(document.querySelector('#eshop-product-result h3')).not.toBeNull();
+        expect(document.querySelector('#eshop-product-result h4')).not.toBeNull();
     });
 
     it('každý ovládací prvok má prístupný názov a je dosiahnuteľný klávesnicou', async () => {
         happyPath();
         await renderEshop();
-        const controls = [...document.querySelectorAll('#screen-eshop button, #screen-eshop input')];
-        expect(controls.length).toBeGreaterThan(5);
+        const controls = [...document.querySelectorAll(
+            '#screen-eshop button, #screen-eshop input, #screen-eshop select',
+        )];
+        expect(controls.length).toBeGreaterThan(8);
         for (const c of controls) {
             const name = c.getAttribute('aria-label') || c.textContent.trim()
                 || (c.id && document.querySelector('label[for="' + c.id + '"]') ? 'label' : '');

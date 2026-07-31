@@ -1,14 +1,17 @@
 /* Obrazovka E-shop (SPERKY integrácia) — vlastník SPERKY-FE.
 
-   Pravidlá: žiadny raw hex, len tokeny z tokens.css / dark.css (kontrakt §4.8).
-   Farebné hodnoty Aura palety sa nemenia. Alfa sa robí výhradne nad tokenovým
-   tripletom — `rgba(var(--warn-rgb), .10)` — nikdy číselným literálom.
+   Žiadny raw hex, len tokeny z tokens.css / dark.css (kontrakt §4.8); alfa vždy
+   nad tokenovým tripletom — `rgba(var(--warn-rgb), .10)`. Na akcentový TEXT ide
+   `--accent-text`, nie `--accent-600`: ten má v tmavej téme kontrast 3,24:1,
+   čo nesplní AA (4,5:1). Pásy počtov sú rodinný `.dbar*` z charts.css (P10).
 
-   Rozpad podľa krajín používa rodinný `.dbar*` z charts.css (P10), takže tu
-   nie je vlastný stĺpcový graf, len sumový riadok pod ním.
+   Zmena po v2 špecifikácii: značka „odhad" (`.es-est`) je zmazaná — mena je
+   autoritatívna z API. Suma sa ale nikdy nevykreslí bez meny, preto `.es-cur`
+   zostáva povinnou súčasťou `.es-amount`.
 
-   Mobil: obrazovka musí byť použiteľná na 390 px (rozhodnutie #76 — dashboardy
-   áno). Riadky objednávok sa preto pod 640 px lámu z mriežky do dvoch liniek. */
+   Mobil 390 px musí zostať použiteľný (rozhodnutie #76): riadky objednávok sa
+   pod 640 px lámu do dvoch liniek, tabuľka variantov roluje vo vlastnom
+   kontejneri a telo stránky nescrolluje vodorovne nikdy. */
 
 /* ---------- stav integrácie ---------- */
 .es-status {
@@ -31,12 +34,13 @@
 }
 .es-status--down .ms { color: var(--danger); }
 
-/* ---------- priznanie k odhadu meny (nález N1) ---------- */
+/* ---------- poznámky ---------- */
 .es-note {
     font-size: var(--fs-small); line-height: var(--lh-small);
     color: var(--muted); max-width: 68ch;
 }
-.es-note--warn {
+/* Pravidlo, ktoré sa nesmie stratiť (zákaz súčtu naprieč menami, zámka filtra). */
+.es-note--rule, .es-note--lock {
     display: block;
     margin-bottom: var(--sp-1);
     padding: 6px var(--sp-1);
@@ -45,10 +49,11 @@
     background: rgba(var(--warn-rgb), .10);
     color: var(--text-secondary);
 }
+.es-note--lock { margin-top: 4px; margin-bottom: 0; }
 
-/* ---------- suma: číslo + mena + značka odhadu ----------
-   Vizuálne sa nikdy nesmie stať, že sa suma číta bez meny — preto sú `.es-cur`
-   aj `.es-est` súčasťou toho istého inline bloku a nezalamujú sa od čísla. */
+/* ---------- suma: číslo + ISO mena ----------
+   Vizuálne sa nikdy nesmie stať, že sa suma číta bez meny — preto je `.es-cur`
+   súčasťou toho istého inline bloku a nezalamuje sa od čísla. */
 .es-amount { display: inline-flex; align-items: baseline; gap: 5px; flex-wrap: wrap; }
 .es-sum {
     font-family: var(--mono); font-size: var(--fs-body);
@@ -60,21 +65,97 @@
     color: var(--text-secondary);
 }
 .es-cur--unknown { text-transform: none; letter-spacing: var(--ls-mono); color: var(--muted); }
-.es-est {
-    font-size: var(--fs-caption); line-height: 1.5;
-    padding: 0 5px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-pill);
-    background: var(--gold-soft);
-    color: var(--gold-text);
-    cursor: help;
-}
 .es-amount--na { color: var(--muted); font-family: var(--mono); }
+
+/* ---------- prepínač dátumového okna ---------- */
+.es-win-label {
+    font-size: var(--fs-caption); text-transform: uppercase;
+    letter-spacing: var(--ls-caps); color: var(--muted);
+}
+.es-window { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.es-win { margin: 0; }
+.es-win[aria-pressed="true"] {
+    background: var(--accent-soft);
+    border-color: var(--border-accent);
+    color: var(--accent-text);
+    font-weight: var(--fw-semibold);
+}
+
+/* ---------- obrat po menách (rozhodnutie 1) ----------
+   Jeden riadok na menu. Žiadny súčtový riadok — ten by sčítal HUF s EUR. */
+.es-rev {
+    display: flex; flex-direction: column;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--panel-solid);
+    padding: var(--sp-0);
+}
+.es-rev-row {
+    display: flex; align-items: baseline; gap: var(--sp-1);
+    padding: var(--row-pad-y) var(--sp-1);
+    border-radius: var(--r-sm);
+}
+.es-rev-row:nth-child(odd) { background: var(--accent-softer); }
+.es-rev-sum { min-width: 0; }
+.es-rev-row .es-cur {
+    font-size: var(--fs-small);
+    color: var(--accent-text);
+    font-weight: var(--fw-semibold);
+}
+.es-rev-orders {
+    margin-left: auto;
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+    white-space: nowrap;
+}
 
 /* ---------- pásy počtov (dni aj krajiny) — rodinný .dbar z charts.css ---------- */
 .es-bars { display: flex; flex-direction: column; gap: var(--sp-1); }
 .es-bar { margin-bottom: 0; }
-.es-country-sum { margin-top: 4px; }
+
+/* ---------- dlhá poznámka sekcie ----------
+   Poznámka zoznamu objednávok nesie rozsah okna aj aktívne filtre, teda je dlhšia
+   než tichý počet, pre ktorý bola `.sec-note` navrhnutá: v screen-base.css má
+   `flex-shrink: 0` a `.section-head` je `nowrap`, takže na 390 px pretekala von.
+   Zúžime ju len v rámci #screen-eshop; cudzie súbory sa nemenia. */
+#screen-eshop .section-head { flex-wrap: wrap; }
+#screen-eshop .screen-sec > .section-head .sec-note {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- filtre zoznamu objednávok (rozhodnutie 8) ---------- */
+.es-filters { display: flex; flex-direction: column; min-width: 0; }
+.es-filters:empty { display: none; }
+.es-frow {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--sp-1);
+}
+.es-flabel {
+    font-size: var(--fs-caption); text-transform: uppercase;
+    letter-spacing: var(--ls-caps); color: var(--muted);
+}
+.es-fsel, .es-finput {
+    height: var(--control-h);
+    padding: 0 var(--sp-1);
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    font-size: var(--fs-base); color: var(--text);
+}
+.es-finput {
+    width: 7rem;
+    font-family: var(--mono); letter-spacing: var(--ls-mono);
+}
+.es-fsel { max-width: 15rem; }
+.es-fsel:focus, .es-finput:focus {
+    outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring);
+}
+.es-fsel[disabled], .es-finput[disabled] {
+    opacity: .55; cursor: not-allowed; background: var(--surface-2);
+}
 
 /* ---------- objednávky ---------- */
 .es-orders {
@@ -115,7 +196,7 @@
 .es-o-chev { font-size: var(--icon-sm); color: var(--muted); }
 .es-order[aria-expanded="true"] .es-o-chev { transform: rotate(90deg); }
 
-/* ---------- stránkovanie (N4: strana 1 = najnovšie) ---------- */
+/* ---------- stránkovanie (id zostupne: strana 1 = najnovšie) ---------- */
 .es-pager {
     display: flex; align-items: center; gap: var(--sp-1);
     margin-top: var(--sp-1);
@@ -158,12 +239,17 @@
     letter-spacing: var(--ls-caps); color: var(--muted);
 }
 .es-d-grid dd { color: var(--text); min-width: 0; }
-.es-pids {
-    font-family: var(--mono); font-size: var(--fs-small);
+/* `products: [{id, qty}]` — id × množstvo, zalamuje sa po riadkoch. */
+.es-pids { display: flex; flex-wrap: wrap; gap: 4px; }
+.es-pid {
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    background: var(--surface-2);
+    font-family: var(--mono); font-size: var(--fs-caption);
     letter-spacing: var(--ls-mono); color: var(--text-secondary);
-    overflow-wrap: anywhere;
+    white-space: nowrap;
 }
-.es-detail .es-note--warn { margin-top: var(--sp-1); margin-bottom: 0; }
 
 /* ---------- hľadanie produktu ---------- */
 .es-find {
@@ -189,9 +275,10 @@
 .es-find-go { display: inline-flex; align-items: center; gap: 5px; height: var(--control-h); }
 .es-find-go .ms { font-size: var(--icon-sm); }
 
-/* ---------- karta produktu (bez variantov — nález N2) ---------- */
+/* ---------- karta produktu ---------- */
 .es-pcard {
     display: flex; flex-direction: column; gap: 6px;
+    min-width: 0;
     padding: var(--card-pad);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
@@ -211,6 +298,79 @@
     color: var(--text-secondary); max-width: 72ch;
 }
 
+/* ---------- varianty produktu (rozhodnutie 4) ----------
+   Produkt 49 má 12 variantov, preto `overflow` sedí na `.es-var-wrap`: roluje
+   tabuľka, nie telo stránky. */
+.es-var-head { display: flex; align-items: baseline; gap: var(--sp-1); margin-top: var(--sp-1); }
+.es-var-title {
+    font-size: var(--fs-body); font-weight: var(--fw-semibold);
+    color: var(--text);
+}
+.es-var-count {
+    margin-left: auto;
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono); color: var(--muted);
+}
+.es-var-wrap {
+    max-width: 100%;
+    max-height: 21rem;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--panel-solid);
+}
+.es-var-wrap:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.es-var {
+    width: 100%;
+    min-width: 34rem;
+    border-collapse: collapse;
+    font-size: var(--fs-small);
+}
+.es-var thead th {
+    position: sticky; top: 0; z-index: 1;
+    padding: 6px var(--sp-1);
+    text-align: left;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-caption); text-transform: uppercase;
+    letter-spacing: var(--ls-caps); color: var(--muted);
+    white-space: nowrap;
+}
+.es-var tbody th, .es-var tbody td {
+    padding: 6px var(--sp-1);
+    border-bottom: 1px solid var(--line-soft);
+    color: var(--text-secondary);
+    vertical-align: baseline;
+}
+.es-var tbody tr:last-child th, .es-var tbody tr:last-child td { border-bottom: 0; }
+.es-var-label {
+    text-align: left; font-weight: var(--fw-semibold); color: var(--text);
+    min-width: 9rem;
+}
+.es-var-def {
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-pill);
+    background: var(--accent-softer);
+    font-size: var(--fs-caption); font-weight: normal;
+    color: var(--accent-text);
+}
+.es-var-noimpact { color: var(--muted); }
+.es-var-ref, .es-var-ean {
+    font-family: var(--mono); letter-spacing: var(--ls-mono);
+    white-space: nowrap;
+}
+/* Vypredaný riadok je odlíšený pozadím AJ textom „vypredané" — farba sama by
+   nebola informácia (a11y). */
+.es-var-row--out { background: rgba(var(--danger-rgb), .07); }
+.es-var-row--out .es-var-label { color: var(--text-secondary); }
+.es-stock { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.es-stock-n { font-family: var(--mono); letter-spacing: var(--ls-mono); }
+.es-stock--in { color: var(--success); }
+.es-stock--out { color: var(--danger); font-weight: var(--fw-semibold); }
+.es-stock--na { color: var(--muted); font-family: var(--mono); }
+
 /* ---------- mobil (rozhodnutie #76 — dashboard áno) ---------- */
 @media (max-width: 640px) {
     .es-order {
@@ -224,10 +384,15 @@
     .es-o-sum { grid-area: sum; }
     .es-d-grid { grid-template-columns: 1fr; gap: 2px var(--sp-1); }
     .es-d-grid dd { margin-bottom: 6px; }
+    .es-rev-row { flex-wrap: wrap; row-gap: 2px; }
+    .es-var-wrap { max-height: 17rem; }
 }
 
 @media (max-width: 390px) {
     .es-find { gap: 6px; }
     .es-find-input { flex: 1 1 6rem; width: auto; }
-    .es-note--warn { padding: 6px; }
+    .es-note--rule, .es-note--lock { padding: 6px; }
+    .es-fsel { max-width: 100%; flex: 1 1 8rem; }
+    .es-finput { flex: 1 1 5rem; width: auto; }
+    .es-window { gap: 3px; }
 }

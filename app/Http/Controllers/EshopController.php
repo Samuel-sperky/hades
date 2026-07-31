@@ -5,8 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Node;
 use App\Services\Sperky\Exceptions\SperkyApiException;
 use App\Services\Sperky\Exceptions\SperkyDomainException;
-use App\Services\Sperky\OrderScanner;
-use App\Services\Sperky\SperkyAggregator;
+use App\Services\Sperky\OrderWindowReader;
 use App\Services\Sperky\SperkyClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,8 +22,13 @@ use Throwable;
  *   chyba:   {"ok": false, "data": null, "error": {"code": "<stroj>", "message": "<SK text>"}}
  *
  * `error.code` je z uzavretého zoznamu: not_found · no_id · bad_request ·
- * forbidden · rate_limited · timeout · unavailable · server · malformed ·
- * bad_route · unexpected. Frontend sa rozhoduje podľa `code`, nie podľa textu.
+ * bad_filter · filter_needs_country · forbidden · rate_limited · timeout ·
+ * unavailable · server · malformed · bad_route · unexpected.
+ * Frontend sa rozhoduje podľa `code`, nie podľa textu.
+ *
+ * OBRAT (rozhodnutie 1): `summary` vracia `revenue: [{currency, total, orders}]` —
+ * samostatný riadok pre každú menu. Jedno číslo, ktoré by sčítalo sumy v rôznych
+ * menách, tu NEEXISTUJE a existovať nesmie. Prepočet na EUR je zakázaný.
  *
  * Rozsah kľúča je `orders:read` — tento controller nemá ani jednu zápisovú
  * cestu a nikdy mať nebude.
@@ -36,17 +40,23 @@ class EshopController extends Controller
 {
     public function __construct(
         private readonly SperkyClient $client,
-        private readonly OrderScanner $scanner,
-        private readonly SperkyAggregator $aggregator,
+        private readonly OrderWindowReader $reader,
     ) {}
 
-    /** GET /api/eshop/orders?page=&per_page= — najnovšie prvé (zoradenie DESC podľa id). */
+    /**
+     * GET /api/eshop/orders?page=&per_page=&date_from=&date_to=&country=&total_min=&total_max=
+     *
+     * Filtre sú overené proti živej produkcii (spec v2 §1) a `total` v odpovedi
+     * patrí filtrovanému výberu. `total_min`/`total_max` bez `country` sa zamietnu
+     * chybou `filter_needs_country` — inak by filter miešal meny (rozhodnutie 8).
+     */
     public function orders(Request $request): JsonResponse
     {
         return $this->guard(function () use ($request) {
             $data = $this->client->orders(
                 $this->intParam($request, 'page', 1),
                 $this->intParam($request, 'per_page', null),
+                $this->filterParams($request),
             );
 
             return $this->ok($data + ['sorted_by' => 'id_desc']);
@@ -86,8 +96,9 @@ class EshopController extends Controller
     /**
      * GET /api/eshop/products/{id}
      *
-     * Varianty sa NEVRACAJÚ — `has_attributes` ani `attributes` API neposkytuje
-     * (nález N2), takže by ich UI muselo vymyslieť.
+     * Vracia aj varianty: `has_attributes` + `attributes` so `quantity`,
+     * `ean13`, `reference`, `price_impact`, `is_default`, `values`
+     * (spec v2 N2, rozhodnutie 4).
      */
     public function product(Request $request, int $id): JsonResponse
     {
@@ -107,13 +118,10 @@ class EshopController extends Controller
     /**
      * GET /api/eshop/summary?days= — hlavné čísla obrazovky.
      *
-     * NÁLEZ N1: vracia POČTY (denné, v okne, celkovo v e-shope) a obrat výhradne
-     * rozpadnutý podľa krajín zo vzorky. Jedno súhrnné číslo obratu tu
-     * NEEXISTUJE a existovať nesmie — `total_paid` mieša HUF, CZK a EUR.
-     *
-     * Filtrovanie podľa dátumu v API neexistuje (nález N3), takže sa okno
-     * počíta u nás: číta sa od `page=1` a scan sa zastaví pri prvej objednávke
-     * staršej než okno (nález N4), so stropom requestov z configu.
+     * Počty sú PRESNÉ (jeden dopyt s dátumovým filtrom), rozpad podľa krajín je
+     * PRESNÝ (jeden dopyt na krajinu), obrat je PO MENÁCH. Jedno súhrnné číslo
+     * obratu naprieč menami tu nevznikne — `total_paid` v EUR a v HUF sú dve
+     * rôzne veci a kurz appka nemá (rozhodnutie 1).
      */
     public function summary(Request $request): JsonResponse
     {
@@ -169,126 +177,108 @@ class EshopController extends Controller
     }
 
     /**
-     * Živý súhrn. Scanner nikdy nevyhodí výnimku — pri rate limite skončí
-     * elegantne s tým, čo stihol (nález N5), takže obrazovka vždy niečo dostane.
+     * Živý súhrn. Čítanie okna nikdy nevyhodí infrastruktúrnu výnimku — pri
+     * nedostupnom e-shope sa vráti okno s `error` a obrazovka to povie.
      *
      * @return array<string, mixed>
      */
     private function buildSummary(int $days): array
     {
-        $until = Carbon::now()->startOfDay()->addDay();   // vrátane dneška
-        $from = $until->copy()->subDays($days);
+        $to = Carbon::now()->startOfDay();
+        $from = $to->copy()->subDays($days - 1);
+        $fromDate = $from->toDateString();
+        $toDate = $to->toDateString();
 
         $config = (array) config('sperky.summary', []);
 
-        try {
-            $scan = $this->scanner->scan($from, $until, [
-                'per_page' => (int) ($config['per_page'] ?? 100),
-                'max_requests' => (int) ($config['max_requests'] ?? 8),
-                'sleep_ms' => 0,   // beží na klik používateľa, nie v noci
-            ]);
-        } catch (Throwable) {
-            $scan = null;
-        }
+        $window = $this->reader->read($fromDate, $toDate, [
+            'per_page' => (int) ($config['per_page'] ?? 100),
+            'max_requests' => (int) ($config['revenue_max_requests'] ?? 25),
+            'sleep_ms' => 0,   // beží na klik používateľa, nie v noci
+        ]);
 
-        $sampleLimit = (int) ($config['sample_details'] ?? 0);
-        $sample = ['details' => [], 'requests' => 0, 'stopped_by' => null];
-        if ($scan !== null && $sampleLimit > 0) {
-            $sample = $this->scanner->details($scan->ids(), $sampleLimit, 0);
-        }
-
-        $live = $scan === null
-            ? ['available' => false, 'stopped_by' => 'unexpected']
-            : ['available' => $scan->count() > 0 || $scan->isComplete(), 'stopped_by' => $scan->stoppedBy];
+        $breakdown = $this->reader->countries(
+            $fromDate,
+            $toDate,
+            (array) config('sperky.countries', []),
+            $window->orders,
+        );
 
         return [
             'generated_at' => now()->toIso8601String(),
             'window' => [
                 'days' => $days,
-                'from' => $from->toDateString(),
-                'until' => $until->toDateString(),
+                'from' => $fromDate,
+                'to' => $toDate,
             ],
-            // POČTY sú jediné bezpečné súhrnné čísla (nález N1)
             'orders' => [
-                'in_window' => $scan === null ? null : ($scan->count() === 0 && ! $scan->isComplete() ? null : $scan->count()),
-                'today' => $scan === null ? null : $this->countForDay($scan->orders, Carbon::now()->toDateString()),
-                'complete' => $scan?->isComplete() ?? false,
-                // N7: celkový počet vždy z API, nikdy z konštanty
-                'total_in_shop' => $scan?->totalOrders,
+                // presný počet z filtrovanej odpovede, nie z prejdených strán
+                'in_window' => $window->orders,
+                'today' => $this->todayFrom($window->byDay),
+                'total_in_shop' => $this->totalInShop(),
             ],
-            'by_day' => $scan === null ? [] : $this->byDay($scan->orders, $from, $until),
-            'countries' => $sample['details'] === [] ? [] : $this->aggregator->countries($sample['details']),
-            'countries_meta' => [
-                'basis' => 'sample',
-                'sample_size' => count($sample['details']),
-                'currency_is_estimate' => true,
-                'note' => $sampleLimit > 0
-                    ? 'Rozpad je zo vzorky detailov — krajina je len v detaile objednávky. '
-                        .'Mena je odhad z krajiny, sumy sa nesčítavajú naprieč krajinami.'
-                    : 'Rozpad podľa krajín je v mesačných súhrnoch — pri každom otvorení '
-                        .'obrazovky by stál jeden request na objednávku.',
-            ],
+            'by_day' => $window->byDay,
+            // OBRAT PO MENÁCH — nikdy jedno číslo naprieč menami (rozhodnutie 1)
+            'revenue' => $window->revenue,
+            'revenue_meta' => $window->revenueMeta(),
+            // PRESNÉ počty na krajinu (rozhodnutie 3) — bez vzorky a bez odhadov
+            'countries' => $breakdown['countries'],
+            'countries_other' => $breakdown['other'],
             'months' => $this->months(),
-            'live' => $live,
-            'scan' => $scan?->meta() ?? ['stopped_by' => 'unexpected', 'complete' => false, 'requests' => 0],
+            'live' => [
+                'available' => $window->available(),
+                'error' => $window->error ?? $breakdown['error'],
+            ],
         ];
     }
 
     /**
-     * Denné POČTY objednávok v okne. Bez sumy — počet je jediné číslo, ktoré sa
-     * dá naprieč objednávkami bezpečne sčítať.
+     * Dnešný počet z denného rozpadu. `null`, keď sa okno neprečítalo celé —
+     * dolná hranica sa neprezentuje ako fakt.
      *
-     * @param  list<array<string, mixed>>  $orders
-     * @return list<array{date: string, orders: int}>
+     * @param  list<array{date: string, orders: int}>  $byDay
      */
-    private function byDay(array $orders, Carbon $from, Carbon $until): array
+    private function todayFrom(array $byDay): ?int
     {
-        $buckets = [];
-        for ($day = $from->copy(); $day->lessThan($until); $day->addDay()) {
-            $buckets[$day->toDateString()] = 0;
-        }
+        $today = Carbon::now()->toDateString();
 
-        foreach ($orders as $order) {
-            $date = $this->dateOf($order);
-            if ($date !== null && array_key_exists($date, $buckets)) {
-                $buckets[$date]++;
+        foreach ($byDay as $row) {
+            if (($row['date'] ?? null) === $today) {
+                return (int) $row['orders'];
             }
         }
 
-        $rows = [];
-        foreach ($buckets as $date => $count) {
-            $rows[] = ['date' => (string) $date, 'orders' => (int) $count];
-        }
-
-        return $rows;
+        return null;
     }
 
-    /** @param  list<array<string, mixed>>  $orders */
-    private function countForDay(array $orders, string $date): int
+    /** Celkový počet objednávok v e-shope — vždy z API (nález N7). */
+    private function totalInShop(): ?int
     {
-        $count = 0;
-        foreach ($orders as $order) {
-            if ($this->dateOf($order) === $date) {
-                $count++;
-            }
-        }
-
-        return $count;
-    }
-
-    /** @param  array<string, mixed>  $order */
-    private function dateOf(array $order): ?string
-    {
-        $raw = $order['date_add'] ?? null;
-        if (! is_string($raw) || trim($raw) === '') {
-            return null;
-        }
-
         try {
-            return Carbon::parse($raw)->toDateString();
-        } catch (Throwable) {
+            return $this->client->ordersTotal();
+        } catch (SperkyApiException|SperkyDomainException) {
             return null;
         }
+    }
+
+    /**
+     * Filtre z query stringu. Odovzdávajú sa surové — validáciu (vrátane
+     * rozhodnutia 8) robí `OrderFilters` a chyba prejde cez `guard()` na 400.
+     *
+     * @return array<string, mixed>
+     */
+    private function filterParams(Request $request): array
+    {
+        $filters = [];
+
+        foreach (['date_from', 'date_to', 'country', 'total_min', 'total_max'] as $key) {
+            $value = $request->query($key);
+            if (is_string($value) && trim($value) !== '') {
+                $filters[$key] = trim($value);
+            }
+        }
+
+        return $filters;
     }
 
     /**
@@ -317,10 +307,10 @@ class EshopController extends Controller
                 'month' => (string) ($meta['month'] ?? str_replace('sperky:month:', '', (string) $node->external_key)),
                 'label' => (string) $node->label,
                 'orders' => isset($meta['orders']) ? (int) $meta['orders'] : null,
-                'orders_complete' => (bool) ($meta['orders_complete'] ?? false),
+                'revenue' => array_values((array) ($meta['revenue'] ?? [])),
+                'revenue_meta' => (array) ($meta['revenue_meta'] ?? []),
                 'countries' => array_values((array) ($meta['countries'] ?? [])),
-                'countries_meta' => (array) ($meta['countries_meta'] ?? []),
-                'top_products' => array_values((array) ($meta['top_products'] ?? [])),
+                'countries_other' => $meta['countries_other'] ?? null,
                 'generated_at' => $meta['generated_at'] ?? null,
             ];
         })->values()->all();

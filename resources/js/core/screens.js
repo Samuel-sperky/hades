@@ -12,13 +12,14 @@
      - destinácia v raili má `data-screen="<name>"`
      - po prepnutí sa emituje bus event `screen:changed` s { from, to } */
 
-/** @typedef {'dnes'|'dennik'|'graf'|'kniznica'|'chat'|'eshop'|'rozhodnutia'|'kontrola'|'smernica'} ScreenName */
+/** @typedef {'dnes'|'dennik'|'graf'|'agenti'|'kniznica'|'chat'|'eshop'|'rozhodnutia'|'kontrola'|'smernica'} ScreenName */
 
 /** @type {ScreenName[]} */
 export const SCREENS = [
     'dnes',
     'dennik',
     'graf',
+    'agenti',
     'kniznica',
     'chat',
     'eshop',
@@ -32,6 +33,7 @@ export const SCREEN_LABELS = {
     dnes: 'Dnes',
     dennik: 'Denník',
     graf: 'Graf',
+    agenti: 'Agenti',
     kniznica: 'Knižnica',
     chat: 'Chat',
     eshop: 'E-shop',
@@ -45,6 +47,7 @@ export const SCREEN_ICONS = {
     dnes: 'wb_sunny',
     dennik: 'receipt_long',
     graf: 'hub',
+    agenti: 'smart_toy',
     kniznica: 'menu_book',
     chat: 'forum',
     eshop: 'storefront',
