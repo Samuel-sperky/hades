@@ -65,12 +65,12 @@ class ShopOrdersTool implements Tool
                 : ['found' => 1, 'order' => $order];
         }
 
-        $orders = $client->orders(
+        // klient už vracia {orders, page, per_page, total, count} — ďalší obal by
+        // dal dvojité zanorenie {"orders":{"orders":[…]}} (nález VLNA1-SPERKY-BE 4.3)
+        return $client->orders(
             $this->clampInt($args, 'page', 1, 1, 100000),
             $this->clampInt($args, 'per_page', 20, 1, 100),
         );
-
-        return ['orders' => $orders];
     }
 
     /** SperkyClient — typ nie je hintovateľný, kým balík so service vrstvou nepribudne. */

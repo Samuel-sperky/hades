@@ -61,13 +61,13 @@ class ShopProductsTool implements Tool
                 : ['found' => 1, 'product' => $product];
         }
 
-        $products = $client->products(
+        // klient už vracia {products, page, per_page, total, count} — ďalší obal by
+        // dal dvojité zanorenie {"products":{"products":[…]}} (nález VLNA1-SPERKY-BE 4.3)
+        return $client->products(
             $this->clampInt($args, 'page', 1, 1, 100000),
             $this->clampInt($args, 'per_page', 20, 1, 100),
             $lang,
         );
-
-        return ['products' => $products];
     }
 
     /** SperkyClient — typ nie je hintovateľný, kým balík so service vrstvou nepribudne. */

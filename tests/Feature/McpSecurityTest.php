@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mcp\ToolRegistry;
 use App\Models\Area;
+use App\Models\Node;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
@@ -139,6 +140,32 @@ class McpSecurityTest extends TestCase
         );
     }
 
+    /**
+     * Limit musí platiť aj pre `tools/call`, nie len pre „lacné" metódy — inak by
+     * bol strop na endpointe, ale zápis do pamäte (`aura_learn`) bez stropu.
+     * Po vyčerpaní limitu dostane volanie toolu 429 a NIČ sa nezapíše.
+     */
+    public function test_throttle_covers_tool_calls_not_just_the_endpoint(): void
+    {
+        [$limit] = explode(',', (string) config('mcp.throttle', '120,1'));
+
+        for ($i = 0; $i < (int) $limit; $i++) {
+            $this->withHeader('Authorization', 'Bearer '.self::TOKEN)
+                ->postJson('/mcp', $this->body())->assertOk();
+        }
+
+        $before = Node::count();
+
+        $this->withHeader('Authorization', 'Bearer '.self::TOKEN)
+            ->postJson('/mcp', $this->body('tools/call', [
+                'name' => 'aura_learn',
+                'arguments' => ['type' => 'skill', 'label' => 'nad limitom', 'area' => 'Vývoj / kód'],
+            ]))
+            ->assertStatus(429);
+
+        $this->assertSame($before, Node::count(), 'zápis nad limitom sa nesmie vykonať');
+    }
+
     // ---- identita servera + rename toolov -----------------------------------
 
     public function test_initialize_reports_auraai_identity(): void
@@ -194,6 +221,28 @@ class McpSecurityTest extends TestCase
             array_keys($viaAlias['data']),
         );
         $this->assertSame($viaCanonical['data']['totals'], $viaAlias['data']['totals']);
+    }
+
+    /**
+     * Alias nesmie byť zadné vrátka okolo blacklistu: `mind_learn` je ten istý
+     * handler, takže secret guard platí rovnako ako pre `aura_learn`.
+     */
+    public function test_legacy_alias_enforces_the_secret_guard(): void
+    {
+        $before = Node::count();
+
+        foreach (['aura_learn', 'mind_learn'] as $tool) {
+            $res = $this->callTool($tool, [
+                'type' => 'memory',
+                'label' => 'test guard',
+                'area' => 'Vývoj / kód',
+                'description' => 'api_key=sk-ant-FAKE0000000000000000000000000000TEST',
+            ]);
+
+            $this->assertTrue($res['isError'], "{$tool} musí odmietnuť obsah, ktorý vyzerá ako secret");
+        }
+
+        $this->assertSame($before, Node::count());
     }
 
     public function test_registry_maps_every_canonical_tool_to_an_alias(): void
