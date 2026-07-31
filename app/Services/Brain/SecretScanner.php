@@ -41,7 +41,11 @@ class SecretScanner
         // (tie potrebujú prefix). Bez tohto vzoru holý kľúč na samostatnom riadku
         // prekĺzne do pamäte. Lookaheady vyžadujú číslicu + malé + veľké písmeno,
         // aby vzor nechytal bežné dlhé slová ani identifikátory.
-        'high-entropy-b64' => '/(?=[A-Za-z0-9+\/]*[0-9])(?=[A-Za-z0-9+\/]*[a-z])(?=[A-Za-z0-9+\/]*[A-Z])[A-Za-z0-9+\/]{40,}={0,2}/',
+        // Pôvodná verzia vyžadovala číslicu A malé A veľké písmeno SÚČASNE, takže kľúč
+        // bez veľkých písmen (base32, lowercase base64url, mnohé tokeny) prekĺzol. Teraz
+        // stačia DVE z troch tried — to udrží ochranu pred bežnými dlhými slovami
+        // (tie majú jednu triedu) a zachytí aj jednoprípadové tajomstvá.
+        'high-entropy-b64' => '/(?:(?=[A-Za-z0-9+\/]*[0-9])(?=[A-Za-z0-9+\/]*[a-z])|(?=[A-Za-z0-9+\/]*[0-9])(?=[A-Za-z0-9+\/]*[A-Z])|(?=[A-Za-z0-9+\/]*[a-z])(?=[A-Za-z0-9+\/]*[A-Z]))[A-Za-z0-9+\/]{40,}={0,2}/',
     ];
 
     /**

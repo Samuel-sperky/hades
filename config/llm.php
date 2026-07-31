@@ -60,7 +60,12 @@ return [
 
     // Milisekundy. Hodnoty sú akceptačné kritérium P5 (rozhodnutie #124).
     'timeouts' => [
-        'connect' => 5_000,
+        // 300 ms, nie 5 s: Ollama beží na tom istom hostiteľovi, takže spojenie sa
+        // nadviaže v jednotkách ms. Odmietnuté spojenie (zastavená služba) je okamžité,
+        // ale ZAHODENÉ pakety (firewall, zamrznutý kontajner) visia až do timeoutu —
+        // odmerané 5 246 ms proti blackhole adrese, pri 300 ms je to 301 ms. Appka
+        // musí fungovať aj bez Ollamy, takže nesmie visieť 5 sekúnd na každý recall.
+        'connect' => (int) env('AURAAI_LLM_CONNECT_TIMEOUT_MS', 300),
         'first_token' => 90_000,
         'total' => 300_000,
         'idle' => 30_000,

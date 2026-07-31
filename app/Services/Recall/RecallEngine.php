@@ -170,6 +170,9 @@ class RecallEngine
      */
     private function expand(Collection $candidates, array $vectorScores, string $query): Collection
     {
+        // `min_score` rozhoduje o vstupe do POOLU, `bridge_min_score` (HybridScorer)
+        // o promócii pred lexikálny zásah. Musí platiť min_score <= bridge_min_score,
+        // inak vyšší pool-prah ticho zruší nižšiu promóciu — obe defaulty sú 0.51.
         $min = (float) config('recall.vector.min_score', 0.55);
         $max = max(0, (int) config('recall.vector.candidates', 12));
 

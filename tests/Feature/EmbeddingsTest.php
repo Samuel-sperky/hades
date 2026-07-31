@@ -322,9 +322,15 @@ class EmbeddingsTest extends TestCase
         $this->assertSame([$lexical->id], $rows->pluck('node.id')->all());
     }
 
-    public function test_expand_mode_adds_vector_only_candidates_behind_the_lexical_ones(): void
+    public function test_expand_mode_keeps_an_unpromoted_vector_candidate_behind_the_lexical_ones(): void
     {
-        config(['recall.vector.mode' => 'expand', 'recall.vector.min_score' => 0.55]);
+        // kosínus 0,707 je nad pool-prahom, ale POD prahom mostu → kandidát sa
+        // do výsledku dostane, promócia pred lexikálny zásah sa mu ale nedostane
+        config([
+            'recall.vector.mode' => 'expand',
+            'recall.vector.min_score' => 0.55,
+            'recall.vector.bridge_min_score' => 0.90,
+        ]);
 
         $lexical = $this->node('Redis caching', 'Cache-aside.');
         $vectorOnly = $this->node('Vyrovnávacia pamäť', 'O ničom inom.');
@@ -333,13 +339,113 @@ class EmbeddingsTest extends TestCase
         $this->controlled(['query:redis' => [1, 0, 0, 0, 0, 0, 0, 0]]);
 
         $store = app(EmbeddingStore::class);
-        $store->put($vectorOnly->id, [1, 0, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h1');
+        $store->put($vectorOnly->id, [0.7, 0.7, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h1');
         $store->put($unrelated->id, [0, 1, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h2');
 
         $rows = app(RecallEngine::class)->search('redis', 5);
 
         $this->assertSame([$lexical->id, $vectorOnly->id], $rows->pluck('node.id')->all());
         $this->assertSame(0, $rows->last()['score']);
+    }
+
+    // ---- MOST SK↔EN (rozhodnutie #30) ---------------------------------------
+
+    public function test_bridge_overtakes_a_weak_lexical_hit_for_a_term_outside_canon(): void
+    {
+        // `refund` nie je v `SimilarityService::$canon` — lexikálna vetva trafí
+        // len uzol so slovom „refund" v popise, sémanticky správny SK uzol nie
+        config([
+            'recall.vector.mode' => 'expand',
+            'recall.vector.min_score' => 0.51,
+            'recall.vector.bridge_min_score' => 0.51,
+            'recall.vector.bridge_penalty' => 0.08,
+        ]);
+
+        $weakLexical = $this->node('Refund účtovná poznámka', 'Refund v poznámke, inak o ničom.');
+        $bridge = $this->node('Vrátenie peňazí zákazníkovi', 'Postup pri vrátení platby.');
+
+        $this->controlled(['query:refund' => [1, 0, 0, 0, 0, 0, 0, 0]]);
+
+        $store = app(EmbeddingStore::class);
+        $store->put($weakLexical->id, [0.3, 0.954, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h1');
+        $store->put($bridge->id, [0.8, 0.6, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h2');
+
+        $rows = app(RecallEngine::class)->search('refund', 5);
+
+        $this->assertSame([$bridge->id, $weakLexical->id], $rows->pluck('node.id')->all());
+        $this->assertTrue($rows->first()['bridge']);
+        $this->assertSame(0, $rows->first()['score']);
+    }
+
+    public function test_bridge_below_the_threshold_never_enters_the_result(): void
+    {
+        // 0,42 je pásmo NEZHODNÝCH SK↔EN párov na bge-m3 (~0,35) — nezmysel
+        // sa nesmie dostať dovnútra ani keď je jediným vektorovým kandidátom
+        config([
+            'recall.vector.mode' => 'expand',
+            'recall.vector.min_score' => 0.51,
+            'recall.vector.bridge_min_score' => 0.51,
+        ]);
+
+        $lexical = $this->node('Redis caching', 'Cache-aside.');
+        $nonsense = $this->node('Fakturácia dodávateľom', 'Faktúry a dodávatelia.');
+
+        $this->controlled(['query:redis' => [1, 0, 0, 0, 0, 0, 0, 0]]);
+        app(EmbeddingStore::class)->put($nonsense->id, [0.42, 0.9075, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h1');
+
+        $rows = app(RecallEngine::class)->search('redis', 5);
+
+        $this->assertSame([$lexical->id], $rows->pluck('node.id')->all());
+    }
+
+    public function test_bridge_does_not_reorder_a_query_the_lexical_branch_handles(): void
+    {
+        // dopyt, ktorý lexikálna vetva zvládne: poradie musí zostať identické
+        // s režimom 'rerank'. Most má kosínus 0,55 — nad prahom, ale po
+        // penalizácii (0,47) pod lexikálnym zásahom s kosínusom 0,60.
+        $twoConcepts = $this->node('Redis a objednávky', 'Redis, objednávky.');
+        $oneConcept = $this->node('Redis samotný', 'Redis.');
+        $bridge = $this->node('Vyrovnávacia pamäť', 'O ničom inom.');
+
+        $this->controlled(['query:redis objednávky' => [1, 0, 0, 0, 0, 0, 0, 0]]);
+
+        $store = app(EmbeddingStore::class);
+        $store->put($twoConcepts->id, [0, 1, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h1');
+        $store->put($oneConcept->id, [0.6, 0.8, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h2');
+        $store->put($bridge->id, [0.55, 0.8352, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h3');
+
+        $expected = app(RecallEngine::class)->search('redis objednávky', 5)->pluck('node.id')->all();
+
+        config([
+            'recall.vector.mode' => 'expand',
+            'recall.vector.min_score' => 0.51,
+            'recall.vector.bridge_min_score' => 0.51,
+        ]);
+
+        $rows = app(RecallEngine::class)->search('redis objednávky', 5);
+
+        $this->assertSame($twoConcepts->id, $rows->first()['node']->id);
+        $this->assertSame($expected, $rows->take(count($expected))->pluck('node.id')->all());
+    }
+
+    public function test_expand_mode_still_falls_back_to_pure_tfidf_without_ollama(): void
+    {
+        config([
+            'recall.vector.mode' => 'expand',
+            'recall.vector.min_score' => 0.51,
+            'recall.vector.bridge_min_score' => 0.51,
+        ]);
+        $this->app->instance(ChatProvider::class, new NullProvider);
+
+        $hit = $this->node('Redis caching', 'Cache-aside vzor s TTL.');
+        $other = $this->node('Fakturácia', 'Vystavovanie faktúr.');
+        app(EmbeddingStore::class)->put($other->id, [1, 0, 0, 0, 0, 0, 0, 0], 'bge-m3', 'h1');
+
+        $rows = app(RecallEngine::class)->search('redis', 5);
+
+        $this->assertSame([$hit->id], $rows->pluck('node.id')->all());
+        $this->assertSame(0.0, $rows->first()['vector']);
+        $this->assertFalse($rows->first()['bridge']);
     }
 
     public function test_expand_mode_respects_the_minimum_score(): void

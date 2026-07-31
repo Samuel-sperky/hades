@@ -349,7 +349,10 @@ final class OllamaProvider implements ChatProvider
 
     private function client(int $totalMs, bool $stream = false): PendingRequest
     {
-        $connect = max(1, (int) round(((int) ($this->timeouts['connect'] ?? 5_000)) / 1000));
+        // Desatinné sekundy, nie celé: `max(1, round(ms/1000))` mal podlahu 1 s, takže
+        // sub-sekundový connect timeout z configu by sa ticho zahodil a 300 ms by sa
+        // chovalo ako 1 000 ms.
+        $connect = max(0.05, ((int) ($this->timeouts['connect'] ?? 5_000)) / 1000);
         $idle = max(1, (int) round(((int) ($this->timeouts['idle'] ?? 30_000)) / 1000));
 
         $options = ['connect_timeout' => $connect];
