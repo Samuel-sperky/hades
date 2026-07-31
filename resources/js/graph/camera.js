@@ -4,6 +4,7 @@ import { layerLayout } from './layers.js';
 import { localSet } from './local.js';
 import { draw } from './render/draw.js';
 import { requestDraw } from './render/frame.js';
+import { K_FIT_MAX, K_MAX, K_MIN } from './render/zoom.js';
 import { visibleInReplay } from './timeline.js';
 
 
@@ -24,8 +25,10 @@ export function focusNode(n) {
 }
 
 
-export const K_MIN = 0.14;
-export const K_MAX = 3.2;
+/* Hranice kamery majú jediný kanonický zdroj — render/zoom.js (kontrakt
+   čitateľnosti plátna). Tu sa len re-exportujú, aby volajúci a testy mohli
+   ďalej čítať camera.K_MIN / camera.K_MAX bez zmeny rozhrania. */
+export { K_MIN, K_MAX };
 
 
 // Zoom okolo bodu na obrazovke (px). Jediné miesto, kde sa mení S.cam.k —
@@ -88,7 +91,10 @@ export function fitView(pad = 90) {
 
     const bw = Math.max(maxX - minX, 1);
     const bh = Math.max(maxY - minY, 1);
-    S.cam.k = Math.min(1.6, Math.max(0.14, Math.min((S.w - 2 * pad) / bw, (S.h - 2 * pad) / bh)));
+    // Pomenované hranice namiesto literálov — hodnoty sú rovnaké ako doteraz
+    // (K_FIT_MAX = 1.6, K_MIN = 0.14). Podlahu na čitateľné minimum zdvihne až
+    // applyReadableZoom() z render/zoom.js, preto tu ostáva K_MIN, nie K_FIT_MIN.
+    S.cam.k = Math.min(K_FIT_MAX, Math.max(K_MIN, Math.min((S.w - 2 * pad) / bw, (S.h - 2 * pad) / bh)));
     S.cam.x = -((minX + maxX) / 2) * S.cam.k;
     S.cam.y = -((minY + maxY) / 2) * S.cam.k;
     draw();

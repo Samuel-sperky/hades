@@ -13,7 +13,8 @@
 import { S } from '../../core/state/index.js';
 
 
-// Tvrdé hranice kamery (zhodné so zoomBy/fitView v graph/camera.js).
+// Tvrdé hranice kamery — kanonický zdroj. graph/camera.js ich už nedefinuje
+// druhýkrát, iba re-exportuje, takže zoomAt/fitView aj testy vidia tieto hodnoty.
 export const K_MIN = 0.14;
 
 export const K_MAX = 3.2;

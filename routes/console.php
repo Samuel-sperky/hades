@@ -270,32 +270,29 @@ Artisan::command('aura:rewire {--timings : vypíš trvanie každého algoritmu}'
     return 0;
 })->purpose('Backfill similarity/skill_mention/mostov — rozdelené na triedy, so stropom času a veľkosti');
 
-// Denna zaloha vedomia + rotacia (drzi poslednych 14 dni).
-// Fail-safe: dump ide najprv do temp suboru a do backups/ sa presunie len ak nie je
-// prazdny; heslo cez MYSQL_PWD namiesto argv (-p), aby nesvietilo v process liste.
+// Denna zaloha vedomia + rotacia (drzi poslednych 14 dni) — v prikaze aura:backup.
 //
-// Nazov DB, uzivatel a heslo sa BERU Z CONFIGU, nie z literalu. Predtym boli zadrotovane
-// tu aj v .env aj v compose — pri premenovani DB (Hades -> AuraAI) by dump tichym
-// fail-safe checkom [ -s ] nic nezapisal a jedinou stopou by bol Log::error, ktory
-// nikto necita. Rotacia mie na *.sql (nie na prefix), aby premenovanie nezastavilo
-// mazanie starych dumpov — v backups/ nie su ine subory nez zalohy.
-$db = config('database.connections.'.config('database.default'));
-$dumpTmp = '/tmp/db-backup.sql';
-$dumpDir = '/var/www/html/backups';
-
-Schedule::exec(
-    sprintf(
-        'MYSQL_PWD=%s mariadb-dump -h %s -u%s --single-transaction --routines --triggers %s > %s',
-        escapeshellarg((string) ($db['password'] ?? '')),
-        escapeshellarg((string) ($db['host'] ?? 'mariadb')),
-        escapeshellarg((string) ($db['username'] ?? '')),
-        escapeshellarg((string) ($db['database'] ?? '')),
-        $dumpTmp,
-    )
-    .' && [ -s '.$dumpTmp.' ]'
-    .' && mv '.$dumpTmp.' '.$dumpDir.'/'.($db['database'] ?? 'db').'-$(date +\%F).sql'
-    .' && find '.$dumpDir.' -name "*.sql" -mtime +14 -delete'
-)->dailyAt('03:00')->onFailure(fn () => \Log::error('AuraAI: denna zaloha DB zlyhala'));
+// PREDTYM to bol Schedule::exec s celym shell stringom, a malo to dve chyby:
+//
+// 1) HESLO SVIETILO. Komentar tvrdil, ze MYSQL_PWD ho pred process listom skryje —
+//    skryje ale len argv samotneho mariadb-dump, nie shellu, ktory ho spusta. Heslo
+//    k jedinej kopii dlhodobej pamate bolo preto citatelne vo vystupe
+//    `php artisan schedule:list` aj v argv obalujuceho `sh -c`. V prikaze ide heslo
+//    do procesu premennou prostredia, ktora v argv nie je vobec.
+//
+// 2) ROTACIA MAZALA AJ RUCNE POISTKY. `find -name "*.sql" -mtime +14 -delete` nerozlisoval
+//    automaticky denny dump od dumpu, ktory si niekto vedome vytvoril pred rizikovou
+//    operaciou — napr. backups/auraai-pre-embed-2026-07-30.sql by po 14 dnoch tichym
+//    sposobom zmizol. aura:backup rotuje len subory tvaru `<db>-YYYY-MM-DD.sql`.
+//
+// Nazov DB, uzivatel a heslo sa naďalej beru Z CONFIGU, nie z literalu: pri premenovani
+// DB (Hades -> AuraAI) by zadrotovany nazov znamenal, ze dump nic nezapise a jedinou
+// stopou bude Log::error, ktory nikto necita.
+Schedule::command('aura:backup')
+    ->dailyAt('03:00')
+    ->timezone('Europe/Bratislava')
+    ->withoutOverlapping(60)
+    ->onFailure(fn () => \Log::error('AuraAI: denna zaloha DB zlyhala'));
 
 // Automaticke zapisovanie zaznamov zo sessions (bez modelu) — priebezne kazdych 10 minut,
 // plny prechod v noci. Oba ingesty zdielaju rovnaky mutex, aby nikdy nebezali naraz.
