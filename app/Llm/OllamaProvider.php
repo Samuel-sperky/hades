@@ -357,19 +357,31 @@ final class OllamaProvider implements ChatProvider
 
         $options = ['connect_timeout' => $connect];
 
-        // Skutočný idle timeout: cURL ukončí transfer, keď priepustnosť klesne
-        // pod 1 B/s na $idle sekúnd. Iné handlery voľbu ignorujú. Konštanty sú
-        // strážené — bez rozšírenia curl by neexistovali.
-        if (defined('CURLOPT_LOW_SPEED_LIMIT') && defined('CURLOPT_LOW_SPEED_TIME')) {
-            $options['curl'] = [
-                CURLOPT_LOW_SPEED_LIMIT => 1,
-                CURLOPT_LOW_SPEED_TIME => $idle,
-            ];
-        }
-
+        // Idle timeout patrí VÝHRADNE streamovanej vetve.
+        //
+        // Pri `stream: false` Ollama neposiela ani bajt, kým generovanie nedokončí —
+        // takže „priepustnosť pod 1 B/s" je normálny stav celého čakania, nie porucha.
+        // Keď sa low-speed voľby nastavili aj tu, cURL transfer po 30 sekundách zabil,
+        // `safeReason()` chybu prepísal na „Ollama nie je dostupná" (hoci bežala) a
+        // odpoveď ticho spadla na šablónu. Rozpočty `first_token` (90 s) a `total`
+        // (300 s) boli na tejto vetve nedosiahnuteľné. Maskované ako výpadok modelu,
+        // čo je najhorší druh chyby.
+        //
+        // Non-stream vetvu ohraničuje `->timeout($totalMs)` nižšie, a to je správna
+        // hranica: bez streamovania „prvý token" neexistuje, celá odpoveď príde naraz,
+        // takže jediné zmysluplné obmedzenie je celkový čas. 30 sekúnd je pre 4B model
+        // na CPU normálny čas odpovede, nie porucha.
         if ($stream) {
             $options['stream'] = true;
             $options['read_timeout'] = $idle;
+
+            // Konštanty sú strážené — bez rozšírenia curl by neexistovali.
+            if (defined('CURLOPT_LOW_SPEED_LIMIT') && defined('CURLOPT_LOW_SPEED_TIME')) {
+                $options['curl'] = [
+                    CURLOPT_LOW_SPEED_LIMIT => 1,
+                    CURLOPT_LOW_SPEED_TIME => $idle,
+                ];
+            }
         }
 
         return Http::withOptions($options)

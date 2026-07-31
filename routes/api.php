@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivationController;
+use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\DecisionController;
 use App\Http\Controllers\Api\GraphController as ApiGraphController;
 use App\Http\Controllers\Api\HealthController;

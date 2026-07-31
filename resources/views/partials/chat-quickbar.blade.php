@@ -20,8 +20,14 @@
                  (`.spark { width: 100% }`), ktorý sa importuje neskôr a roztiahol by
                  ikonu na celú lištu. Chat má preto vlastnú .chat-spark. --}}
             <span class="ms chat-spark" aria-hidden="true">hub</span>
+            {{-- Placeholder je krátky zámerne. Lišta má 320 px a po odčítaní paddingu,
+                 ikony, dvoch tlačidiel a gapov zostane poľu ~165 px. Pôvodných 36 znakov
+                 („Opýtaj sa AuraAI… (/ príkazy, @uzol)") potrebovalo ~240 px, textarea
+                 ich zalomila a `overflow-y: hidden` druhý riadok odrezal — bolo to vidieť
+                 na každej obrazovke v oboch témach. Nápovedu k `/` a `@` nesie
+                 #chat-enter-hint a paleta, nie placeholder. --}}
             <textarea id="prompt-input" rows="1" autocomplete="off" spellcheck="false"
-                      placeholder="Opýtaj sa AuraAI… (/ príkazy, @uzol)"
+                      placeholder="Opýtaj sa AuraAI…"
                       aria-label="Správa pre AuraAI" aria-describedby="chat-enter-hint"></textarea>
             <span id="chat-enter-hint" class="visually-hidden">Enter odošle správu, Shift a Enter vloží nový riadok.</span>
             <button type="button" id="chat-expand" class="ms comp-btn"

@@ -326,8 +326,20 @@ Schedule::command('mind:brain-sync')
 Schedule::command('mind:reorganize')->dailyAt('03:50');
 Schedule::command('mind:digest')->weeklyOn(0, '04:00');
 
-// Mesačná archivácia starých session záznamov (starších ako 90 dní)
-Schedule::command('mind:archive-old')->monthlyOn(1, '04:30');
+// Mesačná archivácia starých session záznamov (starších ako 90 dní).
+//
+// TOTO JE DEŠTRUKTÍVNY JOB a patrí preto za ten istý prepínač ako ostatné tri: zlúči
+// staré session uzly do mesačného archívneho uzla a originály ZMAŽE (MindArchiveOld:133
+// a 147 mažú hrany, 158 maže uzol, 115 zapisuje tombstone). Dovtedy bol naplánovaný
+// mimo prepínača, takže sa nedal vypnúť.
+//
+// Dnes je jeho dosah nula — najstarší session uzol má 16 dní, takže prahu 90 dní
+// nedosiahne ani jeden a najbližší beh je no-op. Práve preto to bolo ľahké prehliadnuť:
+// od polovice októbra by začal mazať a jediné, čo by o tom svedčilo, je zmenšujúci sa
+// počet uzlov.
+if (config('maintenance.destructive_enabled', config('auraai.destructive_jobs_enabled'))) {
+    Schedule::command('mind:archive-old')->monthlyOn(1, '04:30');
+}
 
 // Nočná údržba vedomia — beží AŽ PO ingeste (03:35 --all). Rozostupy sú široké
 // (15 min), aby ťažký mind:rewire (~O(n²) pri raste siete) stihol dobehnúť pred
