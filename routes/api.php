@@ -8,7 +8,6 @@ use App\Http\Controllers\Api\KnowledgeController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
-use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ContextController;
 use App\Http\Controllers\DirectiveController;
 use App\Http\Controllers\EdgeController;
@@ -60,7 +59,8 @@ Route::delete('/edges/{edge}', [EdgeController::class, 'destroy'])->middleware($
 
 Route::get('/activations', [ActivationController::class, 'index']);
 
-Route::post('/chat', [ChatController::class, 'send'])->middleware('throttle:20,1');
+// POST /chat žije v routes/chat.php (trojvrstvový chat, registrovaný v bootstrap/app.php).
+// Starý ChatController bol posledné miesto v UI, kde žil Anthropic — zmazaný.
 
 // Foldering / štruktúra vedomia
 Route::get('/structure', [StructureController::class, 'index']);

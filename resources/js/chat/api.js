@@ -150,7 +150,8 @@ export function createConversation(title = null, opts = {}) {
 }
 
 export function renameConversation(id, title, opts = {}) {
-    return apiSend('PATCH', CONV_PATH + '/' + encodeURIComponent(id), { title }, { timeoutMs: 10_000, ...opts });
+    // Server registruje premenovanie ako PUT (routes/chat.php) — PATCH by skončil na 405.
+    return apiSend('PUT', CONV_PATH + '/' + encodeURIComponent(id), { title }, { timeoutMs: 10_000, ...opts });
 }
 
 /** Tolerantné čítanie zoznamu vlákien — server smie vrátiť pole aj obálku. */

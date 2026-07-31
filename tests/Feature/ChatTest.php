@@ -215,6 +215,23 @@ class ChatTest extends TestCase
 
     public function test_shop_zamer_bez_napojeneho_zdroja_nevymysla_cisla(): void
     {
+        // `DomainAnswerer` je odteraz naviazaný v `AppServiceProvider` (SPERKY answerer),
+        // takže „nenapojený zdroj" prestal byť predvolený stav a test si ho musí vytvoriť
+        // zámerne. Inak by overoval len to, že sme zabudli väzbu zaregistrovať.
+        $this->app->forgetInstance(DomainAnswerer::class);
+        $this->app->bind(DomainAnswerer::class, fn () => new class implements DomainAnswerer
+        {
+            public function handles(Intent $intent): bool
+            {
+                return false;   // zdroj existuje, ale tento zámer neobslúži
+            }
+
+            public function answer(Intent $intent, string $message): ?ChatAnswer
+            {
+                return null;
+            }
+        });
+
         $response = $this->postJson('/api/chat', ['message' => 'Koľko objednávok prišlo včera?']);
 
         $response->assertOk();

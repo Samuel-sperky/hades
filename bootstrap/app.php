@@ -36,6 +36,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 'api',
                 'throttle:'.(string) config('sperky.throttle', '60,1'),
             ])->prefix('api/eshop')->group(base_path('routes/eshop.php'));
+
+            // Chatové API (trojvrstvový chat: šablóny → router qwen3:4b → eskalácia).
+            // Vlastné throttly sú vnútri súboru. Bez tejto registrácie boli všetky
+            // chatové endpointy 404 a klient odpadal na starý ChatController, ktorý
+            // používateľovi vypisoval výzvu doplniť ANTHROPIC_API_KEY — teda presne
+            // to, čo rozhodnutie #117 zakazuje (Anthropic sa nepoužíva, nie je free).
+            Route::middleware('api')->prefix('api')->group(base_path('routes/chat.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

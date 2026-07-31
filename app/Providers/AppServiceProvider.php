@@ -21,7 +21,18 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Napojenie chatu na e-shop. `ChatPipeline` sa pýta kontejnera cez
+        // `app()->bound(DomainAnswerer::class)` a keď väzba chýba, odpovie čestnou
+        // šablónou „napojenie ešte nie je aktívne". Práve to sa dialo: SPERKY balík
+        // nechal spojku chatu, chat ju nechal SPERKY balíku, a tak ju nenapísal nikto.
         //
+        // Väzba je zámerne `singleton` — jeden answerer na request drží cache
+        // SperkyClientu, takže dva zámery v jednej konverzácii nezopakujú ten istý
+        // request na e-shop.
+        $this->app->singleton(
+            \App\Services\Chat\DomainAnswerer::class,
+            \App\Services\Sperky\SperkyDomainAnswerer::class,
+        );
     }
 
     /**

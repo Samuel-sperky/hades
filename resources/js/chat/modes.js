@@ -73,7 +73,10 @@ export function openOverlay() {
 }
 
 export function closeOverlay() {
-    applyMode('quickbar');
+    // Zavretie overlayu sa vracia tam, odkiaľ prišlo: na obrazovke Chat je to
+    // režim `screen` (inak by composer skončil v spodnej lište a log obrazovky
+    // by zostal prázdny), inde quickbar.
+    applyMode(S.screen === 'chat' ? 'screen' : 'quickbar');
     const back = lastFocused;
     lastFocused = null;
     if (back && document.contains(back)) back.focus();
