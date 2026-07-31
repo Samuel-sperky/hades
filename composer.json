@@ -7,7 +7,6 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "anthropic-ai/sdk": "^0.36.0",
         "laravel/framework": "^13.8",
         "laravel/reverb": "^1.10",
         "laravel/tinker": "^3.0",

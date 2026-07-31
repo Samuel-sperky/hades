@@ -1,10 +1,21 @@
 # AuraAI — project contract
 
-Fork of Hades (`C:\Users\Ucet\Desktop\AI-mind`, read-only archive). Laravel 12 + MariaDB +
-Redis + Reverb, canvas graph frontend, Vite build. Branch: `feat/auraai`.
+Fork of Hades (`C:\Users\Ucet\Desktop\AI-mind`, read-only archive still serving on port 8080 —
+never touch it). Laravel 12 + MariaDB 11.4 + Redis 7 + Reverb + Caddy + Ollama, canvas graph
+frontend, Vite build. Branch: `feat/auraai`. App on http://localhost:8082.
 
 This file is the source of truth for the 10 parallel W2 packages. **Read §3 (ownership) and
 §4 (locked interfaces) before touching a single file.**
+
+**State after W2 (verified 2026-07-31 against the code, not from memory):**
+
+- Gate green: **467 PHP tests / 1 630 assertions** and **370 Vitest across 31 files**, 0 skipped.
+  (The older "446 PHP" figure circulating in agent briefs is stale — packages added tests.)
+- Route `/` now renders `app.blade.php`; `mind.blade.php` **no longer exists** (§7.1 done).
+- All 18 locked interfaces in §4 re-verified present with unchanged signatures.
+- Destructive maintenance jobs remain **off** (§6) — network intact at 709 nodes / 2 170 edges /
+  6 563 activations.
+- `eshop` is now a real screen with a service layer, not an open question (§7.2 done).
 
 ---
 
@@ -16,7 +27,7 @@ docker compose up -d
 docker compose ps
 docker compose logs -f app
 
-# PHP tests — the gate. Must stay green, 0 skipped.
+# PHP tests — the gate. Must stay green, 0 skipped. Today: 467 tests / 1 630 assertions.
 docker compose exec -T app php artisan test
 docker compose exec -T app php artisan test --testsuite=Unit
 docker compose exec -T app php artisan test --filter=SomeTest
@@ -35,9 +46,10 @@ npm ci
 npm run build                 # -> public/build/manifest.json + assets
 npm run dev                   # Vite dev server with HMR
 
-# JS tests
-npx vitest run                # unit, jsdom
-npx playwright test           # smoke, needs the stack running
+# JS tests — 370 across 31 files. Run them in the container so the node_modules volume is used.
+docker compose exec -T app npx vitest run     # unit, jsdom
+npm run lint:css                              # stylelint — guards the "no raw hex" rule
+npx playwright test           # smoke, needs the stack running (host-side browsers)
 npx playwright test --project=desktop-light
 
 # artisan inside the container
@@ -56,8 +68,8 @@ the page throws "Vite manifest not found" (loud failure by design, never a silen
 
 ```
 resources/
-  views/mind.blade.php          root template (route '/' renders this)
-  views/app.blade.php           + views/partials/**   ← partial split, integrator owns the include list
+  views/app.blade.php           root template — route '/' renders THIS (mind.blade.php is gone)
+                                + views/partials/**  ← partial split, integrator owns the include list
   js/app.js                     entry point + boot order (SHARED — integrator only)
   js/core/**                    locked interfaces, read by every package (SHARED)
   js/theme.js  js/markdown.js
@@ -79,9 +91,12 @@ tests/
 Hard rules from W0:
 
 - **≤ 400 LOC per file** in `resources/js/**` and `resources/css/**` (target ≤ 250).
-- **No raw hex/rgba outside `css/tokens.css` and `css/dark.css`.** Canvas colours come from
-  `graph/canvas-colors.js` (which still carries the `THEMES` object — `TODO(P7)`: read CSS custom
-  properties instead; this is the only TODO W0 left behind).
+- **No raw hex/rgba outside `css/tokens.css` and `css/dark.css`.** Enforced by
+  `npm run lint:css` (stylelint, config in `.stylelintrc.json`). Canvas colours come from
+  `graph/canvas-colors.js`, which now reads CSS custom properties — the `THEMES` literal and its
+  `TODO(P7)` are **gone**; only a comment about hex parity with the old literal remains.
+  `tokens.css` currently defines **228 tokens**; the only hex-looking strings left elsewhere in
+  `resources/css/**` are inside comments in `base/fonts.css` and `screens/decisions.css`.
 - Code identifiers, comments and commit messages in **English**; UI strings in **Slovak**.
 - `public/js/mind.js` and `public/css/mind.css` no longer exist. Never re-add a `<script src>`
   or `<link rel=stylesheet>` for app assets — everything goes through `@vite(...)`.
@@ -106,9 +121,10 @@ the integrator. Editing a foreign file gets the commit rejected and the package 
 | `resources/js/graph/{input,pick,camera,hover-card,focus,filters,filters-cert,local,timeline,loader,ws}.js`, `resources/css/graph/**` (except `canvas.css`), `resources/views/partials/{graph-tools,zoomctl}.blade.php` | P8 |
 | `resources/css/{tokens,dark,responsive,mobile}.css`, `resources/css/base/**`, `resources/css/components/**` (except `md.css`), `resources/css/shell/**`, `resources/css/dock/**`, `resources/js/theme.js`, `resources/js/shell/**`, `resources/js/dock/**`, `resources/js/node/**`, `resources/views/partials/{rail,header,dock,node-panel,pack-drawer,cmdk,help-overlay,md-overlay,hint,toasts,hover-card,mobile-nav}.blade.php` | P9 |
 | `resources/js/screens/**`, `resources/js/charts/**`, `resources/css/screens/**`, `resources/css/charts.css`, `resources/views/partials/screens/*.blade.php` (except `chat.blade.php`) | P10 |
-| `docs/dizajn.md` | P9 |
-| `docs/zlozkovanie.md` | P3 |
+| `docs/dizajn.md` | P9 (created), docs agent maintains |
+| `docs/zlozkovanie.md` | P3 (created), docs agent maintains |
 | `docs/BENCHMARK-LLM.md` | P5 |
+| `README.md`, `CLAUDE.md`, `docs/**` | docs agent — see the note below |
 
 ### 3.1 Shared files — integrator only
 
@@ -116,7 +132,7 @@ Send a patch in your report; do not commit these yourself.
 
 | File | Why |
 |---|---|
-| `resources/views/mind.blade.php`, `resources/views/app.blade.php` | root template = the `@include` list |
+| `resources/views/app.blade.php` | root template = the `@include` list (`mind.blade.php` is deleted) |
 | `resources/js/app.js` | boot sequence — the order of every `register()` call |
 | `resources/css/app.css` | `@import` list; the order IS the cascade |
 | `resources/js/core/**` | locked interfaces, read by every package |
@@ -125,7 +141,8 @@ Send a patch in your report; do not commit these yourself.
 | `vite.config.js`, `package.json`, `composer.json` (+ locks) | build and dependencies |
 | `phpunit.xml`, `vitest.config.js`, `playwright.config.js` | test gates |
 | `config/auraai.php` | core config (per-domain configs have owners) |
-| `CLAUDE.md`, `README.md`, `.gitignore` | project contract |
+| `.gitignore` | project contract |
+| `CLAUDE.md`, `README.md`, `docs/**` | contract + docs. A **dedicated docs agent** owns these during a wave; feature packages still do not edit them — put doc changes in your report. |
 | `database/migrations/**` (existing) | nobody edits an existing migration; add your own new one |
 
 Ownership check before every merge:
@@ -140,6 +157,17 @@ git diff --name-only feat/auraai...feat/auraai-p<N>
 ## 4. Locked interfaces (18)
 
 Signatures below are frozen. A change goes through the integrator and gets written here first.
+
+**Re-verified 2026-07-31 — all 18 still hold as written.** Spot checks that were run:
+`core/api.js` exports `ApiError`/`codeForStatus`/`apiGet`/`apiSend`/`apiStream`; `core/store.js`
+exports `NS = 'aura.'`/`LEGACY_MAP`/`store`; `core/bus.js` exports `bus` with `on`/`once`/`emit`;
+`core/events.js` holds exactly the 21 events listed in §4.4; `core/screens.js` exports `SCREENS`
+(9 entries), `SCREEN_LABELS`, `SCREEN_ICONS`, `DEFAULT_SCREEN = 'dnes'`, `normalizeScreen`;
+`markdown.js` exports `mdToHtml(src, opts = {})`; `app/Llm/ChatProvider.php` declares
+`chat`/`stream`/`embed`/`health`/`name`; `tests/Support/FakeProvider.php` present;
+`RecallEngine::recall(string, int = 12, ?string = null)` and `::search(string, int = 12)`;
+`SimilarityService::warmCorpus/score/topSimilar`; `tests/snapshots/**` populated with
+`*.json` + `*.shape.json` pairs; `POST /api/chat/stream` wired to `ChatStreamController`.
 
 ### 4.1 `core/api.js` — #1
 
@@ -273,8 +301,9 @@ them changes specificity.
 
 `app.blade.php` holds only `<head>` + `@vite(...)` + `@include`s; each partial has exactly one
 owner and its `id`/`aria-*` attributes are carried over from the monolith unchanged. Route `/`
-currently still renders `mind.blade.php`; switching it to `app.blade.php` is an integrator step
-(see §7).
+**renders `app.blade.php`** (`routes/web.php`: `Route::get('/', fn () => view('app'))`) and
+`mind.blade.php` has been deleted — the integrator step is done. Eight destinations are
+`#screen-<name>` sections; `graf` is the `<canvas id="mind">` beneath the shell.
 
 ### 4.10 `mdToHtml` — #10
 
@@ -323,8 +352,25 @@ whitelist that used to be duplicated is gone. DOM conventions it implies: the se
 
 ## 6. Working rules
 
-- **Tests are the gate.** `php artisan test` must stay green with 0 skipped, `npx vitest run` and
-  `npx playwright test` green, before every commit.
+- **Tests are the gate.** `php artisan test` must stay green with 0 skipped (467 today),
+  `npx vitest run` (370) and `npx playwright test` green, before every commit. **Take your own
+  schema first** (`sh scripts/test-db.sh <suffix>`, then `-e DB_DATABASE=auraai_test_<suffix>`)
+  whenever another agent might be testing at the same time — see §1 for why.
+- **The three destructive maintenance jobs stay off.** `mind:cleanup-edges`,
+  `mind:prune-coactivation` and `mind:automerge` are gated behind
+  `config('maintenance.destructive_enabled')` ← `AURAAI_DESTRUCTIVE_JOBS`, fail-safe `false`
+  (`config/maintenance.php`; `auraai.destructive_jobs_enabled` remains a fallback reading the same
+  env var). They irreversibly delete edges and merge nodes **over a single copy of the memory**,
+  and their thresholds (automerge 0.92, prune 0.08, cleanup weight < 1.0 & older than 90 days) are
+  calibrated for TF-IDF — on embeddings the same numbers mean something else entirely
+  (decision #32). **Turning them on requires, in order:** (1) `aura:dry-run` over live data,
+  (2) `aura:calibrate` for the threshold sweep, (3) recalibrated thresholds, (4) the user's
+  explicit approval after reading the report. No package and no `.env.example` may flip it.
+  Both read-only commands verify afterwards that node and edge counts did not change.
+  Control counts — if any of these drops, something destructive ran and it must be reported:
+  **nodes ≥ 704, edges ≥ 2 081, activations ≥ 6 467** (measured 2026-07-31: 709 / 2 170 / 6 563).
+- **`aura:sync-runs-prune` only rotates the `sync_runs` audit table**, never knowledge data, and
+  catching up historical no-op rows needs an explicit `--purge-noop` (decision #36).
 - **Three attempts rule.** Three failures on the same error → stop, summarise, escalate. Do not
   keep grinding and do not delete anything; the branch stays as it is.
 - **Never run a destructive DB operation autonomously** (drop, truncate, delete). Backup +
@@ -350,18 +396,56 @@ whitelist that used to be duplicated is gone. DOM conventions it implies: the se
 
 ---
 
-## 7. Open items handed to the integrator after W0
+## 7. Open items — status after W2
 
-1. Route `/` still renders `mind.blade.php`. `app.blade.php` + `partials/**` exist in the tree
-   (built in parallel with the module split) but are not wired to the route yet — switch it once
-   the partials are diffed against the monolith screen by screen.
-2. `core/screens.js` lists `chat` and `eshop`. `chat` is interface #16 as specified; **`eshop` is
-   not in the spec catalogue** and needs a product decision before P9/P10 build a destination for it.
-3. `api.js` exists but the ~26 raw `fetch()` call sites are untouched (see §4.1) — 429/401 still
-   surface as an empty response in existing code. Each FE package migrates its own calls.
-4. `graph/canvas-colors.js` still holds the `THEMES` literal (`TODO(P7)`).
-5. Dead code moved verbatim, not deleted: `dock/search.js` (`renderSearch` has no caller and no
-   `#search-results` markup) and `graph/timeline.js` (`setupTimeline` has no caller, no `#tl-range`
-   markup). W0 does not delete what recon did not confirm dead — P8/P9 decide.
-6. `resources/css/**` still contains raw hex outside `tokens.css`/`dark.css` (inherited from the
-   monolith). Stylelint config + baseline is P9's first task.
+Closed since W0 (verified in the code on 2026-07-31, do not re-report these):
+
+1. ~~Route `/` renders `mind.blade.php`.~~ **Done.** `routes/web.php` has
+   `Route::get('/', fn () => view('app'))` and `mind.blade.php` is deleted — `resources/views/`
+   contains only `app.blade.php` + `partials/`.
+2. ~~`eshop` needs a product decision.~~ **Done.** `partials/screens/eshop.blade.php`,
+   `routes/eshop.php` and `app/Services/Sperky/**` (client, aggregator, order scanner, currency,
+   domain answerer) all exist. MCP tools `aura_shop_orders` / `aura_shop_products` ship behind
+   `AURAAI_MCP_SHOP_TOOLS`, default **off**.
+4. ~~`graph/canvas-colors.js` holds the `THEMES` literal.~~ **Done** — it reads CSS custom
+   properties; the `TODO(P7)` is gone.
+5. ~~`dock/search.js` dead code.~~ **Done** — the file is deleted (`resources/js/dock/` is
+   `duplicates.js`, `pack.js`, `stats.js`, `structure.js`). `graph/timeline.js` was the opposite
+   call: it was **kept and wired**, `setupTimeline()` now has a caller in the same module.
+6. ~~Raw hex outside `tokens.css`/`dark.css`.~~ **Done** — `npm run lint:css` (stylelint) guards
+   it; the two remaining matches are hex mentioned inside comments, not literals.
+
+Still open:
+
+3. **`api.js` migration is partial.** `resources/js/**` still contains **20 raw `fetch()` calls**
+   (down from ~26). In those call sites 429/401 still surface as an empty response instead of an
+   `ApiError`. Each FE package migrates its own calls when it next touches that screen or panel —
+   this is behaviour change, so it needs a test.
+7. **Port 8082 is temporary.** Hades keeps 8080 as the live read-only fallback until AuraAI has
+   proven itself; switching to the final port is the last step of the sprint and touches
+   `docker-compose.yml` (integrator).
+8. **`docker/Caddyfile` still carries a plaintext MCP token** and therefore stays an uncommitted
+   local modification until the token moves into env (§6).
+9. **Destructive job thresholds are still TF-IDF-calibrated** and the jobs stay off until the
+   dry-run/calibrate → approval sequence in §6 completes.
+
+---
+
+## 8. Rules for a future session
+
+Read in this order: this file (§3 ownership, §4 locked interfaces, §6 rules) →
+`docs/zlozkovanie.md` for where code lives and how ingest flows → `docs/dizajn.md` before any
+CSS or UI work → `docs/BENCHMARK-LLM.md` before changing a model or a prompt.
+
+- Verify the app is up and the logs are clean before starting: `curl localhost:8082/up`,
+  `docker compose logs -f app`.
+- **Never touch Hades on port 8080** — read-only archive, separate compose project, separate
+  volume (`hades_dbdata`). AuraAI's data lives in `auraai_dbdata`.
+- **Never write documentation you have not verified against the code.** Every claim in `README.md`
+  and in `docs/**` was checked against a file, a config value or a query — keep it that way.
+  A doc that lies is worse than no doc.
+- Do not print secret values (tokens, keys, passwords) into chat, logs, commits or Hades, not even
+  partially. Reading `.env` is fine.
+- Slovak for comments and UI strings, English for identifiers and commit messages.
+- Three failures on the same error → stop, write it down, escalate. Delete nothing.
+- Findings outside your scope: flag them, do not widen the package.

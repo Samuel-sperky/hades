@@ -22,7 +22,7 @@ import { setLocal, clearLocal } from './graph/local.js';
 import { isAwake } from './graph/awake.js';
 import { loadGraph } from './graph/loader.js';
 import { connectWs } from './graph/ws.js';
-import { computeReplayBounds } from './graph/timeline.js';
+import { computeReplayBounds, register as registerTimeline } from './graph/timeline.js';
 import { updateStateUi } from './shell/status-chip.js';
 
 import { register as registerAmbient } from './shell/ambient.js';
@@ -66,6 +66,10 @@ async function boot() {
     registerSettings(root);
     registerFilters(root);
     registerCertFilter(root);
+    // Časová os: markup (#tl-range) aj CSS aj testy existujú, ale register() sa nikdy
+    // nevolal — importoval sa len computeReplayBounds. Slider bol teda v UI, mal
+    // aria-label a nič nerobil.
+    registerTimeline(root);
     registerViewSwitch(root);
     registerRail(root);
     registerDock(root);

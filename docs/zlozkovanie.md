@@ -16,7 +16,9 @@ app/
   Events/MindPulse.php      pulzy na public kanál (canvas ich kreslí)
   Http/Controllers/**       API + MCP; controller nič nepočíta, len volá službu
   Http/Middleware/**        auth token, MCP bearer, throttle
-  Llm/**                    ChatProvider + Ollama/Anthropic/Null provider + DTO (P5)
+  Llm/**                    ChatProvider + Ollama/Anthropic/Null/Recording provider
+                            + DTO + ProviderFactory (P5). Beží sa na Ollame; Anthropic
+                            provider existuje, ale konfigurácia ho nepoužíva.
   Mcp/**                    MCP server (aura_* tooly, mind_* aliasy)
   Models/**                 Eloquent: Node, Edge, Activation, Area, Department, Tag,
                             Decision, Tombstone, SyncRun, BrainSource
@@ -28,6 +30,8 @@ app/
     Maintenance/**          nočná údržba: rewire, decay, dry-run (P2)
     Recall/**               RecallEngine — lexikálna + vektorová vetva (P1)
     Similarity/**           TF-IDF korpus a skórovanie (P1)
+    Sperky/**               SPERKY e-shop: klient, agregátor, sken objednávok,
+                            mena, doménový odpovedač (routes/eshop.php)
     ClaudeMemoryIngestService.php   Claude memory .md → memory uzly
     GraphService.php · SearchService.php · NodeMarkdownResolver.php
     MindService.php · SimilarityService.php · SummaryService.php
@@ -51,14 +55,16 @@ literály smú byť len v `css/tokens.css` a `css/dark.css`.
 
 ```
 resources/
-  views/mind.blade.php · views/app.blade.php · views/partials/**
+  views/app.blade.php · views/partials/**   ⟵ route '/' renderuje app.blade.php
+                                             (mind.blade.php už neexistuje)
   js/app.js                 boot poradie (jediné miesto, kde sa volá register())
   js/core/**                api.js, store.js, bus.js, events.js, state/** (zamknuté rozhrania)
   js/graph/**               canvas: render/**, physics, interaction, data
   js/shell/** js/dock/** js/node/**   rail, header, dock, nastavenia, panely
   js/chat/** js/screens/** js/charts/**
   css/app.css               @import list — jeho poradie JE kaskáda
-  css/{tokens,dark,responsive}.css + css/{base,components,shell,graph,chat,screens,dock}/**
+  css/{tokens,dark,responsive,mobile,charts}.css
+                            + css/{base,components,shell,graph,chat,screens,dock}/**
 ```
 
 ### 1.3 Testy a dokumentácia
@@ -66,7 +72,9 @@ resources/
 ```
 tests/Unit/**            čisté funkcie (bez DB) — parser, guard, frontmatter, scanner
 tests/Unit/Ingest/**     parser transcriptov, heuristika titulku, brána návrhov modelu
-tests/Feature/**         proti REÁLNEJ MariaDB (auraai_test), RefreshDatabase
+tests/Feature/**         proti REÁLNEJ MariaDB, RefreshDatabase. Vlastnú schému dá
+                         `sh scripts/test-db.sh <sufix>` → auraai_test_<sufix>; bez nej
+                         si dva paralelné behy rozbijú migrácie
 tests/Support/**         FakeProvider (#12), Ingest/BuildsTranscripts (fixtúry transcriptov)
 tests/snapshots/**       payload kontrakty API — zmena tvaru = padajúci test
 tests/js/** tests/e2e/**  Vitest + Playwright
@@ -293,10 +301,20 @@ zabudovaný slovenský default.
 | denne 03:50 | `mind:reorganize` |
 | denne 04:05 | `aura:rewire` (A3–A11, najťažší) |
 | denne 04:20 | `mind:decay` |
+| denne 04:35 | `aura:embed` (vektory pre uzly vzniknuté cez deň, ~586 uzlov/min) |
 | denne 04:55 / 05:05 | `mind:sync-memory` / `mind:export-memory` |
+| denne 05:30 | `aura:sync-runs-prune` (rotácia auditu `sync_runs`, nikdy dáta vedomia) |
 | nedeľa 04:00 | `mind:digest` (uzol do Súhrnov, label `W/o`) |
 | nedeľa 05:15 | `mind:rollup` (projektové roll-upy) |
 | 1. deň mesiaca 04:30 | `mind:archive-old` |
+
+`mind:decay` je jediný job, ktorý sieť **oslabuje**, a jeho reálny záber je dnes malý:
+uzly `strength = max(1.0, strength * 0.97)` len ak nie sú `pinned`, nie sú typu `core`,
+**majú `source`** a boli neaktívne > 14 dní; hrany `weight = max(0.5, weight * 0.95)`
+pre `auto` hrany neaktívne > 30 dní. Filter `source IS NOT NULL` vylučuje 583 zo 709
+uzlov (manuálne fakty a uzly z MCP majú `source = null`) a 593 uzlov je už na podlahe
+1.0 — oprávnené sú tak práve teraz 4 uzly. Detaily v `README.md`, sekcia
+„Zabúdanie (decay)".
 
 **Deštruktívne joby** (`mind:cleanup-edges`, `mind:prune-coactivation`,
 `mind:automerge`) sú **vypnuté** — zaradia sa až keď

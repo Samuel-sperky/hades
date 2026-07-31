@@ -1,6 +1,9 @@
 <?php
 
-use App\Models\User;
+// POZOR: appka nemá auth flow — `config('auth.*')` nečíta ani jeden riadok kódu
+// (app/, routes/, tests/). Skeletonový model `App\Models\User` bol zmazaný ako mŕtvy
+// kód, preto tu už na neho nie je odkaz. Súbor zostáva, aby ho Laravel našiel, keby
+// sa auth niekedy zapol; vtedy doplň `AUTH_MODEL` do .env alebo vráť model späť.
 
 return [
 
@@ -64,7 +67,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', User::class),
+            'model' => env('AUTH_MODEL'),
         ],
 
         // 'users' => [

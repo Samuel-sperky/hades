@@ -103,7 +103,10 @@ Jeden zdroj pravdy pre hustotu. Predvolená škála je „cozy" (`:root`). Rozho
 
 - `--chart-h: clamp(220px, 34vh, 380px)`, `--chart-h-sm`, `--chart-h-lg` — hlavný graf
   sa vždy zmestí do prvého foldu. Utility `.chart-box`, `.chart-box-sm`, `.chart-box-lg`.
-  **Koniec `height="60"` v markupe.**
+  **Žiadne pevné výšky SVG grafov v markupe** — výšku dáva `.chart-box`, nie atribút.
+  Výnimka je `<canvas>`: atribúty `width`/`height` tam určujú rozlíšenie bitmapy, nie
+  layout, takže `partials/dock.blade.php` má legitímne `<canvas id="growth-chart"
+  width="248" height="60">`. Pri canvase je to správne; pri SVG to je dlh.
 - Elevation: pôvodná `--elev-1..3` ladder (s inset rimom) **aj** rodinné
   `--shadow-sm/md/lg/pop/gold`. Nové komponenty používajú `--shadow-*`.
 - Motion: `--dur-fast/base/slow/ambient` + `--ease`; rodinné `--transition`
@@ -328,12 +331,23 @@ kaskády a nepotrebuje ani jeden `!important` na prebitie komponentových šíro
 
 ## 10. Známy dlh
 
-- **Fonty nie sú vendorované** — `partials/head.blade.php` stále načítava
-  `fonts.googleapis.com`, takže appka **nie je offline-ready** (akceptačné kritérium 10).
-  Blokované na `package.json` (zdieľaný súbor) — presný postup je v `W2-P9-REPORT.md`.
-  Dôsledok pri odpojenom internete: Material Symbols nemá fallback a ikony sa vykreslia
-  ako textové názvy (`wb_sunny`, `hub`).
-- `graph/canvas-colors.js` má ešte vlastný `THEMES` objekt namiesto čítania CSS custom
-  properties (rozhodnutie #62, `TODO(P7)`).
+Vyriešené (overené v kóde 31. 7. 2026 — nehláste to znovu):
+
+- ~~Fonty nie sú vendorované.~~ **Vendorované sú** (rozhodnutie #142, akceptačné
+  kritérium 10). `resources/css/base/fonts.css` je aktívny, v `resources/views/`ani
+  `resources/css/` nie je jediný request na `fonts.googleapis.com` / `fonts.gstatic.com`
+  a Vite hashuje `.woff2` do `public/build/assets/` (Geist, Geist Mono, Playfair Display,
+  Material Symbols Rounded subset). Licencie sú v `resources/fonts/`. Appka **je**
+  offline-ready.
+- ~~`graph/canvas-colors.js` má vlastný `THEMES` objekt.~~ **Číta CSS custom properties**;
+  `THEMES` literál aj `TODO(P7)` sú zmazané. Zostal len komentár o hex parite s pôvodným
+  literálom (canvas berie oboje).
+
+Stále otvorené / zámerné:
+
 - Density škály `comfortable` / `compact` sú definované, ale nemajú UI vstup —
   zámerne (#59). Prepínač by bol over-engineering.
+- „Žiadny raw hex" mimo `tokens.css` a `dark.css` stráži `npm run lint:css` (stylelint).
+  Dnes je čistý: jediné zvyšné výskyty `#…` v `resources/css/**` sú **v komentároch**
+  (`base/fonts.css`, `screens/decisions.css`) — nie sú to literály.
+- `tokens.css` definuje **228 tokenov**. Pri pridávaní platí zásada 6: dopĺňať, neprepisovať.
