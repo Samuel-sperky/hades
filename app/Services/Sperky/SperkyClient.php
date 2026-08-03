@@ -769,8 +769,10 @@ class SperkyClient
     }
 
     /**
-     * `values` variantu. Tvar sa môže líšiť (zoznam objektov aj mapa
-     * skupina→hodnota), takže sa normalizuje na `[{group, value}]`.
+     * `values` variantu. Overené na produkte 49: je to PLOCHÝ zoznam reťazcov
+     * (`["Oranžová - Žltá"]`) — názov atribútovej skupiny API neposiela, takže
+     * `group` zostáva `null` a nedopĺňa sa. Zoznam objektov aj mapu
+     * skupina→hodnota tiež prečítame, keby e-shop tvar niekedy rozšíril.
      *
      * @return list<array{group: ?string, value: ?string}>
      */

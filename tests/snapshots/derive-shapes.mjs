@@ -30,6 +30,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DICT_PATHS = new Set([
     'by_area',
     'projects',
+    // `heatmap.months` — kľúče sú POZIČNÉ OFFSETY stĺpcov heatmapy, hodnoty názvy
+    // mesiacov: dnes {"0":"aug","5":"sep",…}, v staršom snapshote {"1":…,"6":…}.
+    // Posúvajú sa s dátumovým rozsahom, takže bez zbalenia test hlási „zmizol
+    // kontraktný kľúč heatmap.months.49", hoci sa zmenil len dátum, nie tvar.
+    'months',
 ]);
 
 function shape(value, path = '') {

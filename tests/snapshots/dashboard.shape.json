@@ -25,19 +25,7 @@
   },
   "heatmap": {
     "months": {
-      "0": "string",
-      "1": "string",
-      "6": "string",
-      "10": "string",
-      "14": "string",
-      "19": "string",
-      "23": "string",
-      "27": "string",
-      "31": "string",
-      "36": "string",
-      "40": "string",
-      "45": "string",
-      "49": "string"
+      "*": "string"
     },
     "total": "number",
     "weeks": [

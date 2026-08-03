@@ -197,8 +197,14 @@ class PayloadShapeTest extends TestCase
      * `by_area` má ako kľúče ID oblastí, `projects` názvy projektov. Zámerne NIE
      * heuristika „všetky hodnoty rovnakého tvaru" — tá by zbalila aj pevné slovníky
      * `by_type` (core/memory/project/skill) a `counts`, ktoré kontraktom SÚ.
+     *
+     * `months` (v `heatmap`) pribudlo neskôr: jeho kľúče sú POZIČNÉ OFFSETY stĺpcov
+     * heatmapy a hodnoty názvy mesiacov — dnes `{"0":"aug","5":"sep",…}`, v pôvodnom
+     * snapshote `{"1":…,"6":…}`. Posúvajú sa s dátumovým rozsahom, takže test hlásil
+     * „zmizol kontraktný kľúč heatmap.months.49", hoci sa nezmenil tvar, len dátum.
+     * Kontraktom je tu tvar hodnoty, nie čísla kľúčov.
      */
-    private const DICT_PATHS = ['by_area', 'projects'];
+    private const DICT_PATHS = ['by_area', 'projects', 'months'];
 
     /** Rovnaká logika ako tests/snapshots/derive-shapes.mjs, prenesená do PHP. */
     private function shape(mixed $value, string $path = ''): mixed
