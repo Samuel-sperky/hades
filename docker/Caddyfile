@@ -5,6 +5,22 @@
 {
 	admin off
 	auto_https off
+
+	# Bez tohto Caddy PREPÍŠE `X-Forwarded-Proto: https` od cloudflared na `http`,
+	# lebo tunel sa naň pripája plain HTTP na :8095 — a hlavičkám od netrustnutého
+	# klienta neverí. Laravel potom vidí http, vygeneruje `http://` odkazy na
+	# assety na https stránke a prehliadač zablokuje celý Vite bundle ako mixed
+	# content: appka sa vonku otvorí ako neštýlované HTML s názvami ikon namiesto
+	# ikon. Trust je zúžený na privátne rozsahy, teda na Docker sieť, kde je jediný
+	# možný odosielateľ tunelový kontajner; appka sama je len na 127.0.0.1.
+	#
+	# POZOR: `trustProxies` na strane Laravelu toto NEVYRIEŠI. Tam sa rozhoduje,
+	# či hlavičke veriť, ale hlavička už musí dôjsť správna — a prepisuje ju Caddy.
+	# Overenie musí ísť cez celú cestu (curl na verejnú URL), nie na `app:8080`.
+	servers {
+		trusted_proxies static private_ranges
+		client_ip_headers Cf-Connecting-Ip X-Forwarded-For
+	}
 }
 
 # Jedno miesto s prihlasovacími údajmi. Predtým bol ten istý blok (aj ten istý
