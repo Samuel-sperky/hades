@@ -84,6 +84,32 @@ services:
       - app
       - reverb
 
+  # Verejný prístup cez Cloudflare Tunnel. Konektor beží v sieti projektu a mieri
+  # na `http://caddy:8095`, nie na localhost — appka tak zostáva za basic-auth
+  # Caddy a WebSocket ide tým istým tunelom ako HTTP (rovnaký dôvod ako pri
+  # ngroku, viď Caddyfile).
+  #
+  # QUICK TUNNEL (`--url`): URL je náhodná `*.trycloudflare.com`, mení sa pri
+  # každom restarte kontajnera a číta sa z `docker logs auraai-cloudflared-1`.
+  # Nepotrebuje token ani doménu.
+  #
+  # POJMENOVANÝ TUNEL (stabilná URL): vyžaduje zónu na Cloudflare nameserveroch
+  # a public hostname v Zero Trust dashboarde nastavený na službu
+  # `http://caddy:8095`. Prepnutie = `command: tunnel --no-autoupdate run` +
+  # `TUNNEL_TOKEN: "${TUNNEL_TOKEN:-}"` v environment. Token pre pojmenovaný
+  # tunel rodiny žije v `C:\Aura\aura-gateway\.env`, nie tu — jedna URL vie
+  # obsluhovať len jeden origin a rodina má ísť cez gateway.
+  #
+  # Zapnutie: docker compose --profile tunnel up -d cloudflared
+  # Vypnutie: docker compose --profile tunnel stop cloudflared
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: always
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --url http://caddy:8095
+    depends_on:
+      - caddy
+
   # Lokálny LLM — Ollama. Hostí malé modely (rozhodnutie #104): Qwen3-0.6B ako
   # router/vyhodnocovač, multilingual-e5-small na embeddingy, nemotron-mini 4B ako
   # eskalácia. Žiadny veľký model, žiadne platené API. Appka MUSÍ fungovať aj keď

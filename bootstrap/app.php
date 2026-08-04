@@ -46,6 +46,14 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Za Caddy a Cloudflare tunelom prichádza pôvodná schéma v X-Forwarded-Proto.
+        // Bez tohto Laravel považuje požiadavku za http, vygeneruje `http://` odkazy
+        // na `https` stránke a prehliadač zablokuje celý Vite bundle ako mixed
+        // content — appka sa vonku otvorí bez CSS a JS. Dôvera všetkým proxy je
+        // bezpečná preto, že appka je publikovaná len na 127.0.0.1, takže tieto
+        // hlavičky nemôžu prísť odinakiaľ než z reverzného proxy.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             // Bearer-token guard pre externé /api/v1/* (fail-closed).
             'auth.token' => App\Http\Middleware\AuthenticateApiToken::class,
