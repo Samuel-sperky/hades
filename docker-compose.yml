@@ -78,6 +78,12 @@ services:
       # Token pre /mcp bol predtým plaintextom priamo v Caddyfile (git-trackovaný).
       # Presunutý do .env; starý token treba považovať za kompromitovaný.
       MCP_QUERY_TOKEN: "${MCP_QUERY_TOKEN:-}"
+    # Bcrypt hash tunelového basic-auth hesla (rotovaný 4. 8. 2026, predtým sedel
+    # v git-trackovanom Caddyfile). Vlastný env súbor je nutnosť, nie štýl:
+    # hodnoty z `.env` compose interpoluje, takže `$2a$14$…` sa rozpadne na
+    # neexistujúce premenné a Caddy dostane prázdny hash. env_file ide surový.
+    env_file:
+      - docker/caddy.env
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:

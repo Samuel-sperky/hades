@@ -15,13 +15,16 @@
 # v prehliadači treba prepísať. HESLO SA NEMENÍ, bcrypt hash sa hashuje len z
 # hesla, nie z používateľského mena.
 #
-# TODO(integrátor): hash presunúť do `{$CADDY_BASIC_AUTH_HASH}`. Vyžaduje riadok
-# v `docker-compose.yml` (zdieľaný súbor) — presný patch je v reporte P4. Kým to
-# nie je, hash zostáva tu: je to bcrypt cost 12, nie plaintext, takže na rozdiel
-# od MCP tokenu (ten už v env je) nejde o priamo použiteľný secret.
+# Hash je v `.env` ako CADDY_BASIC_AUTH_HASH (gitignored). Predtým sedel priamo
+# tu, v git-trackovanom súbore, takže starý hash žije v histórii repa a treba ho
+# považovať za oslabený — bcrypt sa dá lámať offline a toto heslo je jediná brána
+# medzi internetom a dlhodobou pamäťou. Heslo bolo preto 4. 8. 2026 rotované.
+#
+# Fail-closed: ak premenná nie je nastavená, Caddy odmietne štartovať s prázdnym
+# hashom (chyba pri parsovaní), namiesto toho aby tunel nechal otvorený.
 (aura_auth) {
 	basic_auth {
-		aura $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+		aura {$CADDY_BASIC_AUTH_HASH}
 	}
 }
 
