@@ -1,5 +1,5 @@
 # Caddy reverzný proxy pre verejný (ngrok) prístup k Hadesovi.
-# Zlúči appku (8080) aj Reverb WebSocket (8081) na JEDEN port (8090),
+# Zlúči appku (8080) aj Reverb WebSocket (8081) na JEDEN port (8095),
 # takže jeden ngrok tunel prenesie aj HTTP aj živé pulzy. Chránené basic-auth.
 # Lokálny prístup na 127.0.0.1:8080 (priamo appka) toto NEobchádza a nemá heslo.
 {
@@ -8,20 +8,23 @@
 }
 
 :8095 {
-	# Heslo na verejný prístup (basic-auth). Meno: hades.
-	# Hash je bcrypt hesla "Aura-Hades-4271" — zmeniť = prehashovať a reštartnúť caddy.
-	basic_auth {
-		hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
-	}
-
-	# WebSocket (pusher protokol Reverbu beží na ceste /app/<key>) → Reverb
+	# WebSocket (pusher protokol Reverbu beží na ceste /app/<key>) → Reverb.
+	# POZOR: BEZ basic_auth — prehliadač nedokáže poslať Authorization hlavičku
+	# pri WebSocket handshake, takže auth na /app/* vracia 401 a Pusher klient
+	# sa cyklicky reconnectuje (zahltí Caddy bcryptom aj artisan serve).
+	# Handshake aj tak vyžaduje REVERB_APP_KEY v ceste; UI/API ostáva za heslom.
 	@ws path /app /app/*
 	handle @ws {
 		reverse_proxy reverb:8081
 	}
 
-	# Všetko ostatné → Laravel appka
+	# Všetko ostatné → Laravel appka, chránené basic-auth (meno: hades).
+	# Zmena hesla: docker compose exec caddy caddy hash-password --plaintext '<nové>'
+	# → nahradiť hash nižšie a reštartnúť caddy. Heslo NIKDY nepísať do tohto súboru.
 	handle {
+		basic_auth {
+			hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+		}
 		reverse_proxy app:8080
 	}
 }

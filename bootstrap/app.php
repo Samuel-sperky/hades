@@ -20,7 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Za Caddy proxy (docker/Caddyfile) + ngrok tunelom appka dostáva požiadavky
+        // z proxy siete — bez dôvery X-Forwarded-* by Laravel generoval http://localhost
+        // URL (mixed content cez https tunel). Bezpečné: porty 8080/8095 sú bindnuté
+        // len na 127.0.0.1, takže k appke sa aj tak dostane iba lokálny proxy reťazec.
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
