@@ -40,6 +40,9 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
+    environment:
+      # Token pre /mcp cez tunel (docker/Caddyfile) — nastav v .env; prázdny = /mcp za basic_auth.
+      HADES_MCP_TOKEN: "${HADES_MCP_TOKEN:-}"
     ports:
       - "127.0.0.1:8095:8095"
     volumes:

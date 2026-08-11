@@ -18,6 +18,19 @@
 		reverse_proxy reverb:8081
 	}
 
+	# MCP endpoint pre Claude — BEZ basic_auth (MCP klient heslo neposiela),
+	# namiesto toho tajný token v query (?token=...). Token sa nastavuje v .env
+	# na hostiteľovi (HADES_MCP_TOKEN) a compose ho podá caddy kontajneru.
+	# Fail-closed: keď HADES_MCP_TOKEN nie je nastavený (prázdny), matcher
+	# nikdy nematchne a /mcp cez tunel ostáva za basic_auth ako všetko ostatné.
+	@mcp {
+		path /mcp
+		expression `{env.HADES_MCP_TOKEN} != "" && {http.request.uri.query.token} == {env.HADES_MCP_TOKEN}`
+	}
+	handle @mcp {
+		reverse_proxy app:8080
+	}
+
 	# Všetko ostatné → Laravel appka, chránené basic-auth (meno: hades).
 	# Zmena hesla: docker compose exec caddy caddy hash-password --plaintext '<nové>'
 	# → nahradiť hash nižšie a reštartnúť caddy. Heslo NIKDY nepísať do tohto súboru.
