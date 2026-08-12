@@ -130,9 +130,11 @@ class McpController extends Controller
                 'name' => 'mind_learn',
                 'description' => 'Store a significant new piece of knowledge in the mind: a skill the '
                     .'assistant demonstrated, an important fact/memory about the user, or a project. '
-                    .'Duplicates are merged automatically — call it freely. Use Slovak for personal '
-                    .'facts and projects, English for technical skill names. Only store significant '
-                    .'knowledge, never secrets (passwords, API keys, financial/health data).',
+                    .'A near-identical node is merged; a merely similar one is queued for human '
+                    .'review instead of being merged, and the response reports how many such '
+                    .'duplicate_candidates it raised. Use Slovak for personal facts and projects, '
+                    .'English for technical skill names. Only store significant knowledge, never '
+                    .'secrets (passwords, API keys, financial/health data).',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

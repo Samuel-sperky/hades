@@ -2,30 +2,41 @@
 
 namespace App\Console\Commands;
 
+use App\Models\MergeCandidate;
 use App\Models\Node;
 use App\Services\MindService;
 use App\Services\SimilarityService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 
 /**
- * D5/E7 — automatické zlúčenie takmer identických uzlov. Kandidáti sú NON-core,
- * NON-session uzly (source != 'session') rovnakého typu; pri kosínusovej
- * podobnosti >= 0.92 sa slabší uzol zlúči do silnejšieho. Session záznamy sa
- * NIKDY nezlučujú automaticky (majú vlastný archív cez mind:archive-old).
+ * D5/E7 — detekcia takmer identických uzlov.
+ *
+ * NEZLUČUJE. Od 12.8.2026 iba plní frontu merge_candidates a rozhodnutie
+ * necháva na človeku (`php artisan mind:duplicates`).
+ *
+ * Dôvod je meraný, nie opatrnícky. Dry-run z 31.7.2026 zistil, že najvyššie
+ * skórujúce páry (0,8994) neboli duplikáty, ale sesterské projekty. Živý beh to
+ * potvrdil: 26.7. o 04:45 tento príkaz nevratne pohltil „Súhrn týždňa 30/2026"
+ * do „Súhrn týždňa 29/2026" pri skóre 0,9258 — dva rôzne týždne. Kosínusová
+ * podobnosť spoľahlivo nájde uzly, ktoré SÚVISIA; nevie rozlíšiť, či sú tá istá
+ * vec, alebo dve susedné veci opísané rovnakým slovníkom.
+ *
+ * Kandidáti ostávajú NON-core a NON-session uzly rovnakého typu. Cross-type
+ * duplicity (rovnaký slug, iný type) zachytáva mind_learn cez
+ * MindService::findMergeCandidates.
  */
 class MindAutomerge extends Command
 {
-    protected $signature = 'mind:automerge';
+    protected $signature = 'mind:automerge {--threshold= : Prah kosínusovej podobnosti (default 0.92)}';
 
-    protected $description = 'Automaticky zlúči takmer identické uzly (skilly/fakty), nikdy nie session záznamy';
+    protected $description = 'Nájde takmer identické uzly a navrhne ich na zlúčenie (nezlučuje)';
 
-    /** Prah podobnosti pre automatické zlúčenie. */
     protected const THRESHOLD = 0.92;
 
     public function handle(SimilarityService $similarity, MindService $mind): int
     {
-        // kandidáti: ne-core, ne-session (source null alebo != 'session')
+        $threshold = (float) ($this->option('threshold') ?: self::THRESHOLD);
+
         $nodes = Node::query()
             ->where('type', '!=', 'core')
             ->where(function ($q) {
@@ -35,56 +46,39 @@ class MindAutomerge extends Command
 
         $similarity->warmCorpus($nodes);
 
-        $merged = 0;
-        $gone = []; // id => true pre už pohltené uzly
+        $proposed = 0;
+        $seen = 0;
 
-        // zlučujeme len uzly rovnakého typu
         foreach ($nodes->groupBy('type') as $group) {
             $group = $group->values();
             $n = $group->count();
 
             for ($i = 0; $i < $n - 1; $i++) {
-                $a = $group[$i];
-                if (isset($gone[$a->id])) {
-                    continue;
-                }
-
                 for ($j = $i + 1; $j < $n; $j++) {
-                    $b = $group[$j];
-                    if (isset($gone[$b->id])) {
+                    $score = $similarity->score($group[$i], $group[$j]);
+
+                    if ($score < $threshold) {
                         continue;
                     }
 
-                    $score = $similarity->score($a, $b);
-                    if ($score < self::THRESHOLD) {
-                        continue;
+                    $seen++;
+
+                    if ($mind->recordMergeCandidate(
+                        $group[$i],
+                        $group[$j],
+                        round($score * 100, 2),
+                        'cosine',
+                    )?->wasRecentlyCreated) {
+                        $proposed++;
                     }
-
-                    // slabší uzol sa zlúči do silnejšieho
-                    [$winner, $loser] = (float) $a->strength >= (float) $b->strength ? [$a, $b] : [$b, $a];
-
-                    $fresh = $mind->mergeNodes($loser->fresh(), $winner->fresh());
-                    $gone[$loser->id] = true;
-
-                    Log::info('automerge', [
-                        'loser' => $loser->id,
-                        'loser_label' => $loser->label,
-                        'winner' => $winner->id,
-                        'winner_label' => $winner->label,
-                        'score' => round($score, 4),
-                    ]);
-                    $merged++;
-
-                    if ($loser->id === $a->id) {
-                        break; // pohltený bol $a → von z vnútornej slučky
-                    }
-                    // pohltený bol $b → pokračuj s aktualizovaným winnerom ($a)
-                    $a = $fresh;
                 }
             }
         }
 
-        $this->info("Automerge: zlúčených {$merged} párov.");
+        $pending = MergeCandidate::pending()->count();
+
+        $this->info("Automerge: {$seen} párov nad prahom {$threshold}, {$proposed} nových návrhov. "
+            ."Vo fronte čaká {$pending}. Zobraz ich cez `php artisan mind:duplicates`.");
 
         return self::SUCCESS;
     }
