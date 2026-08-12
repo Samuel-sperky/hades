@@ -56,6 +56,11 @@ export function viewInsets() {
 // Okraje pre kameru: navyše uhnú otvorenému bočnému panelu, aby na úrovni uzla
 // nezakrýval susedov. Zámerne sa NEpoužívajú v targetBox() — layout tým zostáva
 // stabilný a pri otvorení panela sa hýbe len kamera, nie uzly.
+// Šírka, ktorú si otvorený bočný panel rezervuje, a základný okraj — čítané zo
+// tokenov, aby posun scény pri otvorení panela sedel aj po zmene rozmerov v CSS.
+export function panelReserve() { return cssPx('--panel-w', 300); }
+export function edgePx() { return cssPx('--edge', 16); }
+
 export function camInsets() {
     const ins = viewInsets();
     const open = ['node-panel', 'dock', 'pack-drawer'].some((id) => {
@@ -519,11 +524,6 @@ export function drawRadius(n, ent, invK) {
     if (ent.kind === 'dust') return 2.6 * invK;
     if (ent.kind === 'ctx') return 2.2 * invK;
     return nodeRadius(n) * (ent.mul || 1);
-}
-
-export function softRect(x, y, w, h, r) {
-    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); }
-    else ctx.fillRect(x, y, w, h);
 }
 
 /* ---------- legacy kotvy (pre nové uzly z WS / chatu pred prepočtom) ---------- */

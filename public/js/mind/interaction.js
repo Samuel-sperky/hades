@@ -2,7 +2,7 @@ import { emitFlows } from './anim.js';
 import { localSet, nodeVisible } from './filters.js';
 import { drawRadius } from './layout.js';
 import { cancelConnect, closeNodePanel, createEdge, selectNode } from './panels.js';
-import { requestDraw, visibleInReplay } from './render.js';
+import { graphActive, requestDraw, visibleInReplay } from './render.js';
 import { goInto, goUp } from './sim.js';
 import { S, canvas } from './state.js';
 import { $, esc } from './util.js';
@@ -75,6 +75,10 @@ export function setupInput() {
     canvas.addEventListener('mouseleave', () => { S.cursor.on = false; });
 
     window.addEventListener('mousemove', (e) => {
+        // Listener je na window (kvôli panu aj mimo plátna), takže mimo Grafu by
+        // pick() bežal nad 1027 uzlami a hover karta zamrznutého grafu by
+        // vyskakovala nad kartami dashboardu.
+        if (!graphActive()) { S.cursor.on = false; $('hover-card').classList.remove('show'); return; }
         S.cursor.sx = e.clientX; S.cursor.sy = e.clientY;
         S.cursor.on = !dragging;
         if (dragging) {
@@ -104,6 +108,7 @@ export function setupInput() {
     window.addEventListener('mouseup', (e) => {
         S._interacting = false;
         canvas.classList.remove('dragging');
+        if (!graphActive()) { dragging = false; return; }   // klik mimo Grafu nesmie vyberať uzly
         if (dragging && !moved) {
             const hit = pickTarget(e.clientX, e.clientY);
             if (S.connectFrom) {

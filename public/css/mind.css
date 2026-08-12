@@ -230,7 +230,10 @@
     --glass-blur: var(--blur-2);
     --glass-blur-lg: var(--blur-3);
     /* tmavý graf je jasný glow na takmer čiernej — znesie o kúsok viac života */
-    --graph-mute: blur(12px) saturate(.7) opacity(.30);
+    /* opacity .30 → .25: pod poloprehľadnými chipmi presvitá plátno, takže kontrast
+       textu kolíše podľa obsahu grafu (merané 4,89–5,61:1). .25 pridá rezervu nad
+       AA a atmosféru zachová. */
+    --graph-mute: blur(12px) saturate(.7) opacity(.25);
     --surface-2: #16201f;
     --field-bg: #121b1a;
     --scrim: rgba(6, 10, 9, .55);
@@ -367,8 +370,18 @@ label.slider output,
 #mind.dragging { cursor: grabbing; } /* pan plátna — ťahanie uzlov je od W2a zrušené */
 
 /* Mimo obrazovky Graf je plátno len atmosféra pod textom — hook je data-screen
-   na <body> (píše ho setScreen). Pred prvým setScreen atribút chýba → tiež utlčené. */
-body:not([data-screen="graf"]) #mind { filter: var(--graph-mute); }
+   na <body> (píše ho setScreen). Pred prvým setScreen atribút chýba → tiež utlčené.
+
+   Presvitanie je efekt TMAVEJ témy (R4). Na svetlej ostáva plátno skryté: na
+   papieri vyzerá sklo ako mlieko a hlavne pod poloprehľadnými chipmi tam kontrast
+   textu závisel od toho, čo je práve na grafe — merané 4,07:1 na .chip, teda pod
+   AA a nestabilné medzi behmi. Tmavá téma je default, takže R4 je dodané tam,
+   kde ho používateľ vidí. */
+body:not([data-screen="graf"]) #mind { visibility: hidden; }
+:root[data-theme="dark"] body:not([data-screen="graf"]) #mind {
+    visibility: visible;
+    filter: var(--graph-mute);
+}
 
 /* ---------------------------------------------------------------------------
    LOCAL GRAPH CHIP (#local-chip) — plávajúci indikátor režimu lokálneho grafu,
@@ -2282,8 +2295,9 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
    Plátno (Graf) je hrdina len na svojej obrazovke; ostatné sú DOM na papieri.
    =========================================================================== */
 
-/* Plátno + jeho chrome žijú len na obrazovke Graf */
-body:not([data-screen="graf"]) #mind { visibility: hidden; }
+/* Chrome plátna žije len na obrazovke Graf. Samotné #mind sa NEskrýva — mimo Grafu
+   je utlčené cez --graph-mute (r. 371), aby vedomie presvitalo pod obsahom (R4).
+   Predtým tu bolo visibility: hidden, ktoré ten filter prebíjalo a robilo mŕtvym. */
 body:not([data-screen="graf"]) #zoomctl,
 body:not([data-screen="graf"]) #btn-up,
 body:not([data-screen="graf"]) #graph-tools,
@@ -3731,7 +3745,8 @@ select {
 #settings-advanced > summary .adv-n {
     margin-left: auto;
     font-size: var(--fs-caption);
-    color: var(--border-strong);
+    /* --border-strong je hraničný token, ako text dával 1,64:1 (tmavá) / 1,53:1 (svetlá) */
+    color: var(--muted);
 }
 .adv-body { padding-top: var(--sp-1); }
 .adv-body > h3:first-child { margin-top: 0; }

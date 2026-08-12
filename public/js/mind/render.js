@@ -2,7 +2,7 @@ import { animLevel, birthScale, breatheFactor, dustDrift, easeInOut, flowCap, li
 import { drawEdges, drawRibbons, drawStubs } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
 import { screenToWorld } from './interaction.js';
-import { camInsets, computeLayout, drawRadius } from './layout.js';
+import { camInsets, computeLayout, drawRadius, edgePx, panelReserve } from './layout.js';
 import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.js';
 import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
 import { T, certColors } from './theme.js';
@@ -64,13 +64,14 @@ function entAlpha(n, ent, hl) {
     return a * S.dim;
 }
 
-export function draw() {
-    // W2a: API stavového stroja pre iné vlny (main.js prepisuje window.HADES, preto tu)
-    if (!S._navApi) {
-        S._navApi = 1;
-        window.HADES = Object.assign(window.HADES || {}, { go, currentPath, computeLayout });
-    }
+// API stavového stroja pre konzolu a testy. Publikuje sa z main.js na konci init(),
+// nie z draw() — tam to fungovalo len vďaka poradiu: keby draw() prebehol prvý,
+// _navApi by bolo 1 a priradenie window.HADES v main.js by go/currentPath zahodilo.
+export function publishNavApi() {
+    window.HADES = Object.assign(window.HADES || {}, { go, currentPath, computeLayout });
+}
 
+export function draw() {
     const targetDim = isAwake() ? 1 : 0.5;
     S.dim += (targetDim - S.dim) * 0.02;
     if (Math.abs(targetDim - S.dim) < 0.001) S.dim = targetDim;
@@ -755,23 +756,36 @@ export function setupVisibilityRepaint() {
     setupPanelDodge();
 }
 
-// Otvorenie bočného panela zmenší využiteľnú plochu (camInsets), ale doteraz sa
-// prefitovalo len pri resize okna — panel tak zakryl susedov zvoleného uzla.
-// Sledujeme prepínanie .hidden a scénu prefitneme; layout sa nemení, len kamera.
+// Otvorenie bočného panela zmenší využiteľnú plochu (camInsets), takže scéna sa mu
+// má uhnúť. Kameru ale NEfitujeme — fit by zahodil ručný pan/zoom a zrušil by
+// tween pri zanorení do uzla (panely.selectNode odkrýva panel ešte pred goInto).
+// Namiesto toho posunieme kameru len o polovicu rozdielu pravého insetu, čím sa
+// obsah odsunie spod panela a zoom aj rozbehnutá animácia zostanú nedotknuté.
 function setupPanelDodge() {
     const targets = ['node-panel', 'dock', 'pack-drawer']
         .map((id) => document.getElementById(id))
         .filter(Boolean);
     if (!targets.length) return;
 
+    const anyOpen = () => targets.some((el) => !el.classList.contains('hidden'));
+    let wasOpen = anyOpen();
     let queued = false;
+
     const obs = new MutationObserver(() => {
-        if (queued) return;
+        // graphActive() a stav panela testujeme SYNCHRÓNNE — keby sme čakali na
+        // rAF callback, samotné naplánovanie rAF by už bolo kreslenie mimo Grafu.
+        if (queued || !graphActive() || !S.nodes.length) return;
+        const open = anyOpen();
+        if (open === wasOpen) return;                 // iná class, nie otvorenie/zatvorenie
+        wasOpen = open;
         queued = true;
         requestAnimationFrame(() => {
             queued = false;
-            if (!S.nodes.length) return;
-            fitView();
+            // Posun berieme z šírky panela, nie z rozdielu insetov: pri zatváraní je
+            // panel už skrytý, takže camInsets() − viewInsets() by dalo nulu.
+            const shift = (panelReserve() + edgePx()) / 2;
+            S.cam.x += open ? -shift : shift;
+            requestDraw();
         });
     });
     for (const el of targets) obs.observe(el, { attributes: true, attributeFilter: ['class'] });

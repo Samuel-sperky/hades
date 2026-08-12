@@ -76,11 +76,6 @@ export function updateLocalChip() {
 
 /* ---------- filtre siete (typy / zdroje / oblasti) ---------- */
 
-export function filterActive() {
-    return S.filter.types.size > 0 || S.filter.sources.size > 0
-        || S.filter.areas.size > 0 || S.filter.tags.size > 0;
-}
-
 // Zdrojový kôš uzla pre filter: session / skill (playbook) / digest+archive / ručné
 export function sourceBucket(n) {
     if (n.source === 'session') return 'session';

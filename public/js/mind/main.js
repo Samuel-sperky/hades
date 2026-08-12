@@ -8,7 +8,7 @@ import { setupInput } from './interaction.js';
 import { setupPack } from './pack.js';
 import { buildLegend } from './panels.js';
 import { checkJournalUnread } from './rail.js';
-import { draw, fitView, frame, makeStars, requestDraw, resize, scheduleFrame, setupVisibilityRepaint } from './render.js';
+import { draw, fitView, frame, makeStars, publishNavApi, requestDraw, resize, scheduleFrame, setupVisibilityRepaint } from './render.js';
 import { setScreen } from './screens.js';
 import { setupHints, setupShortcuts } from './shortcuts.js';
 import { setView } from './sim.js';
@@ -97,6 +97,7 @@ async function init() {
     }, 1500);
 
     window.HADES = { S, draw, frame, setTheme, setFocus, fitView, setLocal, clearLocal };
+    publishNavApi();   // doplní go / currentPath / computeLayout
 
     scheduleFrame();
     setupVisibilityRepaint(); // návrat na tab → istý repaint (listener v render.js)

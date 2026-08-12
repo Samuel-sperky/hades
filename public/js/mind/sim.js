@@ -27,11 +27,6 @@ export function applyLayoutPositions(L) {
     }
 }
 
-// Spätne kompatibilný názov (volal ho buildSim; iné moduly ho neimportujú).
-export function applyViewPins() {
-    applyLayoutPositions(computeLayout());
-}
-
 /* ---------- normalizácia cieľa ---------- */
 
 function firstAreaId() {

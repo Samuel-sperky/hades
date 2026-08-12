@@ -8,7 +8,7 @@ import { cancelConnect, closeNodePanel, openCreateNode } from './panels.js';
 import { fitView, zoomBy } from './render.js';
 import { openNodeFromAnywhere, setScreen } from './screens.js';
 import { armKontrolaAction, disarmKontrolaBtn, kontrolaBtn, kontrolaMove, kontrolaNodeRef, kontrolaResolve, kontrolaState, kontrolaVerify } from './screens/kontrola.js';
-import { go, goUp, setView } from './sim.js';
+import { currentPath, go, goUp, setView } from './sim.js';
 import { S } from './state.js';
 import { showToast } from './toasts.js';
 import { $ } from './util.js';
@@ -44,7 +44,10 @@ export const MOUSE_HINTS = [
 function goLevel(level) {
     if (level === 'node') {
         if (S.selected) return go({ level: 'node', node: S.selected.id });
-        return go({ level: 'node' }); // bez vybraného uzla clampNav zhodí na oddelenie
+        // Bez vybraného uzla clampNav úroveň zhodí a kláves by ticho nerobil nič,
+        // hoci ho pomocník inzeruje — povedzme to používateľovi.
+        showToast('Najprv vyber uzol (klik alebo Ctrl+K)');
+        return currentPath();
     }
     const res = go({ level });
     if (res.level === level || level === 'map') return res;
