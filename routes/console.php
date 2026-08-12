@@ -74,6 +74,8 @@ $nightly('mind:automerge', '04:05');          // D5/E7 — zlúčenie takmer ide
 $nightly('mind:decay', '04:15');              // D2 — zabúdanie neaktívnych uzlov/hrán
 $nightly('mind:cleanup-edges', '04:25');      // A9 — prerušenie zabudnutých synapsií
 $nightly('mind:prune-coactivation', '04:35'); // prerezanie koincidenčného hairballu (skóre < 0.08)
+$nightly('mind:prune-tags', '04:40');         // A11 — tagy bez väzby na uzol
+$nightly('mind:prune-telemetry', '04:42');    // A12 — staré sync_runs a stopy po čítaní
 $nightly('mind:sync-memory', '04:45');        // Claude memory → Hades (PRIDÁVA uzly)
 $nightly('mind:export-memory', '04:55');      // Hades → Claude memory
 $nightly('mind:rewire', '05:10');             // A3 — backfill similarity synapsií (najťažší, POSLEDNÝ)
