@@ -13,7 +13,7 @@ import { setScreen } from './screens.js';
 import { setupHints, setupShortcuts } from './shortcuts.js';
 import { setView } from './sim.js';
 import { S } from './state.js';
-import { setTheme } from './theme.js';
+import { initialTheme, setTheme } from './theme.js';
 import { computeReplayBounds } from './timeline.js';
 import { applyOpts, isAwake, markAwake, renderBreadcrumb, setFocus, updateHeaderMetrics, updateStateUi } from './util.js';
 import { connectWs } from './ws.js';
@@ -33,7 +33,7 @@ function renderInitError() {
 }
 
 async function init() {
-    setTheme(localStorage.getItem('hades.theme') || 'light');
+    setTheme(initialTheme());
     resize();
     makeStars();
     window.addEventListener('resize', () => { resize(); requestDraw(); }); // rozmer sa zmenil → prekresli

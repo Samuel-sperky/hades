@@ -14,9 +14,16 @@
     --bg-rgb: 248, 244, 247;              /* paper #f8f4f7 */
     --bg: rgb(var(--bg-rgb));
     --panel-rgb: 255, 255, 255;           /* white surface */
-    --panel-alpha: 0.92;                  /* near-solid; glass-on-dark reads as milk on light */
-    --panel: rgba(var(--panel-rgb), var(--panel-alpha));
+    --panel-alpha: 0.92;                  /* slider-owned (applyOpts píše inline na :root) */
+    /* Efektívna alfa panelov: na svetlej 1 (sklo = mlieko), na tmavej sleduje slider.
+       --panel-alpha sa tu NEPREPISUJE, aby inline hodnota zo slidera ostala v hre. */
+    --panel-a: 1;
+    --panel: rgba(var(--panel-rgb), var(--panel-a));
     --panel-solid: rgb(var(--panel-rgb));
+    /* Sklo je vlastnosť tmavej témy — na svetlej žiadny backdrop blur */
+    --glass-blur-sm: none;
+    --glass-blur: none;
+    --glass-blur-lg: none;
     --surface-2: #fbf7f9;
     --field-bg: #fbf7f9;                  /* --surface-2, not a bg-alpha */
     --scrim: rgba(16, 29, 27, .32);       /* ink #101d1b @32%, not black */
@@ -41,7 +48,8 @@
     --accent-300: #05bcc4;                /* --accent2, light hover ink */
     --accent-400: #05bcc4;
     --accent: #03797e;                    /* --accent */
-    --accent-600: #05666a;                /* --accent-ink, pressed/darker */
+    --accent-600: #05666a;                /* pressed/darker accent FILL */
+    --accent-ink: var(--accent-600);      /* TEXT na akcentovom tinte (5.8:1 na --accent-soft) */
     --accent-rgb: 3, 121, 126;            /* JS-facing triplet: slider fill, msg.me, rings */
     --accent-soft: #d6f5f6;               /* --accent-soft, solid tint for active pills */
     --accent-softer: #eef9f9;             /* --accent-tint */
@@ -127,6 +135,11 @@
     --blur-2: blur(10px);
     --blur-3: blur(16px);
     --blur-scrim: blur(4px);
+    /* Utlčenie plátna mimo obrazovky Graf — blur rozotrie žhavé jadrá uzlov,
+       opacity ich stiahne k papieru. Hodnoty sú merané, nie odhadnuté: --muted
+       (najslabší text) nad NAJHORŠÍM pixelom utlčeného grafu drží 4.69:1 na
+       svetlej a 4.64:1 na tmavej — nad WCAG AA 4.5:1. Vyššia opacity to zhodí. */
+    --graph-mute: blur(12px) saturate(.5) opacity(.18);
 
     /* ---- motion ---- */
     --dur-fast: 150ms;
@@ -192,7 +205,14 @@
 :root[data-theme="dark"] {
     --bg-rgb: 14, 20, 19;                 /* dark paper, matches canvas T.paper */
     --panel-rgb: 19, 27, 26;
-    /* --panel-alpha stays slider-owned (applyOpts sets it inline on :root) */
+    /* --panel-alpha stays slider-owned (applyOpts sets it inline on :root);
+       sklo (poloprehľadné panely + backdrop blur) je zapnuté len tu, na tmavej */
+    --panel-a: var(--panel-alpha);
+    --glass-blur-sm: var(--blur-1);
+    --glass-blur: var(--blur-2);
+    --glass-blur-lg: var(--blur-3);
+    /* tmavý graf je jasný glow na takmer čiernej — znesie o kúsok viac života */
+    --graph-mute: blur(12px) saturate(.7) opacity(.30);
     --surface-2: #16201f;
     --field-bg: #121b1a;
     --scrim: rgba(6, 10, 9, .55);
@@ -212,6 +232,8 @@
     --accent-400: #05bcc4;
     --accent: #05bcc4;
     --accent-600: #03797e;
+    /* na tmavej je --accent-600 tmavý teal — ako TEXT by dal ~3.5:1, preto svieti */
+    --accent-ink: var(--accent-300);      /* 5.7:1 na --accent-soft nad tmavým panelom */
     --accent-rgb: 5, 188, 196;
     --accent-soft: rgba(5, 188, 196, .16);
     --accent-softer: rgba(5, 188, 196, .10);
@@ -322,6 +344,10 @@ label.slider output,
 }
 #mind.dragging { cursor: grabbing; }
 #mind.grabbing { cursor: grabbing; } /* ťahanie uzla (grab & fling) */
+
+/* Mimo obrazovky Graf je plátno len atmosféra pod textom — hook je data-screen
+   na <body> (píše ho setScreen). Pred prvým setScreen atribút chýba → tiež utlčené. */
+body:not([data-screen="graf"]) #mind { filter: var(--graph-mute); }
 
 /* ---------------------------------------------------------------------------
    LOCAL GRAPH CHIP (#local-chip) — plávajúci indikátor režimu lokálneho grafu,
@@ -472,12 +498,12 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     width: 72px;
     display: flex; flex-direction: column; align-items: center;
     padding: var(--sp-1) 0; gap: var(--sp-1);
-    /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur — GPU nerozmazáva pozadie
-       každý frame (plynulejšie), rail je čitateľnejší. Blur ostáva len na plávajúcich kartách. */
-    background: var(--panel-solid);
-    border: 1px solid var(--border);
+    /* VLNA W1: rail splýva s grafom — sklo (na svetlej plná plocha), hairline
+       namiesto rámu, žiadne tienidlo. Aktívny stav nesie akcent, nie výplň. */
+    background: var(--panel);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--line-soft);
     border-radius: var(--r-lg);
-    box-shadow: var(--elev-1);
     z-index: var(--z-chrome);
 }
 
@@ -499,7 +525,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     position: absolute;
     left: 8px; right: 8px; bottom: 0;
     height: 1px;
-    background: var(--border);
+    background: var(--line-soft);
 }
 #brand-core:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-md); }
 #brand-core.asleep {
@@ -524,7 +550,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     position: absolute;
     left: 8px; right: 8px; top: 0;
     height: 1px;
-    background: var(--border);
+    background: var(--line-soft);
 }
 
 #rail .rail-group button {
@@ -542,13 +568,10 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 #rail .rail-group button:hover { background: var(--hover-fill); color: var(--text); }
 #rail .rail-group button:active { background: var(--accent-soft); }
 #rail .rail-group button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-/* Active state — solid tint + inset teal ring, no additive glow */
-#rail .rail-group button.active {
-    color: var(--accent);
-    background: var(--accent-soft);
-    box-shadow: inset 0 0 0 1px var(--border-accent);
-}
-/* persistent left active-pill */
+/* Active state — len akcent (ikona + text + pill), bez výplne a bez prstenca */
+#rail .rail-group button.active { color: var(--accent); }
+#rail .rail-group button.active:hover { background: var(--hover-fill); }
+/* persistent left active-pill — jediný nosič aktívneho stavu */
 #rail .rail-group button.active::before {
     content: "";
     position: absolute;
@@ -599,11 +622,11 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     height: 44px;
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
-    /* FÁZA DE-CLUTTER: plná papierová farba namiesto blur (viď #rail). */
-    background: var(--panel-solid);
-    border: 1px solid var(--border);
+    /* VLNA W1: sklo + hairline, bez tienidla (viď #rail). */
+    background: var(--panel);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--line-soft);
     border-radius: var(--r-lg);
-    box-shadow: var(--elev-1);
     z-index: calc(var(--z-panel) - 1);
 }
 #app-header .h-left {
@@ -709,9 +732,9 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     top: calc(var(--edge) + 44px + var(--sp-1)); bottom: var(--edge);
     width: 300px;
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--line-soft);
     border-radius: var(--r-lg);
-    backdrop-filter: var(--blur-2);
+    backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-2);
     z-index: var(--z-panel);
     padding: var(--sp-2);
@@ -996,7 +1019,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     content: "";
     flex: 1;
     height: 1px;
-    background: var(--border);
+    background: var(--line-soft);
 }
 
 .pb-item {
@@ -1066,7 +1089,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     gap: var(--sp-2);
     font-size: var(--fs-small);
     padding: var(--sp-1) 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-soft);
 }
 .hist:last-child { border-bottom: none; }
 .hist .kind { color: var(--text); font-weight: var(--fw-medium); }
@@ -1102,7 +1125,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .sug-row {
     display: flex; align-items: center; gap: 10px;
     padding: var(--sp-1) 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-soft);
 }
 .sug-row:last-child { border-bottom: none; }
 .sug-label {
@@ -1167,10 +1190,12 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     display: flex; flex-direction: column; gap: var(--sp-0);
     padding: var(--sp-0);
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--line-soft);
     border-radius: var(--r-lg);
-    backdrop-filter: var(--blur-1);
-    box-shadow: var(--elev-1);
+    /* bez backdrop-filter zámerne: každá sklenená plocha nad živým plátnom je
+       samostatný compositing pass (merané: rail+header+zoomctl 60 fps vs.
+       rail+header 120 fps v softvérovom rendereri). Pri --panel-alpha 0.92
+       je priesvitnosť aj tak vizuálne nerozoznateľná od skla. */
     z-index: var(--z-chrome);
 }
 #zoomctl button {
@@ -1206,7 +1231,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     padding: var(--sp-1) var(--sp-1) var(--sp-1) 16px;
-    backdrop-filter: var(--blur-2);
+    backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-2);
     transition: border-color var(--dur-slow) var(--ease), box-shadow var(--dur-slow) var(--ease);
 }
@@ -1263,11 +1288,11 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     max-height: 44vh; overflow-y: auto;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-soft);
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     padding: var(--sp-2);
     margin-bottom: -1px;
-    backdrop-filter: var(--blur-2);
+    backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-2);
     display: flex; flex-direction: column; gap: var(--sp-1);
     animation: rise-fade var(--dur-base) var(--ease);
@@ -1351,7 +1376,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    backdrop-filter: var(--blur-2);
+    backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-1);
     animation: rise-fade var(--dur-base) var(--ease);
 }
@@ -1402,7 +1427,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     align-self: stretch;
     display: flex; flex-direction: column; gap: var(--sp-1);
     padding: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border-accent);
     border-radius: var(--r-md);
     box-shadow: var(--elev-1);
@@ -1465,7 +1490,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     border: 1px solid var(--border);
     border-radius: var(--r-md);
     padding: var(--sp-1) 12px var(--sp-1) 16px;
-    backdrop-filter: var(--blur-2);
+    backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-2);
     font-size: var(--fs-body);
     color: var(--text-secondary);
@@ -1503,7 +1528,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     border: 1px solid var(--border);
     border-radius: var(--r-md);
     padding: 10px 14px;
-    backdrop-filter: var(--blur-1);
+    backdrop-filter: var(--glass-blur-sm);
     box-shadow: var(--elev-tooltip);
     max-width: 240px;
     opacity: 0;
@@ -1538,7 +1563,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     padding: var(--sp-3);
-    backdrop-filter: var(--blur-3);
+    backdrop-filter: var(--glass-blur-lg);
     box-shadow: var(--elev-3);
     animation: rise-fade var(--dur-base) var(--ease);
 }
@@ -1549,7 +1574,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     gap: var(--sp-2);
     padding: var(--sp-1) var(--sp-0);
     font-size: var(--fs-body);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-soft);
 }
 .key-row:last-child { border-bottom: none; }
 .key-row .label, .key-row > span { color: var(--text-secondary); font-weight: var(--fw-regular); }
@@ -1586,12 +1611,12 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
-    backdrop-filter: var(--blur-3);
+    backdrop-filter: var(--glass-blur-lg);
     box-shadow: var(--elev-3);
     animation: rise-fade var(--dur-base) var(--ease);
     overflow: hidden;
 }
-#md-card .dock-head { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); }
+#md-card .dock-head { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line-soft); }
 #md-card h2 {
     color: var(--text);
     font-weight: var(--fw-semibold);
@@ -1657,12 +1682,12 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     color: var(--text-secondary);
     white-space: pre;
 }
-.md-body .md-hr { border: none; border-top: 1px solid var(--border); margin: var(--sp-2) 0; }
+.md-body .md-hr { border: none; border-top: 1px solid var(--line-soft); margin: var(--sp-2) 0; }
 
 #md-foot {
     display: flex; justify-content: flex-end;
     padding: var(--sp-2) var(--sp-3);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--line-soft);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1676,7 +1701,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     padding: var(--sp-2);
-    backdrop-filter: var(--blur-2);
+    backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-2);
     animation: rise-fade var(--dur-base) var(--ease);
 }
@@ -1832,7 +1857,7 @@ body.ambient #toasts {
 
 .record {
     display: block; width: 100%; text-align: left;
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-left: 2px solid var(--border-accent);
     border-radius: var(--r-md);
@@ -1857,7 +1882,7 @@ body.ambient #toasts {
 }
 /* Teal accent variant — active filter / selected tag */
 .tag--accent, .tag.active {
-    background: var(--accent-soft); color: var(--accent-600);
+    background: var(--accent-soft); color: var(--accent-ink);
     border-color: var(--border-accent);
 }
 .tag.muted { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
@@ -1868,7 +1893,7 @@ body.ambient #toasts {
 .chip.active {
     background: var(--accent-soft);
     border-color: var(--border-accent);
-    color: var(--accent-600);
+    color: var(--accent-ink);
     font-weight: var(--fw-semibold);
 }
 
@@ -1888,7 +1913,7 @@ body.ambient #toasts {
     content: "";
     flex: 1;
     height: 1px;
-    background: var(--border);
+    background: var(--line-soft);
 }
 #journal-list .day-head:first-child { margin-top: 0; }
 
@@ -2081,7 +2106,7 @@ body.ambient #toasts {
 
 .dup-card {
     display: flex; align-items: center; gap: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
     padding: 10px 12px;
@@ -2382,7 +2407,7 @@ body[data-screen="graf"] #screens { display: none; }
 .cmdk-input-row {
     display: flex; align-items: center; gap: var(--sp-1);
     padding: var(--sp-2);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-soft);
 }
 .cmdk-input-row .ms { color: var(--muted); }
 #cmdk-input {
@@ -2434,7 +2459,7 @@ body[data-screen="graf"] #screens { display: none; }
 .today-card {
     display: flex; flex-direction: column; gap: var(--sp-0);
     padding: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     box-shadow: var(--elev-1);
@@ -2496,7 +2521,7 @@ body[data-screen="graf"] #screens { display: none; }
     display: flex; flex-direction: column; gap: 2px;
     text-align: left;
     padding: var(--sp-1) var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
     color: var(--text);
@@ -2522,7 +2547,7 @@ body[data-screen="graf"] #screens { display: none; }
     width: 100%;
     padding: var(--sp-2);
     margin-bottom: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     box-shadow: var(--elev-1);
@@ -2559,7 +2584,7 @@ body[data-screen="graf"] #screens { display: none; }
     display: flex; flex-direction: column; gap: 6px;
     text-align: left;
     padding: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
     color: var(--text);
@@ -2632,7 +2657,7 @@ body[data-screen="graf"] #screens { display: none; }
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
-    backdrop-filter: var(--blur-2);
+    backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-2);
     z-index: calc(var(--z-panel) + 1);
     padding: var(--sp-2);
@@ -2727,7 +2752,7 @@ body[data-screen="graf"] #screens { display: none; }
 /* Návrh — skupiny s checkboxmi */
 .dir-suggest { display: flex; flex-direction: column; gap: var(--sp-2); }
 .dir-group {
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     padding: var(--sp-2);
@@ -2776,7 +2801,7 @@ label.check.dir-check.off { opacity: .5; }
 
 /* Náhľad smernice */
 .dir-preview-wrap {
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     box-shadow: var(--elev-1);
@@ -2786,7 +2811,7 @@ label.check.dir-check.off { opacity: .5; }
 .dir-preview-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--line-soft);
 }
 .dir-preview-head h2 { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); }
 .dir-actions { display: flex; gap: var(--sp-0); }
@@ -2812,7 +2837,7 @@ label.check.dir-check.off { opacity: .5; }
     display: flex; align-items: center; gap: var(--sp-2);
     text-align: left; width: 100%;
     padding: var(--sp-1) var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md); color: var(--text);
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
@@ -2908,7 +2933,7 @@ select {
 .dash-card {
     display: flex; flex-direction: column; gap: var(--sp-1);
     padding: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     box-shadow: none;                     /* flattened resting card */
@@ -2945,7 +2970,7 @@ select {
 .kpi-card {
     display: flex; flex-direction: column; gap: 2px;
     padding: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
 }
@@ -3167,7 +3192,7 @@ select {
     color: var(--muted);
     margin: var(--sp-3) 0 var(--sp-1);
 }
-.dtl-month::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.dtl-month::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
 .dtl > .dtl-month:first-child { margin-top: 0; }
 .dtl-item {
     position: relative;
@@ -3195,7 +3220,7 @@ select {
 .dtl-dot[data-origin="brain"] { background: var(--node-memory); }
 .dtl-card {
     display: flex; flex-direction: column; gap: var(--sp-0);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
     padding: 10px 12px;
@@ -3231,7 +3256,7 @@ select {
 .queue-item {
     display: flex; align-items: flex-start; gap: var(--sp-2);
     padding: var(--sp-2);
-    background: var(--panel-solid);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-left: 2px solid var(--border-strong);
     border-radius: var(--r-md);
@@ -3285,7 +3310,7 @@ select {
     display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2);
     margin-top: var(--sp-3);
     padding-top: var(--sp-2);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--line-soft);
     font-size: var(--fs-small); color: var(--muted);
 }
 .kbd-hints .kh { display: inline-flex; align-items: center; gap: var(--sp-0); }
