@@ -1,44 +1,16 @@
-import { S } from './state.js';
-import { T } from './theme.js';
-import { focusPass, syncSlider } from './util.js';
+/* ---------- sily (Obsidian forces) — zrušené vlnou W2c ----------
 
-/* ---------- sily (Obsidian forces) — efektívne predvolené podľa náhľadu ---------- */
+   d3 forceSimulation už neexistuje (S.sim = null, layout je deterministický v
+   layout.js), takže slidery Odpudzovanie / Vzdialenosť spojení / Sila spojení /
+   Gravitácia nič neovládali. Sú preto vyhodené z blade aj z controls.js a spolu
+   s nimi forceDefault() (rozhodoval sa podľa zrušeného S.view === 'net') aj
+   nodeAlphaMul() / edgeAlphaMul() (stmievanie si render/edges počítajú samy
+   z ent.dim). S.forces / FORCE_DEFAULTS ostávajú v state.js ako mŕtvy, nikým
+   nečítaný stav.
 
-export function forceDefault(key) {
-    const net = S.view === 'net';
-    return {
-        charge: net ? -120 : -42,
-        linkDistance: net ? 95 : 72,
-        linkStrength: 1,
-        gravity: 1,
-    }[key];
-}
+   syncForceSliders() zostáva ako no-op shim: volá ho sim.js (setView, buildSim),
+   ktorý je hotový a v tejto vlne sa nesmie prepisovať. */
 
-// Slidery síl ukazujú override, alebo efektívnu predvolenú hodnotu aktuálneho náhľadu
 export function syncForceSliders() {
-    document.querySelectorAll('input[data-force]').forEach((inp) => {
-        const k = inp.dataset.force;
-        const v = S.forces[k] != null ? S.forces[k] : forceDefault(k);
-        inp.value = v;
-        syncSlider(inp);
-    });
-}
-
-// pathNodes (voliteľné, len Vrstvy): uzly na vrstvovej ceste sa netlmia ako cudzie
-export function nodeAlphaMul(n, hl, pathNodes) {
-    let mul = 1;
-    if (hl && !hl.has(n.id) && !(pathNodes && pathNodes.has(n.id))) mul *= 0.18;
-    if (!focusPass(n)) mul *= 0.15;
-    // podlaha na SÚČINE (hover × focus) — tlmené uzly ostávajú čitateľné
-    return Math.max(T.nodeFloor, mul);
-}
-
-// pathSet (voliteľné, len Vrstvy): hrany vrstvovej cesty sa berú ako priame (netlmené)
-export function edgeAlphaMul(e, hl, anchor, pathSet) {
-    let mul = 1;
-    const onPath = (anchor && (e.source.id === anchor.id || e.target.id === anchor.id))
-        || (pathSet && pathSet.has(e));
-    if (hl && !onPath) mul *= 0.18;
-    if (!(focusPass(e.source) && focusPass(e.target))) mul *= 0.15;
-    return Math.max(T.edgeFloor, mul);
+    /* žiadne input[data-force] v DOM — nič na synchronizáciu */
 }

@@ -8,14 +8,16 @@ import { cancelConnect, closeNodePanel, openCreateNode } from './panels.js';
 import { fitView, zoomBy } from './render.js';
 import { openNodeFromAnywhere, setScreen } from './screens.js';
 import { armKontrolaAction, disarmKontrolaBtn, kontrolaBtn, kontrolaMove, kontrolaNodeRef, kontrolaResolve, kontrolaState, kontrolaVerify } from './screens/kontrola.js';
-import { setView } from './sim.js';
+import { go, goUp, setView } from './sim.js';
 import { S } from './state.js';
 import { showToast } from './toasts.js';
-import { $, setFocus } from './util.js';
+import { $ } from './util.js';
 
 export const SHORTCUTS = [
     ['Ctrl K / F / /', 'Hľadať (paleta)'],
-    ['1 / 2 / 3', 'Náhľad grafu: Mapa / Sieť / Vrstvy'],
+    ['1 / 2 / 3 / 4', 'Úroveň: Mapa / Oblasť / Oddelenie / Uzol'],
+    ['Enter', 'Zanoriť sa do zvoleného uzla'],
+    ['Esc / Backspace', 'O úroveň von'],
     ['D', 'Denník'],
     ['R', 'Štruktúra'],
     ['S', 'Prehľad'],
@@ -25,17 +27,29 @@ export const SHORTCUTS = [
     ['+ / −', 'Zoom'],
     ['0', 'Vycentrovať'],
     ['?', 'Tento pomocník'],
-    ['Esc', 'Zavrieť panely'],
 ];
 
 export const MOUSE_HINTS = [
     ['ťahanie', 'Posun plátna'],
-    ['ťahanie uzla', 'Presun uzla (mapa / sieť)'],
     ['koliesko', 'Zoom'],
-    ['klik na uzol', 'Detail'],
-    ['dvojklik na oblasť', 'Zaostrenie oblasti'],
-    ['Esc', 'Postupné zatváranie'],
+    ['klik na uzol', 'Detail + zanorenie'],
+    ['klik do prázdna', 'O úroveň von'],
 ];
+
+/* W2c: klávesy 1–4 skáču na úroveň zanorenia. go({level}) sám doplní chýbajúci
+   kontext z S.nav, ale keď ho nemá odkiaľ vziať (napr. „2" priamo z mapy),
+   clampNav by úroveň zhodil späť na mapu a kláves by nerobil nič. Preto pri
+   nedosiahnutom cieli dobehne setView(), ktorý vyberie najväčšiu oblasť /
+   oddelenie — jediný zvyšný dôvod, prečo shim setView ešte žije. */
+function goLevel(level) {
+    if (level === 'node') {
+        if (S.selected) return go({ level: 'node', node: S.selected.id });
+        return go({ level: 'node' }); // bez vybraného uzla clampNav zhodí na oddelenie
+    }
+    const res = go({ level });
+    if (res.level === level || level === 'map') return res;
+    return setView(level === 'area' ? 'net' : 'layers');
+}
 
 export let helpReturnFocus = null;
 
@@ -99,7 +113,9 @@ export function setupShortcuts() {
                 return;
             }
             if (S.local) { clearLocal(); return; }
-            if (S.focus.areaId) setFocus(null, null);
+            // W2c: posledný stupienok kaskády = O JEDNU úroveň von (predtým setFocus(null,null),
+            // čo skočilo z uzla/oddelenia rovno na mapu a stratilo kontext).
+            goUp();
             return;
         }
 
@@ -124,18 +140,24 @@ export function setupShortcuts() {
 
         // SK klávesnica: fyzické kódy číslic fungujú nezávisle od rozloženia
         switch (e.code) {
-            case 'Digit1': setView('map'); return;
-            case 'Digit2': setView('net'); return;
-            case 'Digit3': setView('layers'); return;
+            case 'Digit1': goLevel('map'); return;
+            case 'Digit2': goLevel('area'); return;
+            case 'Digit3': goLevel('dept'); return;
+            case 'Digit4': goLevel('node'); return;
             case 'Digit0': fitView(); return;
             case 'NumpadAdd': zoomBy(1.3); return;
             case 'NumpadSubtract': zoomBy(1 / 1.3); return;
         }
 
         switch (e.key) {
-            case '1': setView('map'); break;
-            case '2': setView('net'); break;
-            case '3': setView('layers'); break;
+            case '1': goLevel('map'); break;
+            case '2': goLevel('area'); break;
+            case '3': goLevel('dept'); break;
+            case '4': goLevel('node'); break;
+            // Backspace / Enter až tu — nad inputmi ich odfiltroval strážca vyššie
+            // a obrazovka Kontrola si ich zoberie skôr (jej blok je nad týmto).
+            case 'Backspace': e.preventDefault(); goUp(); break;
+            case 'Enter': if (S.selected) go({ level: 'node', node: S.selected.id }); break;
             case '/': case 'f': case 'F': e.preventDefault(); openCmdk(); break;
             case 'r': case 'R': openDock('structure'); break;
             case 's': case 'S': openDock('stats'); break;
@@ -167,7 +189,7 @@ export function setupShortcuts() {
 export const HINTS = [
     { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš obrazovky — Dnes, Denník, Graf a Knižnica. Hades sa otvorí na Dnes.' },
     { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
-    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Na obrazovke Graf klik na uzol otvorí detail. Dvojklik na oblasť ju zaostrí — Esc zaostrenie zruší.' },
+    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Na obrazovke Graf sa klikom zanoríš hlbšie — oblasť, oddelenie, uzol. Esc (alebo klik do prázdna) ťa vráti o úroveň von, klávesy 1–4 skočia priamo.' },
     { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, sieť, chat) a Pomocníka.' },
 ];
 

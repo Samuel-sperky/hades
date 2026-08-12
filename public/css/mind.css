@@ -364,8 +364,7 @@ label.slider output,
     cursor: grab;
     z-index: var(--z-canvas);
 }
-#mind.dragging { cursor: grabbing; }
-#mind.grabbing { cursor: grabbing; } /* ťahanie uzla (grab & fling) */
+#mind.dragging { cursor: grabbing; } /* pan plátna — ťahanie uzlov je od W2a zrušené */
 
 /* Mimo obrazovky Graf je plátno len atmosféra pod textom — hook je data-screen
    na <body> (píše ho setScreen). Pred prvým setScreen atribút chýba → tiež utlčené. */
@@ -717,34 +716,8 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 }
 #status-chip.awake .dot { background: var(--success); }
 
-/* ---------------------------------------------------------------------------
-   VIEW SWITCH (#view-switch) — segmented control, lives in the header flow
-   --------------------------------------------------------------------------- */
-#view-switch {
-    display: flex; gap: var(--sp-0); padding: 3px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-}
-#view-switch button {
-    border: none; background: none;
-    color: var(--muted);
-    border-radius: var(--r-sm);
-    padding: 3px 14px;
-    min-height: 26px;
-    font-size: var(--fs-body);
-    font-weight: var(--fw-medium);
-    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
-                box-shadow var(--dur-fast) var(--ease);
-}
-#view-switch button:hover { background: var(--hover-fill); color: var(--text); }
-#view-switch button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-#view-switch button.active {
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-weight: var(--fw-semibold);
-    box-shadow: inset 0 0 0 1px var(--border-accent);
-}
+/* VLNA W2c: #view-switch (Mapa / Sieť / Vrstvy) zmazaný — náhľady neexistujú,
+   graf má jednu scénu so štyrmi úrovňami. Nahradil ho #btn-up (na konci súboru). */
 
 /* ---------------------------------------------------------------------------
    DOCK + NODE-PANEL — shared white-glass primitive
@@ -2249,8 +2222,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
    CONNECT MODE — kurzor krížika počas ručného prepájania uzlov
    --------------------------------------------------------------------------- */
 #mind.linking,
-#mind.linking.dragging,
-#mind.linking.grabbing { cursor: crosshair; }
+#mind.linking.dragging { cursor: crosshair; }
 
 /* ---------------------------------------------------------------------------
    SUSEDIA V PANELI UZLA (.nb-row) — chip + tiché × na zrušenie spojenia
@@ -2313,7 +2285,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
 /* Plátno + jeho chrome žijú len na obrazovke Graf */
 body:not([data-screen="graf"]) #mind { visibility: hidden; }
 body:not([data-screen="graf"]) #zoomctl,
-body:not([data-screen="graf"]) #view-switch,
+body:not([data-screen="graf"]) #btn-up,
 body:not([data-screen="graf"]) #graph-tools,
 body:not([data-screen="graf"]) #header-metrics,
 body:not([data-screen="graf"]) #local-chip { display: none !important; }
@@ -3638,3 +3610,128 @@ select {
     min-height: 132px;
     align-content: center;
 }
+
+/* ===========================================================================
+   VLNA W2c — PREDVOĽBY V NASTAVENIACH, „POKROČILÉ", TLAČIDLO O ÚROVEŇ VON
+   =========================================================================== */
+
+/* ---- #btn-up — náhrada mŕtveho #view-switch, sedí pri breadcrumbe ----
+   Breadcrumb hovorí KDE si; tento gombík je jediná vec, ktorá tam chýbala:
+   akcia „von" bez klávesnice a bez klikania do prázdna. Na mape sa skryje
+   (util.syncUpButton) — tam nie je kam ísť. */
+#btn-up {
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; min-height: 26px;
+    padding: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: 16px;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease);
+}
+#btn-up:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent); }
+#btn-up:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* ---- Predvoľby (#presets) — 4 pomenované sady namiesto 30 slidrov ---- */
+#presets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-1);
+    margin-bottom: var(--sp-1);
+}
+#presets .preset {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    padding: var(--sp-1) 10px;
+    min-height: 46px;
+    text-align: left;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    color: var(--text-secondary);
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+#presets .preset .p-name {
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    color: var(--text);
+}
+#presets .preset .p-sub {
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    color: var(--muted);
+}
+#presets .preset:hover { border-color: var(--border-accent); background: var(--accent-softer); }
+#presets .preset:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#presets .preset.active {
+    background: var(--accent-soft);
+    border-color: var(--border-accent);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+}
+#presets .preset.active .p-name { color: var(--accent); font-weight: var(--fw-semibold); }
+
+.preset-state {
+    margin: 0 0 var(--sp-2);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+/* Ambient (celá obrazovka) je akcia, nie predvoľba — dostane obrys, aby sa
+   nepletla s predvoľbou „Ambient" priamo nad ňou a nečítala sa ako text. */
+#ambient-row { margin-top: var(--sp-2); }
+#ambient-row #btn-ambient {
+    width: 100%;
+    border: 1px dashed var(--border);
+    border-radius: var(--r-md);
+    color: var(--text-secondary);
+}
+#ambient-row #btn-ambient:hover { border-color: var(--border-accent); color: var(--accent); }
+
+/* ---- Pokročilé (<details>) — jednotlivé ovládače, zbalené pri starte ---- */
+#settings-advanced {
+    margin-top: var(--sp-2);
+    border-top: 1px solid var(--line-soft);
+}
+#settings-advanced > summary {
+    display: flex; align-items: center; gap: var(--sp-1);
+    list-style: none;
+    cursor: pointer;
+    padding: var(--sp-1) 0;
+    color: var(--muted);
+    border-radius: var(--r-sm);
+}
+#settings-advanced > summary::-webkit-details-marker { display: none; }
+#settings-advanced > summary::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 6px; height: 6px;
+    margin-left: 3px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform var(--dur-fast) var(--ease);
+}
+#settings-advanced[open] > summary::before { transform: rotate(45deg); }
+#settings-advanced > summary:hover { color: var(--text); }
+#settings-advanced > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#settings-advanced > summary .adv-title {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    font-weight: var(--fw-medium);
+}
+#settings-advanced > summary .adv-n {
+    margin-left: auto;
+    font-size: var(--fs-caption);
+    color: var(--border-strong);
+}
+.adv-body { padding-top: var(--sp-1); }
+.adv-body > h3:first-child { margin-top: 0; }

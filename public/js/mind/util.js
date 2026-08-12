@@ -1,5 +1,9 @@
 import { neighborsOf } from './anim.js';
 import { draw, requestDraw } from './render.js';
+// W2c: breadcrumb číta stav zo stavového stroja zanorenia. util.js ↔ sim.js je
+// cyklický import — obidve strany preto exportujú HOISTOVANÉ `function`
+// deklarácie (nie const arrow), inak by prvé volanie spadlo na ReferenceError.
+import { currentPath, go } from './sim.js';
 import { CORE_COLOR, S } from './state.js';
 import { T, THEMES } from './theme.js';
 
@@ -106,29 +110,54 @@ export function setFocus(areaId, departmentId) {
     draw();
 }
 
+// W2c: breadcrumb zvládne všetky ŠTYRI úrovne (Hades / oblasť / oddelenie / uzol).
+// Zdrojom pravdy je currentPath().crumbs zo sim.js, nie S.focus (ten pozná len
+// oblasť + oddelenie, takže na úrovni 'node' by posledný crumb chýbal).
+// go() volá renderBreadcrumb() po každom prechode sám.
 export function renderBreadcrumb() {
     const bc = document.getElementById('breadcrumb');
+    const p = currentPath();
+    syncUpButton(p);
     if (!bc) return;
-    const area = S.focus.areaId ? S.areas.get(S.focus.areaId) : null;
-    const dept = S.focus.departmentId ? S.departments.get(S.focus.departmentId) : null;
 
-    if (!area) {
+    const crumbs = p.crumbs || [];
+    if (crumbs.length < 2) {
+        // sme na mape — cesta je len „Hades", takže radšej tichý podtitul
         bc.innerHTML = '<span class="crumb-idle">živé vedomie</span>';
         return;
     }
 
-    let html = '<button type="button" class="crumb" data-bc="root">Hades</button><span class="sep">/</span>';
-    if (dept) {
-        html += '<button type="button" class="crumb" data-bc="area">' + esc(area.name) + '</button>'
-            + '<span class="sep">/</span><span class="current">' + esc(dept.name) + '</span>';
-    } else {
-        html += '<span class="current">' + esc(area.name) + '</span>';
-    }
-    bc.innerHTML = html;
+    bc.innerHTML = crumbs.map((c, i) => {
+        const sep = i ? '<span class="sep">/</span>' : '';
+        return sep + (i === crumbs.length - 1
+            ? '<span class="current">' + esc(c.label) + '</span>'
+            : '<button type="button" class="crumb" data-i="' + i + '">' + esc(c.label) + '</button>');
+    }).join('');
 
-    bc.querySelectorAll('.crumb[data-bc]').forEach((b) => {
-        b.onclick = () => setFocus(b.dataset.bc === 'area' ? area.id : null, null);
+    bc.querySelectorAll('.crumb[data-i]').forEach((b) => {
+        const c = crumbs[+b.dataset.i];
+        b.onclick = () => go({
+            level: c.level,
+            area: c.level === 'area' ? c.id : undefined,
+            dept: c.level === 'dept' ? c.id : undefined,
+            node: c.level === 'node' ? c.id : undefined,
+        });
     });
+}
+
+// W2c: #btn-up nahradil mŕtvy #view-switch — na mape nie je kam ísť, tak sa skryje.
+// Zároveň: prvý crumb je názov vedomia, takže pri zobrazenej ceste by statický
+// #brand-name písal „Hades / Hades / …". Kým je cesta viditeľná, brand ustúpi jej.
+function syncUpButton(p) {
+    const deep = !!(p.crumbs && p.crumbs.length > 1);
+    const up = document.getElementById('btn-up');
+    if (up) {
+        up.classList.toggle('hidden', p.level === 'map');
+        const parent = deep ? p.crumbs[p.crumbs.length - 2].label : 'Hades';
+        up.title = 'Späť na „' + parent + '" (Esc)';
+    }
+    const brand = document.getElementById('brand-name');
+    if (brand) brand.classList.toggle('hidden', deep);
 }
 
 export function markTreeActive() {
@@ -148,13 +177,8 @@ export function updateHeaderMetrics() {
     if (el) el.textContent = S.nodes.length + ' uzlov · ' + S.edges.length + ' spojení';
 }
 
-export function focusPass(n) {
-    if (!S.focus.areaId) return true;
-    if (n.type === 'core') return true;
-    if (n.area_id !== S.focus.areaId) return false;
-    if (S.focus.departmentId && n.department_id !== S.focus.departmentId) return false;
-    return true;
-}
+// W2c: focusPass() zmazaný — jediným čitateľom boli nodeAlphaMul/edgeAlphaMul
+// vo forces.js, ktoré nikto nevolal. Stmievanie ide výhradne cez ent.dim z layoutu.
 
 // Zvýraznená množina pri hover/select — cache podľa kotvového uzla
 export function highlightSet() {

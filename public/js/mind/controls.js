@@ -1,15 +1,14 @@
 import { reloadGraph } from './api.js';
 import { closeDock, dockOpen, openDock } from './dock.js';
 import { clearLocal, persistFilter, persistRelFilter } from './filters.js';
-import { syncForceSliders } from './forces.js';
 import { closeMdOverlay, openMdOverlay } from './md.js';
 import { closeCreateMode, closeNodePanel, createMode, createNode, fillDeptOptions, fillMoveSelects, openCreateNode, selectNode } from './panels.js';
 import { draw, fitView, makeStars, requestDraw, zoomBy } from './render.js';
 import { setScreen } from './screens.js';
 import { renderLibrary } from './screens/kniznica.js';
 import { toggleHelp } from './shortcuts.js';
-import { buildSim, kickSim, setView } from './sim.js';
-import { FORCE_DEFAULTS, OPT_DEFAULTS, S, canvas } from './state.js';
+import { buildSim, goUp, kickSim } from './sim.js';
+import { OPT_DEFAULTS, S, canvas } from './state.js';
 import { renderStructure } from './structure.js';
 import { setupCertTagFilter } from './tagfilter.js';
 import { setTheme } from './theme.js';
@@ -19,11 +18,85 @@ import { $, applyOpts, blip, busy, setOpt, syncSlider } from './util.js';
 // Knižnica — debounce timer filtra (jediné použitie je handler nižšie v setupControls).
 export let libraryTimer = null;
 
-export function setupControls() {
-    document.querySelectorAll('#view-switch button').forEach((b) => {
-        b.onclick = () => setView(b.dataset.view);
-    });
+/* ---------- W2c: pomenované predvoľby zobrazenia ----------
 
+   Panel Nastavení mal 30+ slidrov a prepínačov naraz — hlavný zdroj dojmu
+   „chaotické a neusporiadané". Predvoľba nastaví celú sadu jedným klikom;
+   jednotlivé ovládače ostávajú v zbalenej sekcii „Pokročilé".
+
+   Predvoľba pokrýva len vzhľad + pohyb + hustotu siete (S.opts, S.minWeight,
+   S.skeleton). ZÁMERNE nesiaha na tému, zvuk, chat, rozsah grafu ani na filtre
+   typov/zdrojov/vzťahov/značiek — to sú rozhodnutia používateľa o obsahu,
+   nie o tom, ako sieť vyzerá.
+
+   Aktívna predvoľba sa NEUKLADÁ; zisťuje sa spätne porovnaním hodnôt
+   (detectPreset). Ručný pohyb sliderom tak označenie zruší sám a vrátenie
+   hodnoty späť ho zase obnoví — bez tretieho zdroja pravdy. */
+export const PRESET_LABELS = { clean: 'Čisté', live: 'Živé', dense: 'Husté', ambient: 'Ambient' };
+
+export const PRESETS = {
+    // Čisté — minimum pohybu a spojení: len kostra, tvrdý filter váhy, tiché pozadie.
+    clean: {
+        life: 0, anim: 0.15, bg: 0.4, edgeAlpha: 0.35, glow: 0.6,
+        labelAlpha: 1, labelSize: 1, nodeScale: 1, panelAlpha: 1,
+        edgeSoftHover: true, sizeByDegree: false, minWeight: 2, skeleton: true,
+    },
+    // Živé — predvolený stav appky (= OPT_DEFAULTS + predvolený minWeight/skeleton).
+    live: {
+        life: 0.5, anim: 0.5, bg: 1, edgeAlpha: 1, glow: 1,
+        labelAlpha: 1, labelSize: 1, nodeScale: 1, panelAlpha: 0.92,
+        edgeSoftHover: true, sizeByDegree: false, minWeight: 1, skeleton: false,
+    },
+    // Husté — viac spojení a popiskov: bez filtra váhy, hrany svietia stále,
+    // uzly menšie (aby sa popisky zmestili) a veľkosť podľa stupňa.
+    dense: {
+        life: 0.35, anim: 0.4, bg: 0.7, edgeAlpha: 1.3, glow: 0.9,
+        labelAlpha: 1.4, labelSize: 1.1, nodeScale: 0.85, panelAlpha: 0.92,
+        edgeSoftHover: false, sizeByDegree: true, minWeight: 0, skeleton: false,
+    },
+    // Ambient — na pozeranie na celú obrazovku: maximum života a svetla,
+    // popisky stlmené (šum z 1000 textov), uzly väčšie a viditeľné z diaľky.
+    ambient: {
+        life: 1, anim: 1, bg: 1.5, edgeAlpha: 1.15, glow: 1.5,
+        labelAlpha: 0.35, labelSize: 1, nodeScale: 1.25, panelAlpha: 0.75,
+        edgeSoftHover: false, sizeByDegree: true, minWeight: 1, skeleton: false,
+    },
+};
+
+function presetValue(key) {
+    if (key === 'minWeight') return S.minWeight;
+    if (key === 'skeleton') return S.skeleton;
+    return S.opts[key];
+}
+
+// Ktorá predvoľba presne zodpovedá aktuálnym hodnotám? null = „vlastné".
+export function detectPreset() {
+    for (const name of Object.keys(PRESETS)) {
+        const p = PRESETS[name];
+        let hit = true;
+        for (const k of Object.keys(p)) {
+            const cur = presetValue(k);
+            const ok = typeof p[k] === 'number' ? Math.abs(cur - p[k]) < 1e-6 : cur === p[k];
+            if (!ok) { hit = false; break; }
+        }
+        if (hit) return name;
+    }
+    return null;
+}
+
+export function markPresetActive() {
+    const name = detectPreset();
+    document.querySelectorAll('#presets .preset').forEach((b) => {
+        const on = b.dataset.preset === name;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    const st = $('preset-state');
+    if (st) st.textContent = name ? 'aktívna: ' + PRESET_LABELS[name] : 'vlastné nastavenie';
+    return name;
+}
+
+export function setupControls() {
     // FÁZA SHELL: hlavná navigácia — 4 pomenované obrazovky
     document.querySelectorAll('#rail .dest[data-screen]').forEach((b) => {
         b.onclick = () => setScreen(b.dataset.screen);
@@ -48,8 +121,21 @@ export function setupControls() {
     $('zoom-reset').onclick = () => fitView();
     $('brand-core').onclick = () => fitView();
 
+    // W2c: #btn-up nahradil mŕtvy #view-switch. Viditeľnosť (skryté na mape) rieši
+    // syncUpButton() v renderBreadcrumb(), ktorý go() volá po každom prechode.
+    const upBtn = $('btn-up');
+    if (upBtn) upBtn.onclick = () => goUp();
+
+    // Prepínače v Pokročilom, ktoré nie sú <input> — predvoľba ich musí dorovnať.
+    const syncers = [];
+    const syncAdvancedUi = () => { for (const f of syncers) f(); };
+
     document.querySelectorAll('input[data-opt]').forEach((inp) => {
-        inp.oninput = () => { syncSlider(inp); setOpt(inp.dataset.opt, parseFloat(inp.value)); };
+        inp.oninput = () => {
+            syncSlider(inp);
+            setOpt(inp.dataset.opt, parseFloat(inp.value));
+            markPresetActive(); // ručný pohyb sliderom → „vlastné"
+        };
     });
 
     // Filtre typov a zdrojov — checked = viditeľné; S.filter drží skryté hodnoty
@@ -83,17 +169,20 @@ export function setupControls() {
     // Soft-hover — spojenia sú v pokoji jemné, rozsvietia sa pri hover/fokuse uzla
     const shBtn = $('softhover-toggle');
     const syncShBtn = () => shBtn.setAttribute('aria-checked', S.opts.edgeSoftHover ? 'true' : 'false');
+    syncers.push(syncShBtn);
     syncShBtn();
-    shBtn.onclick = () => { setOpt('edgeSoftHover', !S.opts.edgeSoftHover); syncShBtn(); draw(); };
+    shBtn.onclick = () => { setOpt('edgeSoftHover', !S.opts.edgeSoftHover); syncShBtn(); markPresetActive(); draw(); };
 
     // Kostra — zobraz len najsilnejšiu štruktúru (manual + part_of + skill_mention)
     const skBtn = $('skeleton-toggle');
     const syncSkBtn = () => skBtn.setAttribute('aria-checked', S.skeleton ? 'true' : 'false');
+    syncers.push(syncSkBtn);
     syncSkBtn();
     skBtn.onclick = () => {
         S.skeleton = !S.skeleton;
         localStorage.setItem('hades.skeleton', S.skeleton ? '1' : '0');
         syncSkBtn();
+        markPresetActive();
         draw();
         showToast(S.skeleton ? 'Kostra zapnutá' : 'Kostra vypnutá');
     };
@@ -106,45 +195,30 @@ export function setupControls() {
             const out = mw.closest('label.slider').querySelector('output');
             if (out) out.textContent = parseFloat(mw.value).toFixed(1);
         };
+        syncers.push(() => { mw.value = S.minWeight; syncMw(); });
         mw.value = S.minWeight;
         syncMw();
         mw.oninput = () => {
             S.minWeight = parseFloat(mw.value);
             localStorage.setItem('hades.minWeight2', String(S.minWeight));
             syncMw();
+            markPresetActive();
             draw();
         };
     }
 
-    // Slidery síl — okamžitý zápis do S.forces + rebuild simulácie
-    document.querySelectorAll('input[data-force]').forEach((inp) => {
-        inp.oninput = () => {
-            syncSlider(inp);
-            S.forces[inp.dataset.force] = parseFloat(inp.value);
-            localStorage.setItem('hades.forces', JSON.stringify(S.forces));
-            buildSim();
-            kickSim(0.4);
-            draw();
-        };
-    });
-
-    $('forces-reset').onclick = () => {
-        S.forces = Object.assign({}, FORCE_DEFAULTS);
-        localStorage.removeItem('hades.forces');
-        buildSim();
-        kickSim(0.4);
-        draw();
-        syncForceSliders();
-        showToast('Sily obnovené');
-    };
+    // W2c: slidery síl (Odpudzovanie / Vzdialenosť / Sila spojení / Gravitácia) aj
+    // „Obnoviť sily" sú zmazané — d3 simulácia neexistuje, nič neovládali.
 
     // Veľkosť podľa spojení (Obsidian size by degree) — rebuild kvôli collide polomerom
     const degBtn = $('sizedeg-toggle');
     const syncDegBtn = () => degBtn.setAttribute('aria-checked', S.opts.sizeByDegree ? 'true' : 'false');
+    syncers.push(syncDegBtn);
     syncDegBtn();
     degBtn.onclick = () => {
         setOpt('sizeByDegree', !S.opts.sizeByDegree);
         syncDegBtn();
+        markPresetActive();
         buildSim();
         kickSim(0.3);
         draw();
@@ -155,13 +229,38 @@ export function setupControls() {
         localStorage.setItem('hades.opts', JSON.stringify(S.opts));
         makeStars();
         applyOpts();
-        syncDegBtn(); // reset vráti aj sizeByDegree — prepínač a collide polomery dorovnať
-        syncShBtn();  // reset vráti edgeSoftHover na TRUE — prepínač dorovnať
+        syncAdvancedUi(); // reset vráti sizeByDegree aj edgeSoftHover — prepínače dorovnať
+        markPresetActive();
         buildSim();
         kickSim(0.3);
         draw();
         showToast('Predvolené obnovené');
     };
+
+    // Predvoľby — jeden klik nastaví celú sadu ovládačov nižšie
+    document.querySelectorAll('#presets .preset').forEach((b) => {
+        b.onclick = () => {
+            const p = PRESETS[b.dataset.preset];
+            if (!p) return;
+            for (const k of Object.keys(p)) {
+                if (k === 'minWeight') S.minWeight = p[k];
+                else if (k === 'skeleton') S.skeleton = p[k];
+                else S.opts[k] = p[k];
+            }
+            localStorage.setItem('hades.opts', JSON.stringify(S.opts));
+            localStorage.setItem('hades.minWeight2', String(S.minWeight));
+            localStorage.setItem('hades.skeleton', S.skeleton ? '1' : '0');
+            makeStars();       // hustota hviezd závisí od opts.bg
+            applyOpts();       // slidery data-opt + --panel-alpha
+            syncAdvancedUi();  // prepínače, ktoré nie sú <input>
+            markPresetActive();
+            buildSim();        // collide polomery podľa sizeByDegree
+            kickSim(0.3);
+            draw();
+            showToast('Predvoľba: ' + PRESET_LABELS[b.dataset.preset]);
+        };
+    });
+    markPresetActive();
 
     // Tmavý režim — prepínač v nastaveniach, synchronizovaný s data-theme
     const themeBtn = $('theme-toggle');

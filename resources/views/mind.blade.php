@@ -16,6 +16,9 @@
     <header id="app-header">
         <div class="h-left">
             <span id="brand-name">Hades</span>
+            <button id="btn-up" class="hidden" type="button" title="O úroveň von (Esc)" aria-label="O úroveň von">
+                <span class="ms" aria-hidden="true">arrow_upward</span>
+            </button>
             <nav id="breadcrumb" aria-label="Aktuálny kontext"></nav>
             <span id="status-chip" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="txt">spí</span></span>
         </div>
@@ -24,11 +27,6 @@
                 <button id="btn-structure" class="ms" title="Štruktúra (R)" aria-label="Štruktúra">account_tree</button>
                 <button id="btn-stats" class="ms" title="Prehľad (S)" aria-label="Prehľad">monitoring</button>
                 <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
-            </div>
-            <div id="view-switch" role="group" aria-label="Náhľad siete">
-                <button data-view="map">Mapa</button>
-                <button data-view="net">Sieť</button>
-                <button data-view="layers">Vrstvy</button>
             </div>
             <div id="header-metrics" aria-live="polite"></div>
         </div>
@@ -174,119 +172,121 @@
         </section>
 
         <section id="sec-settings" class="hidden">
-            <h3>Vzhľad</h3>
+            <h3>Predvoľby</h3>
+            <div id="presets" role="group" aria-label="Predvoľby zobrazenia">
+                <button type="button" class="preset" data-preset="clean" aria-pressed="false">
+                    <span class="p-name">Čisté</span><span class="p-sub">ticho, len kostra</span>
+                </button>
+                <button type="button" class="preset" data-preset="live" aria-pressed="false">
+                    <span class="p-name">Živé</span><span class="p-sub">predvolené</span>
+                </button>
+                <button type="button" class="preset" data-preset="dense" aria-pressed="false">
+                    <span class="p-name">Husté</span><span class="p-sub">všetky spojenia</span>
+                </button>
+                <button type="button" class="preset" data-preset="ambient" aria-pressed="false">
+                    <span class="p-name">Ambient</span><span class="p-sub">na pozeranie</span>
+                </button>
+            </div>
+            <p id="preset-state" class="preset-state" aria-live="polite">vlastné nastavenie</p>
             <div class="switch-row">
                 <span id="theme-toggle-label">Tmavý režim</span>
                 <button id="theme-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="theme-toggle-label"></button>
             </div>
-            <div class="switch-row">
-                <span id="chat-toggle-label">Chat s Hadesom (potrebuje API kľúč)</span>
-                <button id="chat-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="chat-toggle-label"></button>
+            <div class="row" id="ambient-row">
+                <button id="btn-ambient" class="ghost" type="button">Spustiť na celú obrazovku</button>
             </div>
-            <div class="switch-row">
-                <span id="sound-toggle-label">Zvuk</span>
-                <button id="btn-sound" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="sound-toggle-label"></button>
-            </div>
-            <div class="row">
-                <button id="btn-ambient" class="ghost" type="button">Ambient režim (celá obrazovka)</button>
-            </div>
-            <h3>Pohyb</h3>
-            <label class="slider">Život
-                <input type="range" data-opt="life" min="0" max="1" step="0.05">
-                <output></output>
-            </label>
-            <label class="slider">Animácie
-                <input type="range" data-opt="anim" min="0" max="1" step="0.05">
-                <output></output>
-            </label>
-            <h3>Sieť — filter</h3>
-            <div class="switch-row">
-                <span id="scope-label">Zobraziť knižnicu v grafe</span>
-                <button id="scope-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="scope-label"></button>
-            </div>
-            <div class="check-cap">Typy</div>
-            <label class="check"><input type="checkbox" data-ftype="memory" checked><span class="box" aria-hidden="true"></span><span>Spomienky</span></label>
-            <label class="check"><input type="checkbox" data-ftype="skill" checked><span class="box" aria-hidden="true"></span><span>Skills</span></label>
-            <label class="check"><input type="checkbox" data-ftype="project" checked><span class="box" aria-hidden="true"></span><span>Projekty</span></label>
-            <div class="check-cap">Zdroje</div>
-            <label class="check"><input type="checkbox" data-fsource="session" checked><span class="box" aria-hidden="true"></span><span>Záznamy</span></label>
-            <label class="check"><input type="checkbox" data-fsource="skill" checked><span class="box" aria-hidden="true"></span><span>Playbooky</span></label>
-            <label class="check"><input type="checkbox" data-fsource="digest" checked><span class="box" aria-hidden="true"></span><span>Súhrny a archívy</span></label>
-            <label class="check"><input type="checkbox" data-fsource="manual" checked><span class="box" aria-hidden="true"></span><span>Ručné</span></label>
-            <div class="check-cap">Vzťahy</div>
-            <label class="check"><input type="checkbox" data-frel="part_of" checked><span class="box" aria-hidden="true"></span><span>Kostra (part_of)</span></label>
-            <label class="check"><input type="checkbox" data-frel="uses" checked><span class="box" aria-hidden="true"></span><span>Použitia (uses)</span></label>
-            <label class="check"><input type="checkbox" data-frel="similarity" checked><span class="box" aria-hidden="true"></span><span>Podobnosti</span></label>
-            <label class="check"><input type="checkbox" data-frel="co_activation" checked><span class="box" aria-hidden="true"></span><span>Co-aktivácie</span></label>
-            <div class="switch-row">
-                <span id="softhover-label">Spojenia len pri hovere</span>
-                <button id="softhover-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="softhover-label"></button>
-            </div>
-            <div class="switch-row">
-                <span id="skeleton-label">Len kostra</span>
-                <button id="skeleton-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="skeleton-label"></button>
-            </div>
-            <label class="slider">Min. váha spojení
-                <input type="range" id="minweight-slider" min="0" max="5" step="0.5" value="1">
-                <output></output>
-            </label>
-            <h3>Sieť — sily</h3>
-            <label class="slider">Odpudzovanie
-                <input type="range" data-force="charge" min="-240" max="-20" step="1">
-                <output></output>
-            </label>
-            <label class="slider">Vzdialenosť spojení
-                <input type="range" data-force="linkDistance" min="40" max="220" step="1">
-                <output></output>
-            </label>
-            <label class="slider">Sila spojení
-                <input type="range" data-force="linkStrength" min="0.2" max="3" step="0.1">
-                <output></output>
-            </label>
-            <label class="slider">Gravitácia
-                <input type="range" data-force="gravity" min="0.2" max="2" step="0.1">
-                <output></output>
-            </label>
-            <div class="row">
-                <button id="forces-reset" class="ghost" type="button">Obnoviť sily</button>
-            </div>
-            <div class="switch-row">
-                <span id="sizedeg-label">Veľkosť podľa spojení</span>
-                <button id="sizedeg-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="sizedeg-label"></button>
-            </div>
-            <h3>Priehľadnosť</h3>
-            <label class="slider">Panely
-                <input type="range" data-opt="panelAlpha" min="0.3" max="1" step="0.01">
-                <output></output>
-            </label>
-            <label class="slider">Pozadie
-                <input type="range" data-opt="bg" min="0" max="1.5" step="0.05">
-                <output></output>
-            </label>
-            <label class="slider">Spojenia
-                <input type="range" data-opt="edgeAlpha" min="0.1" max="1.5" step="0.05">
-                <output></output>
-            </label>
-            <label class="slider">Obrysy uzlov
-                <input type="range" data-opt="glow" min="0.2" max="1.5" step="0.05">
-                <output></output>
-            </label>
-            <label class="slider">Popisky
-                <input type="range" data-opt="labelAlpha" min="0" max="1.5" step="0.05">
-                <output></output>
-            </label>
-            <h3>Veľkosti</h3>
-            <label class="slider">Uzly
-                <input type="range" data-opt="nodeScale" min="0.6" max="1.6" step="0.05">
-                <output></output>
-            </label>
-            <label class="slider">Písmo popiskov
-                <input type="range" data-opt="labelSize" min="0.7" max="1.5" step="0.05">
-                <output></output>
-            </label>
-            <div class="row">
-                <button id="opts-reset">Obnoviť predvolené</button>
-            </div>
+
+            <details id="settings-advanced">
+                <summary><span class="adv-title">Pokročilé</span><span class="adv-n">jednotlivé ovládače</span></summary>
+                <div class="adv-body">
+                    <h3>Vzhľad</h3>
+                    <div class="switch-row">
+                        <span id="chat-toggle-label">Chat s Hadesom (potrebuje API kľúč)</span>
+                        <button id="chat-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="chat-toggle-label"></button>
+                    </div>
+                    <div class="switch-row">
+                        <span id="sound-toggle-label">Zvuk</span>
+                        <button id="btn-sound" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="sound-toggle-label"></button>
+                    </div>
+                    <h3>Pohyb</h3>
+                    <label class="slider">Život
+                        <input type="range" data-opt="life" min="0" max="1" step="0.05">
+                        <output></output>
+                    </label>
+                    <label class="slider">Animácie
+                        <input type="range" data-opt="anim" min="0" max="1" step="0.05">
+                        <output></output>
+                    </label>
+                    <h3>Sieť — filter</h3>
+                    <div class="switch-row">
+                        <span id="scope-label">Zobraziť knižnicu v grafe</span>
+                        <button id="scope-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="scope-label"></button>
+                    </div>
+                    <div class="check-cap">Typy</div>
+                    <label class="check"><input type="checkbox" data-ftype="memory" checked><span class="box" aria-hidden="true"></span><span>Spomienky</span></label>
+                    <label class="check"><input type="checkbox" data-ftype="skill" checked><span class="box" aria-hidden="true"></span><span>Skills</span></label>
+                    <label class="check"><input type="checkbox" data-ftype="project" checked><span class="box" aria-hidden="true"></span><span>Projekty</span></label>
+                    <div class="check-cap">Zdroje</div>
+                    <label class="check"><input type="checkbox" data-fsource="session" checked><span class="box" aria-hidden="true"></span><span>Záznamy</span></label>
+                    <label class="check"><input type="checkbox" data-fsource="skill" checked><span class="box" aria-hidden="true"></span><span>Playbooky</span></label>
+                    <label class="check"><input type="checkbox" data-fsource="digest" checked><span class="box" aria-hidden="true"></span><span>Súhrny a archívy</span></label>
+                    <label class="check"><input type="checkbox" data-fsource="manual" checked><span class="box" aria-hidden="true"></span><span>Ručné</span></label>
+                    <div class="check-cap">Vzťahy</div>
+                    <label class="check"><input type="checkbox" data-frel="part_of" checked><span class="box" aria-hidden="true"></span><span>Kostra (part_of)</span></label>
+                    <label class="check"><input type="checkbox" data-frel="uses" checked><span class="box" aria-hidden="true"></span><span>Použitia (uses)</span></label>
+                    <label class="check"><input type="checkbox" data-frel="similarity" checked><span class="box" aria-hidden="true"></span><span>Podobnosti</span></label>
+                    <label class="check"><input type="checkbox" data-frel="co_activation" checked><span class="box" aria-hidden="true"></span><span>Co-aktivácie</span></label>
+                    <div class="switch-row">
+                        <span id="softhover-label">Spojenia len pri hovere</span>
+                        <button id="softhover-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="softhover-label"></button>
+                    </div>
+                    <div class="switch-row">
+                        <span id="skeleton-label">Len kostra</span>
+                        <button id="skeleton-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="skeleton-label"></button>
+                    </div>
+                    <label class="slider">Min. váha spojení
+                        <input type="range" id="minweight-slider" min="0" max="5" step="0.5" value="1">
+                        <output></output>
+                    </label>
+                    <h3>Priehľadnosť</h3>
+                    <label class="slider">Panely
+                        <input type="range" data-opt="panelAlpha" min="0.3" max="1" step="0.01">
+                        <output></output>
+                    </label>
+                    <label class="slider">Pozadie
+                        <input type="range" data-opt="bg" min="0" max="1.5" step="0.05">
+                        <output></output>
+                    </label>
+                    <label class="slider">Spojenia
+                        <input type="range" data-opt="edgeAlpha" min="0.1" max="1.5" step="0.05">
+                        <output></output>
+                    </label>
+                    <label class="slider">Obrysy uzlov
+                        <input type="range" data-opt="glow" min="0.2" max="1.5" step="0.05">
+                        <output></output>
+                    </label>
+                    <label class="slider">Popisky
+                        <input type="range" data-opt="labelAlpha" min="0" max="1.5" step="0.05">
+                        <output></output>
+                    </label>
+                    <h3>Veľkosti</h3>
+                    <label class="slider">Uzly
+                        <input type="range" data-opt="nodeScale" min="0.6" max="1.6" step="0.05">
+                        <output></output>
+                    </label>
+                    <label class="slider">Písmo popiskov
+                        <input type="range" data-opt="labelSize" min="0.7" max="1.5" step="0.05">
+                        <output></output>
+                    </label>
+                    <div class="switch-row">
+                        <span id="sizedeg-label">Veľkosť podľa spojení</span>
+                        <button id="sizedeg-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="sizedeg-label"></button>
+                    </div>
+                    <div class="row">
+                        <button id="opts-reset">Obnoviť predvolené</button>
+                    </div>
+                </div>
+            </details>
         </section>
     </aside>
 
@@ -409,7 +409,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8/dist/web/pusher.min.js"></script>
     <script src="/js/charts.js"></script>
     <script type="module" src="/js/mind/main.js"></script>
