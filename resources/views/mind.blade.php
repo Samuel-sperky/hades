@@ -412,6 +412,6 @@
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8/dist/web/pusher.min.js"></script>
     <script src="/js/charts.js"></script>
-    <script src="/js/mind.js"></script>
+    <script type="module" src="/js/mind/main.js"></script>
 </body>
 </html>
