@@ -708,6 +708,171 @@ class MindService
         return $winner->fresh();
     }
 
+    /**
+     * A4 — presné vyhľadanie uzla podľa labelu (alebo jeho slugu).
+     *
+     * Zámerne NEpoužíva findByLabel(): to zlučuje cez substring a similar_text
+     * na 85 %, čo je v poriadku pri učení, ale pri rename/move/delete by to
+     * znamenalo trafiť nesprávny uzol. Tu musí byť zhoda jednoznačná — pri
+     * viacerých kandidátoch radšej nevráti nič.
+     */
+    public function findExact(string $label, ?string $type = null): ?Node
+    {
+        $normalized = mb_strtolower(trim($label));
+        $slug = Str::slug($label);
+
+        $matches = Node::query()
+            ->when($type, fn ($q) => $q->where('type', $type))
+            ->where(function ($q) use ($normalized, $slug) {
+                $q->whereRaw('LOWER(label) = ?', [$normalized])
+                    ->orWhere('slug', $slug);
+            })
+            ->limit(2)
+            ->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /**
+     * A4 — premenovanie uzla. Mení len label; slug si model dopočíta sám.
+     *
+     * Rieši anti-vzorec „markdownom zmrzačený label" (napr. uzol s názvom
+     * `# Smernica: produkt foto automatizacia cez agentov v chatgpt`), ktorý sa
+     * doteraz nedal opraviť — Hades nemal rename, len pridávanie a zlučovanie.
+     */
+    public function rename(Node $node, string $label): Node
+    {
+        $label = trim($label);
+
+        if ($label === '') {
+            throw new \InvalidArgumentException('Nový názov nesmie byť prázdny.');
+        }
+
+        $node->label = $label;
+        $node->save();
+
+        $fresh = $node->fresh();
+        MindPulse::dispatch('node.updated', ['node' => $fresh->toApi()]);
+
+        return $fresh;
+    }
+
+    /**
+     * A4 — presun uzla do inej oblasti/oddelenia.
+     *
+     * Rozlíšenie je tu ZÁMERNE prísne, na rozdiel od resolveArea() pri učení:
+     * neznáma oblasť skončí výnimkou, nie tichým spadnutím do prvej oblasti
+     * podľa id. Práve ten tichý fallback dostal React, Docker, Backend a
+     * Testing do oblasti „Marketing & SEO".
+     */
+    public function move(Node $node, string $areaName, ?string $departmentName = null): Node
+    {
+        $area = $this->requireArea($areaName);
+
+        $department = blank($departmentName)
+            ? null
+            : $this->requireDepartment($area, (string) $departmentName);
+
+        $node->area_id = $area->id;
+        $node->department_id = $department?->id;
+        $node->save();
+
+        $fresh = $node->fresh();
+        MindPulse::dispatch('node.updated', ['node' => $fresh->toApi()]);
+
+        return $fresh;
+    }
+
+    /**
+     * A4 — vratné zmazanie uzla.
+     *
+     * Náhrobok je nutný, nie kozmetika: bez neho by najbližší ingest ten istý
+     * external_key znovu adoptoval a odpadový uzol by sa vrátil (TranscriptIngest,
+     * ClaudeMemoryIngest aj BrainSync sa na tombstones pýtajú). Samotný stĺpec
+     * external_key uvoľní model v `deleting` hooku, lebo je unique.
+     */
+    public function softDelete(Node $node, string $reason = 'deleted'): Node
+    {
+        DB::transaction(function () use ($node, $reason): void {
+            if ($node->external_key) {
+                Tombstone::firstOrCreate(
+                    ['external_key' => $node->external_key],
+                    ['reason' => $reason, 'created_at' => now()],
+                );
+            }
+
+            $node->delete();
+        });
+
+        MindPulse::dispatch('node.deleted', ['node_id' => $node->id]);
+
+        return $node;
+    }
+
+    /**
+     * A4 — návrat soft-zmazaného uzla vrátane jeho náhrobku a external_key.
+     * Hrany zostali nedotknuté, takže uzol sa vráti aj s väzbami.
+     */
+    public function restoreNode(Node $node): Node
+    {
+        DB::transaction(function () use ($node): void {
+            $key = $node->meta['released_external_key'] ?? null;
+
+            if ($key) {
+                Tombstone::where('external_key', $key)->delete();
+            }
+
+            $node->restore();
+        });
+
+        $fresh = $node->fresh();
+        MindPulse::dispatch('node.updated', ['node' => $fresh->toApi()]);
+
+        return $fresh;
+    }
+
+    /** Prísne rozlíšenie oblasti podľa mena alebo slugu — bez fallbacku. */
+    protected function requireArea(string $name): Area
+    {
+        $normalized = mb_strtolower(trim($name));
+
+        $area = Area::all()->first(
+            fn (Area $a) => mb_strtolower($a->name) === $normalized || $a->slug === $normalized
+        );
+
+        if (! $area) {
+            throw new \InvalidArgumentException(
+                'Neznáma oblasť: '.$name.'. Dostupné: '.Area::orderBy('id')->pluck('name')->implode(', ')
+            );
+        }
+
+        return $area;
+    }
+
+    /**
+     * Prísne rozlíšenie oddelenia v rámci oblasti — nové sa tu NEVYTVÁRA.
+     * Voľné vytváranie cez resolveDepartment() je dôvod, prečo má sieť
+     * 104 oddelení vrátane dvanástich pomenovaných po docker worktree
+     * priečinkoch a dvojíc líšiacich sa len HTML entitou (`&` vs `&amp;`).
+     */
+    protected function requireDepartment(Area $area, string $name): Department
+    {
+        $normalized = mb_strtolower(trim($name));
+
+        $department = $area->departments->first(
+            fn (Department $d) => mb_strtolower($d->name) === $normalized || $d->slug === $normalized
+        );
+
+        if (! $department) {
+            throw new \InvalidArgumentException(
+                'Neznáme oddelenie v oblasti '.$area->name.': '.$name
+                .'. Dostupné: '.$area->departments->pluck('name')->implode(', ')
+            );
+        }
+
+        return $department;
+    }
+
     protected function resolveArea(string $name): Area
     {
         $normalized = mb_strtolower(trim($name));
