@@ -53,23 +53,30 @@ Schedule::command('mind:digest')->weeklyOn(0, '04:00');
 // Mesačná archivácia starých session záznamov (starších ako 90 dní)
 Schedule::command('mind:archive-old')->monthlyOn(1, '04:30');
 
-// Nočná údržba vedomia — beží AŽ PO ingeste (03:35 --all). Rozostupy sú široké
-// (15 min), aby ťažký mind:rewire (~O(n²) pri raste siete) stihol dobehnúť pred
-// ďalším jobom. Každý job má VLASTNÝ mutex (withoutOverlapping bráni len prekrytiu
-// SEBA SAMÉHO cez dni ak by zamrzol) — zámerne NEzdieľame mutex, lebo ten by pri
-// dlhom rewire spôsobil PRESKOČENIE decay/cleanup v tú noc, nie ich zaradenie.
+// Nočná údržba vedomia — beží AŽ PO ingeste (03:35 --all). Každý job má VLASTNÝ
+// mutex (withoutOverlapping bráni len prekrytiu SEBA SAMÉHO cez dni ak by zamrzol)
+// — zámerne NEzdieľame mutex, lebo ten by pri dlhom rewire spôsobil PRESKOČENIE
+// decay/cleanup v tú noc, nie ich zaradenie.
+//
+// PORADIE JE ZÁVÄZNÉ: mind:rewire je POSLEDNÝ, lebo je jediný dlhobežiaci
+// (~O(n²), pri 2 587 uzloch cez 55 minút) a drží si kolekciu uzlov v pamäti od
+// svojho štartu. Keď bežal PRVÝ (04:05), mind:automerge mu o 04:45 spod rúk
+// zmazal zlúčené uzly a rewire o 05:01 padol na FK constraint — similarity hrany
+// sa nedogenerovali, kým cleanup/prune ich ďalej mazali, takže sieť sa rozpadala
+// (17 207 → 7 877 hrán). Všetko, čo maže alebo pridáva uzly, teda ide PRED rewire.
+// Druhá poistka je kontrola existencie uzla v MindService::connect().
 $nightly = fn (string $command, string $at) => Schedule::command($command)
     ->dailyAt($at)
     ->timezone('Europe/Bratislava')
     ->withoutOverlapping(60);
 
-$nightly('mind:rewire', '04:05');            // A3 — backfill similarity synapsií (najťažší)
-$nightly('mind:decay', '04:20');             // D2 — zabúdanie neaktívnych uzlov/hrán
-$nightly('mind:cleanup-edges', '04:30');     // A9 — prerušenie zabudnutých synapsií
+$nightly('mind:automerge', '04:05');          // D5/E7 — zlúčenie takmer identických uzlov (MAŽE uzly)
+$nightly('mind:decay', '04:15');              // D2 — zabúdanie neaktívnych uzlov/hrán
+$nightly('mind:cleanup-edges', '04:25');      // A9 — prerušenie zabudnutých synapsií
 $nightly('mind:prune-coactivation', '04:35'); // prerezanie koincidenčného hairballu (skóre < 0.08)
-$nightly('mind:automerge', '04:45');         // D5/E7 — zlúčenie takmer identických uzlov
-$nightly('mind:sync-memory', '04:55');       // Claude memory → Hades
-$nightly('mind:export-memory', '05:05');     // Hades → Claude memory
+$nightly('mind:sync-memory', '04:45');        // Claude memory → Hades (PRIDÁVA uzly)
+$nightly('mind:export-memory', '04:55');      // Hades → Claude memory
+$nightly('mind:rewire', '05:10');             // A3 — backfill similarity synapsií (najťažší, POSLEDNÝ)
 
 // Týždenný projektový roll-up (nedeľa), vlastný mutex.
 Schedule::command('mind:rollup')

@@ -558,6 +558,9 @@ class MindService
      * $kind + $auto určujú typ synapsie; pri posilnení existujúcej hrany sa kind
      * smie posunúť len k silnejšiemu významu (nikdy sa neoslabí manual → similarity).
      * $weight je počiatočná váha novej hrany (napr. 0.5 pre similarity).
+     *
+     * Vráti null, ak medzitým zanikol niektorý z uzlov — volajúci to má preskočiť,
+     * nie považovať za chybu. Pozri komentár pri kontrole existencie nižšie.
      */
     public function connect(
         Node $a,
@@ -565,7 +568,7 @@ class MindService
         string $kind = 'manual',
         bool $auto = false,
         float $weight = 1.0,
-    ): Edge {
+    ): ?Edge {
         [$sourceId, $targetId] = $a->id < $b->id ? [$a->id, $b->id] : [$b->id, $a->id];
 
         $edge = Edge::query()
@@ -592,6 +595,17 @@ class MindService
             ]);
 
             return $edge;
+        }
+
+        // Nočné joby držia kolekciu uzlov v pamäti desiatky minút (mind:rewire je
+        // O(n²)), takže uzol mohol medzitým zaniknúť — typicky ho mind:automerge
+        // zlúčil do víťaza a zmazal. Bez tejto kontroly padne FK constraint na
+        // edges_target_id_foreign a zhodí CELÝ beh rewire (12.8.2026, exit 1).
+        //
+        // Kontrola stojí jeden dotaz navyše, ale len pri VZNIKU hrany: vetva
+        // posilnenia existujúcej hrany sa vracia vyššie a FK tam z definície platí.
+        if (Node::whereIn('id', [$sourceId, $targetId])->count() !== 2) {
+            return null;
         }
 
         $edge = Edge::create([

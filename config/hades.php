@@ -12,6 +12,11 @@ return [
     // Interné /api/* (SPA) token nedrží.
     'api_token' => env('HADES_API_TOKEN'),
 
+    // Token pre /mcp (fail-closed). Prijíma sa ako `Authorization: Bearer` aj
+    // ako `?token=` — connectory appky Claude nevedia poslať vlastnú hlavičku.
+    // Musí sedieť s hodnotou v docker/Caddyfile, kým sa tá neprepne na env.
+    'mcp_token' => env('HADES_MCP_TOKEN'),
+
     // Brain-write guard — zápis do ľudsky písaných .md „mozgov".
     // Default OFF (fail-safe): brain-write endpointy vracajú 403, .md sa nemení.
     'allow_brain_write' => (bool) env('HADES_ALLOW_BRAIN_WRITE', false),

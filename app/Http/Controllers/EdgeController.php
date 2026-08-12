@@ -25,6 +25,11 @@ class EdgeController extends Controller
         // alebo vytvorí novú a odošle 'edge.strengthened' / 'edge.created' pulse.
         $edge = $mind->connect($source, $target, 'manual', false);
 
+        // connect() vráti null, len ak uzol zanikol medzi validáciou a zápisom.
+        if (! $edge) {
+            return response()->json(['message' => 'Jeden z uzlov medzitým zanikol.'], 409);
+        }
+
         return response()->json([
             'edge' => [
                 'id' => $edge->id,

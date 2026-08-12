@@ -15,7 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function (): void {
-            Route::middleware('api')
+            // /mcp je od 12.8.2026 za tokenom (AuthenticateMcp, fail-closed).
+            // Predtým ho chránil len binding na 127.0.0.1, čo nechránilo pred
+            // žiadnym procesom na tom istom stroji.
+            Route::middleware(['api', App\Http\Middleware\AuthenticateMcp::class])
                 ->match(['get', 'post', 'delete'], '/mcp', McpController::class);
         },
     )

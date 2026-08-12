@@ -22,7 +22,13 @@ class McpToolsTest extends TestCase
     {
         parent::setUp();
 
-        config(['hades.allow_brain_write' => false, 'cache.default' => 'array']);
+        // /mcp je od 12.8.2026 za tokenom (AuthenticateMcp, fail-closed) —
+        // bez neho by každý JSON-RPC dotaz nižšie skončil na 401.
+        config([
+            'hades.allow_brain_write' => false,
+            'hades.mcp_token' => 'test-mcp-token',
+            'cache.default' => 'array',
+        ]);
 
         Area::create(['name' => 'Vývoj / kód', 'slug' => 'vyvoj-kod', 'color' => '#03797e', 'angle' => 0]);
     }
@@ -30,12 +36,13 @@ class McpToolsTest extends TestCase
     /** JSON-RPC POST na /mcp. */
     private function rpc(string $method, array $params = [], int $id = 1): TestResponse
     {
-        return $this->postJson('/mcp', [
-            'jsonrpc' => '2.0',
-            'id' => $id,
-            'method' => $method,
-            'params' => $params,
-        ]);
+        return $this->withHeader('Authorization', 'Bearer test-mcp-token')
+            ->postJson('/mcp', [
+                'jsonrpc' => '2.0',
+                'id' => $id,
+                'method' => $method,
+                'params' => $params,
+            ]);
     }
 
     /** Zavolá tool a vráti dekódovaný JSON payload z result.content[0].text. */
