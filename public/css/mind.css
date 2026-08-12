@@ -99,6 +99,24 @@
     --sp-5: 40px;
     --edge: 16px;
 
+    /* ---- ROZMERY CHRÓMU (VLNA W3b) — jediný zdroj pravdy pre plávajúce UI.
+       Grafový layout (viewInsets) si ich číta z :root, aby scéna nikdy nelezla
+       pod rail/hlavičku/panel. Deklarácie #rail/#app-header/#dock/#node-panel
+       ich používajú, takže hodnota tokenu = skutočný rozmer, nie odhad.
+       Aritmetika okrajov scény:
+         left   = --edge + --rail-w + --edge      (16 + 72 + 16 = 104 → dnes 112)
+         top    = --edge + --header-h + --sp-1    (16 + 44 +  8 =  68)
+         right  = --edge                          (+ --panel-w + --edge, keď je
+                  otvorený #node-panel/#dock → 16 + 300 + 16 = 332)
+         bottom = --edge                          (dnes 48 = --edge + --sp-4)
+       --panel-w je responzívny — prepisujú ho @media 1280px a 900px nižšie. */
+    --rail-w: 72px;
+    --header-h: 44px;
+    --panel-w: 300px;
+    /* Derivované — ľavý/horný okraj obsahovej plochy (hlavička, #screens, panely) */
+    --content-left: calc(var(--edge) + var(--rail-w) + var(--edge));   /* 104px */
+    --content-top: calc(var(--edge) + var(--header-h) + var(--sp-1));  /* 68px */
+
     /* ---- type scale ---- */
     --fs-caption: 11px;   --lh-caption: 1.4;
     --fs-small: 12px;     --lh-small: 1.4;
@@ -231,8 +249,12 @@
     --accent-300: #05bcc4;
     --accent-400: #05bcc4;
     --accent: #05bcc4;
-    --accent-600: #03797e;
-    /* na tmavej je --accent-600 tmavý teal — ako TEXT by dal ~3.5:1, preto svieti */
+    /* VLNA W3b: --accent-600 je (po prepnutí textových miest na --accent-ink) už
+       LEN hover/active VÝPLŇ. Ako #03797e bola tmavšia než --accent, čo je na
+       tmavej téme obrátený hover — a --on-accent na nej merané 3,58:1 (< 4,5).
+       Hover na tmavej preto rozsvecuje: --on-accent na tejto výplni = 9,2:1. */
+    --accent-600: #2fcbd2;
+    /* na tmavej by teal ako TEXT dal ~3.5:1, preto text svieti cez --accent-300 */
     --accent-ink: var(--accent-300);      /* 5.7:1 na --accent-soft nad tmavým panelom */
     --accent-rgb: 5, 188, 196;
     --accent-soft: rgba(5, 188, 196, .16);
@@ -355,7 +377,7 @@ body:not([data-screen="graf"]) #mind { filter: var(--graph-mute); }
    --------------------------------------------------------------------------- */
 #local-chip {
     position: fixed;
-    top: 68px; /* app-header: top 16px + výška 44px + 8px odstup */
+    top: var(--content-top);   /* --edge + --header-h + --sp-1 = 68px */
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -398,7 +420,7 @@ body:not([data-screen="graf"]) #mind { filter: var(--graph-mute); }
 #local-chip .lc-depth.active {
     background: var(--accent-soft);
     border-color: var(--border-accent);
-    color: var(--accent-600);
+    color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,58:1 */
 }
 #local-chip .lc-close {
     width: 22px;
@@ -495,7 +517,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 #rail {
     position: fixed;
     top: var(--edge); left: var(--edge); bottom: var(--edge);
-    width: 72px;
+    width: var(--rail-w);
     display: flex; flex-direction: column; align-items: center;
     padding: var(--sp-1) 0; gap: var(--sp-1);
     /* VLNA W1: rail splýva s grafom — sklo (na svetlej plná plocha), hairline
@@ -618,8 +640,8 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
    --------------------------------------------------------------------------- */
 #app-header {
     position: fixed;
-    top: var(--edge); left: 104px; right: var(--edge);
-    height: 44px;
+    top: var(--edge); left: var(--content-left); right: var(--edge);
+    height: var(--header-h);
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
     /* VLNA W1: sklo + hairline, bez tienidla (viď #rail). */
@@ -729,8 +751,8 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
    --------------------------------------------------------------------------- */
 #dock, #node-panel {
     position: fixed;
-    top: calc(var(--edge) + 44px + var(--sp-1)); bottom: var(--edge);
-    width: 300px;
+    top: var(--content-top); bottom: var(--edge);
+    width: var(--panel-w);
     background: var(--panel);
     border: 1px solid var(--line-soft);
     border-radius: var(--r-lg);
@@ -740,7 +762,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     padding: var(--sp-2);
     overflow-y: auto;
 }
-#dock { left: 104px; animation: panel-in-l var(--dur-slow) var(--ease); }
+#dock { left: var(--content-left); animation: panel-in-l var(--dur-slow) var(--ease); }
 #node-panel {
     right: var(--edge);
     animation: panel-in-r var(--dur-slow) var(--ease);
@@ -932,7 +954,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .badge {
     display: inline-flex; align-items: center; gap: var(--sp-1);
     background: var(--surface-subtle);
-    color: var(--accent-600);
+    color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,70:1 */
     font-size: var(--fs-caption);
     line-height: var(--lh-caption);
     text-transform: uppercase;
@@ -1151,7 +1173,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     font-size: var(--icon-sm);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.sug-add:hover { background: var(--accent-softer); color: var(--accent-600); }
+.sug-add:hover { background: var(--accent-softer); color: var(--accent-ink); }   /* W3b: 2,83:1 → ink */
 .sug-add:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .sug-add:disabled { opacity: .5; pointer-events: none; }
 
@@ -1272,7 +1294,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
                 border-color var(--dur-fast) var(--ease);
 }
-#prompt-form button:hover { background: var(--accent-soft); color: var(--accent-600); }
+#prompt-form button:hover { background: var(--accent-soft); color: var(--accent-ink); }   /* W3b: 2,58:1 → ink */
 #prompt-form.has-text button {
     background: var(--accent);
     border-color: var(--accent);
@@ -1406,7 +1428,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     font-size: 14px;
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.ctx-x:hover { background: var(--accent-soft); color: var(--accent-600); }
+.ctx-x:hover { background: var(--accent-soft); color: var(--accent-ink); }   /* W3b: 2,58:1 → ink */
 .ctx-x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ctx-clear {
     background: none; border: none;
@@ -2027,9 +2049,9 @@ body.ambient #toasts {
 /* Active row — teal left accent-line like .record */
 .tree-row.active {
     background: var(--accent-softer);
-    color: var(--accent-600);
+    color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,90:1 */
 }
-.tree-row.active .count { color: var(--accent-600); }
+.tree-row.active .count { color: var(--accent-ink); }
 .tree-row.active::before {
     content: "";
     position: absolute;
@@ -2265,7 +2287,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
     font-size: var(--icon-md);
 }
 #node-md.hidden { display: none; }
-#node-pack.in-pack { color: var(--accent-600); background: var(--accent-soft); }
+#node-pack.in-pack { color: var(--accent-ink); background: var(--accent-soft); }   /* W3b: 2,54:1 → ink */
 
 /* ---------------------------------------------------------------------------
    NOVÝ UZOL (#btn-new-node) — tichá prerušovaná výzva pod stromom štruktúry
@@ -2280,7 +2302,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
 #btn-new-node:hover {
     background: var(--accent-softer);
     border-color: var(--border-accent);
-    color: var(--accent-600);
+    color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,90:1 */
 }
 
 /* ===========================================================================
@@ -2303,8 +2325,8 @@ body:not(.chat-on) #prompt { display: none !important; }
    Fluidná mriežka: obsah berie celú dostupnú šírku, gutter rastie s oknom. */
 #screens {
     position: fixed;
-    left: 104px; right: var(--edge);
-    top: calc(var(--edge) + 44px + var(--sp-1));
+    left: var(--content-left); right: var(--edge);
+    top: var(--content-top);
     bottom: var(--edge);
     overflow-y: auto;
     padding-inline: clamp(16px, 2vw, 48px);
@@ -2639,7 +2661,7 @@ body[data-screen="graf"] #screens { display: none; }
     margin-right: var(--sp-1);
     background: var(--accent-soft);
     border: 1px solid var(--border-accent);
-    color: var(--accent-600);
+    color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,58:1 */
     border-radius: var(--r-md);
     padding: 5px 10px; min-height: 32px;
     font-family: var(--mono); font-size: var(--fs-body); font-weight: 600;
@@ -2653,7 +2675,7 @@ body[data-screen="graf"] #screens { display: none; }
 /* ---- Zásuvka balíka (export pre Claude Code) ---- */
 #pack-drawer {
     position: fixed;
-    top: calc(var(--edge) + 44px + var(--sp-1)); bottom: var(--edge);
+    top: var(--content-top); bottom: var(--edge);
     right: var(--edge);
     width: 320px;
     background: var(--panel);
@@ -2689,17 +2711,19 @@ body[data-screen="graf"] #screens { display: none; }
 /* ---------------------------------------------------------------------------
    RESPONSIVE — užšie panely a redukovaná hlavička na menších oknách
    --------------------------------------------------------------------------- */
+/* --panel-w sa prepisuje na :root, nie na paneloch — tak ho vidí aj grafový
+   layout (viewInsets) a nemôže sa rozísť so skutočnou šírkou panelu. */
 @media (max-width: 1280px) {
-    #dock, #node-panel { width: min(300px, 26vw); }
+    :root { --panel-w: min(300px, 26vw); }
     #prompt.open,
-    #prompt:focus-within { width: min(600px, calc(100vw - 96px - min(300px, 26vw) - 48px)); }
+    #prompt:focus-within { width: min(600px, calc(100vw - 96px - var(--panel-w) - 48px)); }
     #header-metrics { display: none; }
 }
 
 @media (max-width: 900px) {
+    :root { --panel-w: min(340px, calc(100vw - var(--content-left))); }
     #dock, #node-panel {
         left: auto; right: var(--edge);
-        width: min(340px, calc(100vw - 104px));
         z-index: var(--z-panel);
     }
     #brand-name { display: none; }
@@ -3559,3 +3583,58 @@ select {
 .pack-btn.in-pack { color: var(--accent-ink); }
 #md-pack.in-pack { color: var(--accent-ink); }
 .queue-actions button.act-resolve:hover { color: var(--accent-ink); }
+
+/* VLNA W3b: zvyšné miesta kontrastného dlhu sú opravené PRIAMO v deklarácii
+   (hľadaj komentár „W3b" pri --accent-ink), nie prepisom tu — jedna pravda na
+   jedno miesto. Zoznam: #pack-trigger, #node-pack.in-pack, .sug-add:hover,
+   .badge, .tree-row.active (+ .count), #btn-new-node:hover,
+   #local-chip .lc-depth.active, #prompt-form button:hover, .ctx-x:hover.
+
+   ###########################################################################
+   VLNA W3b — GRAFY V KARTÁCH RASTÚ S KARTOU
+
+   .dash-grid je align-items: stretch (zarovnané spodky = zámer), ale výšku radu
+   diktuje najvyššia karta („Podľa oblasti"). Heatmapa mala mriežku na fixných
+   12px, čiara rastu SVG s aspect-ratio a donut fixných 132px → v natiahnutej
+   karte zostala prázdna spodná tretina.
+
+   Kontejnery preto rastú (flex: 1 1 0 + min-height = prirodzená výška), aby
+   výška obsahu NEMOHLA tlačiť kartu (flex-basis 0 → žiadna spätná väzba na
+   výšku radu, teda ani oscilácia s ResizeObserverom v charts.js).
+   --------------------------------------------------------------------------- */
+#dash-heat,
+#dash-growth {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+}
+#dash-heat { min-height: 148px; }     /* mesiace + 7×12px mriežka + legenda */
+#dash-growth { min-height: 96px; }    /* pôvodný viewBox 300×90 + os */
+
+/* Heatmapa — rozmer buniek počíta charts.js z reálnej výšky kontejnera a píše
+   ho do --heat-cell-w/h (fallback = pôvodných 12px, keď JS nebeží). */
+.heat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;          /* zbytok miesta sa rozdelí, nezostane dole */
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.heat-grid { grid-template-rows: repeat(7, var(--heat-cell-h, 12px)); }
+.heat-cell {
+    width: var(--heat-cell-w, 12px);
+    height: var(--heat-cell-h, 12px);
+    border-radius: max(2.5px, calc(var(--heat-cell-w, 12px) / 5));
+}
+/* Legenda je stupnica, nie dáta — zostáva v pôvodnej miere */
+.heat-legend .heat-cell { width: 12px; height: 12px; border-radius: 2.5px; }
+
+/* Istota — donut sa nezväčšuje (voči 12px legende by bol neúmerný), ale rad sa
+   v narastenej karte vycentruje, takže diera nie je dole ale rozdelená. */
+.dash-cert {
+    flex: 1 1 0;
+    min-height: 132px;
+    align-content: center;
+}

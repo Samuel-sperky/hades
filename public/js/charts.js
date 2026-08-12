@@ -42,12 +42,70 @@
     function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
     /* -----------------------------------------------------------------------
+       AUTO-FIT — grafy berú výšku z REÁLNEHO boxu kontejnera, nie z konštanty.
+       Kontejnery sú v CSS flex: 1 1 0 s min-height, takže obsah nemôže tlačiť
+       kartu → prepočet nemení box, ktorý meriame, a ResizeObserver nemôže
+       oscilovať. Observer žije na kontejneri a pri novom renderi sa recykluje
+       (charts sa prekresľujú pri každom načítaní dashboardu).
+       ----------------------------------------------------------------------- */
+    function autoFit(container, fit) {
+        const run = () => { if (container.clientHeight > 0 && container.clientWidth > 0) fit(); };
+        if (container.__hcFit) container.__hcFit.disconnect();
+        run();
+        if (typeof ResizeObserver === 'function') {
+            const ro = new ResizeObserver(run);
+            ro.observe(container);
+            container.__hcFit = ro;
+            return;
+        }
+        // fallback bez ResizeObserveru — aspoň na resize okna
+        if (container.__hcWinFit) window.removeEventListener('resize', container.__hcWinFit);
+        container.__hcWinFit = run;
+        window.addEventListener('resize', run);
+        container.__hcFit = { disconnect: () => window.removeEventListener('resize', run) };
+    }
+
+    /* -----------------------------------------------------------------------
        HEATMAP — .heat (scroll viewport) > .heat-months + .heat-grid > .heat-cell
        weeks[i] = column (Mon..Sun, 7 cells); cell = {date,count,level} | null.
        null → .heat-cell.out (transparent, no silent zero). level 0..4 → .l1..l4.
        ----------------------------------------------------------------------- */
+    /* Rozmer bunky heatmapy z reálnej výšky .heat (viac miesta = vyššie bunky).
+       Šírka je zhora ohraničená dostupnou šírkou, aby nevznikol vodorovný
+       posuvník tam, kde predtým nebol; výška smie byť najviac HEAT_ASPECT×
+       širšia, aby z políčok nevznikli prúžky. Zbytok dorovná .heat centrovaním. */
+    const HEAT_GAP = 3, HEAT_MIN = 12, HEAT_MAX = 30, HEAT_ASPECT = 1.35;
+
+    function fitHeatmap(container) {
+        const heat = container.querySelector('.heat');
+        const grid = heat && heat.querySelector('.heat-grid');
+        if (!heat || !grid) return;
+        const cols = Math.max(1, Math.ceil(grid.children.length / 7));
+        // Miesto pre mriežku = vnútro .heat mínus riadok mesiacov a vlastný padding.
+        // (scrollHeight sa na to použiť nedá: .heat obsah centruje, takže pri
+        // voľnom mieste vracia rovno clientHeight a fit by nikdy nenarástol.)
+        const hs = getComputedStyle(heat);
+        let overhead = (parseFloat(hs.paddingTop) || 0) + (parseFloat(hs.paddingBottom) || 0);
+        const months = heat.querySelector('.heat-months');
+        if (months) {
+            overhead += months.offsetHeight + (parseFloat(getComputedStyle(months).marginBottom) || 0);
+        }
+        const availH = heat.clientHeight - overhead;
+        const availW = heat.clientWidth;
+        if (availH <= 0 || availW <= 0) return;
+        const byW = Math.floor((availW - (cols - 1) * HEAT_GAP) / cols);
+        const byH = Math.floor((availH - 6 * HEAT_GAP) / 7);
+        const w = clamp(byW, HEAT_MIN, HEAT_MAX);
+        const h = clamp(Math.min(byH, Math.round(w * HEAT_ASPECT)), HEAT_MIN, HEAT_MAX);
+        if (container.__hcCell === w + 'x' + h) return;   // nič sa nemení → nekresli
+        container.__hcCell = w + 'x' + h;
+        container.style.setProperty('--heat-cell-w', w + 'px');
+        container.style.setProperty('--heat-cell-h', h + 'px');
+    }
+
     function heatmap(container, data) {
         if (!container) return;
+        container.__hcCell = null;
         container.innerHTML = '';
         data = data || {};
         const weeks = Array.isArray(data.weeks) ? data.weeks : [];
@@ -59,7 +117,9 @@
         // Month labels row — one 12px column per week, label at mapped indices.
         if (cols) {
             const mrow = el('div', 'heat-months');
-            mrow.style.gridTemplateColumns = 'repeat(' + cols + ', 12px)';
+            // stĺpec = šírka bunky, ktorú dopočíta fitHeatmap do --heat-cell-w
+            // (12px je fallback pre stav pred prvým fitom / bez JS merania)
+            mrow.style.gridTemplateColumns = 'repeat(' + cols + ', var(--heat-cell-w, 12px))';
             for (let c = 0; c < cols; c++) {
                 const s = el('span');
                 if (months[c] != null) s.textContent = months[c];
@@ -100,6 +160,8 @@
         }
         legend.appendChild(document.createTextNode('viac'));
         container.appendChild(legend);
+
+        autoFit(container, () => fitHeatmap(container));
     }
 
     /* -----------------------------------------------------------------------
@@ -202,7 +264,12 @@
             role: 'img',
         });
         svg.style.width = '100%';
+        // preserveAspectRatio="none" + non-scaling-stroke → SVG smie vyplniť celú
+        // výšku karty bez toho, aby čiara zhrubla. flex-grow berie zbytok miesta,
+        // 'auto' základ drží pôvodný pomer 300×90, keď je karta nízka.
         svg.style.height = 'auto';
+        svg.style.flex = '1 1 auto';
+        svg.style.minHeight = '0';
         svg.style.display = 'block';
 
         let line = '', area = '';
