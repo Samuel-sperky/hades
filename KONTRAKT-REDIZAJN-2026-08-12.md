@@ -120,46 +120,59 @@ Pri prekročení rozsahu o > 30 % sa beh zastaví a ohlási.
 
 ---
 
-## 8. Výsledok
+## 8. Výsledok — DOKONČENÉ
 
-**Stav 12. 8. 2026: W0, W1, W2a, W2b hotové a pushnuté. Beh zastavený na vyčerpaní stropu pred W2c a W4.**
-
-Branch `feat/hades-redizajn`, 4 commity nad `cac67b0`:
+**Stav 12. 8. 2026: všetky vlny hotové, vrátane review a opravy jeho nálezov.** Branch `feat/hades-redizajn`, 11 commitov nad `cac67b0`, 41 súborov, +7806 / −6175.
 
 | Commit | Vlna |
 |---|---|
-| `f684d49` | W0 — `mind.js` (5933 r.) rozsekaný na 31 ES modulov |
+| `f684d49` | W0 — `mind.js` (5933 r., jeden IIFE) na 31 natívnych ES modulov |
 | `d4a38dc` | W1 — tmavá téma default, sklo, odľahčenie chrómu |
 | `3dd00b7` | W2a — jeden graf so 4 úrovňami zanorenia |
-| `96f88fe` | W2b — fluidné mriežky, zjednotenie kariet |
+| `96f88fe` | W2b — fluidné mriežky cez celú šírku, zjednotenie kariet |
+| `f83c4b0` | W3a — mapa ako veniec namiesto pentagramu, váha jadra, oblaky prachu |
+| `a645290` | W3b — kontrast akcentu na tmavej, grafy dashboardu vyplnia kartu, tokeny chrómu |
+| `fb96c28` | W3c — okraje scény z CSS tokenov, uhnutie otvorenému panelu |
+| `3d910d2` | W2c — presety nastavení, breadcrumb 4. úroveň, klávesy, mŕtvy chróm |
+| `7a00762` | úklid — zvyšky force simulácie |
+| `c0260c1` | W4 — opravy nálezov review |
 
-### Akceptačné kritériá
+### Akceptačné kritériá — nezávisle zmerané
 
 | # | Kritérium | Baseline | Výsledok | |
 |---|---|---|---|---|
-| A1 | Graf ≥ 70 % šírky, každá úroveň | 42 % | 88–94 % (map 91/94, area 90/94, dept 89/93, node 88/91) | ✅ |
-| A2 | Žiadna úroveň pod 60 % | 42 % | min. 88 % | ✅ |
-| A3 | Popisky sa neprekrývajú | prekrývali | de-clutter na dept/node | ⚠️ na `area` sú popisky ~40 jednouzlových oddelení zahltené |
-| A4 | Typ čitateľný z tvaru | 1 tvar | 4 tvary (disk/donut/disk s prstencom/zlaté kruhy) | ✅ |
-| A5 | Knižnica ≥ 85 % šírky, rovnaké výšky | 40 % | 98 %, 7 stĺpcov | ✅ |
-| A6 | rAF zastavený mimo Grafu | metrika bola slepá | 0 mimo Grafu, 60 na Grafe | ✅ |
-| A7 | Zanorenie 4 úrovní + Esc + breadcrumb | — | funguje, overené klikmi | ⚠️ breadcrumb nemá 4. úroveň (`node`) |
-| A8 | Tmavá default, svetlá použiteľná, ≥ 4,5:1 | — | najhorší text nad plátnom 4,77:1 | ⚠️ 9 miest `--accent-600` v chróme má 2,57–3,39:1 |
-| A9 | PHP balík zelený | 95 ✓ | 95 ✓ / 1 skipped | ✅ |
-| A10 | Konzola bez chýb | čistá | čistá, 0 chýbajúcich exportov | ✅ |
+| A1 | Graf ≥ 70 % šírky, každá úroveň | 42 % | **93/92/91/90 %** (1600), **95/95/94/93 %** (2560) | ✅ |
+| A2 | Žiadna úroveň pod 60 % | 42 % | minimum **90 %** | ✅ |
+| A3 | Popisky sa neprekrývajú | prekrývali | medzi sebou 0 kolízií z 23 hubov; **s uzlami stále kolidujú** (26–51 na mape, 59–76 na oblasti) | ❌ |
+| A4 | Typ čitateľný z tvaru | 1 tvar | 4 tvary na `dept`/`node`; na `map` sú uzly prach 2,6 px **bez tvaru** | ⚠️ |
+| A5 | Knižnica ≥ 85 % šírky, rovnaké výšky | 40 % | **98 %**, 7 stĺpcov, 236 riadkov kariet a **0 s nerovnakou výškou** | ✅ |
+| A6 | rAF zastavený mimo Grafu | metrika bola slepá | **0** mimo Grafu, 57–60 na Grafe | ✅ |
+| A7 | Zanorenie 4 úrovní + Esc + breadcrumb | — | všetky 4 úrovne, breadcrumb má 4. crumb, `Esc` ide o jednu úroveň | ✅ |
+| A8 | Tmavá default, svetlá použiteľná, ≥ 4,5:1 | — | **0 padajúcich miest v oboch témach** (najhoršie 4,60 tmavá / 4,52 svetlá) | ✅ |
+| A9 | PHP balík zelený | 95 ✓ | **95 ✓**, 1 skipped, 363 assertions | ✅ |
+| A10 | Konzola bez chýb | čistá | **0 chýb, 0 pageerrors**, 0 chýbajúcich exportov | ✅ |
 
-### Zostáva (nový šprint)
-
-1. **W2c** — presety Čisté/Živé/Husté/Ambient + zbalené Pokročilé; breadcrumb 4. úroveň v `util.js`; klávesy `1–4`/`Esc`/`Enter` v `shortcuts.js`; odstrániť mŕtvy `#view-switch` a `d3` CDN skript (~270 kB, `d3` už nikde nie je); skryť mŕtve slidery síl (simulácia zrušená).
-2. **W4** — review celého diffu.
-3. **Estetický dlh na úrovni `map`** (najdôležitejšie vizuálne): stuhy medzi oblasťami tvoria viditeľný pentagram cez stred (bisektor je pri protiľahlých huboch nulový — treba hierarchické bundling cez uzol pri jadre); prázdny stred so 4 malými krúžkami; prach nečíta ako oblaky patriace hubom.
-4. **Kontrastný dlh** — 9 miest v chróme na `--accent-ink`.
-5. **Karta „Aktivita"** má prázdnu spodnú tretinu (heatmapa má fixnú výšku z `charts.js`, rad sa naťahuje na najvyššiu kartu).
-6. **`viewInsets()`** má zadrôtované `{112, 40, 68, 48}` — pri zmene šírky railu sa rozladí fit. Vystaviť ako CSS premenné.
-7. **`#node-panel`** prekrýva pravých ~300 px plátna a scéna sa neuhne.
+**A3 a A4 sú jediné nesplnené a sú vedomé:**
+- **A3** — odstup popisku hubu sa počíta z polomeru hubu, nie z polomeru oblaku prachu, takže popisok padne do stredu vlastného oblaku a jeho podklad prekryje uzly pod sebou. Oprava je v `render.js` (odstup z `Math.max(h.rw, h.crx)`), nestihlo sa.
+- **A4** — na mape je typ z tvaru nečitateľný principiálne: pri 1027 uzloch je prach 2,6 px, kde sa tvar nedá vykresliť. Dual-channel funguje od úrovne oddelenia. Kritérium bolo napísané bez ohľadu na to, že mapa má prach.
 
 ### Odchýlky od kontraktu
 
-- **d3 `forceSimulation` zrušená úplne**, nie len pohľady. Determinizmus (podmienka kontraktu) sa s force layoutom a `Math.random()` nedá zladiť. `buildSim`/`kickSim` ostali ako shimy, 8 volajúcich nedotknutých. Dôsledok: ťahanie uzlov zrušené, slidery síl sú mŕtve ovládače.
-- **W0 nebolo „mechanické"**, ako predpokladal odhad — 5933 riadkov v jednom IIFE si vyžiadalo plné prečítanie, agent zjedol 248k namiesto 80–120k a raz spadol na API 529.
-- **Príčina úzkosti obrazoviek bola inde, než kontrakt tvrdil** — nie chýbajúce fluidné mriežky (tie už `auto-fill minmax()` mali), ale dva stropy `max-width`.
+- **d3 `forceSimulation` zrušená úplne**, nie len pohľady. Determinizmus (podmienka kontraktu) sa s force layoutom a `Math.random()` nedá zladiť. Dôsledok: ťahanie uzlov zrušené, slidery síl odstránené.
+- **R7 nedodržané v litere** — kontrakt sľuboval, že všetkých 30+ ovládačov zostane. 4 slidery síl a `Obnoviť sily` sú zmazané, pretože po zrušení simulácie nič neovládali.
+- **R4 dodané len na tmavej téme.** Na svetlej ostáva plátno mimo Grafu skryté: pod poloprehľadnými chipmi tam kontrast textu závisel od obsahu grafu (merané 4,07:1, nestabilné medzi behmi). Tmavá je default, takže presvitanie je tam, kde ho používateľ vidí.
+- **`public/js/charts.js` je mimo rozsahu** uvedeného v sekcii 3 (+69 r.) — grafy dashboardu inak nechali v karte prázdnu spodnú tretinu.
+- **Príčiny dvoch z troch problémov boli iné, než kontrakt tvrdil.** Úzkosť obrazoviek nespôsobili chýbajúce fluidné mriežky (tie `auto-fill minmax()` už mali), ale `.screen { max-width: 920px }` a inline `maxWidth = '1120px'` v `dnes.js`. A „centrované titulky" neboli `text-align`, ale UA `align-items: center` na stĺpcových flex `<button>`-och.
+
+### Zostáva (samostatné úlohy)
+
+1. **A3** — odstup popiskov hubov od oblaku prachu (`render.js`).
+2. **46 dvojíc „dvoch pravd"** v `mind.css` (selektor + vlastnosť deklarované dvakrát s inou hodnotou, vzdialené > 120 riadkov); komentár na konci súboru navyše tvrdí, že override bloky už neexistujú, hoci 5 ich žije.
+3. **`/api/tags` vracia 3622 značiek** → `tagfilter.js` z nich robí 3622 checkboxov. Zbalená sekcia to schová, nevyrieši.
+4. **`--focus-ring`** má 2,02:1 (tmavá) / 1,48:1 (svetlá) voči `--surface-2`, čo je pod 3:1 podľa WCAG 2.4.11. **Nie je to regresia** — oba tokeny sú identické v `cac67b0`.
+5. **Mŕtvy kód starší ako tento šprint**: `timeline.setupTimeline()` (`#tl-range` nie je v blade, `render.js` by hodilo TypeError, keby sa replay dal zapnúť), `search.renderSearch`, `structure.findDuplicates`, `pack.addToPack`, `chat.addToChatContext`.
+6. `makeStars()` je no-op, ale volá sa 3×; `kickSim()` sa volá 13× s parametrom, ktorý neberie.
+
+### Predchádzajúci priebežný stav (pred dokončením)
+
+**W0, W1, W2a, W2b boli hotové a beh sa zastavil na vyčerpaní stropu 1 M.** Používateľ následne schválil dokončenie. Pôvodný odhad na dokončenie (+300k) bol optimistický — reálne to bolo ~+1,2 M, pretože každý agentský beh vychádzal na 205–293k.

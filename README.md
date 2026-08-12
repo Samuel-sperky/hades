@@ -9,8 +9,10 @@ z chatov v Claude Code a v reálnom čase žiari v prehliadači.
 docker compose up -d
 ```
 
-- **Vizualizácia:** http://localhost:8080 — glow sieť, klik na uzol = detail/editácia,
-  časová os s replayom rastu, ambient režim (⛶), chat s Hadesom (💬)
+- **Vizualizácia:** http://localhost:8080 — jeden graf so štyrmi úrovňami zanorenia
+  (mapa → oblasť → oddelenie → uzol), klik zanorí, `Esc` vyjde o úroveň, `1`–`4`
+  skočia na úroveň, breadcrumb v hlavičke drží cestu. Klik na uzol = detail/editácia,
+  ambient režim (⛶), chat s Hadesom (💬). Tmavá téma je default.
 - **MCP endpoint:** http://localhost:8080/mcp (Streamable HTTP)
 - **WebSocket (Reverb):** ws://localhost:8081
 
