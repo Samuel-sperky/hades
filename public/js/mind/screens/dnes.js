@@ -27,9 +27,8 @@ export function todaySkeleton() {
 export async function renderToday() {
     const body = $('dnes-body');
     if (!body) return;
-    // Dashboard potrebuje viac miesta než 920px čítacia šírka ostatných obrazoviek.
-    const screen = $('screen-dnes');
-    if (screen) screen.style.maxWidth = '1120px';
+    // Šírku rieši fluidná mriežka v CSS (#screens padding-inline + auto-fill grids),
+    // nie inline max-width — inak dashboard nikdy nevyužije široké okno.
     body.innerHTML = todaySkeleton();
 
     // /api/today je ľahký (sessions/records/projekty); ťažké agregáty sú v /api/dashboard (§4.1).
@@ -124,9 +123,9 @@ export function dashboardHtml(dash) {
         + '<span class="dash-note">' + num((dash.heatmap || {}).total) + ' za rok</span>'
         + '</div><div id="dash-heat"></div></div>';
 
-    // Donut istoty + legenda
+    // Donut istoty + legenda (rozloženie rieši .dash-cert v CSS, nie inline štýly)
     h += '<div class="dash-card"><div class="dash-head"><span class="dash-title">Istota</span></div>'
-        + '<div style="display:flex;flex-direction:column;gap:var(--sp-2);align-items:center;">'
+        + '<div class="dash-cert">'
         + '<div id="dash-donut"></div>'
         + certLegend(cert)
         + '</div></div>';

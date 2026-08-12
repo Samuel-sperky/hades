@@ -91,12 +91,14 @@ export function renderJournalList() {
             const word = c === 1 ? 'commit' : (c >= 2 && c <= 4 ? 'commity' : 'commitov');
             badges.push('<span class="tag muted">' + c + ' ' + word + '</span>');
         }
+        // Značky žijú v hlavičke riadku (nie pod ňou) — na širokom okne tak riadok
+        // využije šírku: názov vľavo, značky + čas vpravo, namiesto prázdneho stredu.
         html += '<div class="li-wrap rec-wrap">'
             + '<button type="button" class="record" data-id="' + r.id + '" data-label="' + esc(r.label) + '">'
             + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
             + '<span class="record-title">' + esc(r.label) + '</span>'
+            + (badges.length ? '<span class="record-tags">' + badges.join('') + '</span>' : '')
             + '<span class="record-time">' + timeHM(r.created_at) + '</span></div>'
-            + (badges.length ? '<div class="record-tags">' + badges.join('') + '</div>' : '')
             + '</button>'
             + packBtn(r.id, r.label) + '</div>';
     }

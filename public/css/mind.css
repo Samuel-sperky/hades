@@ -2299,18 +2299,20 @@ body:not([data-screen="graf"]) #local-chip { display: none !important; }
 /* Chat je schovaný, kým ho v Nastaveniach nezapneš (nefunguje bez API kľúča) */
 body:not(.chat-on) #prompt { display: none !important; }
 
-/* Kontajner obrazoviek — obsahová plocha za railom, pod hlavičkou */
+/* Kontajner obrazoviek — obsahová plocha za railom, pod hlavičkou.
+   Fluidná mriežka: obsah berie celú dostupnú šírku, gutter rastie s oknom. */
 #screens {
     position: fixed;
     left: 104px; right: var(--edge);
     top: calc(var(--edge) + 44px + var(--sp-1));
     bottom: var(--edge);
     overflow-y: auto;
+    padding-inline: clamp(16px, 2vw, 48px);
     z-index: var(--z-panel);
 }
 body[data-screen="graf"] #screens { display: none; }
 
-.screen { display: none; max-width: 920px; padding-right: var(--sp-1); }
+.screen { display: none; width: 100%; }
 .screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
 
 .screen-head { margin-bottom: var(--sp-3); }
@@ -3363,3 +3365,197 @@ select {
 @media (prefers-reduced-motion: reduce) {
     .status-dot[data-status="running"] { animation: none; }
 }
+
+/* ###########################################################################
+   VLNA W2b — FLUIDNÉ MRIEŽKY + JEDNA KARTA (obrazovky Dnes/Denník/Knižnica/
+   Rozhodnutia/Kontrola/Smernica)
+
+   Táto sekcia je JEDINÝ zdroj pravdy pre vizuál kariet obrazoviek. Leží na konci
+   súboru zámerne: staršie rules kariet vyššie deklarujú padding/radius/tiene
+   po svojom, tu ich zjednocujeme a nižšie pridávame len skutočné ROZDIELY.
+   Bez raw hex/rgba — všetko cez tokeny z :root.
+   ########################################################################### */
+
+/* ---------------------------------------------------------------------------
+   1) JEDNA KARTA — spoločný základ. --card-pad je lokálny prepínač varianty,
+      nie globálny token (list riadky sú o pol kroku kompaktnejšie než bloky).
+   --------------------------------------------------------------------------- */
+.today-search,
+.today-card,
+.today-card-link,
+.kpi-card,
+.dash-card,
+.lib-skill,
+.record,
+.dtl-card,
+.queue-item,
+.dir-group,
+.dir-preview-wrap,
+.dir-saved-item {
+    --card-pad: var(--sp-2);
+    padding: var(--card-pad);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: none;
+    /* Všetok text v karte vľavo. UA štýl <button> nesie align-items/text-align
+       center — to centrovalo krátke popisky a v tej istej karte mieša zarovnania
+       (titulok na stred, telo vľavo). Preto to tu prepisujeme explicitne. */
+    text-align: left;
+}
+
+/* Zoznamové riadky — kompaktnejší vnútorný priestor než dashboardové bloky */
+.lib-skill,
+.record,
+.dtl-card,
+.dir-saved-item { --card-pad: var(--sp-2h); }
+
+/* Karty so stĺpcovým obsahom — deti na celú šírku karty (ruší UA centrovanie) */
+.today-card,
+.today-card-link,
+.kpi-card,
+.dash-card,
+.lib-skill,
+.dir-group { align-items: stretch; }
+
+/* Riadkové karty si držia svoje zvislé zarovnanie */
+.today-search,
+.dir-saved-item { align-items: center; }
+.queue-item { align-items: flex-start; }
+
+/* Významové ľavé hrany zostávajú (nie sú dekorácia): záznam = accent,
+   fronta = kurzor klávesnice */
+.record { border-left: 2px solid var(--border-accent); }
+.queue-item { border-left: 2px solid var(--border-strong); }
+
+/* Karty v jednom riadku majú rovnakú výšku. Obal (.li-wrap/.today-card-wrap) je
+   grid item → grid ho natiahne na výšku radu, .align-items:stretch v obale
+   dotiahne kartu. Len v mriežkových kontextoch — v zvislých zoznamoch by
+   height:100% nemalo zmysel. */
+.lib-skills > .li-wrap,
+.today-grid > .today-card-wrap { height: 100%; }
+
+/* ---------------------------------------------------------------------------
+   2) FLUIDNÉ MRIEŽKY — auto-fill/auto-fit cez celú dostupnú šírku.
+      Na 2560 sa Knižnica doleje na 7 stĺpcov, dashboard na jeden plný rad.
+   --------------------------------------------------------------------------- */
+.kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--sp-1);
+}
+.dash-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--gutter);
+    align-items: stretch;          /* zarovnané spodky — ruší dieru pod „Istota" */
+}
+.today-cards { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.today-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--sp-2);
+    align-items: stretch;
+}
+.lib-skills {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--sp-2);
+    align-items: stretch;
+}
+.dir-saved { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+/* span-2 potrebuje aspoň 2 stĺpce; v jednostĺpcovom rade by pretekal */
+@media (max-width: 900px) {
+    .dash-card.span-2 { grid-column: auto; }
+}
+
+/* ---------------------------------------------------------------------------
+   3) PRAVIDELNÝ RYTMUS OBRAZOVIEK — jedna medzera medzi sekciami namiesto
+      zmesi margin-bottom (sp-2/sp-3/gutter), ktorá robila nerovné diery.
+   --------------------------------------------------------------------------- */
+/* Len obrazovky, kde zároveň nulujem margin-bottom detí — inak by sa gap
+   a existujúci margin sčítali do ešte nerovnejších dier. */
+#dnes-body,
+#library-body,
+#directive-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+#dnes-body > .today-search,
+#dnes-body > .today-line,
+#dnes-body > .kpi-grid,
+#dnes-body > .dash-grid,
+#dnes-body > .today-sec,
+#library-body > .lib-area,
+#directive-body > .dir-templates,
+#directive-body > .dir-input-row,
+#directive-body > .dir-cols { margin-bottom: 0; }
+
+/* Nadpisy sekcií na obrazovkách — jedna miera, jeden odstup */
+.today-sec h2,
+.lib-area h2,
+.dir-saved-sec h2 {
+    font-size: var(--fs-h2);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-title);
+    color: var(--text);
+    margin-bottom: var(--sp-2);
+}
+
+/* Denník — značky sedia v hlavičke riadku, takže riadok je jednoriadkový:
+   ikona + názov vľavo, značky a čas vpravo. Názov sa krátí prvý. */
+.record > .record-head > .record-tags {
+    margin-top: 0;
+    flex: 0 1 auto;
+    justify-content: flex-end;
+}
+
+/* Istota — donut a legenda vedľa seba. Zvislé skladanie robilo z tejto karty
+   najvyššiu v rade a rovnaká výška radu potom naťahovala susedov (prázdno pod
+   heatmapou aj pod „Rast siete"). Vedľa seba je rad nižší a hustejší. */
+.dash-cert {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+}
+.dash-cert > #dash-donut { flex: 0 0 auto; }
+.dash-cert > .cert-legend { flex: 1 1 140px; min-width: 0; }
+
+/* ---------------------------------------------------------------------------
+   4) ČITATEĽNÁ MIERA — mriežka je fluidná, riadok plynulého textu nie.
+      Platí len na text, ktorý sa ZALAMUJE; jednoriadkové ellipsis popisky
+      necháme na celú šírku (dlhý jednoriadok nie je problém čitateľnosti).
+   --------------------------------------------------------------------------- */
+.dtl-card .dtl-text,
+.dtl-card .dtl-reason,
+.queue-text,
+.dir-preview.md-body > * { max-width: 72ch; }
+
+/* ---------------------------------------------------------------------------
+   5) ROZHODNUTIA — karta využije šírku: text vľavo, značky vpravo.
+      (Bez toho ostane pravých ~60 % karty prázdnych na širokom okne.)
+   --------------------------------------------------------------------------- */
+.dtl-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--sp-2);
+    align-items: start;
+}
+.dtl-card .dtl-head { grid-column: 1; grid-row: 1; }
+.dtl-card .dtl-meta { grid-column: 2; grid-row: 1; justify-content: flex-end; margin-top: 0; }
+.dtl-card .dtl-reason { grid-column: 1 / -1; grid-row: 2; }
+
+@media (max-width: 1100px) {
+    .dtl-card { display: flex; flex-direction: column; }
+    .dtl-card .dtl-meta { justify-content: flex-start; }
+}
+
+/* ---------------------------------------------------------------------------
+   6) KONTRASTNÝ DLH — `color: var(--accent-600)` je na tmavej téme tmavý teal
+      a ako TEXT dáva 2,5–3,3:1 (merané na --accent-soft/--accent-softer nad
+      panelom). --accent-ink na to existuje: 6,4:1. Len miesta v mojom rozsahu.
+   --------------------------------------------------------------------------- */
+.chip:hover { color: var(--accent-ink); }
+.pack-btn:hover,
+.pack-btn.in-pack { color: var(--accent-ink); }
+#md-pack.in-pack { color: var(--accent-ink); }
+.queue-actions button.act-resolve:hover { color: var(--accent-ink); }
