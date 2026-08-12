@@ -1,118 +1,266 @@
 import { animLevel } from './anim.js';
 import { syncForceSliders } from './forces.js';
-import { anchorOf, layerLayout, nodeRadius } from './layout.js';
-import { draw, fitView, requestDraw } from './render.js';
+import { computeLayout } from './layout.js';
+import { draw, fitBBox, fitCam, requestDraw } from './render.js';
 import { REDUCED_MOTION, S } from './state.js';
+import { renderBreadcrumb } from './util.js';
 
-/* ---------- simulácia ---------- */
+/* ---------- W2a: STAVOVÝ STROJ ZANORENIA ----------
 
-export function applyViewPins() {
-    if (S.view === 'layers') {
-        const lay = layerLayout();
-        for (const n of S.nodes) {
-            const p = lay.posOf.get(n.id);
-            if (p) { n.fx = p.x; n.fy = p.y; n._li = p.li; }
-            else { n.fx = null; n.fy = null; n._li = null; }
-        }
-        return;
+   Jediný graf, štyri úrovne: 'map' → 'area' → 'dept' → 'node'.
+   Vstupný bod je go({ level, area, dept, node }), stav sa čita cez currentPath().
+   Pozície sú deterministické (layout.js), d3 simulácia je zrušená — nie je potrebná
+   a jej náhodnosť by rozbila požiadavku „rovnaké dáta → rovnaké pozície".
+*/
+
+export const LEVEL_ORDER = ['map', 'area', 'dept', 'node'];
+
+/* ---------- pozície ---------- */
+
+// Prenesie vypočítaný layout do n.x/n.y. Uzly mimo úrovne si nechajú staré pozície,
+// ale nekreslia sa (render aj pick idú výhradne cez S.layout.pos).
+export function applyLayoutPositions(L) {
+    for (const n of S.nodes) {
+        const e = L.pos.get(n.id);
+        if (e) { n.x = e.x; n.y = e.y; }
+        else if (n.x === undefined) { n.x = 0; n.y = 0; }
+        n.fx = null; n.fy = null;
     }
-
-    for (const n of S.nodes) { n.fx = null; n.fy = null; }
-    const h = S.nodes.find((n) => n.type === 'core' && n.label === S.name);
-    if (h) { h.fx = 0; h.fy = 0; }
 }
 
-export function buildSim() {
-    if (S.sim) S.sim.stop();
-    S._layerCache = null; // štruktúra grafu sa mohla zmeniť → prepočítaj poradie stĺpcov
+// Spätne kompatibilný názov (volal ho buildSim; iné moduly ho neimportujú).
+export function applyViewPins() {
+    applyLayoutPositions(computeLayout());
+}
 
-    // stupeň uzla (počet hrán) — podklad pre sizeByDegree, prepočet pri každej zmene hrán
+/* ---------- normalizácia cieľa ---------- */
+
+function firstAreaId() {
+    let best = null, bestC = -1;
+    const cnt = new Map();
+    for (const n of S.nodes) if (n.area_id != null) cnt.set(n.area_id, (cnt.get(n.area_id) || 0) + 1);
+    for (const [id, c] of cnt) if (c > bestC) { best = id; bestC = c; }
+    return best;
+}
+
+function firstDeptId(areaId) {
+    const cnt = new Map();
+    for (const n of S.nodes) if (n.department_id) cnt.set(n.department_id, (cnt.get(n.department_id) || 0) + 1);
+    let best = null, bestC = -1;
+    for (const [id, c] of cnt) {
+        const d = S.departments.get(id);
+        if (!d || (areaId != null && d.area_id !== areaId)) continue;
+        if (c > bestC) { best = id; bestC = c; }
+    }
+    return best;
+}
+
+// Doplní chýbajúci kontext (uzol pozná svoje oddelenie a oblasť) a zhodí úroveň
+// nižšie, ak cieľ neexistuje. Graceful — go() sa nikdy nesekne na neplatnom id.
+export function clampNav(t) {
+    let level = LEVEL_ORDER.includes(t && t.level) ? t.level : 'map';
+    let area = t.area != null ? +t.area : null;
+    let dept = t.dept != null ? +t.dept : null;
+    let node = t.node != null ? +t.node : null;
+
+    if (node != null && S.byId.has(node)) {
+        const n = S.byId.get(node);
+        if (dept == null && n.department_id) dept = n.department_id;
+        if (area == null && n.area_id != null) area = n.area_id;
+    }
+    if (dept != null && S.departments.has(dept) && area == null) area = S.departments.get(dept).area_id;
+
+    if (level === 'node' && (node == null || !S.byId.has(node))) level = dept != null ? 'dept' : (area != null ? 'area' : 'map');
+    if (level === 'dept' && (dept == null || !S.departments.has(dept))) level = area != null ? 'area' : 'map';
+    if (level === 'area' && (area == null || !S.areas.has(area))) level = 'map';
+
+    if (level === 'map') { area = null; dept = null; node = null; }
+    else if (level === 'area') { dept = null; node = null; }
+    else if (level === 'dept') { node = null; }
+    return { level, area, dept, node };
+}
+
+function navKey(n) { return n.level + ':' + n.area + ':' + n.dept + ':' + n.node; }
+
+// S.focus je od W2a už len zrkadlo úrovne pre breadcrumb a strom štruktúry —
+// stmievanie si render/edges počítajú samy z layoutu (ent.dim), nie z focusPass.
+function syncFocus(nav) {
+    const areaId = nav.level === 'map' ? null : nav.area;
+    const deptId = (nav.level === 'dept' || nav.level === 'node') ? nav.dept : null;
+    S.focus = { areaId: areaId || null, departmentId: deptId || null };
+    S._navFocusKey = S.focus.areaId + ':' + S.focus.departmentId;
+}
+
+/* ---------- verejné API ---------- */
+
+// Stupeň uzla (podklad pre nodeRadius) — prepočíta sa raz, buildSim ho obnoví.
+function ensureDegree() {
+    if (S.degree && S.degree.size) return;
+    S.degree = new Map();
+    for (const e of S.edges) {
+        S.degree.set(e.source_id, (S.degree.get(e.source_id) || 0) + 1);
+        S.degree.set(e.target_id, (S.degree.get(e.target_id) || 0) + 1);
+    }
+}
+
+// Prechod na úroveň. Kamera aj pozície sa tweenujú (ease-in-out cubic, ~600 ms).
+export function go(target = {}) {
+    ensureDegree();
+    const next = clampNav(Object.assign({}, S.nav, target));
+    const changed = navKey(next) !== navKey(S.nav);
+    const first = !S.layout;
+    // klik na už zanorený cieľ nemá trhnúť kamerou — používateľ si ju možno posunul
+    if (!changed && !first) { requestDraw(); return next; }
+
+    const animate = changed && S.nodes.length > 0 && !REDUCED_MOTION && animLevel() > 0;
+    const from = animate ? new Map() : null;
+    if (animate) for (const n of S.nodes) if (n.x != null) from.set(n.id, { x: n.x, y: n.y });
+    const camFrom = { x: S.cam.x, y: S.cam.y, k: S.cam.k };
+
+    S.nav = next;
+    try { localStorage.setItem('hades.nav', JSON.stringify(next)); } catch (e) { /* full storage — nič */ }
+    syncFocus(next);
+    S.view = 'graph';
+
+    const L = computeLayout(true);
+    applyLayoutPositions(L);
+    // fitBBox (nie L.bbox) — zaráta polomer hubov aj miesto na ich popisky, inak by
+    // hub na okraji scény vyliezol pod hlavičku
+    const camTo = fitCam(fitBBox(L));
+
+    markViewSwitch(next.level);
+    renderBreadcrumb();
+
+    if (!animate) {
+        S.cam.x = camTo.x; S.cam.y = camTo.y; S.cam.k = camTo.k;
+        S._morph = null; S._camTween = null;
+        requestDraw();
+        return next;
+    }
+
+    // uzly, ktoré na predošlej úrovni neboli, priletia z hubu svojho kontextu
+    const to = new Map();
+    for (const [id, e] of L.pos) to.set(id, { x: e.x, y: e.y });
+    const fallback = { x: 0, y: 0 };
+    const full = new Map();
+    for (const [id, t] of to) full.set(id, from.get(id) || fallback);
+
+    S._camTween = { from: camFrom, to: camTo, t: 0, dur: 0.6 };
+    S._morph = { from: full, to, t: 0, dur: 0.6 };
+    for (const n of S.nodes) { const f = full.get(n.id); if (f) { n.x = f.x; n.y = f.y; } }
+    draw(); // prekresli na štartové pozície, nech cieľ nezabliká pred prvým rAF framom
+    requestDraw();
+    return next;
+}
+
+// Čitateľný stav pre breadcrumb / iné vlny.
+export function currentPath() {
+    const nav = S.nav;
+    const area = nav.area != null ? S.areas.get(nav.area) : null;
+    const dept = nav.dept != null ? S.departments.get(nav.dept) : null;
+    const node = nav.node != null ? S.byId.get(nav.node) : null;
+    const crumbs = [{ level: 'map', label: S.name || 'Hades', id: null }];
+    if (area) crumbs.push({ level: 'area', label: area.name, id: area.id });
+    if (dept) crumbs.push({ level: 'dept', label: dept.name, id: dept.id });
+    if (node) crumbs.push({ level: 'node', label: node.label, id: node.id });
+    return {
+        level: nav.level,
+        area: nav.area, dept: nav.dept, node: nav.node,
+        areaName: area ? area.name : null,
+        deptName: dept ? dept.name : null,
+        nodeName: node ? node.label : null,
+        crumbs,
+    };
+}
+
+// O úroveň von (klik do prázdna, Esc).
+export function goUp() {
+    const nav = S.nav;
+    if (nav.level === 'node') return go({ level: nav.dept != null ? 'dept' : (nav.area != null ? 'area' : 'map') });
+    if (nav.level === 'dept') return go({ level: nav.area != null ? 'area' : 'map' });
+    if (nav.level === 'area') return go({ level: 'map' });
+    return nav;
+}
+
+// Zanorenie na to, na čo sa kliklo (hub oblasti / hub oddelenia / uzol).
+export function goInto(hit) {
+    if (!hit) return goUp();
+    if (hit.type === 'areaHub') return go({ level: 'area', area: hit.id });
+    if (hit.type === 'deptHub') return go({ level: 'dept', dept: hit.id });
+    if (hit.type === 'node') {
+        const n = hit.node;
+        if (S.nav.level === 'map') return go({ level: 'area', area: n.area_id });
+        if (S.nav.level === 'area') {
+            if (n.department_id && S.departments.has(n.department_id)) return go({ level: 'dept', dept: n.department_id });
+            return go({ level: 'node', node: n.id });
+        }
+        return go({ level: 'node', node: n.id });
+    }
+    return S.nav;
+}
+
+// #view-switch (tri tlačidlá z minulého sveta) — active class podľa úrovne.
+function markViewSwitch(level) {
+    const map = { map: 'map', area: 'net', dept: 'layers', node: 'layers' };
+    document.querySelectorAll('#view-switch button').forEach((b) => {
+        b.classList.toggle('active', b.dataset.view === map[level]);
+    });
+}
+
+/* ---------- spätná kompatibilita ---------- */
+
+// Legacy vstup z controls.js / shortcuts.js / chat.js. Náhľady sú zrušené, takže
+// klávesy 1/2/3 a tri tlačidlá teraz prepínajú ÚROVEŇ: 1 = mapa, 2 = oblasť, 3 = oddelenie.
+export function setView(view) {
+    if (view === 'map') return go({ level: 'map' });
+    if (view === 'net') {
+        const a = S.nav.area != null ? S.nav.area : firstAreaId();
+        return go({ level: 'area', area: a });
+    }
+    if (view === 'layers') {
+        const a = S.nav.area != null ? S.nav.area : firstAreaId();
+        const d = S.nav.dept != null ? S.nav.dept : firstDeptId(a);
+        return go({ level: 'dept', area: a, dept: d });
+    }
+    // main.js volá setView(S.view) na štarte — S.view je 'graph', čo znamená
+    // „obnov uložený stav zanorenia" (localStorage 'hades.nav').
+    syncForceSliders();
+    return go(S.nav);
+}
+
+// Prepočet po zmene dát (WS zrod, reload, presun uzla, filtre).
+export function buildSim() {
+    S.sim = null;   // d3 simulácia zrušená — layout je deterministický
+
     S.degree = new Map();
     for (const e of S.edges) {
         S.degree.set(e.source_id, (S.degree.get(e.source_id) || 0) + 1);
         S.degree.set(e.target_id, (S.degree.get(e.target_id) || 0) + 1);
     }
 
-    for (const n of S.nodes) {
-        if (n.x === undefined) {
-            const a = anchorOf(n);
-            n.x = a.x + (Math.random() - 0.5) * 60;
-            n.y = a.y + (Math.random() - 0.5) * 60;
-        }
-    }
+    const next = clampNav(S.nav);
+    if (navKey(next) !== navKey(S.nav)) { S.nav = next; syncFocus(next); renderBreadcrumb(); }
 
-    applyViewPins();
-
-    const net = S.view === 'net';
-    // override fyziky zo S.forces (F2 slidery) — null = predvolená hodnota náhľadu
-    const F = S.forces || {};
-    const grav = F.gravity != null ? F.gravity : 1;
-    const linkMul = F.linkStrength != null ? F.linkStrength : 1;
-
-    S.sim = d3.forceSimulation(S.nodes)
-        .velocityDecay(0.3)
-        .force('x', d3.forceX(d => net ? 0 : anchorOf(d).x)
-            .strength(d => (net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)) * grav))
-        .force('y', d3.forceY(d => net ? 0 : anchorOf(d).y)
-            .strength(d => (net ? 0.03 : (d.type === 'core' ? 0.25 : 0.055)) * grav))
-        .force('charge', d3.forceManyBody()
-            .strength(F.charge != null ? F.charge : (net ? -120 : -42))
-            .distanceMax(net ? 520 : 320))
-        .force('collide', d3.forceCollide(d => nodeRadius(d) + 7))
-        .force('link', d3.forceLink(S.edges)
-            .id(d => d.id)
-            .distance(F.linkDistance != null ? F.linkDistance : (net ? 95 : 72))
-            .strength(e => Math.min(0.09, 0.025 * (e.weight || 1)) * linkMul))
-        .alpha(0.9)
-        .alphaDecay(0.015)
-        // FÁZA RENDER PIPELINE: alphaTarget 0 (predtým 0.012) — po usadení (alpha < alphaMin)
-        // sim prestane tikať a slučka sa uspí. Drag/dáta/prepnutie náhľadu ho reštartujú.
-        .alphaTarget(0)
-        .alphaMin(0.001);
-
-    // FÁZA RENDER PIPELINE: vo Vrstvách sú pozície pevné (fx/fy) → sim netreba, hneď zastav.
-    if (S.view === 'layers') S.sim.stop();
-
-    requestDraw(); // štruktúra grafu sa zmenila — vyžiadaj prekreslenie
-}
-
-export function setView(view) {
-    const prev = S.view;
-    // FÁZA ANIMÁCIE (Q12): morph len pri skutočnej zmene náhľadu; prvé načítanie a REDUCED_MOTION/anim=0 skáču
-    const animate = prev !== view && S.nodes.length > 0 && !REDUCED_MOTION && animLevel() > 0;
-    const from = animate ? new Map(S.nodes.map(n => [n.id, { x: n.x, y: n.y }])) : null;
-
-    S.view = view;
-    localStorage.setItem('hades.view', view);
-    document.querySelectorAll('#view-switch button').forEach((b) => {
-        b.classList.toggle('active', b.dataset.view === view);
-    });
-    buildSim();
-    kickSim(0.6);
-    // mapa/sieť: pár tikov, nech bbox sedí na usadených pozíciách; vrstvy sú deterministické (fx/fy)
-    if (S.sim && view !== 'layers') S.sim.tick(30);
-    syncForceSliders(); // efektívne predvolené sily sa menia s náhľadom
-
-    if (!animate) { fitView(); return; }
-
-    // cieľové pozície: layers sú pripnuté (fx/fy) a neťikajú sa, mapa/sieť sú usadené v n.x/n.y
-    const to = new Map(S.nodes.map(n => [n.id, {
-        x: n.fx != null ? n.fx : n.x,
-        y: n.fy != null ? n.fy : n.y,
-    }]));
-    // dočasne posaď uzly na cieľ, nech fitView zaráta kameru na cieľový layout
-    for (const n of S.nodes) { const b = to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } }
-    fitView(); // zaráta kameru na cieľ (a raz vykreslí cieľové pozície)
-    S.sim.stop(); // počas morphu nesmie sim prepisovať pozície
-    for (const n of S.nodes) { const f = from.get(n.id); if (f) { n.x = f.x; n.y = f.y; } }
-    S._morph = { from, to, t: 0, dur: 0.6 };
-    draw(); // prekresli na štartové pozície, nech nebliká cieľ pred prvým rAF framom
-}
-
-export function kickSim(alpha = 0.35) {
-    // FÁZA RENDER PIPELINE: sim sa teraz usadí a zastaví (alphaTarget 0), preto ho treba
-    // reštartovať (.restart()). Vo Vrstvách je sim vždy zastavený (pevné fx/fy) — len prekresli.
-    if (S.view === 'layers') { requestDraw(); return; }
-    if (S.sim) S.sim.alpha(Math.max(S.sim.alpha(), alpha)).restart();
+    const L = computeLayout(true);
+    applyLayoutPositions(L);
+    syncForceSliders();
     requestDraw();
+    return L;
+}
+
+// Legacy „nakopnutie simulácie" — bez simulácie stačí prekresliť.
+export function kickSim() {
+    requestDraw();
+}
+
+// Zmena S.focus zvonku (strom štruktúry, Esc, breadcrumb v util.js) → dorovnaj úroveň.
+// Volá to render.frame(), takže externý setFocus() naďalej funguje bez zmeny util.js.
+export function syncNavFromFocus() {
+    const key = S.focus.areaId + ':' + S.focus.departmentId;
+    if (key === S._navFocusKey) return false;
+    S._navFocusKey = key;
+    if (S.focus.departmentId) go({ level: 'dept', area: S.focus.areaId, dept: S.focus.departmentId });
+    else if (S.focus.areaId) go({ level: 'area', area: S.focus.areaId });
+    else go({ level: 'map' });
+    return true;
 }

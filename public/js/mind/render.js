@@ -1,15 +1,22 @@
-import { animLevel, birthScale, breatheFactor, easeInOut, flowCap, lifeLevel, lifeTier, maybeSynapse } from './anim.js';
-import { drawEdges } from './edges.js';
-import { filterActive, localSet, nodeVisible } from './filters.js';
-import { nodeAlphaMul } from './forces.js';
+import { animLevel, birthScale, breatheFactor, dustDrift, easeInOut, flowCap, lifeLevel, lifeTier, maybeSynapse } from './anim.js';
+import { drawEdges, drawRibbons, drawStubs } from './edges.js';
+import { localSet, nodeVisible } from './filters.js';
 import { screenToWorld } from './interaction.js';
-import { areaAnchor, drawLayerBands, drawLayerScaffold, layerLayout, nodeRadius } from './layout.js';
+import { computeLayout, drawRadius, viewInsets } from './layout.js';
+import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.js';
 import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
 import { T, certColors } from './theme.js';
 import { stopReplay, updateTimelineLabel } from './timeline.js';
-import { highlightSet, isAwake, layerPathSet, nodeColor, now, syncSlider, ts, updateStateUi } from './util.js';
+import { highlightSet, isAwake, nodeColor, now, syncSlider, ts, updateStateUi } from './util.js';
 
 /* ---------- render ---------- */
+
+// FÁZA SHELL / W2a: plátno žije LEN na obrazovke Graf. Zdroj pravdy je atribút
+// data-screen na <body> (píše ho setScreen), S.screen je fallback pri prvom framu.
+export function graphActive() {
+    const ds = document.body ? document.body.dataset.screen : null;
+    return ds ? ds === 'graf' : S.screen === 'graf';
+}
 
 export function resize() {
     S.dpr = window.devicePixelRatio || 1;
@@ -19,6 +26,14 @@ export function resize() {
     canvas.height = S.h * S.dpr;
     canvas.style.width = S.w + 'px';
     canvas.style.height = S.h + 'px';
+    // W2a: layout je aspect-aware — zmena rozmeru prepočíta scénu a znovu ju nafitne
+    if (S.nodes.length) {
+        const L = computeLayout();
+        applyLayoutPositions(L);
+        S._morph = null; S._camTween = null;
+        const c = fitCam(fitBBox(L));
+        S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k;
+    }
 }
 
 // Časticový systém odstránený — žiadna hmla na papieri. No-op kvôli existujúcim volaniam.
@@ -32,124 +47,102 @@ export function visibleInReplay(n) {
     return n.type === 'core' || ts(n.created_at) <= cutoff;
 }
 
+// Layout aktuálnej úrovne + istota, že n.x/n.y sedia (napr. po zmene viewportu).
+function ensureLayout() {
+    const prev = S.layout;
+    const L = computeLayout();
+    if (L !== prev) { applyLayoutPositions(L); S._morph = null; }
+    return L;
+}
+
+// Alfa uzla: základ z layoutu (kontext je stmavnutý na ~15 %) × zvýraznenie hoverom.
+function entAlpha(n, ent, hl) {
+    const base = ent.dim != null ? ent.dim : 1;
+    let a = base;
+    if (hl && !hl.has(n.id)) a *= 0.30;
+    if (base >= 0.5) a = Math.max(T.nodeFloor, a);
+    return a * S.dim;
+}
+
 export function draw() {
+    // W2a: API stavového stroja pre iné vlny (main.js prepisuje window.HADES, preto tu)
+    if (!S._navApi) {
+        S._navApi = 1;
+        window.HADES = Object.assign(window.HADES || {}, { go, currentPath, computeLayout });
+    }
+
     const targetDim = isAwake() ? 1 : 0.5;
     S.dim += (targetDim - S.dim) * 0.02;
-    // FÁZA RENDER PIPELINE: epsilon-snap útlmu — nech sa stav označí za ustálený a slučka usne
     if (Math.abs(targetDim - S.dim) < 0.001) S.dim = targetDim;
 
     ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
     ctx.fillStyle = T.paper;
     ctx.fillRect(0, 0, S.w, S.h);
 
+    const L = ensureLayout();
+    const level = L.level;
+
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
     ctx.scale(S.cam.k, S.cam.k);
 
-    // FÁZA RENDER PIPELINE: viewport culling — svetové hranice viditeľnej plochy + okraj.
-    // Uzly, hrany aj popisky mimo tohto rámca sa vôbec nekreslia. Okraj pokryje polomer + popisky.
+    const invK = 1 / S.cam.k;
+
+    // viewport culling — svetové hranice viditeľnej plochy + okraj
     const _vTL = screenToWorld(0, 0);
     const _vBR = screenToWorld(S.w, S.h);
-    const VM = 140 / S.cam.k;
+    const VM = 140 * invK;
     const vpX0 = _vTL.x - VM, vpY0 = _vTL.y - VM, vpX1 = _vBR.x + VM, vpY1 = _vBR.y + VM;
     const inView = (x, y) => x >= vpX0 && x <= vpX1 && y >= vpY0 && y <= vpY1;
-    // hrana v zábere? bbox koncov pretína viewport (nezahodí hranu prechádzajúcu cez plochu)
     const edgeInView = (a, b) => !(Math.max(a.x, b.x) < vpX0 || Math.min(a.x, b.x) > vpX1
         || Math.max(a.y, b.y) < vpY0 || Math.min(a.y, b.y) > vpY1);
-    // FÁZA ANIMÁCIE (Living): zapamätaj svetové hranice viewportu pre cielenie spontánnych synapsií.
     S._vp = { x0: vpX0, y0: vpY0, x1: vpX1, y1: vpY1 };
-    // kurzor v svetových súradniciach (raz za frame) — podklad pre gravitáciu/parallax uzlov
-    const cursorWorld = (S._life > 0 && S.cursor.a > 0.01) ? screenToWorld(S.cursor.sx, S.cursor.sy) : null;
 
     const hl = highlightSet();
     const hlAnchor = S.hover || S.selected;
-    // lokálny graf: členovia BFS množiny sa kreslia, ostatné sa úplne preskočia
     const loc = localSet();
+    const softHoverActive = S.opts.edgeSoftHover && !hlAnchor && !loc;
 
-    const layersView = S.view === 'layers';
-    // vrstvová cesta cez layery (2-skoky VON) — len v náhľade Vrstvy; inde null (staré správanie)
-    const pathEdges = layersView ? layerPathSet(hlAnchor) : null;
-    const pathNodes = layersView ? S._lpNodes : null;
-    // FÁZA HRANY: soft-hover — v pokoji (žiadny hover/fokus/local) sú hrany extra jemné (×0.35),
-    // spojenia sa vynoria až keď je uzol pod kurzorom / vo fokuse.
-    const softHoverActive = S.opts.edgeSoftHover && !hlAnchor && !S.focus.areaId && !loc;
-    const bgLevel = layersView ? 0 : S.opts.bg;
+    /* ---- pozadie: jemná technická mriežka ---- */
+    const bgLevel = S.opts.bg * (level === 'map' ? 0.7 : 1);
     if (bgLevel > 0.01) {
-        const invK = 1 / S.cam.k;
-
-        // jemna technicka mriezka (world-space, hyba sa so sietou) — jedine pozadie
-        // rozsah z viditelneho viewportu, start zarovnany na nasobok kroku
         const _step = 240;
-        const _tl = screenToWorld(0, 0);
-        const _br = screenToWorld(S.w, S.h);
         ctx.lineWidth = 0.5 * invK;
         ctx.strokeStyle = 'rgba(' + T.gridColor + ',' + (T.gridAlpha * S.dim * bgLevel) + ')';
         ctx.beginPath();
-        for (let gx = Math.floor(_tl.x / _step) * _step; gx <= _br.x; gx += _step) { ctx.moveTo(gx, _tl.y); ctx.lineTo(gx, _br.y); }
-        for (let gy = Math.floor(_tl.y / _step) * _step; gy <= _br.y; gy += _step) { ctx.moveTo(_tl.x, gy); ctx.lineTo(_br.x, gy); }
+        for (let gx = Math.floor(_vTL.x / _step) * _step; gx <= _vBR.x; gx += _step) { ctx.moveTo(gx, _vTL.y); ctx.lineTo(gx, _vBR.y); }
+        for (let gy = Math.floor(_vTL.y / _step) * _step; gy <= _vBR.y; gy += _step) { ctx.moveTo(_vTL.x, gy); ctx.lineTo(_vBR.x, gy); }
         ctx.stroke();
     }
 
-    if (S.view === 'map') {
-        // bbox uzlov kazdej oblasti — label centrovany nad vrcholom klastra
-        const areaBox = new Map();
-        for (const n of S.nodes) {
-            if (n.type === 'core' || !n.area_id || !visibleInReplay(n)) continue;
-            if (!nodeVisible(n, loc)) continue;
-            const b = areaBox.get(n.area_id);
-            if (!b) areaBox.set(n.area_id, { minX: n.x, maxX: n.x, minY: n.y });
-            else {
-                if (n.x < b.minX) b.minX = n.x;
-                if (n.x > b.maxX) b.maxX = n.x;
-                if (n.y < b.minY) b.minY = n.y;
-            }
-        }
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = T.muted;
-        ctx.font = '600 ' + (12.5 / S.cam.k) + 'px "Geist Mono", ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        for (const area of S.areas.values()) {
-            const b = areaBox.get(area.id);
-            if (!loc && S.filter.areas.has(area.id)) continue; // skrytá oblasť — bez captionu
-            if (!b && (loc || filterActive())) continue; // žiadne viditeľné uzly — bez labelu
-            const a = areaAnchor(area);
-            ctx.fillText(area.name.toUpperCase(), b ? (b.minX + b.maxX) / 2 : a.x, (b ? b.minY : a.y) - 36);
-        }
-        ctx.globalAlpha = 1;
-    }
-
-    if (layersView) {
-        // (1) pozadie: vodiace línie sub-stĺpcov + farebné pásy oblastí (nahradilo O(n²) mriežku)
-        const lay = layerLayout();
-        drawLayerBands(lay);
-        // (2) skutočné spojenia zo S.edges — dávkovo (rovnaké váhové štýlovanie ako mapa/sieť)
-        drawEdges(loc, hl, hlAnchor, pathEdges, softHoverActive, true, edgeInView);
-        drawLayerScaffold(lay);
+    /* ---- spojenia: agregované stuhy (map/area) alebo reálne hrany (dept/node) ---- */
+    if (L.edgeMode === 'real') {
+        drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView);
+        drawStubs(L);
     } else {
-        drawEdges(loc, hl, hlAnchor, null, softHoverActive, false, edgeInView);
+        drawRibbons(L);
     }
 
     ctx.globalCompositeOperation = 'source-over';
 
+    /* ---- pulzy + putujúce svetlobody (len medzi uzlami tejto úrovne) ---- */
     for (const p of S.pulses) {
-        if (!(nodeVisible(p.from, loc) && nodeVisible(p.to, loc))) continue;
+        if (!L.pos.has(p.from.id) || !L.pos.has(p.to.id)) continue;
         const x = p.from.x + (p.to.x - p.from.x) * p.t;
         const y = p.from.y + (p.to.y - p.from.y) * p.t;
         ctx.globalAlpha = 0.7 * p.dim * Math.sin(Math.PI * Math.min(p.t, 1));
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(x, y, 8, 0, 7);
+        ctx.arc(x, y, 8 * invK, 0, 7);
         ctx.fill();
     }
     ctx.globalAlpha = 1;
 
-    // FÁZA ANIMÁCIE: putujúce svetlobody po hranách (Q10) — malý bod, fade na koncoch.
-    // Kreslené priamočiaro (aj v layers), jemné; alfa nesie anim intenzitu.
-    const _flowI = Math.max(S._anim, S._life); // toky nesie buď udalostná animácia, alebo ambientný život
+    const _flowI = Math.max(S._anim, S._life);
     if (_flowI > 0 && S._flows.length) {
-        const fr = 3 / S.cam.k;
+        const fr = 3 * invK;
         for (const f of S._flows) {
             if (f.wait > 0) continue;
-            if (!(nodeVisible(f.from, loc) && nodeVisible(f.to, loc))) continue;
+            if (!L.pos.has(f.from.id) || !L.pos.has(f.to.id)) continue;
             const x = f.from.x + (f.to.x - f.from.x) * f.t;
             const y = f.from.y + (f.to.y - f.from.y) * f.t;
             const a = Math.min(0.7, 0.6 * f.dim * Math.min(1.2, _flowI)) * Math.sin(Math.PI * Math.min(f.t, 1));
@@ -164,80 +157,81 @@ export function draw() {
         ctx.globalAlpha = 1;
     }
 
-    ctx.globalCompositeOperation = 'source-over';
-    // FÁZA RENDER PIPELINE: pri oddialení (k<0.5) sú uzly jednoduché plné disky — bez ink obrysu,
-    // heat/zrod prstenca a bez donut diery/prstenca v drawShape (detail je aj tak neviditeľný).
-    const simpleNodes = S.cam.k < 0.5;
-    for (const n of S.nodes) {
-        if (!visibleInReplay(n)) continue;
-        if (!nodeVisible(n, loc)) continue;
-        if (!inView(n.x, n.y)) continue; // viewport culling
-        let r = layersView ? Math.max(6, nodeRadius(n)) * 0.9 : nodeRadius(n);
-        if (S.hover === n) r *= 1.15; // hover zväčšenie (Obsidian)
-        r *= breatheFactor(n) * birthScale(n); // FÁZA ANIMÁCIE: idle dýchanie + zrod uzla
-        // FÁZA ANIMÁCIE: jemný pop pri dobehnutí pulzu/toku (v mape/sieti; layers rieši flash vlastnou alfou)
-        if (!layersView && n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
-        const color = nodeColor(n);
-        const flash = layersView ? (n.flash || 0) : 0;
-        const mul = nodeAlphaMul(n, hl, pathNodes);
-
-        // FÁZA ANIMÁCIE (Living): vizuálny offset — drift („sieť pláva") + kurzorová gravitácia/parallax.
-        // Len pri kreslení; pick()/hover čítajú n.x/n.y, takže presnosť výberu ostáva nedotknutá.
-        // Pinned Vrstvy sa neposúvajú (deterministický layout). n._ox/_oy číta aj slučka popiskov.
-        let ox = 0, oy = 0, gGlow = 0;
-        if (S._life > 0 && !simpleNodes && !layersView) {
-            const lf = Math.min(1.4, S._life);
-            if (S._lifeTier === 0 && n.type !== 'core') {
-                ox += Math.sin(S._clock * 0.6 + n.id * 1.7) * lf;   // ±~1 px mikro-drift (nekumulatívny)
-                oy += Math.cos(S._clock * 0.5 + n.id * 2.3) * lf;
+    /* ---- PRACH (kind dust/ctx): dávkovo po farbách, bez hrán a popiskov ----
+       LOD: prach je konštantne malý v obrazovkových pixeloch a veľmi priehľadný —
+       pri oddialení nesie len tvar galaxie, pri priblížení nepridáva šum. */
+    const dustPaths = new Map();   // color → { path, alpha }
+    const solid = [];              // uzly s tvarom (kind node/center/core)
+    for (const [id, ent] of L.pos) {
+        const n = S.byId.get(id);
+        if (!n) continue;
+        if (!visibleInReplay(n) || !nodeVisible(n, loc)) continue;
+        if (ent.kind === 'dust' || ent.kind === 'ctx') {
+            const dr = dustDrift(id, invK);
+            const x = n.x + (dr ? dr.x : 0), y = n.y + (dr ? dr.y : 0);
+            n._ox = dr ? dr.x : 0; n._oy = dr ? dr.y : 0;
+            if (!inView(x, y)) continue;
+            if (n === S.hover || n === S.selected) { solid.push({ n, ent, x, y }); continue; }
+            const col = nodeColor(n);
+            const key = col + '|' + (ent.kind === 'ctx' ? 'c' : 'd') + Math.round((ent.dim || 1) * 20);
+            let b = dustPaths.get(key);
+            if (!b) {
+                b = { col, path: new Path2D(), alpha: (ent.kind === 'ctx' ? 0.85 : 0.42) * (ent.dim || 1) };
+                dustPaths.set(key, b);
             }
-            if (cursorWorld && S._lifeTier <= 1) {
-                const dx = cursorWorld.x - n.x, dy = cursorWorld.y - n.y;
-                const dd = Math.hypot(dx, dy);
-                const R = 140 / S.cam.k;
-                if (dd < R && dd > 0.001) {
-                    const ff = 1 - dd / R;
-                    const pull = ff * ff * (6 / S.cam.k) * S.cursor.a * (S._lifeTier === 1 ? 0.5 : 1);
-                    ox += (dx / dd) * pull; oy += (dy / dd) * pull; // max ~6 px prihnutie ku kurzoru
-                    gGlow = ff * S.cursor.a;                        // blízkosť kurzora uzol mierne rozsvieti
-                }
-            }
+            const r = drawRadius(n, ent, invK);
+            b.path.moveTo(x + r, y);
+            b.path.arc(x, y, r, 0, 7);
+            continue;
         }
-        n._ox = ox; n._oy = oy;
-        const px = n.x + ox, py = n.y + oy;
+        n._ox = 0; n._oy = 0;
+        if (!inView(n.x, n.y)) continue;
+        solid.push({ n, ent, x: n.x, y: n.y });
+    }
+    for (const b of dustPaths.values()) {
+        ctx.globalAlpha = b.alpha * S.dim * (hl ? 0.45 : 1);
+        ctx.fillStyle = b.col;
+        ctx.fill(b.path);
+    }
+    ctx.globalAlpha = 1;
 
-        // FÁZA DE-CLUTTER: bez teplotnej modulácie výplne (heat je konštanta 1, nenesie info).
-        // Plná alfa, tlmí sa len highlight/focus násobičom; vo Vrstvách flash pridá jas.
-        ctx.globalAlpha = Math.min(1, (layersView ? 0.9 + flash * 0.5 : 1)) * mul;
-        drawShape(n, px, py, r, color, simpleNodes);
+    /* ---- UZLY S TVAROM — dual-channel: farba = oblasť, tvar = typ ---- */
+    const showCert = level === 'dept' || level === 'node';
+    for (const { n, ent, x, y } of solid) {
+        let r = drawRadius(n, ent, invK);
+        if (S.hover === n) r *= 1.18;
+        r *= breatheFactor(n) * birthScale(n);
+        if (n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
+        const alpha = entAlpha(n, ent, hl);
+        ctx.globalAlpha = alpha;
+        drawShape(n, x, y, r, nodeColor(n), { cert: showCert && ent.dim >= 0.5, dim: ent.dim < 0.5 });
 
-        if (simpleNodes) { if (n.flash) n.flash = Math.max(0, n.flash - 0.02); continue; } // lacný disk, žiadne prstence
+        if (ent.dim < 0.5) { if (n.flash) n.flash = Math.max(0, n.flash - 0.02); continue; }
 
-        // FÁZA ANIMÁCIE (Living): ŽIARA — nedávno aktívne uzly (flash) jemne pulzujú teal, uzol pri
-        // kurzore sa prisvieti. Beží aj pri REDUCED_MOTION (flash je statický event pulz, gGlow=0).
-        const glowA = Math.max((n.flash || 0) * (0.55 + 0.45 * Math.sin(S._clock * 6 + n.id)), gGlow * 0.6);
+        // ŽIARA — nedávno aktívne uzly jemne pulzujú teal (event-driven, aj pri REDUCED_MOTION)
+        const glowA = (n.flash || 0) * (0.55 + 0.45 * Math.sin(S._clock * 6 + n.id));
         if (glowA > 0.03) {
-            ctx.globalAlpha = Math.min(0.55, glowA) * mul;
-            ctx.lineWidth = 1.4 / S.cam.k;
+            ctx.globalAlpha = Math.min(0.55, glowA) * alpha;
+            ctx.lineWidth = 1.4 * invK;
             ctx.strokeStyle = 'rgb(' + T.accent + ')';
             ctx.beginPath();
-            ctx.arc(px, py, r + 3 / S.cam.k, 0, 7);
+            ctx.arc(x, y, r + 3 * invK, 0, 7);
             ctx.stroke();
         }
 
-        // FÁZA ANIMÁCIE (Q13): zrod uzla — krátky rozpínavý prstenec, ktorý dobehne a zmizne
+        // zrod uzla — krátky rozpínavý prstenec
         if (n._born != null) {
             const age = S._clock - n._born;
             if (age < 0.6 && S._anim > 0 && !REDUCED_MOTION) {
                 const p = age / 0.6;
-                ctx.globalAlpha = (1 - p) * 0.6 * mul;
-                ctx.lineWidth = 1.4 / S.cam.k;
+                ctx.globalAlpha = (1 - p) * 0.6 * alpha;
+                ctx.lineWidth = 1.4 * invK;
                 ctx.strokeStyle = 'rgb(' + T.accent + ')';
                 ctx.beginPath();
-                ctx.arc(px, py, r + (3 + p * 14) / S.cam.k, 0, 7);
+                ctx.arc(x, y, r + (3 + p * 14) * invK, 0, 7);
                 ctx.stroke();
             } else if (age >= 0.6) {
-                n._born = null; // zrod dobehol — vyčisti časovač
+                n._born = null;
             }
         }
 
@@ -245,29 +239,103 @@ export function draw() {
     }
     ctx.globalAlpha = 1;
 
-    ctx.globalCompositeOperation = 'source-over';
+    /* ---- HUBY oblastí / oddelení ---- */
+    for (const h of L.hubs) drawHub(h, invK);
 
-    // zoom fade rampa (Obsidian): labely sa vynárajú medzi k 0.42 a 0.64;
-    // hover/select kotva + jej susedia (highlightSet) ostávajú viditeľní vždy
-    const zoomFade = Math.min(1, Math.max(0, (S.cam.k - 0.42) / 0.22));
-    const showLabels = zoomFade > 0 && S.opts.labelAlpha > 0.02;
-    const baseLabelAlpha = Math.min(1, S.opts.labelAlpha);
-    const candidates = [];
-    for (const n of S.nodes) {
-        if (!visibleInReplay(n)) continue;
-        if (!nodeVisible(n, loc)) continue;
-        if (!inView(n.x, n.y)) continue; // viewport culling — popisky mimo záberu preskoč
-        const isHover = S.hover === n || S.selected === n;
-        const inHl = !!(hl && hl.has(n.id)) || !!(pathNodes && pathNodes.has(n.id));
-        if (!showLabels && !isHover && !inHl) continue;
-        const alpha = baseLabelAlpha * nodeAlphaMul(n, hl, pathNodes) * (isHover || inHl ? 1 : zoomFade);
-        // pod prahom čitateľnosti: nekresliť ani nerezervovať obdĺžnik
-        if (alpha < 0.12) continue;
-        candidates.push({ n, isHover, alpha });
+    /* ---- POPISKY ---- */
+    // popisky hubov si rezervujú miesto ako prvé; popisky uzlov sa im uhnú
+    const reserved = drawHubLabels(L, invK);
+    drawNodeLabels(L, solid, hl, invK, reserved);
+}
+
+/* ---------- huby ---------- */
+
+function drawHub(h, invK) {
+    const r = Math.max(6 * invK, h.rw);
+    const a = h.dim * S.dim;
+    // mäkké halo — hub sa vynorí nad prachom svojej oblasti
+    ctx.globalAlpha = 0.13 * a;
+    ctx.fillStyle = h.color;
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, r * 1.85, 0, 7);
+    ctx.fill();
+    // telo (papierové) + farebný prstenec
+    ctx.globalAlpha = 0.92 * a;
+    ctx.fillStyle = T.paper;
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, r, 0, 7);
+    ctx.fill();
+    ctx.globalAlpha = 0.28 * a;
+    ctx.fillStyle = h.color;
+    ctx.fill();
+    ctx.globalAlpha = Math.min(1, 0.95 * a);
+    ctx.lineWidth = Math.max(1.2 * invK, r * 0.10);
+    ctx.strokeStyle = h.color;
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, r, 0, 7);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+}
+
+// Popisky hubov idú NAVRCH všetkého a majú papierový podklad — inak ich prach prekryje
+// (to bola jedna z konkrétnych bolestí starého grafu).
+function drawHubLabels(L, invK) {
+    const strong = L.hubs.filter((h) => h.dim >= 0.5);
+    if (!strong.length) return [];
+    ctx.textAlign = 'center';
+    const fs = (L.level === 'map' ? 14 : 12) * invK;
+    const sub = fs * 0.82;
+    const taken = [];
+    for (const h of strong.slice().sort((a, b) => b.count - a.count)) {
+        const r = Math.max(6 * invK, h.rw);
+        ctx.font = '600 ' + fs + 'px "Geist", system-ui, sans-serif';
+        const name = h.name;
+        const w = Math.max(ctx.measureText(name).width, 20 * invK);
+        const y = h.y + r + fs * 1.35;
+        const rect = { x: h.x - w / 2 - 5 * invK, y: y - fs, w: w + 10 * invK, h: fs * 1.35 + sub * 1.2 };
+        const hit = taken.some((t) => rect.x < t.x + t.w && t.x < rect.x + rect.w
+            && rect.y < t.y + t.h && t.y < rect.y + rect.h);
+        if (hit) continue;
+        taken.push(rect);
+
+        ctx.globalAlpha = 0.93 * S.dim;
+        ctx.fillStyle = T.paper;
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+
+        ctx.globalAlpha = 0.97 * S.dim;
+        ctx.fillStyle = T.ink;
+        ctx.fillText(name, h.x, y);
+
+        ctx.globalAlpha = 0.88 * S.dim;
+        ctx.fillStyle = T.inkSoft;
+        ctx.font = '600 ' + sub + 'px "Geist Mono", ui-monospace, monospace';
+        ctx.fillText(String(h.count), h.x, y + sub * 1.25);
     }
-    // FÁZA DE-CLUTTER: stabilita popiskov — hover vždy prvý, potom už-zobrazené popisky (držia
-    // si slot pri miernom pohybe, nebliká), potom čitateľnosť (alfa) a stupeň uzla. Mŕtva
-    // strength nahradená degree. S._labelShown = množina id vykreslených minulý frame.
+    ctx.globalAlpha = 1;
+    return taken;
+}
+
+/* ---------- popisky uzlov ---------- */
+
+function drawNodeLabels(L, solid, hl, invK, reserved) {
+    // LOD: na mape a v oblasti nesú význam popisky hubov; jednotlivé uzly sa
+    // pomenujú až od úrovne oddelenia (alebo pod kurzorom / vo výbere).
+    const levelLabels = L.level === 'dept' || L.level === 'node';
+    const zoomFade = Math.min(1, Math.max(0, (S.cam.k - 0.42) / 0.22));
+    const baseLabelAlpha = Math.min(1, S.opts.labelAlpha);
+    if (baseLabelAlpha < 0.02) { S._labelShown = new Set(); return; }
+
+    const candidates = [];
+    for (const { n, ent, x, y } of solid) {
+        const isHover = S.hover === n || S.selected === n;
+        const inHl = !!(hl && hl.has(n.id));
+        const allowed = isHover || (levelLabels && ent.dim >= 0.5 && zoomFade > 0) || (inHl && zoomFade > 0);
+        if (!allowed) continue;
+        const alpha = baseLabelAlpha * entAlpha(n, ent, hl) * (isHover ? 1 : zoomFade);
+        if (alpha < 0.12) continue;
+        candidates.push({ n, ent, x, y, isHover, alpha });
+    }
+
     const shown = S._labelShown || (S._labelShown = new Set());
     candidates.sort((a, b) =>
         (b.isHover - a.isHover)
@@ -275,22 +343,16 @@ export function draw() {
         || (b.alpha - a.alpha)
         || ((S.degree.get(b.n.id) || 0) - (S.degree.get(a.n.id) || 0)));
 
-    const fontSize = (12 * S.opts.labelSize) / S.cam.k;
-    const taken = [];
+    const fontSize = (12 * S.opts.labelSize) * invK;
+    const taken = reserved ? reserved.slice() : [];
     const newShown = new Set();
     ctx.textAlign = 'center';
-    // FÁZA RENDER PIPELINE: font raz pred slučkou (jedna váha/veľkosť) — hover sa odlíši
-    // papierovým podkladom a plnou alfou, nie tučným rezom, takže font sa nemusí prepisovať.
     ctx.font = fontSize + 'px "Geist", system-ui, sans-serif';
-    for (const { n, isHover, alpha } of candidates) {
+    for (const { n, ent, x, y, isHover, alpha } of candidates) {
         const label = truncLabel(n.label);
         const w = ctx.measureText(label).width;
-        // FÁZA ANIMÁCIE (Living): popisok sleduje vizuálny offset uzla (drift/gravitácia), nech nedrifuje od bodu
-        const nx = n.x + (n._ox || 0), ny = n.y + (n._oy || 0);
-        // label centrovaný POD uzlom — baseline r + 13/k, hover počíta so zväčšením
-        const y = ny + nodeRadius(n) * (S.hover === n ? 1.15 : 1) + 13 / S.cam.k;
-        const rect = { x: nx - w / 2, y: y - fontSize, w, h: fontSize * 1.4 };
-
+        const ly = y + drawRadius(n, ent, invK) * (S.hover === n ? 1.18 : 1) + 13 * invK;
+        const rect = { x: x - w / 2, y: ly - fontSize, w, h: fontSize * 1.4 };
         const collides = taken.some((t) =>
             rect.x < t.x + t.w && t.x < rect.x + rect.w
             && rect.y < t.y + t.h && t.y < rect.y + rect.h);
@@ -298,166 +360,160 @@ export function draw() {
         taken.push(rect);
         newShown.add(n.id);
 
-        // FÁZA RENDER PIPELINE: žiadne strokeText halo (bolo ~44% času draw()). Bežné popisky
-        // sa spoliehajú na de-clutter (drop-on-collision); hover/vybraný dostane jemný papierový podklad.
         if (isHover) {
-            const px = 5 / S.cam.k, py = 3 / S.cam.k;
+            const px = 5 * invK, py = 3 * invK;
             ctx.globalAlpha = alpha * 0.82;
             ctx.fillStyle = T.paper;
             ctx.fillRect(rect.x - px, rect.y - py, rect.w + 2 * px, rect.h + 2 * py);
         }
-        // alfa nesie zoom fade aj highlight/focus tlmenie
         ctx.globalAlpha = alpha;
         ctx.fillStyle = T.ink;
-        ctx.fillText(label, nx, y);
+        ctx.fillText(label, x, ly);
     }
-    S._labelShown = newShown; // FÁZA DE-CLUTTER: zapamätaj vykreslené popisky pre stabilitu
+    S._labelShown = newShown;
     ctx.globalAlpha = 1;
 }
 
 // Skrátenie labelu LEN pri kreslení (hover-card a panel používajú n.label v plnej dĺžke)
 export function truncLabel(s) {
-    const chars = Array.from(String(s)); // mb-safe (surrogate pairs)
+    const chars = Array.from(String(s));
     return chars.length > 24 ? chars.slice(0, 23).join('').trimEnd() + '…' : s;
 }
-// FÁZA CERTAINTY (F4, §4.6): mapovanie istoty → štýl prstenca (CVD-safe double-encoding).
-// overené = plný prstenec, hypotéza = čiarkovaný, pasca = plný + výstražný pip.
-// bez/null → žiadny prstenec. Hue istotu NEkóduje (kolízia s farbou oblasti/typu).
-export const CERT_RING = { overene: 'solid', hypoteza: 'dashed', pasca: 'pip' };
-// FÁZA DE-CLUTTER: uzol = biela/papierová výplň + farebný prstenec vo farbe oblasti (vzdušné,
-// nie plná farebná placka). Jadro ostáva zlaté a výrazné (plná zlatá výplň + zlatý prstenec).
-// Typ uzla sa rozlíši JEMNE cez hrúbku/štýl prstenca, NIE plnou farbou: spomienka tenký prstenec,
-// skill hrubší (plný disk, žiadna donut diera), projekt prstenec + tiché vonkajšie echo.
-export function drawShape(n, x, y, r, color, simple) {
-    const k = S.cam.k;
 
-    if (simple) {
-        // FÁZA RENDER PIPELINE: oddialené (k<0.5) — plný farebný disk (papierový prstenec by zanikol)
+// FÁZA CERTAINTY (F4, §4.6): mapovanie istoty → štýl prstenca (CVD-safe double-encoding).
+export const CERT_RING = { overene: 'solid', hypoteza: 'dashed', pasca: 'pip' };
+
+/* ---------- W2a: DUAL-CHANNEL TVARY ----------
+   farba = oblasť (area.color), tvar = typ:
+     memory  → plný disk
+     skill   → donut (krúžok s dierou)
+     project → disk s vonkajším prstencom
+     core    → zlaté súosé kruhy
+   Vďaka tomu farba prestala niesť dva významy naraz. Značku istoty kreslíme až
+   od úrovne 'dept' (na mape by preťažila vnem) — opts.cert to zapína. */
+export function drawShape(n, x, y, r, color, opts) {
+    const k = S.cam.k;
+    const invK = 1 / k;
+    const a = ctx.globalAlpha;
+    const type = n.type;
+
+    if (type === 'core') {
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, 7);
+        ctx.arc(x, y, r * 0.46, 0, 7);
         ctx.fill();
+        ctx.lineWidth = Math.max(1.1 * invK, r * 0.10);
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = a * 0.85;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.76, 0, 7);
+        ctx.stroke();
+        ctx.globalAlpha = a * 0.45;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.10, 0, 7);
+        ctx.stroke();
+        ctx.globalAlpha = a;
         return;
     }
 
-    const a = ctx.globalAlpha;
-
-    if (n.type === 'core') {
-        // jadro ostáva výrazné — plná zlatá výplň + zlatý sústredný prstenec
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, 7);
-        ctx.fill();
-        ctx.globalAlpha = a * 0.4;
-        ctx.lineWidth = Math.max(1, 1.1 / k);
+    if (type === 'skill') {
+        // donut — anulus kreslený hrubým obrysom (žiadne compositing triky, diera
+        // ostane naozaj priehľadná, takže sa nebije s papierom ani s hranami pod ňou)
+        const rw = r * 0.56;
+        ctx.lineWidth = Math.max(1.2 * invK, rw);
         ctx.strokeStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, r * 1.55, 0, 7);
+        ctx.arc(x, y, Math.max(0.6, r - rw / 2), 0, 7);
         ctx.stroke();
-        ctx.globalAlpha = a;
-        return;
-    }
-
-    // papierová výplň — telo uzla splynie s papierom, ostane čistý farebný prstenec
-    ctx.fillStyle = T.paper;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, 7);
-    ctx.fill();
-
-    // farebný prstenec (obrys) — hrúbka podľa typu; kreslený dovnútra, nech r ostáva polomer uzla
-    const lw = n.type === 'skill' ? 2.4 / k : 1.6 / k;
-    ctx.lineWidth = lw;
-    ctx.strokeStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, Math.max(0.5, r - lw * 0.5), 0, 7);
-    ctx.stroke();
-
-    if (n.type === 'project') {
-        // tiché vonkajšie echo — odlíši projekt (bez plnej farby)
-        ctx.globalAlpha = a * 0.5;
-        ctx.lineWidth = 1.1 / k;
+    } else if (type === 'project') {
+        // disk + vonkajší prstenec
+        ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, r + 3.5 / k, 0, 7);
+        ctx.arc(x, y, r * 0.66, 0, 7);
+        ctx.fill();
+        ctx.globalAlpha = a * 0.9;
+        ctx.lineWidth = Math.max(1 * invK, r * 0.14);
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.08, 0, 7);
+        ctx.stroke();
+        ctx.globalAlpha = a;
+    } else {
+        // memory (a neznámy typ) — plný disk
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 7);
+        ctx.fill();
+    }
+
+    if (!opts || !opts.cert) return;
+
+    const cc = certColors();
+    if (n.origin === 'brain') {
+        ctx.globalAlpha = a * 0.5;
+        ctx.lineWidth = 1 * invK;
+        ctx.strokeStyle = cc.borderStrong;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 1.6 * invK, 0, 7);
         ctx.stroke();
         ctx.globalAlpha = a;
     }
 
-    // FÁZA CERTAINTY (F4, §4.6): značky istoty + brain-origin rim — LEN nad zoom prahom
-    // k>0.8 (v hustom oddialenom grafe by pridávali šum). Subtílne, dvojkanálové, CVD-safe.
-    if (k > 0.8) {
-        const cc = certColors();
-
-        // brain-origin uzly: jemný vnútorný rim (--border-strong) — ľudsky-písané „mozgy"
-        // sa nenápadne odlíšia od session uzlov (nezávisí od prepínača istoty).
-        if (n.origin === 'brain') {
-            ctx.globalAlpha = a * 0.45;
-            ctx.lineWidth = 1 / k;
-            ctx.strokeStyle = cc.borderStrong;
-            ctx.beginPath();
-            ctx.arc(x, y, Math.max(0.5, r - lw - 1.2 / k), 0, 7);
-            ctx.stroke();
-            ctx.globalAlpha = a;
-        }
-
-        // certainty prstenec za uzlom — prepínateľný („Značky istoty", default ON)
-        const mode = S.certRings ? CERT_RING[n.certainty] : null;
-        if (mode) {
-            const rr = r + 3.2 / k;
-            const col = cc[n.certainty];
-            ctx.save();
-            ctx.globalAlpha = a * 0.8;
-            ctx.lineWidth = 1.6 / k;
-            ctx.strokeStyle = col;
-            if (mode === 'dashed') ctx.setLineDash([3 / k, 2.4 / k]);
-            ctx.beginPath();
-            ctx.arc(x, y, rr, 0, 7);
-            ctx.stroke();
-            if (mode === 'pip') {
-                // výstražný pip navrchu prstenca — druhý (tvarový) kanál pre pascu
-                ctx.setLineDash([]);
-                ctx.globalAlpha = a;
-                ctx.fillStyle = col;
-                ctx.beginPath();
-                ctx.arc(x, y - rr, 1.9 / k, 0, 7);
-                ctx.fill();
-            }
-            ctx.restore();
-        }
+    const mode = S.certRings ? CERT_RING[n.certainty] : null;
+    if (!mode) return;
+    const rr = r + 4.2 * invK;
+    const col = cc[n.certainty];
+    ctx.save();
+    ctx.globalAlpha = a * 0.85;
+    ctx.lineWidth = 1.6 * invK;
+    ctx.strokeStyle = col;
+    if (mode === 'dashed') ctx.setLineDash([3 * invK, 2.4 * invK]);
+    ctx.beginPath();
+    ctx.arc(x, y, rr, 0, 7);
+    ctx.stroke();
+    if (mode === 'pip') {
+        ctx.setLineDash([]);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(x, y - rr, 2 * invK, 0, 7);
+        ctx.fill();
     }
+    ctx.restore();
 }
+
+/* ---------- slučka ---------- */
 
 export let lastFrame = now();
 export let framePending = false;
 export function frame() {
     framePending = false;
-    // FÁZA SHELL: ak sme medzitým opustili Graf, slučka zaparkuje bez kreslenia.
-    if (S.screen !== 'graf') return;
+    // W2a: mimo Grafu slučka zaparkuje bez kreslenia (nulové CPU).
+    if (!graphActive()) return;
     const nowMs = now();
     const dt = Math.min((nowMs - lastFrame) / 1000, 0.1);
     lastFrame = nowMs;
 
-    // FÁZA ANIMÁCIE: monotónny čas + efektívna intenzita animácií tohto framu
+    // zmena S.focus zvonku (strom štruktúry / Esc / breadcrumb) → dorovnaj úroveň
+    syncNavFromFocus();
+
     S._clock += dt;
     S._anim = animLevel();
-    // FÁZA ANIMÁCIE (Living): auto-strop z EMA nákladu draw(); ambientný život až po tier gate.
     S._lifeTier = lifeTier();
-    S._life = S._lifeTier >= 2 ? 0 : lifeLevel(); // tier 2 → len event-driven (žiadny ambient)
-    // kurzorová aktivácia — plynulý nábeh/uvoľnenie gravitácie (uvoľní sa keď kurzor odíde/ťaháme)
+    S._life = S._lifeTier >= 2 ? 0 : lifeLevel();
     S.cursor.a += ((S.cursor.on ? 1 : 0) - S.cursor.a) * Math.min(1, dt * 10);
     if (S.cursor.a < 0.005) S.cursor.a = 0;
-    maybeSynapse(); // občasná spontánna synapsia po náhodnej hrane („myseľ premýšľa")
+    maybeSynapse();
 
     for (const p of S.pulses) p.t += dt * p.speed;
     for (let i = S.pulses.length - 1; i >= 0; i--) {
         if (S.pulses[i].t >= 1) {
             S.pulses[i].to.flash = Math.min(1, (S.pulses[i].to.flash || 0) + 0.5 * S.pulses[i].dim);
             S.pulses.splice(i, 1);
-            S._settleFrames = Math.max(S._settleFrames, SETTLE_FRAMES); // flash cieľa nech dohasne
+            S._settleFrames = Math.max(S._settleFrames, SETTLE_FRAMES);
         }
     }
 
-    // FÁZA ANIMÁCIE: putujúce svetlobody po hranách — po dobehnutí jemne rozsvietia cieľ
-    // (staggered dobeh dáva recall „graph-walk" vlnu). Nad rozpočet sa oreže najstaršie.
     for (let i = S._flows.length - 1; i >= 0; i--) {
         const f = S._flows[i];
         if (f.wait > 0) { f.wait -= dt; continue; }
@@ -465,13 +521,24 @@ export function frame() {
         if (f.t >= 1) {
             if (f.to) f.to.flash = Math.min(1, (f.to.flash || 0) + 0.28 * f.dim);
             S._flows.splice(i, 1);
-            S._settleFrames = Math.max(S._settleFrames, SETTLE_FRAMES); // flash cieľa nech dohasne
+            S._settleFrames = Math.max(S._settleFrames, SETTLE_FRAMES);
         }
     }
     const cap = flowCap();
     if (S._flows.length > cap) S._flows.splice(0, S._flows.length - cap);
 
-    // FÁZA ANIMÁCIE: morph prechod pozícií medzi náhľadmi (sim je počas neho zastavená)
+    // W2a: tweenovaná kamera pri zanorení (ease-in-out cubic, ~600 ms)
+    if (S._camTween) {
+        const c = S._camTween;
+        c.t = Math.min(1, c.t + dt / c.dur);
+        const e = easeInOut(c.t);
+        S.cam.x = c.from.x + (c.to.x - c.from.x) * e;
+        S.cam.y = c.from.y + (c.to.y - c.from.y) * e;
+        S.cam.k = c.from.k + (c.to.k - c.from.k) * e;
+        if (c.t >= 1) S._camTween = null;
+    }
+
+    // morph pozícií medzi úrovňami (rovnaký časovač ako kamera → jeden plynulý pohyb)
     if (S._morph) {
         const m = S._morph;
         m.t = Math.min(1, m.t + dt / m.dur);
@@ -483,8 +550,6 @@ export function frame() {
         if (m.t >= 1) {
             for (const n of S.nodes) { const b = m.to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } }
             S._morph = null;
-            // mapa/sieť: jemný dotik simulácie na dosadnutie; Vrstvy majú pevné fx/fy → nechaj zastavené
-            if (S.sim && S.view !== 'layers') S.sim.alpha(0.05).restart();
             requestDraw();
         }
     }
@@ -498,121 +563,116 @@ export function frame() {
         if (S.replay.t >= 1) stopReplay();
     }
 
-    // FÁZA RENDER PIPELINE: dirty-flag rozhodnutie — prekresli LEN keď je čo animovať alebo je dirty.
-    // responsive = stavy, čo chcú plnú frekvenciu (sim, morph, replay, interakcia, pulzy/toky, dobeh, dim).
-    // ambientLife = spojitý jemný život (dýchanie/drift/gravitácia/synapsie) — throttluje sa na ~30 FPS.
-    // V pokoji (Život=0 a nič sa nedeje): 0 prekreslení, tichý CPU.
-    const simActive = S.sim && S.view !== 'layers' && S.sim.alpha() > S.sim.alphaMin();
     const dimTarget = isAwake() ? 1 : 0.5;
     const dimActive = Math.abs(dimTarget - S.dim) > 0.001;
-    const ambientLife = S._life > 0; // už gate-nuté cez tier a screen; ambient režim ho drží nažive
-    const responsive = simActive || !!S._morph || S.replay.playing || S._interacting
+    const ambientLife = S._life > 0; // pokoj = dýchajúce jadro + veľmi pomalý prach
+    const responsive = !!S._morph || !!S._camTween || S.replay.playing || S._interacting
         || S.pulses.length > 0 || S._flows.length > 0 || S._settleFrames > 0 || dimActive;
     const active = responsive || ambientLife;
 
     if (S._settleFrames > 0) S._settleFrames--;
 
-    // responzívne / dirty stavy kreslíme okamžite; čistý ambient len keď uplynulo ~33 ms (cap 30 FPS)
     let doDraw = responsive || S._dirty;
     if (!doDraw && ambientLife && (nowMs - S._lastAmbient) >= AMBIENT_MS) doDraw = true;
 
     if (doDraw) {
         const _t0 = performance.now();
         draw();
-        // EMA nákladu kreslenia — plynulý podklad pre auto-strop (tier), aby na hranici neflikal
         S._drawMs += (Math.min(60, performance.now() - _t0) - S._drawMs) * 0.1;
         S._dirty = false;
         if (!responsive) S._lastAmbient = nowMs;
         updateStateUi();
     }
 
-    // Reštart slučky len keď je stále čo robiť. Inak usne — udalosti ju zobudia cez requestDraw().
     if (active) scheduleFrame();
 }
 
 export function scheduleFrame() {
-    // FÁZA SHELL: mimo obrazovky Graf sa plátno nekreslí vôbec — slučka zaparkuje (tichý CPU).
-    // setScreen('graf') ju znovu naštartuje.
-    if (S.screen !== 'graf') return;
+    // W2a: mimo obrazovky Graf sa plátno nekreslí vôbec — žiadny rAF (nulové CPU).
+    if (!graphActive()) return;
     if (framePending) return;
     framePending = true;
     requestAnimationFrame(frame);
 }
 
-// FÁZA RENDER PIPELINE: koľko frameov po dobehnutí animácie ešte kresliť, nech flash/zrod dohasne.
-// flash klesá o 0.02/frame (0.5 → 0 ≈ 25 frameov); 45 dáva rezervu aj pre zrodový prstenec (0.6 s).
 export const SETTLE_FRAMES = 45;
-
-// FÁZA ANIMÁCIE (Living): interval čistého ambientného framu (~30 FPS). Responzívne stavy
-// (interakcia, sim, pulzy/toky, morph) idú plnou frekvenciou; ambientný život sa throttluje sem.
 export const AMBIENT_MS = 32;
 
-// Jednorazová požiadavka na prekreslenie (hover, kamera, výber, dáta, filter, téma).
-// Nastaví dirty a zobudí uspatú rAF slučku (reset lastFrame, nech prvý dt nevyskočí).
 export function requestDraw() {
     S._dirty = true;
     if (!framePending) { lastFrame = now(); scheduleFrame(); }
 }
+
+// Zaostrenie na uzol = zanorenie na úroveň 'node' (Cmd-K, hľadanie, toasty, panely).
 export function focusNode(n) {
-    S.cam.x = -n.x * S.cam.k;
-    S.cam.y = -n.y * S.cam.k;
-    requestDraw(); // kamera sa presunula na uzol → prekresli
+    if (!n) return;
+    go({ level: 'node', node: n.id });
 }
 
 export function zoomBy(factor) {
-    // pivot okolo stredu obrazovky — rovnaká technika ako wheel handler
     const before = screenToWorld(S.w / 2, S.h / 2);
     S.cam.k = Math.min(3.2, Math.max(0.14, S.cam.k * factor));
     const after = screenToWorld(S.w / 2, S.h / 2);
     S.cam.x += (after.x - before.x) * S.cam.k;
     S.cam.y += (after.y - before.y) * S.cam.k;
-    requestDraw(); // zoom tlačidlom zmenil kameru → prekresli
+    S._camTween = null;
+    requestDraw();
 }
 
-// Fit view — kamera obsiahne všetky viditeľné uzly aktuálneho náhľadu
-export function fitView(pad = 90) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+/* ---------- fit ---------- */
+
+// Bbox, ktorý má kamera obsiahnuť — nakreslené uzly a huby aktuálnej úrovne.
+// Pri aktívnych filtroch sa zmenší na to, čo reálne zostalo viditeľné.
+export function fitBBox(L) {
+    const loc = localSet();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, cnt = 0;
     const add = (x, y) => {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
+        cnt++;
     };
-
-    const loc = localSet();
-
-    if (S.view === 'layers') {
-        // deterministický layout — bbox sub-stĺpcov + hlavičky (vždy v zábere)
-        const lay = layerLayout();
-        add(lay.minX, -lay.maxHalf - 66);
-        add(lay.maxX, lay.maxHalf);
-        for (const n of S.nodes) {
-            if (!visibleInReplay(n)) continue;
-            if (!nodeVisible(n, loc)) continue;
-            add(n.fx != null ? n.fx : n.x, n.fy != null ? n.fy : n.y);
-        }
-    } else {
-        for (const n of S.nodes) {
-            if (!visibleInReplay(n)) continue;
-            if (!nodeVisible(n, loc)) continue;
-            add(n.x, n.y);
-        }
+    for (const [id, e] of L.pos) {
+        const n = S.byId.get(id);
+        if (!n || !visibleInReplay(n) || !nodeVisible(n, loc)) continue;
+        add(e.x, e.y);
     }
+    // hub sa počíta so svojím polomerom + miestom na dvojriadkový popisok pod ním,
+    // inak by hub na okraji scény vyliezol pod hlavičku alebo mu popisok odrezalo
+    for (const h of L.hubs) {
+        add(h.x - h.rw, h.y - h.rw);
+        add(h.x + h.rw, h.y + h.rw + (h.dim >= 0.5 ? 46 : 0));
+    }
+    if (cnt < 2) return L.bbox;
+    return { minX, minY, maxX, maxY };
+}
 
-    if (minX > maxX) { S.cam = { x: 0, y: 0, k: 0.85 }; draw(); return; }
+// Kamera, ktorá bbox vloží do využiteľnej plochy viewportu (mimo railu a hlavičky).
+// Rovnaké okraje ako targetBox() v layout.js → fit sadne na obe osi naraz a scéna
+// vyplní ≥ 70 % šírky viewportu na každej úrovni.
+export function fitCam(bbox) {
+    const ins = viewInsets();
+    const uw = Math.max(160, S.w - ins.left - ins.right);
+    const uh = Math.max(160, S.h - ins.top - ins.bottom);
+    const bw = Math.max(bbox.maxX - bbox.minX, 1);
+    const bh = Math.max(bbox.maxY - bbox.minY, 1);
+    const k = Math.min(3.2, Math.max(0.14, Math.min(uw / bw, uh / bh)));
+    const cx = (bbox.minX + bbox.maxX) / 2, cy = (bbox.minY + bbox.maxY) / 2;
+    return { x: ins.left + uw / 2 - S.w / 2 - cx * k, y: ins.top + uh / 2 - S.h / 2 - cy * k, k };
+}
 
-    const bw = Math.max(maxX - minX, 1);
-    const bh = Math.max(maxY - minY, 1);
-    S.cam.k = Math.min(1.6, Math.max(0.14, Math.min((S.w - 2 * pad) / bw, (S.h - 2 * pad) / bh)));
-    S.cam.x = -((minX + maxX) / 2) * S.cam.k;
-    S.cam.y = -((minY + maxY) / 2) * S.cam.k;
+// Legacy signatúra fitView(pad) — pad sa ignoruje, okraje riadi viewInsets().
+export function fitView() {
+    const L = ensureLayout();
+    const c = fitCam(fitBBox(L));
+    S._camTween = null;
+    S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k;
     draw();
 }
 
-// FÁZA MODULY: listener na visibilitychange (pôvodne v init()) — lastFrame je lokálny
-// stav tohto modulu, preto tu žije aj jeho reset. Volá sa z main.js na pôvodnom mieste.
 export function setupVisibilityRepaint() {
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) { lastFrame = now(); requestDraw(); } // návrat na tab → istý repaint
+        if (!document.hidden) { lastFrame = now(); requestDraw(); }
     });
 }

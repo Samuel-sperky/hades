@@ -1,9 +1,7 @@
 export const CORE_COLOR = '#b88a3a';
-export const AREA_RADIUS = 640;
 
 // FÁZA HRANY: základné stlmenie hrán (~40 %) — uzly a popisky vyniknú nad sieťou.
 export const EDGE_DIM = 0.6;
-export const DEPT_RADIUS = 170;
 export const canvas = document.getElementById('mind');
 export const ctx = canvas.getContext('2d');
 export const S = {
@@ -35,7 +33,24 @@ export const S = {
     replay: { on: false, t: 1, playing: false, tMin: 0, tMax: 0 },
     sound: localStorage.getItem('hades.sound') !== 'off',
     audio: null,
-    view: localStorage.getItem('hades.view') || 'map',
+    // W2a: jediný graf so štyrmi úrovňami zanorenia. Náhľady map/net/layers sú zrušené;
+    // S.view ostáva len ako spätne kompatibilné zrkadlo úrovne pre staré čítania.
+    view: 'graph',
+    // Stavový stroj zanorenia — jediný zdroj pravdy o tom, čo je na plátne.
+    // level: 'map' | 'area' | 'dept' | 'node'; area/dept/node = id kontextu.
+    nav: (() => {
+        try {
+            const v = JSON.parse(localStorage.getItem('hades.nav') || 'null');
+            if (v && ['map', 'area', 'dept', 'node'].includes(v.level)) {
+                return { level: v.level, area: v.area ?? null, dept: v.dept ?? null, node: v.node ?? null };
+            }
+        } catch (e) { /* poškodený nav — späť na mapu */ }
+        return { level: 'map', area: null, dept: null, node: null };
+    })(),
+    layout: null,          // výsledok computeLayout() pre aktuálnu úroveň (cache podľa signatúry)
+    _camTween: null,       // tweenovaná kamera pri zanorení: { from, to, t, dur }
+    _navFocusKey: null,    // posledný S.focus, ktorý sme sami zapísali (detekcia zmien zvonku)
+    _navApi: 0,            // window.HADES.go/currentPath už exportované?
     // FÁZA SHELL: aktívna obrazovka (Dnes / Denník / Graf / Knižnica). Plátno (rAF) beží len na 'graf'.
     screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica', 'rozhodnutia', 'kontrola', 'smernica'].includes(v) ? v : 'dnes'; })(),
     // FÁZA HRANY: default 1.0 (skryje similarity 0.5 + jednorazové co_activation 0.6).

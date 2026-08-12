@@ -1,6 +1,4 @@
 import { nodeVisible } from './filters.js';
-import { edgeAlphaMul } from './forces.js';
-import { LAYER_X } from './layout.js';
 import { visibleInReplay } from './render.js';
 import { EDGE_DIM, S, ctx } from './state.js';
 import { T } from './theme.js';
@@ -23,27 +21,21 @@ export function edgeCategoryHidden(e) {
     return false;
 }
 
-// FÁZA DE-CLUTTER: kostrová hrana? V pokoji sa kreslí len kostra — štruktúra (manual +
-// skill_mention = 'core'), part_of a hrany posilnené opakovaním (váha > 1). Slabé auto
-// spojenia (uses / co_activation / similarity s váhou 1 = 82 % hairballu) sa v pozadí skryjú;
-// vynoria sa až ako incidentné hrany uzla pod kurzorom (fg vetva v drawEdges).
+// FÁZA DE-CLUTTER: kostrová hrana? Štruktúra (manual + skill_mention = 'core'),
+// part_of a hrany posilnené opakovaním (váha > 1). Slabé auto spojenia sa v pozadí skryjú.
 export function edgeSkeletal(e) {
     const cat = edgeCategory(e);
     if (cat === 'core' || cat === 'part_of') return true;
     return (e.weight || 1) > 1;
 }
 
-// FÁZA RENDER PIPELINE: jednotný štýl čiar — max 2 vzory (plná / jemná bodkovaná).
-// Zdieľaný prázdny dash, aby setLineDash([]) neaozeroval nové pole pri každom volaní.
+// Jednotný štýl čiar — max 2 vzory (plná / jemná bodkovaná).
 export const EMPTY_DASH = [];
-// dashed = vzťah 'uses' alebo kind co_activation / similarity; part_of a štruktúra sú plné.
 export function edgeDashed(e) {
     if (e.relation === 'part_of') return false;
     if (e.relation === 'uses') return true;
     return e.kind === 'co_activation' || e.kind === 'similarity';
 }
-// Útlm podľa druhu hrany (automatický šum je tlmenejší) — dash rieši edgeDashed, farba je vždy T.edge.
-// Zjednotené s pôvodným applyEdgeKind: co_activation ×0.6, similarity ~×0.4 (pôvodne 0.8 mul × 0.5 dim).
 export function edgeKindDim(e) {
     if (e.relation === 'part_of' || e.relation === 'uses') return 1;
     if (e.kind === 'co_activation') return 0.6;
@@ -51,79 +43,119 @@ export function edgeKindDim(e) {
     return 1;
 }
 
-// Geometria hrany zapísaná do cesty p (Path2D pri dávke, alebo ctx pri jednotlivom kreslení).
-// Mapa/sieť = priamka; Vrstvy = oblúky (vnútrovrstvové von od osi, ≥2 vrstvy sa vyhnú stredu).
-export function traceEdge(p, e, layersView) {
-    p.moveTo(e.source.x, e.source.y);
-    if (!layersView) { p.lineTo(e.target.x, e.target.y); return; }
-    const sameLayer = e.source._li != null && e.source._li === e.target._li;
-    const span = (e.source._li != null && e.target._li != null)
-        ? Math.abs(e.source._li - e.target._li) : 0;
-    if (sameLayer) {
-        const axis = LAYER_X[e.source._li];
-        const dir = axis >= 0 ? 1 : -1;
-        const reach = 44 + Math.abs((e.source.fx || 0) - (e.target.fx || 0)) * 0.5;
-        p.quadraticCurveTo(axis + dir * reach, (e.source.y + e.target.y) / 2, e.target.x, e.target.y);
-    } else if (span >= 2) {
-        const midX = (e.source.x + e.target.x) / 2;
-        const midY = (e.source.y + e.target.y) / 2;
-        const bow = (midY >= 0 ? 1 : -1) * Math.min(70, span * 22);
-        p.quadraticCurveTo(midX, midY + bow, e.target.x, e.target.y);
-    } else {
-        p.lineTo(e.target.x, e.target.y);
+/* ---------- W2a: AGREGOVANÉ ZVIAZANÉ STUHY (úroveň map / area) ----------
+   Namiesto 2779 jednotlivých hrán kreslíme pár desiatok stúh medzi skupinami.
+   Šírka = počet hrán medzi skupinami, riadiaci bod je pritiahnutý k stredu scény
+   (edge bundling), takže stuhy nevytvárajú šedú vatu cez celú plochu. */
+export function drawRibbons(L) {
+    if (!L.ribbons.length) return;
+    const invK = 1 / S.cam.k;
+    const maxRib = Math.max(1, ...L.ribbons.map((r) => r.count));
+    const lg = Math.log2(1 + maxRib);
+    ctx.setLineDash(EMPTY_DASH);
+    ctx.lineCap = 'round';
+    // od najslabšej po najsilnejšiu, nech tie hlavné ostanú navrchu
+    const sorted = L.ribbons.slice().sort((a, b) => a.count - b.count).slice(-64);
+    for (const r of sorted) {
+        const t = Math.log2(1 + r.count) / lg;
+        const a = r.from, b = r.to;
+        // hierarchické zviazanie: stuha sa zvezie k jadru scény a vyjde k druhému hubu.
+        // Posun po bisektore drží zväzok mimo samotného jadra (nekreslíme cez ♛).
+        const la = Math.hypot(a.x, a.y) || 1, lb = Math.hypot(b.x, b.y) || 1;
+        let bx = a.x / la + b.x / lb, by = a.y / la + b.y / lb;
+        const lbis = Math.hypot(bx, by);
+        if (lbis > 1e-3) { bx /= lbis; by /= lbis; } else { bx = 0; by = 0; }
+        const off = 0.26 * (la + lb) / 2;
+        ctx.lineWidth = (0.9 + 6.5 * t) * invK;
+        ctx.globalAlpha = (0.035 + 0.085 * t) * S.dim * S.opts.edgeAlpha;
+        ctx.strokeStyle = 'rgb(' + T.edge + ')';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.bezierCurveTo(a.x * 0.38 + bx * off, a.y * 0.38 + by * off,
+            b.x * 0.38 + bx * off, b.y * 0.38 + by * off, b.x, b.y);
+        ctx.stroke();
     }
+    ctx.lineCap = 'butt';
+    ctx.globalAlpha = 1;
 }
 
-// FÁZA RENDER PIPELINE: dávkové kreslenie hrán. Pozadie sa zoskupí do vedierok podľa
-// (dashed × kvantovaná alfa) a nakreslí jedným Path2D + jedným stroke na vedierko — namiesto
-// beginPath+stroke na každú hranu a setLineDash raz na hranu. Zvýraznené hrany (incidentné
-// s kotvou / na vrstvovej ceste) sa kreslia jednotlivo navrchu s presnou alfou a šírkou.
-export function drawEdges(loc, hl, hlAnchor, pathEdges, softHoverActive, layersView, edgeInView) {
+/* ---------- W2a: PAHÝLE (úroveň dept) ----------
+   Hrana vedúca VON z oddelenia sa nekreslí cez celú scénu — uzol dostane krátky
+   pahýľ smerom od stredu, ktorého dĺžka nesie počet vonkajších spojení. */
+export function drawStubs(L) {
+    if (!L.stubs.length) return;
+    const invK = 1 / S.cam.k;
+    ctx.setLineDash(EMPTY_DASH);
+    ctx.lineWidth = 0.9 * invK;
+    ctx.strokeStyle = 'rgb(' + T.edge + ')';
+    ctx.globalAlpha = 0.30 * S.dim * S.opts.edgeAlpha;
+    ctx.beginPath();
+    for (const s of L.stubs) {
+        const p = L.pos.get(s.id);
+        if (!p) continue;
+        const n = S.byId.get(s.id);
+        if (!n || !nodeVisible(n, null) || !visibleInReplay(n)) continue;
+        const r0 = 9 * invK;
+        const len = (7 + 5 * Math.log2(1 + s.count)) * invK;
+        ctx.moveTo(p.x + s.ux * r0, p.y + s.uy * r0);
+        ctx.lineTo(p.x + s.ux * (r0 + len), p.y + s.uy * (r0 + len));
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+}
+
+/* ---------- W2a: REÁLNE HRANY (úroveň dept / node) ----------
+   Kreslia sa len hrany, ktorých OBA konce sú v layoute aktuálnej úrovne. Dávkovo
+   po vedierkach (dashed × kvantovaná alfa), zvýraznené incidentné hrany navrchu. */
+export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
+    if (L.edgeMode !== 'real') return;
     const invK = 1 / S.cam.k;
     const dash = [1.5 * invK, 3 * invK];
-    const bgWidth = 0.7 * invK; // reprezentatívna šírka pozadia (väčšina váh = 1)
     const buckets = new Map();
     const fg = [];
-    // FÁZA DE-CLUTTER: v lokálnom grafe ukáž celé okolie; inak v pozadí len kostru.
-    const showAllBg = !!loc;
+    const showAllBg = !!loc || L.level === 'node' || L.pos.size <= 60;
 
     for (const e of S.edges) {
-        if ((e.weight || 1) < S.minWeight) continue;      // A7: filter slabých spojení
-        if (edgeCategoryHidden(e)) continue;               // FÁZA HRANY: filter vzťahov + kostra
+        if (!e.source || !e.target) continue;
+        const pa = L.pos.get(e.source.id), pb = L.pos.get(e.target.id);
+        if (!pa || !pb) continue;                          // aspoň jeden konec je mimo úrovne
+        if (pa.dim < 0.5 || pb.dim < 0.5) continue;        // kontextový prach hrany nekreslí
+        if ((e.weight || 1) < S.minWeight) continue;
+        if (edgeCategoryHidden(e)) continue;
         if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
         if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
-        if (!edgeInView(e.source, e.target)) continue;     // viewport culling
+        if (!edgeInView(e.source, e.target)) continue;
 
         const dashed = edgeDashed(e);
-        let alpha = Math.min(0.5, 0.22 + 0.08 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
-        alpha = Math.max(0.12, alpha) * edgeAlphaMul(e, hl, hlAnchor, pathEdges) * EDGE_DIM * edgeKindDim(e);
+        // Na úrovni oddelenia/uzla sú reálne hrany hlavným nosičom informácie — preto
+        // vyššia základná alfa než mala stará hairball mapa (a bez plošného stlmenia).
+        let alpha = Math.min(0.62, 0.34 + 0.10 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
+        alpha = Math.max(0.18, alpha) * EDGE_DIM * edgeKindDim(e) * S.dim;
 
-        const onPath = !!(pathEdges && pathEdges.has(e));
         const incident = !!(hlAnchor && (e.source.id === hlAnchor.id || e.target.id === hlAnchor.id));
+        if (hl && !incident) alpha *= 0.22;
+        alpha = Math.max(hl && !incident ? T.edgeFloor * 0.5 : alpha, alpha);
 
-        if (onPath || incident) {
-            // popredie: zvýraznené hrany kotvy/cesty, presná alfa aj šírka podľa váhy
-            const fa = onPath ? Math.min(0.85, alpha * 2.2) : Math.min(0.75, alpha * 1.25);
-            const fw = (onPath ? Math.min(2.1, 0.7 + 0.3 * Math.log2(1 + (e.weight || 1)))
-                : Math.min(1.6, 0.45 + 0.25 * Math.log2(1 + (e.weight || 1)))) * invK;
-            fg.push({ e, alpha: fa, width: fw, dashed, onPath });
+        if (incident) {
+            fg.push({
+                e, alpha: Math.min(0.8, alpha * 2.4), dashed,
+                width: Math.min(1.9, 0.55 + 0.3 * Math.log2(1 + (e.weight || 1))) * invK,
+            });
             continue;
         }
 
-        // FÁZA DE-CLUTTER: pozadie = len kostra (skryj hairball s váhou 1). Incidentné hrany
-        // kotvy sem nedôjdu (skončili v fg vyššie), takže hover uzol stále ukáže VŠETKY svoje hrany.
         if (!showAllBg && !edgeSkeletal(e)) continue;
-        if (softHoverActive) alpha *= 0.5; // v pokoji jemné — no kostra ostáva čitateľná (hairball je už skrytý)
-        if (alpha < 0.03) continue;         // neviditeľné pozadie preskoč
-        const q = Math.max(1, Math.round(alpha / 0.05)); // kvantuj alfu → málo vedierok
+        if (softHoverActive) alpha *= 0.82;
+        if (alpha < 0.03) continue;
+        const q = Math.max(1, Math.round(alpha / 0.05));
         const key = (dashed ? 1000 : 0) + q;
         let b = buckets.get(key);
         if (!b) { b = { dashed, alpha: q * 0.05, path: new Path2D() }; buckets.set(key, b); }
-        traceEdge(b.path, e, layersView);
+        b.path.moveTo(e.source.x, e.source.y);
+        b.path.lineTo(e.target.x, e.target.y);
     }
 
-    // pozadie po vedierkach — setLineDash a stroke max raz na vedierko
-    ctx.lineWidth = bgWidth;
+    ctx.lineWidth = 0.75 * invK;
     for (const b of buckets.values()) {
         ctx.setLineDash(b.dashed ? dash : EMPTY_DASH);
         ctx.strokeStyle = 'rgb(' + T.edge + ')';
@@ -132,13 +164,13 @@ export function drawEdges(loc, hl, hlAnchor, pathEdges, softHoverActive, layersV
     }
     ctx.globalAlpha = 1;
 
-    // popredie navrchu — jednotlivo (počet ≈ stupeň kotvy, málo hrán)
     for (const f of fg) {
         ctx.setLineDash(f.dashed ? dash : EMPTY_DASH);
         ctx.lineWidth = f.width;
-        ctx.strokeStyle = (f.onPath ? 'rgba(' + T.accent + ',' : 'rgba(' + T.edge + ',') + f.alpha + ')';
+        ctx.strokeStyle = 'rgba(' + T.accent + ',' + f.alpha + ')';
         ctx.beginPath();
-        traceEdge(ctx, f.e, layersView);
+        ctx.moveTo(f.e.source.x, f.e.source.y);
+        ctx.lineTo(f.e.target.x, f.e.target.y);
         ctx.stroke();
     }
     ctx.setLineDash(EMPTY_DASH);

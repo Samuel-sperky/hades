@@ -1,5 +1,6 @@
 import { edgeCategoryHidden, edgeSkeletal } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
+import { hash01 } from './layout.js';
 import { SETTLE_FRAMES, requestDraw, visibleInReplay } from './render.js';
 import { REDUCED_MOTION, S } from './state.js';
 import { nodeColor } from './util.js';
@@ -108,25 +109,23 @@ export function pickSynapseEdge() {
     return fallback;
 }
 
-// Občas (interval ~2–5 s × 1/život) vyšle slabý svetlobod po náhodnej viditeľnej hrane.
-// Znovupoužíva S._flows (dobeh rozsvieti cieľ). Strop 2–3 súbežné (auto-strop ich stíši).
+// W2a — POKOJ: spontánne synapsie sú vypnuté. Používateľ výslovne chce pokoj:
+// dýcha len jadro, prach sa unáša veľmi pomaly, ostatné stojí. Animácia sa spúšťa
+// len udalosťou (zanorenie = morph kamery/pozícií, zrod nového uzla, recall).
+// Funkcia ostáva exportovaná (volá ju render.frame()) a je zámerne no-op —
+// v ambient režime (telo .ambient) sa jemné „premýšľanie" povolí naspäť.
 export function maybeSynapse() {
+    if (!document.body.classList.contains('ambient')) return;
     if (S._life <= 0 || S._lifeTier >= 2 || REDUCED_MOTION || document.hidden || S.replay.on) return;
     if (S._clock < S._nextSynapse) return;
     const life = Math.min(1.6, S._life);
-    S._nextSynapse = S._clock + (2 + Math.random() * 3) / Math.max(0.2, life);
-    const cap = S._lifeTier === 1 ? 1 : (document.body.classList.contains('ambient') ? 3 : 2);
-    if (synapseCount() >= cap) return;
+    S._nextSynapse = S._clock + (3 + hash01(Math.floor(S._clock)) * 4) / Math.max(0.2, life);
+    if (synapseCount() >= 2) return;
     const e = pickSynapseEdge();
     if (!e) return;
-    const fwd = Math.random() < 0.5;
     S._flows.push({
-        from: fwd ? e.source : e.target,
-        to: fwd ? e.target : e.source,
-        e, t: 0,
-        speed: 0.5 + Math.random() * 0.35,
-        tone: Math.random() < 0.5 ? 'accent' : 'ink',
-        dim: 0.7, wait: 0, spont: true,
+        from: e.source, to: e.target, e, t: 0,
+        speed: 0.55, tone: 'accent', dim: 0.7, wait: 0, spont: true,
     });
     requestDraw();
 }
@@ -162,17 +161,24 @@ export function birthScale(n) {
     return easeOut(age / 0.5);
 }
 
-// FÁZA ANIMÁCIE (Living): idle dýchanie — jemná sínusová modulácia polomeru viditeľných uzlov
-// (~±2–3 %, jadro výraznejšie ±5 %), fázovo rozhodené podľa id, pomalé (5–8 s). Škáluje Život.
-// Auto-strop tier 1: dýcha len jadro. Zamrzne pri drag/pan, pri oddialení (k<0.5) a keď Život=0.
-// Konkrétny uzol pod kurzorom nedýcha (hover ho drží pevný pre presné čítanie).
+// W2a — POKOJ: dýcha LEN jadro (~±5 %, perióda 5,5 s). Ostatné uzly stoja.
+// Zamrzne pri drag/pan a keď je Život na nule. Uzol pod kurzorom nedýcha (presné čítanie).
 export function breatheFactor(n) {
-    if (S._life <= 0 || S._interacting || S.cam.k < 0.5) return 1;
-    const core = n.type === 'core';
-    if (!core && (S._lifeTier >= 1 || n === S.hover)) return 1;
-    if (core && n === S.hover) return 1;
+    if (S._life <= 0 || S._interacting) return 1;
+    if (n.type !== 'core' || n === S.hover) return 1;
     const life = Math.min(1.4, S._life);
-    const amp = (core ? 0.05 : 0.025) * life;               // jadro dýcha výraznejšie
-    const period = core ? 5.5 : 6 + (n.id % 5) * 0.5;       // 6–8 s podľa id
-    return 1 + amp * Math.sin(S._clock * (2 * Math.PI / period) + n.id * 1.3);
+    return 1 + 0.05 * life * Math.sin(S._clock * (2 * Math.PI / 5.5));
+}
+
+// W2a — prach sa unáša veľmi pomaly. Deterministická fáza z hashu id (žiadny random),
+// amplitúda v obrazovkových pixeloch (invK), perióda ~26 s → takmer nepostrehnuteľný pohyb.
+export function dustDrift(id, invK) {
+    if (S._life <= 0 || S._interacting || S._lifeTier >= 2) return null;
+    const life = Math.min(1.2, S._life);
+    const ph = hash01(id) * 6.2831853;
+    const a = 2.2 * life * invK;
+    return {
+        x: Math.sin(S._clock * 0.24 + ph) * a,
+        y: Math.cos(S._clock * 0.19 + ph * 1.7) * a,
+    };
 }
