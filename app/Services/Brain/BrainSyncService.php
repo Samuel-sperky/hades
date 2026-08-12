@@ -298,7 +298,9 @@ class BrainSyncService
             if ($name === '') {
                 continue;
             }
-            $ids[] = Tag::firstOrCreate(['name' => $name])->id;
+            if ($tag = Tag::forName($name)) {
+                $ids[] = $tag->id;
+            }
         }
         if ($ids) {
             $node->tags()->syncWithoutDetaching($ids);

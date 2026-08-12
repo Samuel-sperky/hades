@@ -157,7 +157,9 @@ class MindService
             if ($name === '') {
                 continue;
             }
-            $ids[] = \App\Models\Tag::firstOrCreate(['name' => $name])->id;
+            if ($tag = \App\Models\Tag::forName($name)) {
+                $ids[] = $tag->id;
+            }
         }
 
         if ($ids) {
