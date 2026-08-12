@@ -21,6 +21,15 @@ export const LEVELS = ['map', 'area', 'dept', 'node'];
 // pre anchorOf() pri uzloch, ktoré ešte nie sú v layoute (WS zrod pred prepočtom).
 export const AREA_RADIUS_FALLBACK = 640;
 
+/* ---------- W3a: ladenie estetiky mapy ----------
+   MAP_HUB_R0/R1: vzdialenosť hubu oblasti od stredu = R0 + R1 · clusterR. Menšie R0
+   pritiahne veniec oblastí k jadru (tesnejšia kompozícia, menšia mŕtva plocha v strede).
+   Normalizácia je invariantná na mierku, takže tieto čísla NEmenia vyplnenie viewportu.
+   MAP_DUST_POW: radiálny profil oblaku prachu (viď phyllo) — > 0.5 zhusťuje prach k hubu. */
+export const MAP_HUB_R0 = 0.86;
+export const MAP_HUB_R1 = 0.52;
+export const MAP_DUST_POW = 0.95;
+
 /* ---------- rám scény ---------- */
 
 // Okraje, ktoré necháva layout voľné pre plávajúce UI (rail vľavo, hlavička hore).
@@ -120,13 +129,23 @@ export function neighborRefs(nodeId) {
 
 /* ---------- rozmiestnenia ---------- */
 
-// Phyllotaxis (slnečnicový disk) — rovnomerná hustota, index 0 v strede.
-// Vďaka zlatému uhlu nevznikajú viditeľné radiálne špice ani diery.
-function phyllo(list, cx, cy, r0, seed, out, ent) {
+// Phyllotaxis (slnečnicový disk). Vďaka zlatému uhlu nevznikajú radiálne špice ani diery.
+// pow riadi radiálny profil hustoty: rr ∝ t^pow → hustota ∝ t^(1−2·pow).
+//   0.5  = rovnomerná plocha (tvrdý disk),
+//   ~1.0 = hustý stred a rednúci okraj → čitateľný „oblak" namiesto poľa bodov.
+// Krajný bod zostáva ~r0 pri každom pow, takže bbox scény (a tým aj fit) sa nemení.
+// Pri pow ≠ 0.5 prestane byť phyllotaxis rovnomerná a začnú byť vidieť spirálové ramená
+// (zlatý uhol + takmer lineárny polomer = Archimedova spirála). Preto pri zadanom pow
+// pridávame deterministický radiálny rozptyl z hashu id — oblak stratí matematický vzor
+// a začne pôsobiť organicky. Bez pow (oblasť/oddelenie) sa nemení nič.
+function phyllo(list, cx, cy, r0, seed, out, ent, pow) {
     const n = list.length;
     if (!n) return;
+    const p = pow || 0.5;
     for (let i = 0; i < n; i++) {
-        const rr = r0 * Math.sqrt((i + 0.5) / n);
+        const t = (i + 0.5) / n;
+        let rr = r0 * (p === 0.5 ? Math.sqrt(t) : Math.pow(t, p));
+        if (pow) rr *= 0.84 + 0.32 * hash01(list[i].id);
         const th = i * GOLD + seed;
         out.set(list[i].id, Object.assign({ x: cx + Math.cos(th) * rr, y: cy + Math.sin(th) * rr }, ent));
     }
@@ -204,12 +223,19 @@ export function computeLayout(force) {
     const cores = S.nodes.filter((n) => n.type === 'core').sort(cmpLabel);
     const mainCore = cores.find((n) => n.label === S.name) || cores[0] || null;
 
-    const placeCores = (r0) => {
-        if (mainCore) pos.set(mainCore.id, { x: 0, y: 0, kind: 'core', mul: 1 });
+    // mul: násobič polomeru jadra na tejto úrovni. Na mape je jadro jediná vec v strede
+    // kompozície — dostane väčšiu váhu (halo kreslí render.drawShape), aby stred nepôsobil
+    // nedokončene. glow = intenzita hala (0 = bez hala).
+    const placeCores = (r0, mul, glow) => {
+        const m = mul || 1;
+        if (mainCore) pos.set(mainCore.id, { x: 0, y: 0, kind: 'core', mul: m, glow: glow || 0 });
         const rest = cores.filter((n) => n !== mainCore);
         rest.forEach((n, i) => {
             const a = ((Math.PI * 2) / Math.max(1, rest.length)) * i - Math.PI / 2;
-            pos.set(n.id, { x: Math.cos(a) * r0, y: Math.sin(a) * r0, kind: 'core', mul: 0.8 });
+            pos.set(n.id, {
+                x: Math.cos(a) * r0, y: Math.sin(a) * r0, kind: 'core',
+                mul: 0.8 * m, glow: (glow || 0) * 0.55,
+            });
         });
     };
 
@@ -222,19 +248,24 @@ export function computeLayout(force) {
         /* ---- MAPA: jadro v strede, 5 hubov oblastí po elipse, všetkých 1025 uzlov
                ako veľmi jemný prach zoskupený okolo svojho hubu, medzi oblasťami
                len agregované zviazané stuhy. ---- */
-        placeCores(0.13);
+        // W3a: jadro dostane váhu (mul + halo) a kruh hubov je tesnejšie pri strede,
+        // aby stredová prázdnota nebola dominantná plocha kompozície.
+        placeCores(0.19, 1.7, 1);
         for (const a of areas) {
             const dir = rad(a.angle);
             const cnt = areaCount.get(a.id) || 0;
             const clusterR = 0.28 + 0.30 * Math.sqrt(cnt / maxAreaCount);
-            const cx = Math.cos(dir) * (1 + clusterR * 0.55);
-            const cy = Math.sin(dir) * (1 + clusterR * 0.55);
+            const cx = Math.cos(dir) * (MAP_HUB_R0 + MAP_HUB_R1 * clusterR);
+            const cy = Math.sin(dir) * (MAP_HUB_R0 + MAP_HUB_R1 * clusterR);
             hubs.push({
                 kind: 'area', id: a.id, x: cx, y: cy, count: cnt,
                 name: a.name, color: areaColor(a), dim: 1, rw: 0,
+                // cloud = surový polomer oblaku prachu; po normalizácii z neho vznikne
+                // crx/cry (elipsa) a render z toho kreslí jemnú tónovanú areolu regiónu
+                cloud: clusterR,
             });
             phyllo(areaNodes(a.id), cx, cy, clusterR, hash01(a.id) * 6.2831, pos,
-                { kind: 'dust', mul: 1, dim: 1 });
+                { kind: 'dust', mul: 1, dim: 1 }, MAP_DUST_POW);
         }
         ribbons = aggregateRibbons((n) => (n.type === 'core' || n.area_id == null ? null : 'a' + n.area_id))
             .map((r) => ({ a: r.a, b: r.b, count: r.count }));
@@ -387,9 +418,15 @@ export function computeLayout(force) {
     for (const e of pos.values()) { e.x = (e.x - cx) * sx; e.y = (e.y - cy) * sy; }
     for (const h of hubs) { h.x = (h.x - cx) * sx; h.y = (h.y - cy) * sy; }
 
+    // W3a: stred scény (obraz surového bodu 0,0) a anizotropia natiahnutia. Stuhy z toho
+    // počítajú oblúky po perimetri v „kruhovom" priestore — inak by ich elipsa skosila.
+    const center = { x: -cx * sx, y: -cy * sy };
+    const aniso = { sx, sy };
+
     // veľkosti hubov v svetových jednotkách (po normalizácii → rovnaká mierka ako uzly)
     const scale = (sx + sy) / 2;
     for (const h of hubs) {
+        if (h.cloud) { h.crx = h.cloud * sx; h.cry = h.cloud * sy; }
         if (h.kind === 'area') {
             h.rw = hubRadius(h.count, maxAreaCount, 0.026, 0.060) * scale * (h.dim < 0.5 ? 0.55 : 1);
         } else {
@@ -429,7 +466,7 @@ export function computeLayout(force) {
         sig, level: nav.level, area: nav.area, dept: nav.dept, node: nav.node,
         pos, hubs, ribbons, stubs, edgeMode, box,
         bbox: { minX: -box.rx, maxX: box.rx, minY: -box.ry, maxY: box.ry },
-        scale,
+        scale, center, aniso,
     };
     S.layout = L;
     return L;

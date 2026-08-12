@@ -114,6 +114,9 @@ export function draw() {
         ctx.stroke();
     }
 
+    /* ---- W3a: areola regiónu — veľmi jemný tón pod oblakom prachu ---- */
+    drawAreolas(L);
+
     /* ---- spojenia: agregované stuhy (map/area) alebo reálne hrany (dept/node) ---- */
     if (L.edgeMode === 'real') {
         drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView);
@@ -204,7 +207,9 @@ export function draw() {
         if (n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
         const alpha = entAlpha(n, ent, hl);
         ctx.globalAlpha = alpha;
-        drawShape(n, x, y, r, nodeColor(n), { cert: showCert && ent.dim >= 0.5, dim: ent.dim < 0.5 });
+        drawShape(n, x, y, r, nodeColor(n), {
+            cert: showCert && ent.dim >= 0.5, dim: ent.dim < 0.5, glow: ent.glow || 0,
+        });
 
         if (ent.dim < 0.5) { if (n.flash) n.flash = Math.max(0, n.flash - 0.02); continue; }
 
@@ -246,6 +251,53 @@ export function draw() {
     // popisky hubov si rezervujú miesto ako prvé; popisky uzlov sa im uhnú
     const reserved = drawHubLabels(L, invK);
     drawNodeLabels(L, solid, hl, invK, reserved);
+}
+
+/* ---------- W3a: areoly regiónov ---------- */
+
+// hex → 'r,g,b' (s cache) — potrebné pre gradientové zastávky s alfou
+const _ribCache = new Map();
+function rgbTriplet(col) {
+    let v = _ribCache.get(col);
+    if (v) return v;
+    v = '128,128,128';
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(col || '').trim());
+    if (m) {
+        const n = parseInt(m[1], 16);
+        v = ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
+    }
+    _ribCache.set(col, v);
+    return v;
+}
+
+// Každý oblak prachu má svoj hub. Bez tónovania sa 1026 bodov čítalo ako šum cez celé
+// plátno; jemná areola (radiálny gradient vo farbe oblasti, doslova pár percent alfy)
+// región ohraničí, ale prach nechá priehľadný a bez hrán. Kreslí sa PRED stuhami.
+function drawAreolas(L) {
+    for (const h of L.hubs) {
+        if (!(h.crx > 0) || !(h.cry > 0)) continue;
+        const a = 0.12 * (h.dim || 1) * S.dim;
+        if (a < 0.004) continue;
+        const rgb = rgbTriplet(h.color);
+        const R = h.crx * 1.08;
+        ctx.save();
+        ctx.translate(h.x, h.y);
+        ctx.scale(1, h.cry / h.crx);
+        // Profil je zámerne „plochý" v strednom pásme — gradient s jedinou zastávkou
+        // spadol tak rýchlo, že tón bol viditeľný len pod hubom a okrajové body oblaku
+        // ostávali osamotené bodky. Takto tón podrží celý región a na obvode dojde na nulu.
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+        g.addColorStop(0, 'rgba(' + rgb + ',' + a.toFixed(4) + ')');
+        g.addColorStop(0.38, 'rgba(' + rgb + ',' + (a * 0.72).toFixed(4) + ')');
+        g.addColorStop(0.72, 'rgba(' + rgb + ',' + (a * 0.34).toFixed(4) + ')');
+        g.addColorStop(1, 'rgba(' + rgb + ',0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, R, 0, 7);
+        ctx.fill();
+        ctx.restore();
+    }
+    ctx.globalAlpha = 1;
 }
 
 /* ---------- huby ---------- */
@@ -398,6 +450,24 @@ export function drawShape(n, x, y, r, color, opts) {
     const type = n.type;
 
     if (type === 'core') {
+        // W3a: na mape je jadro jediná vec v strede kompozície — dostane mäkké halo
+        // a tretí, najjemnejší prstenec, aby stred nepôsobil ako prázdna plocha
+        // s troma bodkami. Halo pýta layout (pos.glow), inde je 0 → jadro sa nemení.
+        const gl = opts && opts.glow ? opts.glow : 0;
+        if (gl > 0) {
+            const R = r * 3.6;
+            const grd = ctx.createRadialGradient(x, y, r * 0.5, x, y, R);
+            const rgb = rgbTriplet(color);
+            grd.addColorStop(0, 'rgba(' + rgb + ',' + (0.17 * gl * a).toFixed(4) + ')');
+            grd.addColorStop(0.42, 'rgba(' + rgb + ',' + (0.065 * gl * a).toFixed(4) + ')');
+            grd.addColorStop(1, 'rgba(' + rgb + ',0)');
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.arc(x, y, R, 0, 7);
+            ctx.fill();
+            ctx.globalAlpha = a;
+        }
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(x, y, r * 0.46, 0, 7);
@@ -412,6 +482,13 @@ export function drawShape(n, x, y, r, color, opts) {
         ctx.beginPath();
         ctx.arc(x, y, r * 1.10, 0, 7);
         ctx.stroke();
+        if (gl > 0) {
+            ctx.globalAlpha = a * 0.20;
+            ctx.lineWidth = Math.max(0.8 * invK, r * 0.055);
+            ctx.beginPath();
+            ctx.arc(x, y, r * 1.62, 0, 7);
+            ctx.stroke();
+        }
         ctx.globalAlpha = a;
         return;
     }

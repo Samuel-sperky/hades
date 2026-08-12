@@ -1,4 +1,5 @@
 import { nodeVisible } from './filters.js';
+import { hash01 } from './layout.js';
 import { visibleInReplay } from './render.js';
 import { EDGE_DIM, S, ctx } from './state.js';
 import { T } from './theme.js';
@@ -43,10 +44,58 @@ export function edgeKindDim(e) {
     return 1;
 }
 
-/* ---------- W2a: AGREGOVANÉ ZVIAZANÉ STUHY (úroveň map / area) ----------
-   Namiesto 2779 jednotlivých hrán kreslíme pár desiatok stúh medzi skupinami.
-   Šírka = počet hrán medzi skupinami, riadiaci bod je pritiahnutý k stredu scény
-   (edge bundling), takže stuhy nevytvárajú šedú vatu cez celú plochu. */
+/* ---------- W3a: STUHY PO PERIMETRI (úroveň map / area) ----------
+   W2a viazala stuhy dovnútra (riadiace body na 38 % cesty k stredu + posun po
+   bisektore). Pri protiľahlých huboch je bisektor nulový, takže stuha išla PRIAMO
+   cez stred — päť hubov tak vykreslilo zjemnený pentagram a stred vedomia mizol
+   pod hviezdou. W3a to obracia: stuha je aproximácia kruhového oblúka po perimetri
+   kruhu hubov, vyklenutá VON od stredu. Kompozícia sa číta ako veniec/prstenec a
+   žiadna stuha stredovú zónu jadra nepretína.
+
+   Oblúk počítame v „kruhovom" priestore (pred anizotropným natiahnutím scény), inak
+   by elipsa oblúk skosila a symetria venca by sa rozpadla. */
+
+// Ladenie vyklenutia — viď m nižšie. Base < 1 drží susedné páry pri kruhu hubov (žiadna
+// veľká dekoratívna elipsa), Span oddelí vzdialené páry do druhého pásu venca a Jit
+// rozostrie jednotlivé stuhy po polomere, aby sa nezliali do jednej jasnej dráhy —
+// veniec má byť čitateľne PLETENÝ (n vlákien), nie jeden obeh.
+export const MAP_ARC_BASE = 0.88;
+export const MAP_ARC_SPAN = 0.26;
+export const MAP_ARC_JIT = 0.15;
+
+// Riadiace body kubiky, ktorá aproximuje oblúk z uhla θa do θb po perimetri.
+// Pre 4 body na kružnici v uhloch 0, φ/3, 2φ/3, φ platí pre polomer stredu krivky
+//   m = (2·cos(φ/2) + 6·bulge·cos(φ/6)) / 8
+// → z požadovaného m vieme bulge analyticky vyjadriť (drží konštantné vyklenutie
+//   bez ohľadu na to, či sú huby susedné (72°) alebo cez jeden (144°)).
+function arcControls(L, a, b) {
+    const c = L.center, an = L.aniso;
+    if (!c || !an || !(an.sx > 1e-6) || !(an.sy > 1e-6)) return null;
+    const ax = (a.x - c.x) / an.sx, ay = (a.y - c.y) / an.sy;
+    const bx = (b.x - c.x) / an.sx, by = (b.y - c.y) / an.sy;
+    const ra = Math.hypot(ax, ay), rb = Math.hypot(bx, by);
+    if (ra < 1e-4 || rb < 1e-4) return null;           // hub priamo v strede → nechaj priamku
+    const ta = Math.atan2(ay, ax);
+    let d = Math.atan2(by, bx) - ta;                    // vždy kratšou cestou (|d| ≤ π)
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    const phi = Math.abs(d);
+    // Jitter je deterministický (hash z páru hubov) — dva reloady dajú rovnaké vlákna.
+    const jit = (hash01(((a.id | 0) * 131 + (b.id | 0) * 17) | 0) - 0.5) * MAP_ARC_JIT;
+    // Cieľový polomer stredu oblúka. Susedné huby (72°) vedú tesne POD kruhom hubov,
+    // vzdialené (144°) tesne NAD ním — vznikne pletený veniec z dvoch pásov namiesto
+    // jednej dekoratívnej elipsy, a vzdialený oblúk zreteľne obíde medziľahlý hub.
+    const m = MAP_ARC_BASE + MAP_ARC_SPAN * (phi / Math.PI) + jit;
+    const den = 6 * Math.cos(phi / 6);
+    const bulge = den > 1e-6 ? (8 * m - 2 * Math.cos(phi / 2)) / den : m;
+    const r1 = (ra * 2 + rb) / 3 * bulge, r2 = (ra + rb * 2) / 3 * bulge;
+    const t1 = ta + d / 3, t2 = ta + (d * 2) / 3;
+    return {
+        c1x: c.x + Math.cos(t1) * r1 * an.sx, c1y: c.y + Math.sin(t1) * r1 * an.sy,
+        c2x: c.x + Math.cos(t2) * r2 * an.sx, c2y: c.y + Math.sin(t2) * r2 * an.sy,
+    };
+}
+
 export function drawRibbons(L) {
     if (!L.ribbons.length) return;
     const invK = 1 / S.cam.k;
@@ -59,20 +108,17 @@ export function drawRibbons(L) {
     for (const r of sorted) {
         const t = Math.log2(1 + r.count) / lg;
         const a = r.from, b = r.to;
-        // hierarchické zviazanie: stuha sa zvezie k jadru scény a vyjde k druhému hubu.
-        // Posun po bisektore drží zväzok mimo samotného jadra (nekreslíme cez ♛).
-        const la = Math.hypot(a.x, a.y) || 1, lb = Math.hypot(b.x, b.y) || 1;
-        let bx = a.x / la + b.x / lb, by = a.y / la + b.y / lb;
-        const lbis = Math.hypot(bx, by);
-        if (lbis > 1e-3) { bx /= lbis; by /= lbis; } else { bx = 0; by = 0; }
-        const off = 0.26 * (la + lb) / 2;
-        ctx.lineWidth = (0.9 + 6.5 * t) * invK;
-        ctx.globalAlpha = (0.035 + 0.085 * t) * S.dim * S.opts.edgeAlpha;
+        // W3a: stuhy sú kontext, nie hlavný motív — po presune na perimeter sa desiatka
+        // oblúkov prekrývala do jednej jasnej dráhy, ktorá prekričala huby aj prach.
+        // Tenšie a jemnejšie: veniec sa dá prečítať, ale nedominuje kompozícii.
+        ctx.lineWidth = (0.7 + 3.4 * t) * invK;
+        ctx.globalAlpha = (0.028 + 0.052 * t) * S.dim * S.opts.edgeAlpha;
         ctx.strokeStyle = 'rgb(' + T.edge + ')';
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
-        ctx.bezierCurveTo(a.x * 0.38 + bx * off, a.y * 0.38 + by * off,
-            b.x * 0.38 + bx * off, b.y * 0.38 + by * off, b.x, b.y);
+        const cc = arcControls(L, a, b);
+        if (cc) ctx.bezierCurveTo(cc.c1x, cc.c1y, cc.c2x, cc.c2y, b.x, b.y);
+        else ctx.lineTo(b.x, b.y);
         ctx.stroke();
     }
     ctx.lineCap = 'butt';

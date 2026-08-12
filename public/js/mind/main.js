@@ -102,4 +102,10 @@ async function init() {
     setupVisibilityRepaint(); // návrat na tab → istý repaint (listener v render.js)
 }
 
-init();
+// window.HADES sa priraďuje až na konci init(), takže bez tohto catchu sa každá
+// výnimka v inicializácii javí navonok len ako „HADES neexistuje" — async rejection
+// sa nikde nelogovala a diagnostika bola slepá.
+init().catch((e) => {
+    console.error('HADES init zlyhal:', e);
+    document.body.dataset.initFailed = '1';
+});
