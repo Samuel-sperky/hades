@@ -35,8 +35,35 @@ export const MAP_DUST_POW = 0.95;
 // Okraje, ktoré necháva layout voľné pre plávajúce UI (rail vľavo, hlavička hore).
 // fitView() používa TIE ISTÉ okraje, takže scéna nikdy nelezie pod rail a zároveň
 // je pomer rámu presne pomerom využiteľnej plochy → fit vyjde na oboch osiach naraz.
+// Okraje scény čítame z CSS tokenov, nie zo zadrôtovaných čísel — pri zmene šírky
+// railu alebo výšky hlavičky sa inak rozladí fit. Pozor: getPropertyValue() vracia
+// pri --content-left/-top doslovný calc(...) string, preto berieme už vyriešené
+// left/top z #screens a fallback skladáme z primitívov (tie sa vracajú v px).
+function cssPx(name, fallback) {
+    const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+    return Number.isFinite(v) ? v : fallback;
+}
+
 export function viewInsets() {
-    return { left: 112, right: 40, top: 68, bottom: 48 };
+    const edge = cssPx('--edge', 16);
+    const sc = document.getElementById('screens');
+    const scs = sc ? getComputedStyle(sc) : null;
+    const left = scs && parseFloat(scs.left) ? parseFloat(scs.left) : edge + cssPx('--rail-w', 72) + edge;
+    const top = scs && parseFloat(scs.top) ? parseFloat(scs.top) : edge + cssPx('--header-h', 44) + cssPx('--sp-1', 8);
+    return { left, right: edge, top, bottom: edge + cssPx('--sp-4', 32) };
+}
+
+// Okraje pre kameru: navyše uhnú otvorenému bočnému panelu, aby na úrovni uzla
+// nezakrýval susedov. Zámerne sa NEpoužívajú v targetBox() — layout tým zostáva
+// stabilný a pri otvorení panela sa hýbe len kamera, nie uzly.
+export function camInsets() {
+    const ins = viewInsets();
+    const open = ['node-panel', 'dock', 'pack-drawer'].some((id) => {
+        const el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+    });
+    if (open) ins.right += cssPx('--panel-w', 300) + cssPx('--edge', 16);
+    return ins;
 }
 
 export function targetBox() {

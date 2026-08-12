@@ -2,7 +2,7 @@ import { animLevel, birthScale, breatheFactor, dustDrift, easeInOut, flowCap, li
 import { drawEdges, drawRibbons, drawStubs } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
 import { screenToWorld } from './interaction.js';
-import { computeLayout, drawRadius, viewInsets } from './layout.js';
+import { camInsets, computeLayout, drawRadius } from './layout.js';
 import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.js';
 import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
 import { T, certColors } from './theme.js';
@@ -729,7 +729,7 @@ export function fitBBox(L) {
 // Rovnaké okraje ako targetBox() v layout.js → fit sadne na obe osi naraz a scéna
 // vyplní ≥ 70 % šírky viewportu na každej úrovni.
 export function fitCam(bbox) {
-    const ins = viewInsets();
+    const ins = camInsets();
     const uw = Math.max(160, S.w - ins.left - ins.right);
     const uh = Math.max(160, S.h - ins.top - ins.bottom);
     const bw = Math.max(bbox.maxX - bbox.minX, 1);
@@ -752,4 +752,27 @@ export function setupVisibilityRepaint() {
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) { lastFrame = now(); requestDraw(); }
     });
+    setupPanelDodge();
+}
+
+// Otvorenie bočného panela zmenší využiteľnú plochu (camInsets), ale doteraz sa
+// prefitovalo len pri resize okna — panel tak zakryl susedov zvoleného uzla.
+// Sledujeme prepínanie .hidden a scénu prefitneme; layout sa nemení, len kamera.
+function setupPanelDodge() {
+    const targets = ['node-panel', 'dock', 'pack-drawer']
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+    if (!targets.length) return;
+
+    let queued = false;
+    const obs = new MutationObserver(() => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => {
+            queued = false;
+            if (!S.nodes.length) return;
+            fitView();
+        });
+    });
+    for (const el of targets) obs.observe(el, { attributes: true, attributeFilter: ['class'] });
 }
