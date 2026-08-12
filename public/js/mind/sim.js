@@ -1,5 +1,4 @@
 import { animLevel } from './anim.js';
-import { syncForceSliders } from './forces.js';
 import { computeLayout } from './layout.js';
 import { draw, fitBBox, fitCam, requestDraw } from './render.js';
 import { REDUCED_MOTION, S } from './state.js';
@@ -128,7 +127,6 @@ export function go(target = {}) {
     // hub na okraji scény vyliezol pod hlavičku
     const camTo = fitCam(fitBBox(L));
 
-    markViewSwitch(next.level);
     renderBreadcrumb();
 
     if (!animate) {
@@ -199,14 +197,6 @@ export function goInto(hit) {
     return S.nav;
 }
 
-// #view-switch (tri tlačidlá z minulého sveta) — active class podľa úrovne.
-function markViewSwitch(level) {
-    const map = { map: 'map', area: 'net', dept: 'layers', node: 'layers' };
-    document.querySelectorAll('#view-switch button').forEach((b) => {
-        b.classList.toggle('active', b.dataset.view === map[level]);
-    });
-}
-
 /* ---------- spätná kompatibilita ---------- */
 
 // Legacy vstup z controls.js / shortcuts.js / chat.js. Náhľady sú zrušené, takže
@@ -224,7 +214,6 @@ export function setView(view) {
     }
     // main.js volá setView(S.view) na štarte — S.view je 'graph', čo znamená
     // „obnov uložený stav zanorenia" (localStorage 'hades.nav').
-    syncForceSliders();
     return go(S.nav);
 }
 
@@ -243,7 +232,6 @@ export function buildSim() {
 
     const L = computeLayout(true);
     applyLayoutPositions(L);
-    syncForceSliders();
     requestDraw();
     return L;
 }

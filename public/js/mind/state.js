@@ -97,8 +97,8 @@ export const OPT_DEFAULTS = {
 S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.opts') || '{}'));
 
 // Fyzika — null = predvolená hodnota náhľadu; slidery (F2) zapisujú čísla + localStorage
-export const FORCE_DEFAULTS = { charge: null, linkDistance: null, linkStrength: null, gravity: null };
-S.forces = Object.assign({}, FORCE_DEFAULTS, JSON.parse(localStorage.getItem('hades.forces') || '{}'));
+// S.forces / FORCE_DEFAULTS odstránené vlnou W2c — d3 forceSimulation už neexistuje
+// (layout je deterministický v layout.js), takže nemal kto tie hodnoty čítať.
 
 // Filtre siete (Obsidian filters) — množiny SKRYTÝCH typov / zdrojov / oblastí.
 // tags je POZITÍVNY filter (F4): množina VYBRANÝCH značiek — prázdna = bez filtra,

@@ -104,7 +104,6 @@ export function setupInput() {
     window.addEventListener('mouseup', (e) => {
         S._interacting = false;
         canvas.classList.remove('dragging');
-        canvas.classList.remove('grabbing');
         if (dragging && !moved) {
             const hit = pickTarget(e.clientX, e.clientY);
             if (S.connectFrom) {
