@@ -24,7 +24,9 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::getDriverName() !== 'mysql') {
+        // Laravel hlási pre MariaDB driver `mariadb`, nie `mysql` — podmienka
+        // len na 'mysql' index ticho preskočí (viď 2026_08_12_000005).
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
             return;
         }
 
@@ -35,7 +37,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::getDriverName() !== 'mysql') {
+        // Laravel hlási pre MariaDB driver `mariadb`, nie `mysql` — podmienka
+        // len na 'mysql' index ticho preskočí (viď 2026_08_12_000005).
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
             return;
         }
 
