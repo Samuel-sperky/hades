@@ -7,6 +7,7 @@ use App\Models\Decision;
 use App\Models\Node;
 use App\Services\Brain\SecretScanner;
 use App\Services\MindService;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
@@ -262,10 +263,15 @@ class McpController extends Controller
             return $data;
         }
 
+        // A9: bez JSON_PRETTY_PRINT. Payload je JSON vnorený v JSON stringe, takže
+        // odsadenie a nové riadky sa ešte raz escapujú — pri recalle to bola takmer
+        // tretina odpovede. Číta to výhradne stroj, komu odsadenie nič nedá, a
+        // v LLM klientovi je každý znak navyše zaplatený token.
+        // JSON_UNESCAPED_SLASHES navyše zbaví výstup `\/` v každej ceste a URL.
         return [
             'content' => [[
                 'type' => 'text',
-                'text' => json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+                'text' => json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ]],
             'isError' => false,
         ];
@@ -331,20 +337,41 @@ class McpController extends Controller
             isset($args['session_key']) ? (string) $args['session_key'] : null,
         );
 
+        // A9: bez eager-loadu si každý uzol ťahal tagy vlastným dotazom (N+1,
+        // pri limite 30 a susedoch až 45 dotazov navyše na jeden recall).
+        $nodes = EloquentCollection::make($nodes->all());
+        $nodes->load('tags');
+
+        // A9: popisy sa už neposielajú celé. Rástli bez stropu (najväčší uzol
+        // 25 389 B) a jeden recall na širokú tému vracal 77 493 znakov, z toho
+        // 80 % boli popisy a tri uzly zabrali polovicu. Prvé uzly sú aj tie
+        // najrelevantnejšie, tak dostanú väčší strop než zvyšok.
+        $topChars = (int) config('hades.recall_desc_top_chars', 1200);
+        $restChars = (int) config('hades.recall_desc_chars', 300);
+        $topCount = (int) config('hades.recall_desc_top_count', 3);
+
         return [
             'found' => $nodes->count(),
-            'nodes' => $nodes->map(fn ($node) => [
-                'label' => $node->label,
-                'type' => $node->type,
-                'area' => $node->area?->name,
-                'department' => $node->department?->name,
-                'strength' => (float) $node->strength,
-                'certainty' => $node->certainty,
-                'tags' => $node->tags()->pluck('name')->all(),
-                'verified' => $node->verified_at !== null,
-                'origin' => $node->origin,
-                'description' => $node->description,
-            ])->all(),
+            'nodes' => $nodes->values()->map(function (Node $node, int $i) use ($topChars, $restChars, $topCount) {
+                $full = (string) $node->description;
+                $short = Str::limit($full, $i < $topCount ? $topChars : $restChars);
+
+                return [
+                    'label' => $node->label,
+                    'type' => $node->type,
+                    'area' => $node->area?->name,
+                    'department' => $node->department?->name,
+                    'strength' => (float) $node->strength,
+                    'certainty' => $node->certainty,
+                    'tags' => $node->tags->pluck('name')->all(),
+                    'verified' => $node->verified_at !== null,
+                    'origin' => $node->origin,
+                    'description' => $short,
+                    // klient vie, že za týmto uzlom je ešte text — vie si ho
+                    // dotiahnuť cielene cez mind_recall na konkrétnejší dopyt
+                    'description_truncated' => $short !== $full,
+                ];
+            })->all(),
         ];
     }
 

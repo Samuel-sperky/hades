@@ -12,6 +12,13 @@ return [
     // Interné /api/* (SPA) token nedrží.
     'api_token' => env('HADES_API_TOKEN'),
 
+    // A9 — stropy na dĺžku popisov vo výstupe mind_recall. Popisy rástli bez
+    // limitu a jeden recall na širokú tému vracal 77 493 znakov. Prvých
+    // `top_count` uzlov (najrelevantnejších) dostane väčší strop.
+    'recall_desc_top_count' => (int) env('HADES_RECALL_DESC_TOP_COUNT', 3),
+    'recall_desc_top_chars' => (int) env('HADES_RECALL_DESC_TOP_CHARS', 1200),
+    'recall_desc_chars' => (int) env('HADES_RECALL_DESC_CHARS', 300),
+
     // Token pre /mcp (fail-closed). Prijíma sa ako `Authorization: Bearer` aj
     // ako `?token=` — connectory appky Claude nevedia poslať vlastnú hlavičku.
     // Musí sedieť s hodnotou v docker/Caddyfile, kým sa tá neprepne na env.
