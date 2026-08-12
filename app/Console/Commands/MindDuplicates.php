@@ -58,7 +58,10 @@ class MindDuplicates extends Command
         $groups = Node::query()
             ->whereNotNull('slug')
             ->where('slug', '<>', '')
-            ->get(['id', 'slug', 'type', 'label', 'strength'])
+            // session záznamy majú vlastnú cestu cez mind:archive-old; dve
+            // sessions toho istého projektu v ten istý deň nie sú duplicita
+            ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'session'))
+            ->get(['id', 'slug', 'type', 'label', 'strength', 'source'])
             ->groupBy('slug')
             ->filter(fn ($group) => $group->count() > 1);
 

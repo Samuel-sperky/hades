@@ -584,6 +584,7 @@ class MindService
                 ->where('slug', $slug)
                 ->when($type, fn ($q) => $q->where('type', '!=', $type))
                 ->when($excludeId, fn ($q) => $q->whereKeyNot($excludeId))
+                ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'session'))
                 ->get()
                 ->each(fn (Node $n) => $out->push([
                     'node' => $n,
@@ -603,6 +604,10 @@ class MindService
             Node::query()
                 ->when($type, fn ($q) => $q->where('type', $type))
                 ->when($excludeId, fn ($q) => $q->whereKeyNot($excludeId))
+                // session záznamy sa nezlučujú — majú vlastnú cestu cez
+                // mind:archive-old. Bez tejto výnimky by každé dve sessions
+                // toho istého projektu v ten istý deň vyrobili návrh na zlúčenie.
+                ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'session'))
                 ->where('slug', 'like', $prefix.'%')
                 ->limit(50)
                 ->get()
