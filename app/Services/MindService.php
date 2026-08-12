@@ -293,19 +293,29 @@ class MindService
             $orderBindings[] = '%'.$root.'%';
         }
 
-        $nodes = Node::query()
-            ->with(['area', 'department'])
-            ->where(function ($q) use ($roots, $col) {
-                foreach ($roots as $root) {
-                    $like = '%'.$root.'%';
-                    $q->orWhereRaw('label LIKE ?'.$col, [$like])
-                        ->orWhereRaw('description LIKE ?'.$col, [$like]);
-                }
-            })
-            ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
-            ->orderByDesc('strength')
-            ->limit(max($limit * 5, 60))
-            ->get();
+        $take = max($limit * 5, 60);
+
+        // A10: rýchla cesta cez FULLTEXT index. LIKE '%koreň%' nevie použiť
+        // žiadny index (EXPLAIN: type ALL, plný sken), ale MATCH matchuje len od
+        // začiatku slova — preto keď rýchla cesta nenaberie dosť kandidátov,
+        // pokračujeme starou cestou a o výsledku aj tak rozhoduje PHP skórovanie nižšie.
+        $nodes = $this->fulltextCandidates($roots, $take, $orderCases, $orderBindings);
+
+        if ($nodes === null || $nodes->count() < $take) {
+            $nodes = Node::query()
+                ->with(['area', 'department'])
+                ->where(function ($q) use ($roots, $col) {
+                    foreach ($roots as $root) {
+                        $like = '%'.$root.'%';
+                        $q->orWhereRaw('label LIKE ?'.$col, [$like])
+                            ->orWhereRaw('description LIKE ?'.$col, [$like]);
+                    }
+                })
+                ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
+                ->orderByDesc('strength')
+                ->limit($take)
+                ->get();
+        }
 
         return $nodes
             ->map(function (Node $node) use ($concepts, $roots) {
@@ -330,6 +340,44 @@ class MindService
             ->sortByDesc(fn ($row) => $row['score'] * 1000 + min((float) $row['node']->strength, 999))
             ->take($limit)
             ->values();
+    }
+
+    /**
+     * A10 — kandidáti cez FULLTEXT index (rýchla cesta recallu).
+     *
+     * Vráti null, keď je cesta vypnutá alebo ju databáza nepodporuje; volajúci
+     * potom pokračuje pôvodným LIKE dotazom. Korene idú do boolean módu s
+     * hviezdičkou (`koren*`), čo sedí na to, čo robí SK stemmer — orezáva
+     * koncovky, takže hľadáme slová začínajúce koreňom.
+     *
+     * @param  Collection<int, string>  $roots
+     * @return Collection<int, Node>|null
+     */
+    protected function fulltextCandidates(Collection $roots, int $take, array $orderCases, array $orderBindings): ?Collection
+    {
+        if (! config('hades.recall_fulltext', false) || DB::getDriverName() !== 'mysql') {
+            return null;
+        }
+
+        // InnoDB fulltext ignoruje tokeny kratšie než innodb_ft_min_token_size (3)
+        $terms = $roots
+            ->filter(fn (string $root) => mb_strlen($root) >= 3)
+            ->map(fn (string $root) => preg_replace('/[^\p{L}\p{N}_]/u', '', $root))
+            ->filter(fn (string $root) => $root !== '')
+            ->unique()
+            ->map(fn (string $root) => $root.'*');
+
+        if ($terms->isEmpty()) {
+            return null;
+        }
+
+        return Node::query()
+            ->with(['area', 'department'])
+            ->whereRaw('MATCH(label, description) AGAINST (? IN BOOLEAN MODE)', [$terms->implode(' ')])
+            ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
+            ->orderByDesc('strength')
+            ->limit($take)
+            ->get();
     }
 
     /**
