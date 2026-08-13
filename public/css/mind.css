@@ -344,7 +344,6 @@ body {
 #tl-label,
 .stat-row .val,
 #node-meta,
-.badge,
 .hist .ts,
 .hist .time,
 .search-item .sub,
@@ -703,7 +702,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 #breadcrumb .sep { color: var(--border-strong); flex-shrink: 0; }
 #breadcrumb .crumb-idle { color: var(--muted); padding: 2px 6px; }
 #header-metrics {
-    flex: 1;
+    flex: 0 0 auto;                    /* nesmie tlačiť .h-center — drží si obsah */
     text-align: right;
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
@@ -937,10 +936,15 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* ---------------------------------------------------------------------------
    BADGE + SWATCH (node-type identity via colored dot, never teal chrome)
    --------------------------------------------------------------------------- */
+/* Mono readout ako ostatné technické popisky, ale VERZÁLKAMI — preto vlastné
+   --ls-mono-caps namiesto --ls-mono zo spoločnej skupiny vyššie; .badge preto
+   v tej skupine nie je a font-family/tabular-nums má tu, na jednom mieste. */
 .badge {
     display: inline-flex; align-items: center; gap: var(--sp-1);
     background: var(--surface-subtle);
     color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,70:1 */
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
     font-size: var(--fs-caption);
     line-height: var(--lh-caption);
     text-transform: uppercase;
@@ -1087,7 +1091,8 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
                 border-color var(--dur-fast) var(--ease),
                 color var(--dur-fast) var(--ease);
 }
-.chip:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent-600); }
+/* W3b: --accent-600 ako TEXT dával nad --accent-softer 2,5–3,3:1; --accent-ink 6,4:1 */
+.chip:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent-ink); }
 .chip:active { background: var(--accent-soft); transform: scale(.97); }
 .chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
@@ -1864,12 +1869,8 @@ body.ambient #toasts {
 .mr-time { color: var(--muted); font-family: var(--mono); font-size: var(--fs-caption); flex-shrink: 0; }
 
 .record {
-    display: block; width: 100%; text-align: left;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-left: 2px solid var(--border-accent);
-    border-radius: var(--r-md);
-    padding: 10px 12px; min-height: auto;
+    display: block; width: 100%;
+    min-height: auto;
 }
 .record:hover { border-left-color: var(--accent); background: var(--surface-2); }
 .record-head { display: flex; align-items: center; gap: var(--sp-1); }
@@ -2081,7 +2082,8 @@ body.ambient #toasts {
     padding: 2px 10px;
     font-size: var(--fs-small);
 }
-.dept-actions input, .dept-actions select { font-size: var(--fs-small); }
+/* select nie je v zozname — spoločné pravidlo polí nižšie mu dáva --fs-base */
+.dept-actions input { font-size: var(--fs-small); }
 
 /* ---------------------------------------------------------------------------
    SELECT — shared field treatment (node move + dept move)
@@ -2354,7 +2356,6 @@ body[data-screen="graf"] #screens { display: none; }
 /* ---- graph-tools (v hlavičke, len na Grafe) ---- */
 #graph-tools { display: flex; gap: var(--sp-0); }
 #app-header .h-center { display: flex; align-items: center; gap: var(--sp-2); }
-#header-metrics { flex: 0 0 auto; text-align: right; }
 #graph-tools button {
     background: none; border: none;
     color: var(--muted);
@@ -2462,17 +2463,14 @@ body[data-screen="graf"] #screens { display: none; }
 /* ---- obrazovka Dnes ---- */
 .today-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: var(--sp-2);
     margin-bottom: var(--sp-3);
 }
+/* Chróm karty (padding/pozadie/rám/radius/tieň) je v sekcii „JEDNA KARTA" na
+   konci súboru — tu len to, čím sa TÁTO karta líši. */
 .today-card {
     display: flex; flex-direction: column; gap: var(--sp-0);
-    padding: var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    box-shadow: var(--elev-1);
 }
 .tc-val {
     font-family: var(--mono); font-size: 30px; font-weight: 600;
@@ -2480,7 +2478,6 @@ body[data-screen="graf"] #screens { display: none; }
 }
 .tc-label { font-size: var(--fs-small); color: var(--muted); }
 .today-sec { margin-bottom: var(--sp-3); }
-.today-sec h2 { font-size: var(--fs-title); color: var(--text); margin-bottom: var(--sp-1); }
 .today-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .today-chip {
     display: inline-flex; align-items: center; gap: var(--sp-1);
@@ -2515,25 +2512,20 @@ body[data-screen="graf"] #screens { display: none; }
 
 /* ---- obrazovka Knižnica ---- */
 .lib-area { margin-bottom: var(--sp-3); }
+/* Miera a odstup nadpisu sú v spoločnom pravidle nadpisov sekcií na konci súboru */
 .lib-area h2 {
     display: flex; align-items: center; gap: var(--sp-1);
-    font-size: var(--fs-title); color: var(--text);
-    margin-bottom: var(--sp-2);
 }
 .lib-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .lib-count { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
 .lib-skills {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--sp-1);
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--sp-2);
+    align-items: stretch;
 }
 .lib-skill {
     display: flex; flex-direction: column; gap: 2px;
-    text-align: left;
-    padding: var(--sp-1) var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
     color: var(--text);
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
@@ -2555,13 +2547,8 @@ body[data-screen="graf"] #screens { display: none; }
 .today-search {
     display: flex; align-items: center; gap: var(--sp-2);
     width: 100%;
-    padding: var(--sp-2);
     margin-bottom: var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    box-shadow: var(--elev-1);
-    color: var(--muted); text-align: left;
+    color: var(--muted);
     transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .today-search:hover, .today-search:focus-visible {
@@ -2585,18 +2572,14 @@ body[data-screen="graf"] #screens { display: none; }
 /* Dnes: "Naposledy si robil na…" — karty sessions */
 .today-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--sp-1);
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--sp-2);
+    align-items: stretch;
 }
 .today-card-wrap { display: flex; align-items: stretch; gap: 2px; }
 .today-card-link {
     flex: 1; min-width: 0;
     display: flex; flex-direction: column; gap: 6px;
-    text-align: left;
-    padding: var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
     color: var(--text);
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
@@ -2638,8 +2621,9 @@ body[data-screen="graf"] #screens { display: none; }
 .today-card-wrap:hover .pack-btn,
 .pack-btn:focus-visible,
 .pack-btn.in-pack { opacity: 1; }
-.pack-btn:hover { background: var(--accent-softer); color: var(--accent-600); }
-.pack-btn.in-pack { color: var(--accent-600); }
+/* W3b: --accent-ink (6,4:1), nie --accent-600 — ten dával nad --accent-softer 2,5–3,3:1 */
+.pack-btn:hover { background: var(--accent-softer); color: var(--accent-ink); }
+.pack-btn.in-pack { color: var(--accent-ink); }
 
 /* ---- Pack indikátor v hlavičke ---- */
 #pack-trigger {
@@ -2692,7 +2676,8 @@ body[data-screen="graf"] #screens { display: none; }
 /* ---- Čítačka: pätička s viacerými akciami ---- */
 #md-foot { gap: var(--sp-1); align-items: center; }
 #md-copypath { margin-right: auto; }
-#md-pack.in-pack { background: var(--accent-softer); color: var(--accent-600); border-color: var(--border-accent); }
+/* W3b: --accent-ink (6,4:1) namiesto --accent-600 nad --accent-softer */
+#md-pack.in-pack { background: var(--accent-softer); color: var(--accent-ink); border-color: var(--border-accent); }
 
 /* ---------------------------------------------------------------------------
    RESPONSIVE — užšie panely a redukovaná hlavička na menších oknách
@@ -2763,13 +2748,7 @@ body[data-screen="graf"] #screens { display: none; }
 
 /* Návrh — skupiny s checkboxmi */
 .dir-suggest { display: flex; flex-direction: column; gap: var(--sp-2); }
-.dir-group {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    padding: var(--sp-2);
-    box-shadow: var(--elev-1);
-}
+/* .dir-group nemá vlastný chróm — celý je v sekcii „JEDNA KARTA" na konci */
 .dir-group-head {
     display: flex; align-items: center; gap: var(--sp-1);
     font-size: var(--fs-body); font-weight: var(--fw-medium);
@@ -2813,10 +2792,6 @@ label.check.dir-check.off { opacity: .5; }
 
 /* Náhľad smernice */
 .dir-preview-wrap {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    box-shadow: var(--elev-1);
     overflow: hidden;
     position: sticky; top: 0;
 }
@@ -2839,19 +2814,14 @@ label.check.dir-check.off { opacity: .5; }
 }
 
 /* Uložené smernice */
-.dir-saved-sec h2 { font-size: var(--fs-title); color: var(--text); margin-bottom: var(--sp-2); }
 .dir-saved {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: var(--sp-1);
 }
 .dir-saved-item {
-    display: flex; align-items: center; gap: var(--sp-2);
-    text-align: left; width: 100%;
-    padding: var(--sp-1) var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md); color: var(--text);
+    display: flex; gap: var(--sp-2);
+    width: 100%; color: var(--text);
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .dir-saved-item:hover, .dir-saved-item:focus-visible {
@@ -2937,18 +2907,13 @@ select {
    --------------------------------------------------------------------------- */
 .dash-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--gutter);
     margin-bottom: var(--gutter);
-    align-items: start;
+    align-items: stretch;          /* zarovnané spodky — ruší dieru pod „Istota" */
 }
 .dash-card {
     display: flex; flex-direction: column; gap: var(--sp-1);
-    padding: var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    box-shadow: none;                     /* flattened resting card */
     transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .dash-card.span-2 { grid-column: span 2; }
@@ -2965,26 +2930,18 @@ select {
     font-family: var(--mono); font-size: var(--fs-caption);
     letter-spacing: var(--ls-mono); color: var(--muted);
 }
-/* Flatten the older resting cards too (B6) — border-defined, no ambient shadow */
-.today-card, .today-search, .today-card-link, .dir-group, .dir-preview-wrap, .dir-saved-item {
-    box-shadow: none;
-}
 
 /* ---------------------------------------------------------------------------
    KPI GRID (.kpi-*) — compact mono readouts, one row across the dashboard top
    --------------------------------------------------------------------------- */
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: var(--sp-1);
     margin-bottom: var(--gutter);
 }
 .kpi-card {
     display: flex; flex-direction: column; gap: 2px;
-    padding: var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
 }
 .kpi-label {
     font-family: var(--mono);
@@ -3016,16 +2973,19 @@ select {
    .heat is the overflow viewport so the page body never scrolls sideways.
    --------------------------------------------------------------------------- */
 .heat { overflow-x: auto; padding-bottom: var(--sp-0); }
+/* Rozmer buniek počíta charts.js z reálnej výšky kontejnera a píše ho do
+   --heat-cell-w/h; fallback 12px platí, keď JS nebeží (W3b). */
 .heat-grid {
     display: grid;
     grid-auto-flow: column;
-    grid-template-rows: repeat(7, 12px);
+    grid-template-rows: repeat(7, var(--heat-cell-h, 12px));
     gap: 3px;
     width: max-content;
 }
 .heat-cell {
-    width: 12px; height: 12px;
-    border-radius: 2.5px;
+    width: var(--heat-cell-w, 12px);
+    height: var(--heat-cell-h, 12px);
+    border-radius: max(2.5px, calc(var(--heat-cell-w, 12px) / 5));
     background: var(--heat-0);
 }
 .heat-cell.l1 { background: var(--heat-1); }
@@ -3230,13 +3190,11 @@ select {
     z-index: 1;
 }
 .dtl-dot[data-origin="brain"] { background: var(--node-memory); }
+/* display/grid-template rieši sekcia „ROZHODNUTIA" na konci (karta využije šírku);
+   tu zostáva len row-gap a šírka. */
 .dtl-card {
-    display: flex; flex-direction: column; gap: var(--sp-0);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    padding: 10px 12px;
-    text-align: left; width: 100%;
+    gap: var(--sp-0);
+    width: 100%;
     transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .dtl-card:hover, .dtl-card:focus-visible {
@@ -3256,7 +3214,7 @@ select {
     font-size: var(--fs-small); color: var(--muted); line-height: var(--lh-body);
     white-space: pre-wrap;
 }
-.dtl-card .dtl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0); margin-top: 2px; }
+.dtl-card .dtl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0); }
 
 /* Period / area filter chips row (reuses .chip; this just gives it air) */
 .dtl-filter { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-bottom: var(--sp-2); }
@@ -3266,12 +3224,7 @@ select {
    --------------------------------------------------------------------------- */
 .queue { display: flex; flex-direction: column; gap: var(--sp-1); }
 .queue-item {
-    display: flex; align-items: flex-start; gap: var(--sp-2);
-    padding: var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-left: 2px solid var(--border-strong);
-    border-radius: var(--r-md);
+    display: flex; gap: var(--sp-2);
     transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
                 box-shadow var(--dur-fast) var(--ease);
 }
@@ -3304,7 +3257,8 @@ select {
 }
 .queue-actions button:hover { background: var(--hover-fill); color: var(--text); }
 .queue-actions button.act-verify:hover { color: var(--cert-overene); background: var(--cert-overene-soft); }
-.queue-actions button.act-resolve:hover { color: var(--accent-600); background: var(--accent-softer); }
+/* W3b: --accent-ink (6,4:1) namiesto --accent-600 nad --accent-softer */
+.queue-actions button.act-resolve:hover { color: var(--accent-ink); background: var(--accent-softer); }
 .queue-actions button.act-skip:hover { color: var(--danger); background: var(--danger-soft); }
 .queue-actions button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* armed inline (Preskočiť / Delete) — no native confirm() */
@@ -3380,9 +3334,10 @@ select {
    VLNA W2b — FLUIDNÉ MRIEŽKY + JEDNA KARTA (obrazovky Dnes/Denník/Knižnica/
    Rozhodnutia/Kontrola/Smernica)
 
-   Táto sekcia je JEDINÝ zdroj pravdy pre vizuál kariet obrazoviek. Leží na konci
-   súboru zámerne: staršie rules kariet vyššie deklarujú padding/radius/tiene
-   po svojom, tu ich zjednocujeme a nižšie pridávame len skutočné ROZDIELY.
+   Táto sekcia je JEDINÝ zdroj pravdy pre CHRÓM kariet obrazoviek (padding,
+   pozadie, rám, radius, tieň, zarovnanie). Pravidlá jednotlivých kariet vyššie
+   v súbore už chróm nedeklarujú — držia len to, čím sa daná karta líši, takže
+   na jednu vlastnosť je jedno miesto.
    Bez raw hex/rgba — všetko cez tokeny z :root.
    ########################################################################### */
 
@@ -3448,28 +3403,13 @@ select {
 /* ---------------------------------------------------------------------------
    2) FLUIDNÉ MRIEŽKY — auto-fill/auto-fit cez celú dostupnú šírku.
       Na 2560 sa Knižnica doleje na 7 stĺpcov, dashboard na jeden plný rad.
+
+      Hodnoty (grid-template-columns/gap/align-items) sú deklarované PRIAMO pri
+      každej mriežke vyššie v súbore, nie prepisom tu — mriežka má tak celú svoju
+      definíciu (display: grid + stĺpce + gap) na jednom mieste. Dotknuté
+      mriežky: .kpi-grid, .dash-grid, .today-cards, .today-grid, .lib-skills,
+      .dir-saved.
    --------------------------------------------------------------------------- */
-.kpi-grid {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--sp-1);
-}
-.dash-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: var(--gutter);
-    align-items: stretch;          /* zarovnané spodky — ruší dieru pod „Istota" */
-}
-.today-cards { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-.today-grid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: var(--sp-2);
-    align-items: stretch;
-}
-.lib-skills {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: var(--sp-2);
-    align-items: stretch;
-}
-.dir-saved { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 
 /* span-2 potrebuje aspoň 2 stĺpce; v jednostĺpcovom rade by pretekal */
 @media (max-width: 900px) {
@@ -3562,21 +3502,18 @@ select {
 /* ---------------------------------------------------------------------------
    6) KONTRASTNÝ DLH — `color: var(--accent-600)` je na tmavej téme tmavý teal
       a ako TEXT dáva 2,5–3,3:1 (merané na --accent-soft/--accent-softer nad
-      panelom). --accent-ink na to existuje: 6,4:1. Len miesta v mojom rozsahu.
+      panelom). --accent-ink na to existuje: 6,4:1.
+
+      VŠETKY miesta kontrastného dlhu sú opravené PRIAMO v svojej deklarácii
+      (hľadaj komentár „W3b" pri --accent-ink), nie prepisom tu — jedna pravda
+      na jedno miesto. Zoznam: .chip:hover, .pack-btn:hover, .pack-btn.in-pack,
+      #md-pack.in-pack, .queue-actions button.act-resolve:hover, #pack-trigger,
+      #node-pack.in-pack, .sug-add:hover, .badge, .tree-row.active (+ .count),
+      #btn-new-node:hover, #local-chip .lc-depth.active, #prompt-form
+      button:hover, .ctx-x:hover.
    --------------------------------------------------------------------------- */
-.chip:hover { color: var(--accent-ink); }
-.pack-btn:hover,
-.pack-btn.in-pack { color: var(--accent-ink); }
-#md-pack.in-pack { color: var(--accent-ink); }
-.queue-actions button.act-resolve:hover { color: var(--accent-ink); }
 
-/* VLNA W3b: zvyšné miesta kontrastného dlhu sú opravené PRIAMO v deklarácii
-   (hľadaj komentár „W3b" pri --accent-ink), nie prepisom tu — jedna pravda na
-   jedno miesto. Zoznam: #pack-trigger, #node-pack.in-pack, .sug-add:hover,
-   .badge, .tree-row.active (+ .count), #btn-new-node:hover,
-   #local-chip .lc-depth.active, #prompt-form button:hover, .ctx-x:hover.
-
-   ###########################################################################
+/* ###########################################################################
    VLNA W3b — GRAFY V KARTÁCH RASTÚ S KARTOU
 
    .dash-grid je align-items: stretch (zarovnané spodky = zámer), ale výšku radu
@@ -3584,8 +3521,8 @@ select {
    12px, čiara rastu SVG s aspect-ratio a donut fixných 132px → v natiahnutej
    karte zostala prázdna spodná tretina.
 
-   Kontejnery preto rastú (flex: 1 1 0 + min-height = prirodzená výška), aby
-   výška obsahu NEMOHLA tlačiť kartu (flex-basis 0 → žiadna spätná väzba na
+   Kontejnery preto rastú (flex: 1 1 0 + vlastná min-height = prirodzená výška),
+   aby výška obsahu NEMOHLA tlačiť kartu (flex-basis 0 → žiadna spätná väzba na
    výšku radu, teda ani oscilácia s ResizeObserverom v charts.js).
    --------------------------------------------------------------------------- */
 #dash-heat,
@@ -3593,13 +3530,12 @@ select {
     display: flex;
     flex-direction: column;
     flex: 1 1 0;
-    min-height: 0;
 }
 #dash-heat { min-height: 148px; }     /* mesiace + 7×12px mriežka + legenda */
 #dash-growth { min-height: 96px; }    /* pôvodný viewBox 300×90 + os */
 
-/* Heatmapa — rozmer buniek počíta charts.js z reálnej výšky kontejnera a píše
-   ho do --heat-cell-w/h (fallback = pôvodných 12px, keď JS nebeží). */
+/* Heatmapa — rozmery buniek (--heat-cell-w/h) sú deklarované priamo pri
+   .heat-grid/.heat-cell vyššie v súbore; tu už len rast samotného kontejnera. */
 .heat {
     display: flex;
     flex-direction: column;
@@ -3607,12 +3543,6 @@ select {
     justify-content: center;          /* zbytok miesta sa rozdelí, nezostane dole */
     flex: 1 1 auto;
     min-height: 0;
-}
-.heat-grid { grid-template-rows: repeat(7, var(--heat-cell-h, 12px)); }
-.heat-cell {
-    width: var(--heat-cell-w, 12px);
-    height: var(--heat-cell-h, 12px);
-    border-radius: max(2.5px, calc(var(--heat-cell-w, 12px) / 5));
 }
 /* Legenda je stupnica, nie dáta — zostáva v pôvodnej miere */
 .heat-legend .heat-cell { width: 12px; height: 12px; border-radius: 2.5px; }
