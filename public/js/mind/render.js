@@ -166,6 +166,8 @@ export function draw() {
        pri oddialení nesie len tvar galaxie, pri priblížení nepridáva šum. */
     const dustPaths = new Map();   // color → { path, alpha }
     const solid = [];              // uzly s tvarom (kind node/center/core)
+    const labelBoxes = layoutHubLabels(L, invK);   // rezervácia pred prachom (A3)
+    S._labelBoxes = labelBoxes;                    // debug hook: overenie A3 meria toto, nie kópiu formuly
     for (const [id, ent] of L.pos) {
         const n = S.byId.get(id);
         if (!n) continue;
@@ -175,6 +177,8 @@ export function draw() {
             const x = n.x + (dr ? dr.x : 0), y = n.y + (dr ? dr.y : 0);
             n._ox = dr ? dr.x : 0; n._oy = dr ? dr.y : 0;
             if (!inView(x, y)) continue;
+            // pod popiskom hubu prach nekreslíme — jeho podklad by ho aj tak prekryl
+            if (n !== S.hover && n !== S.selected && inLabelBox(labelBoxes, x, y, 2.6 * invK)) continue;
             if (n === S.hover || n === S.selected) { solid.push({ n, ent, x, y }); continue; }
             const col = nodeColor(n);
             const key = col + '|' + (ent.kind === 'ctx' ? 'c' : 'd') + Math.round((ent.dim || 1) * 20);
@@ -249,9 +253,10 @@ export function draw() {
     for (const h of L.hubs) drawHub(h, invK);
 
     /* ---- POPISKY ---- */
-    // popisky hubov si rezervujú miesto ako prvé; popisky uzlov sa im uhnú
-    const reserved = drawHubLabels(L, invK);
-    drawNodeLabels(L, solid, hl, invK, reserved);
+    // rámy popiskov hubov sú rezervované už pred prachom (labelBoxes); tu sa len
+    // vykreslia a popisky uzlov sa im uhnú
+    paintHubLabels(labelBoxes);
+    drawNodeLabels(L, solid, hl, invK, labelBoxes);
 }
 
 /* ---------- W3a: areoly regiónov ---------- */
@@ -332,40 +337,89 @@ function drawHub(h, invK) {
 
 // Popisky hubov idú NAVRCH všetkého a majú papierový podklad — inak ich prach prekryje
 // (to bola jedna z konkrétnych bolestí starého grafu).
-function drawHubLabels(L, invK) {
+// Rozloženie popiskov hubov sa počíta PRED kreslením prachu, aby ho prach mohol
+// obísť. Popisok zámerne zostáva pri svojom hube (nie pod celým oblakom, kde by
+// stratil väzbu na hub a lezol susedom do plochy) — namiesto odsúvania popisku sa
+// pod ním prach nekreslí, takže jeho podklad nemá čo prekryť. Predtým podklad
+// prekrýval 26–51 uzlov na mape a 59–76 v oblasti.
+function layoutHubLabels(L, invK) {
     const strong = L.hubs.filter((h) => h.dim >= 0.5);
     if (!strong.length) return [];
-    ctx.textAlign = 'center';
     const fs = (L.level === 'map' ? 14 : 12) * invK;
     const sub = fs * 0.82;
-    const taken = [];
+    const items = [];
     for (const h of strong.slice().sort((a, b) => b.count - a.count)) {
-        const r = Math.max(6 * invK, h.rw);
+        // Odstup od klastra uzlov (lry), nie len od kruhu hubu — inak popisok sedí
+        // v strede zhluku. Na mape lry nie je (prach je príliš rozsiahly, popisok by
+        // odletel od hubu); tam sa prach pod rámom nekreslí, viď inLabelBox.
+        const r = Math.max(6 * invK, h.rw, h.lry || 0);
         ctx.font = '600 ' + fs + 'px "Geist", system-ui, sans-serif';
-        const name = h.name;
-        const w = Math.max(ctx.measureText(name).width, 20 * invK);
-        const y = h.y + r + fs * 1.35;
-        const rect = { x: h.x - w / 2 - 5 * invK, y: y - fs, w: w + 10 * invK, h: fs * 1.35 + sub * 1.2 };
-        const hit = taken.some((t) => rect.x < t.x + t.w && t.x < rect.x + rect.w
-            && rect.y < t.y + t.h && t.y < rect.y + rect.h);
-        if (hit) continue;
-        taken.push(rect);
+        const w = Math.max(ctx.measureText(h.name).width, 20 * invK);
+        const bw = w + 10 * invK, bh = fs * 1.35 + sub * 1.2;
 
+        // Kandidáti umiestnenia: pod klastrom, nad ním, potom o kúsok ďalej pod/nad.
+        // Prvý, ktorý nekoliduje s iným popiskom ani s tvarovým uzlom, vyhráva.
+        // Bez toho popisok odsadený pod vlastný klaster padne na uzly susedného.
+        const gap = fs * 1.35;
+        const cands = [h.y + r + gap, h.y - r - gap * 0.5, h.y + r + gap * 2.1, h.y - r - gap * 1.7];
+        let placed = null;
+        for (let ci = 0; ci < cands.length; ci++) {
+            const y = cands[ci];
+            const rect = { x: h.x - w / 2 - 5 * invK, y: y - fs, w: bw, h: bh };
+            const clash = items.some((t) => rect.x < t.x + t.w && t.x < rect.x + rect.w
+                && rect.y < t.y + t.h && t.y < rect.y + rect.h);
+            if (clash) continue;
+            // posledný kandidát berieme aj s uzlami — lepšie popisok s prekryvom než žiadny
+            if (ci < cands.length - 1 && shapeNodesIn(L, rect)) continue;
+            placed = Object.assign(rect, { name: h.name, count: h.count, cx: h.x, baseline: y, fs, sub });
+            break;
+        }
+        if (!placed) continue;
+        items.push(placed);
+    }
+    return items;
+}
+
+function paintHubLabels(items) {
+    if (!items.length) return;
+    ctx.textAlign = 'center';
+    for (const it of items) {
         ctx.globalAlpha = 0.93 * S.dim;
         ctx.fillStyle = T.paper;
-        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.fillRect(it.x, it.y, it.w, it.h);
 
         ctx.globalAlpha = 0.97 * S.dim;
         ctx.fillStyle = T.ink;
-        ctx.fillText(name, h.x, y);
+        ctx.font = '600 ' + it.fs + 'px "Geist", system-ui, sans-serif';
+        ctx.fillText(it.name, it.cx, it.baseline);
 
         ctx.globalAlpha = 0.88 * S.dim;
         ctx.fillStyle = T.inkSoft;
-        ctx.font = '600 ' + sub + 'px "Geist Mono", ui-monospace, monospace';
-        ctx.fillText(String(h.count), h.x, y + sub * 1.25);
+        ctx.font = '600 ' + it.sub + 'px "Geist Mono", ui-monospace, monospace';
+        ctx.fillText(String(it.count), it.cx, it.baseline + it.sub * 1.25);
     }
     ctx.globalAlpha = 1;
-    return taken;
+}
+
+// Sedí v ráme aspoň jeden TVAROVÝ uzol (nie prach)? Prach sa pod rámom nekreslí,
+// takže neprekáža; tvarový uzol nesie informáciu a prekryť sa nesmie.
+function shapeNodesIn(L, rect) {
+    for (const [id, ent] of L.pos) {
+        if (ent.kind === 'dust' || ent.kind === 'ctx') continue;
+        const n = S.byId.get(id);
+        if (!n) continue;
+        if (n.x > rect.x && n.x < rect.x + rect.w && n.y > rect.y && n.y < rect.y + rect.h) return true;
+    }
+    return false;
+}
+
+// Padá bod do niektorého rezervovaného rámu popisku? (rozšírené o polomer uzla,
+// aby sa nekreslili ani uzly, ktoré do rámu zasahujú len časťou)
+function inLabelBox(boxes, x, y, pad) {
+    for (const b of boxes) {
+        if (x > b.x - pad && x < b.x + b.w + pad && y > b.y - pad && y < b.y + b.h + pad) return true;
+    }
+    return false;
 }
 
 /* ---------- popisky uzlov ---------- */

@@ -326,11 +326,15 @@ export function computeLayout(force) {
                 const { dept, count } = depts[i];
                 const th = (j / cap) * Math.PI * 2 - Math.PI / 2 + r * 0.42;
                 const dx = Math.cos(th) * radii[r], dy = Math.sin(th) * radii[r];
+                const spread = Math.min(gap * 0.40, 0.055 + 0.14 * Math.sqrt(count / maxDeptCount));
                 hubs.push({
                     kind: 'dept', id: dept.id, x: dx, y: dy, count,
                     name: dept.name, color: areaColor(area), dim: 1, rw: 0,
+                    // labelR = polomer klastra uzlov oddelenia. Popisok sa oň odsadí, inak
+                    // by jeho podklad sedel v strede zhluku a prekryl uzly (A3). Zámerne to
+                    // NIE je `cloud` — ten zapína areolu regiónu, tú tu nechceme.
+                    labelR: spread,
                 });
-                const spread = Math.min(gap * 0.40, 0.055 + 0.14 * Math.sqrt(count / maxDeptCount));
                 phyllo(deptNodes(dept.id), dx, dy, spread, hash01(dept.id) * 6.2831, pos,
                     { kind: 'node', mul: 0.55, dim: 1 });
             }
@@ -459,6 +463,7 @@ export function computeLayout(force) {
     const scale = (sx + sy) / 2;
     for (const h of hubs) {
         if (h.cloud) { h.crx = h.cloud * sx; h.cry = h.cloud * sy; }
+        if (h.labelR) h.lry = h.labelR * sy;   // svislý odstup popisku od klastra (A3)
         if (h.kind === 'area') {
             h.rw = hubRadius(h.count, maxAreaCount, 0.026, 0.060) * scale * (h.dim < 0.5 ? 0.55 : 1);
         } else {
