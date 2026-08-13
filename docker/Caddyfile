@@ -2,26 +2,66 @@
 # Zlúči appku (8080) aj Reverb WebSocket (8081) na JEDEN port (8090),
 # takže jeden ngrok tunel prenesie aj HTTP aj živé pulzy. Chránené basic-auth.
 # Lokálny prístup na 127.0.0.1:8080 (priamo appka) toto NEobchádza a nemá heslo.
+#
+# TAJOMSTVÁ TU NEPATRIA. Do 13. 8. 2026 tu bol natvrdo MCP token aj bcrypt hash
+# basic-auth hesla, a tento súbor je git-trackovaný — staré hodnoty preto žijú
+# v histórii repa a treba ich považovať za kompromitované. Teraz sa oboje berie
+# z `.env` cez `environment:` v docker-compose.yml:
+#
+#   HADES_MCP_TOKEN        ten istý token, ktorý overuje Laravel
+#                          (config/hades.php → AuthenticateMcp). JEDEN zdroj:
+#                          keď sa zmení v .env, zmení sa pre Caddy aj pre appku.
+#   CADDY_BASIC_AUTH_HASH  bcrypt hash hesla na verejný prístup (meno: hades).
+#
+# Použité je `{$VAR}`, nie `{env.VAR}`: `{$VAR}` je textová substitúcia pri
+# načítaní Caddyfile, takže funguje všade vrátane basic_auth a query matchera —
+# runtime placeholder `{env.VAR}` sa v hashi basic_auth nevyhodnotí.
+#
+# Fail-closed: compose má na oboch premenných `:?` guard, takže pri chýbajúcej
+# hodnote sa stack vôbec nespustí. Prázdny hash by navyše zhodil parsovanie
+# Caddyfile — v žiadnom prípade to tunel neotvorí bez hesla.
 {
 	admin off
 	auto_https off
 }
 
-:8095 {
-	# Heslo na verejný prístup (basic-auth). Meno: hades.
-	# Hash je bcrypt hesla "Aura-Hades-4271" — zmeniť = prehashovať a reštartnúť caddy.
+# Basic-auth pre verejnú cestu, na jednom mieste (hash sa neopakuje).
+(tunnel_auth) {
 	basic_auth {
-		hades $2y$12$e4ZVrEJNRon1SgPFj8AukezOALC0Cqt9VBBMDZn1pITcPevciumaC
+		hades {$CADDY_BASIC_AUTH_HASH}
+	}
+}
+
+:8095 {
+	# MCP prístup pre appku Claude (connectory tam nevedia poslať Basic Auth
+	# hlavičku, len URL) — tajný token v query stringu namiesto hesla, obchádza
+	# basic_auth nižšie. Token drží `.env` (HADES_MCP_TOKEN), zmena = upraviť
+	# .env + `docker compose up -d caddy`.
+	@mcp_token {
+		path /mcp
+		query token={$HADES_MCP_TOKEN}
+	}
+	handle @mcp_token {
+		reverse_proxy app:8080
+	}
+
+	# OAuth discovery sondy appky Claude musia dostať 404 (nie 401 z basic_auth),
+	# inak si appka myslí, že server má OAuth prihlásenie, a pripojenie zlyhá.
+	@oauth_probe path /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /register
+	handle @oauth_probe {
+		respond 404
 	}
 
 	# WebSocket (pusher protokol Reverbu beží na ceste /app/<key>) → Reverb
 	@ws path /app /app/*
 	handle @ws {
+		import tunnel_auth
 		reverse_proxy reverb:8081
 	}
 
-	# Všetko ostatné → Laravel appka
+	# Všetko ostatné (dashboard, chat, priamy /mcp bez tokenu) → basic-auth.
 	handle {
+		import tunnel_auth
 		reverse_proxy app:8080
 	}
 }
