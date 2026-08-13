@@ -31,7 +31,7 @@ class MindFixEntities extends Command
      */
     protected const KEEP_NODES = [2092, 2094, 2116, 2176];
 
-    protected const KEEP_DECISIONS = [29];
+    protected const KEEP_DECISIONS = [29, 39];
 
     public function handle(): int
     {
@@ -47,17 +47,16 @@ class MindFixEntities extends Command
 
         if ($rows === []) {
             $this->info('Niet čo opravovať.');
+        } else {
+            $this->table(['Tabuľka', 'ID', 'Stĺpec', 'Pred', 'Po'], $rows);
 
-            return self::SUCCESS;
+            $this->newLine();
+            $this->line($apply
+                ? '<info>Zapísané: '.count($rows).' zmien.</info>'
+                : '<comment>Suchý beh — nič sa nezmenilo. Zápis: php artisan mind:fix-entities --apply</comment>');
         }
 
-        $this->table(['Tabuľka', 'ID', 'Stĺpec', 'Pred', 'Po'], $rows);
-
-        $this->newLine();
-        $this->line($apply
-            ? '<info>Zapísané: '.count($rows).' zmien.</info>'
-            : '<comment>Suchý beh — nič sa nezmenilo. Zápis: php artisan mind:fix-entities --apply</comment>');
-
+        // aj pri čistom behu — nevybavené zlúčenie nesmie ticho zmiznúť
         $this->warnAboutMerges();
 
         return self::SUCCESS;
