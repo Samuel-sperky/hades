@@ -112,8 +112,8 @@ Pri prekročení rozsahu o > 30 % sa beh zastaví a ohlási.
 
 ## 7. Otvorené riziká
 
-1. **Merge poradie.** Worktree stojí na `feat/hades-hygiena`, nie na `main`. Redizajn sa dá zmergovať až po nej. Ak sa hygiena prepíše alebo zahodí, treba rebase.
-2. **Iná aktívna session** v tom istom repo (`app/Models/Node.php` rozrobený). Worktree to izoluje, ale konflikt v `mind.js` by vznikol, keby tá session siahla na frontend.
+1. ~~**Merge poradie.**~~ **VYRIEŠENÉ 13. 8.** — `feat/hades-hygiena` je zmergovaná do redizajnu (`9815845`). Prekryv súborov bol **nulový**: hygiena sa dotkla len backendu (`app/`, `database/`, `routes/`, testy), redizajn len frontendu (`public/`, `resources/views/`). Branch je teraz **19 commitov pred hygienou a 0 za ňou**, takže merge redizajnu do nej je fast-forward. Kombinovaný testovací balík **139 prešlo, 7 skipped** (predtým 95/1 — hygiena pridala 44 testov).
+2. ~~**Iná aktívna session.**~~ Nikdy nesiahla na frontend, konflikt nevznikol.
 3. **1023 uzlov ako prach** je kresliaco lacné, ale pri veľmi vysokom počte (> 5000) bude treba dlaždicovanie alebo offscreen cache. Dnes to nie je problém, do budúcna áno.
 4. **Sklo na svetlej téme** sa nedá spraviť dobre — preto sa na svetlej nahrádza plnou plochou. Dve témy = dvojnásobné ladenie každého komponentu.
 5. **`mind.js` je jeden IIFE s 309-riadkovým `setupControls()`.** Rozsekanie je mechanické, ale zavlečená regresia by sa prejavila až za behu. Preto W0 končí prekliknutím všetkých obrazoviek pred ďalšou vlnou.
