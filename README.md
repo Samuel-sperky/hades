@@ -32,6 +32,11 @@ docker compose up -d
 - `mind_activate` — posilní existujúci uzol pri opätovnom použití
 - `mind_overview` — štruktúra oblastí a oddelení
 
+Oblasť v `mind_learn` musí existovať — je ich pevných päť a za behu sa
+nevytvárajú, takže neznáme meno skončí chybou so zoznamom platných oblastí
+(over si ich cez `mind_overview`). Oddelenie sa naopak vytvoriť smie; keď
+vznikne nové, odpoveď to hlási v `department_created`.
+
 Claude Code je napojený cez `mcpServers.hades` v `~/.claude.json` a pravidlá
 učenia sú v `~/.claude/CLAUDE.md`.
 
