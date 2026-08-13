@@ -143,8 +143,8 @@ Pri prekročení rozsahu o > 30 % sa beh zastaví a ohlási.
 |---|---|---|---|---|
 | A1 | Graf ≥ 70 % šírky, každá úroveň | 42 % | **93/92/91/90 %** (1600), **95/95/94/93 %** (2560) | ✅ |
 | A2 | Žiadna úroveň pod 60 % | 42 % | minimum **90 %** | ✅ |
-| A3 | Popisky sa neprekrývajú | prekrývali | medzi sebou 0 kolízií z 23 hubov; **s uzlami stále kolidujú** (26–51 na mape, 59–76 na oblasti) | ❌ |
-| A4 | Typ čitateľný z tvaru | 1 tvar | 4 tvary na `dept`/`node`; na `map` sú uzly prach 2,6 px **bez tvaru** | ⚠️ |
+| A3 | Popisky sa neprekrývajú | prekrývali (26–51 na mape, 59–76 na oblasti) | **0** prekrytých uzlov na všetkých 4 úrovniach × 2 rozlíšenia, medzi sebou 0 kolízií, všetkých 23 popiskov sa zobrazí | ✅ |
+| A4 | Typ čitateľný z tvaru | 1 tvar | 4 tvary od úrovne `dept`; na `map` sú uzly prach 2,6 px **bez tvaru** | ⚠️ |
 | A5 | Knižnica ≥ 85 % šírky, rovnaké výšky | 40 % | **98 %**, 7 stĺpcov, 236 riadkov kariet a **0 s nerovnakou výškou** | ✅ |
 | A6 | rAF zastavený mimo Grafu | metrika bola slepá | **0** mimo Grafu, 57–60 na Grafe | ✅ |
 | A7 | Zanorenie 4 úrovní + Esc + breadcrumb | — | všetky 4 úrovne, breadcrumb má 4. crumb, `Esc` ide o jednu úroveň | ✅ |
@@ -152,9 +152,9 @@ Pri prekročení rozsahu o > 30 % sa beh zastaví a ohlási.
 | A9 | PHP balík zelený | 95 ✓ | **95 ✓**, 1 skipped, 363 assertions | ✅ |
 | A10 | Konzola bez chýb | čistá | **0 chýb, 0 pageerrors**, 0 chýbajúcich exportov | ✅ |
 
-**A3 a A4 sú jediné nesplnené a sú vedomé:**
-- **A3** — odstup popisku hubu sa počíta z polomeru hubu, nie z polomeru oblaku prachu, takže popisok padne do stredu vlastného oblaku a jeho podklad prekryje uzly pod sebou. Oprava je v `render.js` (odstup z `Math.max(h.rw, h.crx)`), nestihlo sa.
-- **A4** — na mape je typ z tvaru nečitateľný principiálne: pri 1027 uzloch je prach 2,6 px, kde sa tvar nedá vykresliť. Dual-channel funguje od úrovne oddelenia. Kritérium bolo napísané bez ohľadu na to, že mapa má prach.
+**A4 je jediné nesplnené a je to principiálne:** na mape je typ z tvaru nečitateľný, pretože pri 1028 uzloch je prach 2,6 px, kde sa tvar nedá vykresliť. Dual-channel funguje od úrovne oddelenia. Kritérium bolo napísané bez ohľadu na to, že mapa má prach — chyba v kontrakte, nie v implementácii.
+
+**A3 bolo dodatočne splnené** troma zmenami naraz: rámy popiskov sa počítajú pred kreslením prachu a prach v nich sa nekreslí; sub-huby oddelení nesú polomer vlastného klastra (`labelR`) a popisok sa oň odsadí; a umiestnenie skúša pod, nad a ďalej, pričom berie prvého kandidáta, ktorý nekoliduje ani s iným popiskom, ani s tvarovým uzlom.
 
 ### Odchýlky od kontraktu
 
@@ -164,14 +164,19 @@ Pri prekročení rozsahu o > 30 % sa beh zastaví a ohlási.
 - **`public/js/charts.js` je mimo rozsahu** uvedeného v sekcii 3 (+69 r.) — grafy dashboardu inak nechali v karte prázdnu spodnú tretinu.
 - **Príčiny dvoch z troch problémov boli iné, než kontrakt tvrdil.** Úzkosť obrazoviek nespôsobili chýbajúce fluidné mriežky (tie `auto-fill minmax()` už mali), ale `.screen { max-width: 920px }` a inline `maxWidth = '1120px'` v `dnes.js`. A „centrované titulky" neboli `text-align`, ale UA `align-items: center` na stĺpcových flex `<button>`-och.
 
+### Dodatočne dokončené po review
+
+- **A3** — 0 prekrytých uzlov (viď vyššie).
+- **46 dvojíc „dvoch pravd"** v `mind.css` zlúčených na 0. Dokázané ako vizuálne neutrálne prepnutím stylesheetu nad tým istým DOM v tom istom okamihu (nie dvoma načítaniami — Hades je živý a medzi nimi narastie Denník): **98 zo 98 kombinácií** bajtovo identických, 7 obrazoviek × 2 témy × šírky 760–2560. Súbor 3752 → 3682 riadkov. Lživý komentár na konci opravený.
+- **`--focus-ring`** zvýšený na **3,55:1** (tmavá) / **3,77:1** (svetlá) — nad prahom WCAG 2.4.11.
+- **Zvyšky po zrušenej simulácii**: `makeStars()` (no-op volaný 3×) a `S.stars` zmazané, 13 volaní `kickSim()` zbavených ignorovaného parametra, mŕtva vetva `if (S.sim && …)` v `main.js` odstránená.
+
 ### Zostáva (samostatné úlohy)
 
-1. **A3** — odstup popiskov hubov od oblaku prachu (`render.js`).
-2. **46 dvojíc „dvoch pravd"** v `mind.css` (selektor + vlastnosť deklarované dvakrát s inou hodnotou, vzdialené > 120 riadkov); komentár na konci súboru navyše tvrdí, že override bloky už neexistujú, hoci 5 ich žije.
-3. **`/api/tags` vracia 3622 značiek** → `tagfilter.js` z nich robí 3622 checkboxov. Zbalená sekcia to schová, nevyrieši.
-4. **`--focus-ring`** má 2,02:1 (tmavá) / 1,48:1 (svetlá) voči `--surface-2`, čo je pod 3:1 podľa WCAG 2.4.11. **Nie je to regresia** — oba tokeny sú identické v `cac67b0`.
-5. **Mŕtvy kód starší ako tento šprint**: `timeline.setupTimeline()` (`#tl-range` nie je v blade, `render.js` by hodilo TypeError, keby sa replay dal zapnúť), `search.renderSearch`, `structure.findDuplicates`, `pack.addToPack`, `chat.addToChatContext`.
-6. `makeStars()` je no-op, ale volá sa 3×; `kickSim()` sa volá 13× s parametrom, ktorý neberie.
+1. **`/api/tags` vracia 3622 značiek** → `tagfilter.js` z nich robí 3622 checkboxov. Zbalená sekcia to schová, nevyrieši.
+2. **Mŕtvy kód starší ako tento šprint**: `timeline.setupTimeline()`, `search.renderSearch`, `structure.findDuplicates`, `pack.addToPack`, `chat.addToChatContext`. Zámerne nedotknuté — pravidlo projektu je refaktorovať len dotknutý kód. Pozor: `#tl-range` nie je v blade vôbec a `render.js` číta `tlr.value`, takže timeline môže byť nedokončená funkcia, nie mŕtvy kód.
+3. **17 raw hex/rgba mimo `:root`** v `mind.css` (thumby slidrov, knob prepínača, tiene `#brand-core`, `.shimmer::after`) — porušuje pravidlo projektu, ale je to stav pred šprintom a prebarvenie nesie riziko vizuálnej zmeny.
+4. **Testovateľnosť**: dva loading stavy (`.shimmer`, `Načítavam…`) a async fetchy `.dir-templates` / `.dir-saved` nemajú „settled" príznak, a klik na `.dest` občas obrazovku neprepne. Každý budúci vizuálny harness bude potrebovať tie isté obchádzky.
 
 ### Predchádzajúci priebežný stav (pred dokončením)
 
