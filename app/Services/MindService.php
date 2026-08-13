@@ -196,11 +196,14 @@ class MindService
      * Najde poznatky relevantne k dopytu. Nezvysuje silu, ale vysle
      * "spomienkovy" pulz do vizualizacie.
      */
-    public function recall(string $query, int $limit = 12, ?string $sessionKey = null): Collection
+    /**
+     * @param  array<int, string>|null  $areas  Obmedzenie na oblasti (názvy alebo slugy).
+     */
+    public function recall(string $query, int $limit = 12, ?string $sessionKey = null, ?array $areas = null): Collection
     {
         // Jeden zdroj pravdy: stemovaný SK-aware engine s tvrdým prahom.
         // recall() pridáva navrch len graph-walk + „spomienkový" pulz.
-        $matches = $this->searchNodes($query, $limit);
+        $matches = $this->searchNodes($query, $limit, $areas);
 
         if ($matches->isEmpty()) {
             return collect();
@@ -232,6 +235,12 @@ class MindService
                 $neighbors = Node::query()
                     ->with(['area', 'department'])
                     ->whereIn('id', $neighborIds->all())
+                    // rozsah musí platiť aj na susedov, inak by hrana vytiahla
+                    // uzol mimo projektu a obmedzenie by tichým bočným kanálom padlo
+                    ->when($areas !== null && $areas !== [], fn ($q) => $q->whereIn(
+                        'area_id',
+                        $scored->pluck('area_id')->filter()->unique()->all() ?: [0],
+                    ))
                     ->orderByDesc('strength')
                     ->limit($neighborSlots)
                     ->get();
@@ -264,7 +273,12 @@ class MindService
      *
      * @return Collection<int, array{node: Node, score: int, snippet: ?string}>
      */
-    public function searchNodes(string $query, int $limit = 12): Collection
+    /**
+     * @param  array<int, string>|null  $areas  Obmedzenie na oblasti (názvy alebo slugy).
+     *                                          Filtruje sa už v SQL — zúžiť výsledok až
+     *                                          po prijatí by ušetrilo šum, nie payload.
+     */
+    public function searchNodes(string $query, int $limit = 12, ?array $areas = null): Collection
     {
         // Koncepty = pôvodné dopytové slová, každé so svojou skupinou koreňov
         // (synonymá + pádové tvary). Skóre počíta ZHODNÉ KONCEPTY, nie korene —
@@ -295,15 +309,33 @@ class MindService
 
         $take = max($limit * 5, 60);
 
+        // Rozsah projektu (memory_scope v sesterskej chat appke): obmedzí hľadanie
+        // na vybrané oblasti. Prázdne pole = bez obmedzenia.
+        $areaIds = null;
+        if ($areas !== null && $areas !== []) {
+            $wanted = collect($areas)->map(fn ($a) => mb_strtolower(trim((string) $a)))->filter();
+
+            $areaIds = Area::all()
+                ->filter(fn (Area $a) => $wanted->contains(mb_strtolower($a->name)) || $wanted->contains($a->slug))
+                ->pluck('id')
+                ->all();
+
+            // Neznámy rozsah nesmie ticho vrátiť celú sieť — radšej nič.
+            if ($areaIds === []) {
+                return collect();
+            }
+        }
+
         // A10: rýchla cesta cez FULLTEXT index. LIKE '%koreň%' nevie použiť
         // žiadny index (EXPLAIN: type ALL, plný sken), ale MATCH matchuje len od
         // začiatku slova — preto keď rýchla cesta nenaberie dosť kandidátov,
         // pokračujeme starou cestou a o výsledku aj tak rozhoduje PHP skórovanie nižšie.
-        $nodes = $this->fulltextCandidates($roots, $take, $orderCases, $orderBindings);
+        $nodes = $this->fulltextCandidates($roots, $take, $orderCases, $orderBindings, $areaIds);
 
         if ($nodes === null || $nodes->count() < $take) {
             $nodes = Node::query()
                 ->with(['area', 'department'])
+                ->when($areaIds, fn ($q) => $q->whereIn('area_id', $areaIds))
                 ->where(function ($q) use ($roots, $col) {
                     foreach ($roots as $root) {
                         $like = '%'.$root.'%';
@@ -353,7 +385,7 @@ class MindService
      * @param  Collection<int, string>  $roots
      * @return Collection<int, Node>|null
      */
-    protected function fulltextCandidates(Collection $roots, int $take, array $orderCases, array $orderBindings): ?Collection
+    protected function fulltextCandidates(Collection $roots, int $take, array $orderCases, array $orderBindings, ?array $areaIds = null): ?Collection
     {
         if (! config('hades.recall_fulltext', false) || DB::getDriverName() !== 'mysql') {
             return null;
@@ -373,6 +405,7 @@ class MindService
 
         return Node::query()
             ->with(['area', 'department'])
+            ->when($areaIds, fn ($q) => $q->whereIn('area_id', $areaIds))
             ->whereRaw('MATCH(label, description) AGAINST (? IN BOOLEAN MODE)', [$terms->implode(' ')])
             ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
             ->orderByDesc('strength')

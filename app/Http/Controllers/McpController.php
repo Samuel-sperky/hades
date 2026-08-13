@@ -183,6 +183,12 @@ class McpController extends Controller
                     'type' => 'object',
                     'properties' => [
                         'query' => ['type' => 'string', 'description' => 'Topic or keywords to remember about'],
+                        'areas' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Restrict the search to these areas (names from mind_overview). '
+                                .'Omit to search the whole mind.',
+                        ],
                         'limit' => ['type' => 'integer', 'description' => 'Max nodes to return (default 12)'],
                         'session_key' => $sessionKey,
                     ],
@@ -394,6 +400,9 @@ class McpController extends Controller
             (string) $args['query'],
             max(1, min((int) ($args['limit'] ?? 12), 30)),
             isset($args['session_key']) ? (string) $args['session_key'] : null,
+            // rozsah sa uplatní už v SQL — zúžiť výsledok až po prijatí by
+            // ušetrilo šum, ale nie payload, a ten je pri lokálnom modeli cena
+            isset($args['areas']) ? array_values(array_filter((array) $args['areas'], 'is_string')) : null,
         );
 
         // A9: bez eager-loadu si každý uzol ťahal tagy vlastným dotazom (N+1,
