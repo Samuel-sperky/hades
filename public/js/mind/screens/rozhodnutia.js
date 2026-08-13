@@ -95,13 +95,22 @@ export function decAddFormHtml() {
 
 export function decisionsTimelineHtml(list) {
     const sorted = [...list].sort((a, b) => (b.decided_on || '').localeCompare(a.decided_on || ''));
+    // Mesiac ostáva hlavičkou nad blokom; rozhodnutia vnútri mesiaca tečú do
+    // viacstĺpcového bloku (.dtl-group), aby široké okno nesla obsah a nie prázdno.
+    // Multi-column (nie grid): text v kartách je rôzne dlhý, tak sa stĺpce doplnia
+    // bez ragged riadkov a časová os beží chronologicky DOLE po každom stĺpci.
     let out = '<div class="dtl">';
-    let curMonth = '';
+    let curMonth = null;
     for (const dec of sorted) {
         const ym = (dec.decided_on || '').slice(0, 7);
-        if (ym !== curMonth) { curMonth = ym; out += '<div class="dtl-month">' + esc(monthLabel(ym)) + '</div>'; }
+        if (ym !== curMonth) {
+            if (curMonth !== null) out += '</div>';
+            curMonth = ym;
+            out += '<div class="dtl-month">' + esc(monthLabel(ym)) + '</div><div class="dtl-group">';
+        }
         out += decisionCardHtml(dec);
     }
+    if (curMonth !== null) out += '</div>';
     return out + '</div>';
 }
 

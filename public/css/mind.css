@@ -1899,7 +1899,17 @@ body.ambient #toasts {
 }
 .tag.muted { background: var(--surface-subtle); color: var(--muted); border-color: var(--border); }
 
-#journal-filter { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-bottom: var(--sp-2); }
+/* Filtračný rad Denníka — jeden riadok. Projektov je ~28; renderJournalFilter()
+   ukazuje len najčastejšie + „viac", takže sa rad neláme na dva riadky šumu. */
+#journal-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0); margin-bottom: var(--sp-2); }
+/* počet záznamov v chipe — z filtra sa tým stane aj malá štatistika */
+.chip-n {
+    margin-left: 6px;
+    font-family: var(--mono); font-size: var(--fs-caption);
+    color: var(--muted); font-weight: 400;
+}
+.chip.active .chip-n { color: var(--accent-ink); }
+.chip-more { color: var(--muted); font-family: var(--mono); font-size: var(--fs-caption); }
 
 /* Active filter chip (project filter in the journal) */
 .chip.active {
@@ -1928,6 +1938,17 @@ body.ambient #toasts {
     background: var(--line-soft);
 }
 #journal-list .day-head:first-child { margin-top: 0; }
+
+/* Záznamy JEDNÉHO dňa — fluidná mriežka. Dni ostávajú pod sebou (sú to skupiny),
+   viacstĺpcová je mriežka vnútri dňa: na 1600 vyjdú 2 stĺpce, na 2560 tri.
+   640px je minimum, pri ktorom sa riadok (názov + projekt + súbory + commity +
+   čas) nekráti — pod tým by mriežka len vymenila prázdno za elipsy. */
+.rec-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 640px), 1fr));
+    gap: var(--sp-1);
+    align-items: stretch;
+}
 
 /* Unread journal dot on the rail button */
 #btn-journal .dot {
@@ -2491,7 +2512,14 @@ body[data-screen="graf"] #screens { display: none; }
     font-size: var(--fs-small); color: var(--text-secondary);
 }
 .today-chip .n { font-family: var(--mono); color: var(--accent); font-weight: 600; }
-.today-list { display: flex; flex-direction: column; gap: 2px; }
+/* Fluidná mriežka — riadok záznamu potrebuje ~640px (názov + značka + čas), tak sa
+   šírka doleje ďalším stĺpcom namiesto prázdna medzi názvom a časom. */
+.today-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 640px), 1fr));
+    gap: 2px var(--sp-1);
+    align-items: stretch;
+}
 .today-item {
     display: flex; align-items: center; gap: var(--sp-2);
     width: 100%; text-align: left;
@@ -3193,8 +3221,8 @@ select {
     z-index: 1;
 }
 .dtl-dot[data-origin="brain"] { background: var(--node-memory); }
-/* display/grid-template rieši sekcia „ROZHODNUTIA" na konci (karta využije šírku);
-   tu zostáva len row-gap a šírka. */
+/* display/flex-direction rieši sekcia „ROZHODNUTIA" na konci (karta je zvislá,
+   šírku jej dáva stĺpec .dtl-group); tu zostáva len row-gap a šírka. */
 .dtl-card {
     gap: var(--sp-0);
     width: 100%;
@@ -3225,7 +3253,16 @@ select {
 /* ---------------------------------------------------------------------------
    KONTROLA QUEUE (.queue*) — verify/review list, keyboard-driven (j/k/Enter/v/r)
    --------------------------------------------------------------------------- */
-.queue { display: flex; flex-direction: column; gap: var(--sp-1); }
+/* Fluidná mriežka — fronta je krátka, ale karta je text + 3 akcie: v jednom stĺpci
+   na 2560 zostalo ~1800px prázdna. Poradie j/k ide po DOM = po riadkoch mriežky.
+   520px je nižšie než u Denníka: text fronty sa ZALAMUJE (2 riadky), takže stĺpec
+   musí držať mieru — 520 dá ~72 znakov na riadok od 1280px nahor. */
+.queue {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
+    gap: var(--sp-1);
+    align-items: stretch;
+}
 .queue-item {
     display: flex; gap: var(--sp-2);
     transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
@@ -3384,6 +3421,7 @@ select {
 .kpi-card,
 .dash-card,
 .lib-skill,
+.dtl-card,
 .dir-group { align-items: stretch; }
 
 /* Riadkové karty si držia svoje zvislé zarovnanie */
@@ -3401,6 +3439,8 @@ select {
    dotiahne kartu. Len v mriežkových kontextoch — v zvislých zoznamoch by
    height:100% nemalo zmysel. */
 .lib-skills > .li-wrap,
+.rec-grid > .li-wrap,
+.today-list > .li-wrap,
 .today-grid > .today-card-wrap { height: 100%; }
 
 /* ---------------------------------------------------------------------------
@@ -3474,9 +3514,12 @@ select {
 .dash-cert > .cert-legend { flex: 1 1 140px; min-width: 0; }
 
 /* ---------------------------------------------------------------------------
-   4) ČITATEĽNÁ MIERA — mriežka je fluidná, riadok plynulého textu nie.
-      Platí len na text, ktorý sa ZALAMUJE; jednoriadkové ellipsis popisky
-      necháme na celú šírku (dlhý jednoriadok nie je problém čitateľnosti).
+   4) ČITATEĽNÁ MIERA — mieru drží v prvom rade STĹPEC, nie max-width na texte.
+      Zalamovaný text Rozhodnutí a Kontroly tečie do viacstĺpcových blokov
+      (nižšie) a ich základné šírky sú zvolené tak, aby stĺpec vyšiel pod túto
+      mieru na každej šírke od ~1280px nahor. Cap tu preto zostáva, ale
+      v širokom okne sa vôbec nedotkne — zaberie až keď blok spadne na jediný
+      stĺpec (< ~1200px), presne tam, kde treba. Žiadna media query.
    --------------------------------------------------------------------------- */
 .dtl-card .dtl-text,
 .dtl-card .dtl-reason,
@@ -3484,22 +3527,29 @@ select {
 .dir-preview.md-body > * { max-width: 72ch; }
 
 /* ---------------------------------------------------------------------------
-   5) ROZHODNUTIA — karta využije šírku: text vľavo, značky vpravo.
-      (Bez toho ostane pravých ~60 % karty prázdnych na širokom okne.)
-   --------------------------------------------------------------------------- */
-.dtl-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: var(--sp-2);
-    align-items: start;
-}
-.dtl-card .dtl-head { grid-column: 1; grid-row: 1; }
-.dtl-card .dtl-meta { grid-column: 2; grid-row: 1; justify-content: flex-end; margin-top: 0; }
-.dtl-card .dtl-reason { grid-column: 1 / -1; grid-row: 2; }
+   5) ROZHODNUTIA — mesiac je skupina, rozhodnutia vnútri mesiaca tečú do
+      viacstĺpcového bloku (.dtl-group).
 
-@media (max-width: 1100px) {
-    .dtl-card { display: flex; flex-direction: column; }
-    .dtl-card .dtl-meta { justify-content: flex-start; }
+      Prečo multi-column a nie grid: texty rozhodnutí sú od jedného riadku po
+      pätnásť, a grid by zarovnával riadky podľa najvyššej karty (pod krátkymi
+      by zostali diery). Multicol naopak plní stĺpec po stĺpci, takže
+      a) nevznikajú ragged riadky a
+      b) časová os beží chronologicky DOLE po každom stĺpci — os teda zostáva
+         (dot + linka), len je ich vedľa seba viac.
+
+      column-width 440px je zvolený tak, aby výsledný stĺpec vyšiel ~456px
+      = ~68 znakov pri 13px: na 1600 sú to 3 stĺpce, na 2560 päť, oba s tou
+      istou dĺžkou riadku. Karta je zvislá (značky pod textom) — v 456px
+      stĺpci by ich pravý blok nemal kam ísť. */
+.dtl-group {
+    columns: 440px;
+    column-gap: var(--sp-3);
+}
+.dtl-group > .dtl-item { break-inside: avoid; }
+
+.dtl-card {
+    display: flex;
+    flex-direction: column;
 }
 
 /* ---------------------------------------------------------------------------

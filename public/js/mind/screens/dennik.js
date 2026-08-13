@@ -8,6 +8,10 @@ export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'máj
 
 export let journalRecords = [];
 export let journalProject = null;
+// Projektov je bežne ~28 — všetky naraz sa lámu na dva riadky chipov nad obsahom.
+// Preto zbalený rad: najčastejšie projekty + „viac".
+export let journalChipsOpen = false;
+export const JOURNAL_CHIPS_TOP = 8;
 
 export function dayLabel(iso) {
     const d = new Date(iso);
@@ -38,16 +42,34 @@ export async function renderJournal() {
 
 export function renderJournalFilter() {
     const wrap = $('journal-filter');
-    const projects = [...new Set(journalRecords.map((r) => r.project).filter(Boolean))];
+    // Poradie podľa počtu záznamov — v zbalenom rade tak ostanú tie, ktoré sa reálne
+    // používajú, nie tie, čo prišli v dátach prvé.
+    const counts = new Map();
+    for (const r of journalRecords) {
+        if (!r.project) continue;
+        counts.set(r.project, (counts.get(r.project) || 0) + 1);
+    }
+    const projects = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b, 'sk'));
     if (journalProject && !projects.includes(journalProject)) journalProject = null;
     if (!projects.length) { wrap.innerHTML = ''; return; }
 
-    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '" data-project="">Všetky</button>'
-        + projects.map((p) =>
-            '<button type="button" class="chip' + (journalProject === p ? ' active' : '') + '" data-project="' + esc(p) + '">' + esc(p) + '</button>'
-        ).join('');
+    const hiddenCount = Math.max(0, projects.length - JOURNAL_CHIPS_TOP);
+    // aktívny filter musí byť vždy vidieť, aj keď je mimo najčastejších
+    if (journalProject && projects.indexOf(journalProject) >= JOURNAL_CHIPS_TOP) journalChipsOpen = true;
+    const shown = journalChipsOpen ? projects : projects.slice(0, JOURNAL_CHIPS_TOP);
 
-    wrap.querySelectorAll('.chip').forEach((chip) => {
+    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '" data-project="">Všetky</button>'
+        + shown.map((p) =>
+            '<button type="button" class="chip' + (journalProject === p ? ' active' : '') + '" data-project="' + esc(p) + '">'
+            + esc(p) + '<span class="chip-n">' + counts.get(p) + '</span></button>'
+        ).join('')
+        + (hiddenCount ? '<button type="button" class="chip chip-more" id="journal-chips-more">'
+            + (journalChipsOpen ? 'menej' : '+' + hiddenCount + ' viac') + '</button>' : '');
+
+    const more = $('journal-chips-more');
+    if (more) more.onclick = () => { journalChipsOpen = !journalChipsOpen; renderJournalFilter(); };
+
+    wrap.querySelectorAll('.chip[data-project]').forEach((chip) => {
         chip.onclick = () => {
             journalProject = chip.dataset.project || null;
             renderJournalFilter();
@@ -75,16 +97,25 @@ export function renderJournalList() {
 
     const sorted = [...records].sort((a, b) => ts(b.created_at) - ts(a.created_at));
 
+    // Dni sú štruktúra (zostávajú v jednom stĺpci pod sebou); záznamy VNÚTRI dňa
+    // idú do fluidnej mriežky (.rec-grid), takže na širokom okne sa šírka vyplní
+    // obsahom a nie prázdnom medzi názvom a meta.
     let html = '', lastDay = null;
     for (const r of sorted) {
         const day = dayLabel(r.created_at);
         if (day !== lastDay) {
-            html += '<div class="day-head">' + esc(day) + '</div>';
+            if (lastDay !== null) html += '</div>';
+            html += '<div class="day-head">' + esc(day) + '</div><div class="rec-grid">';
             lastDay = day;
         }
         const isDigest = r.source === 'digest';
         const badges = [];
-        if (r.project) badges.push('<span class="tag">' + esc(r.project) + '</span>');
+        // Titulok často začína názvom projektu („AI-mind — práca 12.8.2026"), takže
+        // chip s projektom by ten istý reťazec zopakoval a v stĺpci by zbytočne
+        // zjedol šírku (a názov by sa preto skrátil). V takom prípade chip vynecháme.
+        const titleHasProject = r.project && r.label
+            && r.label.toLowerCase().startsWith(String(r.project).toLowerCase());
+        if (r.project && !titleHasProject) badges.push('<span class="tag">' + esc(r.project) + '</span>');
         if (r.file_count) badges.push('<span class="tag muted">' + r.file_count + ' súb.</span>');
         if (r.commits && r.commits.length) {
             const c = r.commits.length;
@@ -102,6 +133,7 @@ export function renderJournalList() {
             + '</button>'
             + packBtn(r.id, r.label) + '</div>';
     }
+    if (lastDay !== null) html += '</div>';
     list.innerHTML = html;
 
     list.querySelectorAll('.record').forEach((el) => {
