@@ -23,10 +23,21 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Bearer-token guard pre externé /api/v1/* (fail-closed).
+        // Bearer-token guard pre externé /api/v1/* (fail-closed) a session guard
+        // pre UI okruh — dashboard `/` aj interné /api/* (tiež fail-closed).
         $middleware->alias([
             'auth.token' => App\Http\Middleware\AuthenticateApiToken::class,
+            'auth.ui' => App\Http\Middleware\AuthenticateUi::class,
         ]);
+
+        // UI guard musí bežať PRED route model bindingom. Inak SubstituteBindings
+        // (je v priority zozname, takže si predbehne route middleware) stihne
+        // vrátiť 404 na neexistujúce id ešte pred 401 — a nezamknutý klient by
+        // tým zistil, ktoré uzly v pamäti existujú.
+        $middleware->prependToPriorityList(
+            before: Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: App\Http\Middleware\AuthenticateUi::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

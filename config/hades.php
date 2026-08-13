@@ -30,6 +30,14 @@ return [
     // Musí sedieť s hodnotou v docker/Caddyfile, kým sa tá neprepne na env.
     'mcp_token' => env('HADES_MCP_TOKEN'),
 
+    // Token pre UI okruh — dashboard `/` aj interné `/api/*` (AuthenticateUi).
+    // Fail-closed: prázdny = 401 pre všetkých, vrátane dashboardu. Prijíma sa ako
+    // `?token=` (jednorazové odomknutie v prehliadači, ďalej drží session cookie)
+    // aj ako hlavička `X-Hades-Ui-Token`, ktorú na verejnej ceste vkladá Caddy.
+    // Zámerne NIE je totožný s api_token ani mcp_token — únik UI tokenu nesmie
+    // dať prístup k programatickému /api/v1 ani k /mcp.
+    'ui_token' => env('HADES_UI_TOKEN'),
+
     // Brain-write guard — zápis do ľudsky písaných .md „mozgov".
     // Default OFF (fail-safe): brain-write endpointy vracajú 403, .md sa nemení.
     'allow_brain_write' => (bool) env('HADES_ALLOW_BRAIN_WRITE', false),

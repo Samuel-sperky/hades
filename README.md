@@ -10,7 +10,10 @@ docker compose up -d
 ```
 
 - **Vizualizácia:** http://localhost:8080 — glow sieť, klik na uzol = detail/editácia,
-  časová os s replayom rastu, ambient režim (⛶), chat s Hadesom (💬)
+  časová os s replayom rastu, ambient režim (⛶), chat s Hadesom (💬).
+  Dashboard je **zamknutý**: odomkni ho raz cez
+  `http://localhost:8080/?token=<HADES_UI_TOKEN z .env>`, ďalej si to pamätá
+  session cookie. Detail v [docs/BEZPECNOST.md](docs/BEZPECNOST.md) §3.3.
 - **MCP endpoint:** http://localhost:8080/mcp (Streamable HTTP)
 - **WebSocket (Reverb):** ws://localhost:8081
 
