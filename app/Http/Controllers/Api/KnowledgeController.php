@@ -332,7 +332,9 @@ class KnowledgeController extends Controller
             if ($name === '') {
                 continue;
             }
-            $ids[] = Tag::firstOrCreate(['name' => $name])->id;
+            if ($tag = Tag::forName((string) $name)) {
+                $ids[] = $tag->id;
+            }
         }
         $node->tags()->sync($ids);
     }

@@ -130,9 +130,11 @@ class McpController extends Controller
                 'name' => 'mind_learn',
                 'description' => 'Store a significant new piece of knowledge in the mind: a skill the '
                     .'assistant demonstrated, an important fact/memory about the user, or a project. '
-                    .'Duplicates are merged automatically — call it freely. Use Slovak for personal '
-                    .'facts and projects, English for technical skill names. Only store significant '
-                    .'knowledge, never secrets (passwords, API keys, financial/health data).',
+                    .'A near-identical node is merged; a merely similar one is queued for human '
+                    .'review instead of being merged, and the response reports how many such '
+                    .'duplicate_candidates it raised. Use Slovak for personal facts and projects, '
+                    .'English for technical skill names. Only store significant knowledge, never '
+                    .'secrets (passwords, API keys, financial/health data).',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -181,6 +183,12 @@ class McpController extends Controller
                     'type' => 'object',
                     'properties' => [
                         'query' => ['type' => 'string', 'description' => 'Topic or keywords to remember about'],
+                        'areas' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Restrict the search to these areas (names from mind_overview). '
+                                .'Omit to search the whole mind.',
+                        ],
                         'limit' => ['type' => 'integer', 'description' => 'Max nodes to return (default 12)'],
                         'session_key' => $sessionKey,
                     ],
@@ -232,6 +240,60 @@ class McpController extends Controller
                     'required' => ['text'],
                 ],
             ],
+            [
+                'name' => 'mind_rename',
+                'description' => 'Rename an existing node. Use it to fix a bad label — a raw user '
+                    .'sentence, a markdown heading, a truncated title, or a name written without '
+                    .'Slovak diacritics. Renaming is reversible and keeps all edges and history.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'label' => ['type' => 'string', 'description' => 'Current label of the node'],
+                        'new_label' => ['type' => 'string', 'description' => 'Corrected label, short and human, no markdown'],
+                        'type' => ['type' => 'string', 'enum' => ['skill', 'memory', 'project']],
+                    ],
+                    'required' => ['label', 'new_label'],
+                ],
+            ],
+            [
+                'name' => 'mind_move',
+                'description' => 'Move a node to a different area and department. Both must already '
+                    .'exist — call mind_overview first and pick from what it returns. Unknown names '
+                    .'are rejected on purpose, so nodes cannot silently pile up in the wrong area.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'label' => ['type' => 'string', 'description' => 'Label of the node to move'],
+                        'area' => ['type' => 'string', 'description' => 'Target area name from mind_overview'],
+                        'department' => [
+                            'type' => 'string',
+                            'description' => 'Target department within that area; omit to clear the department',
+                        ],
+                        'type' => ['type' => 'string', 'enum' => ['skill', 'memory', 'project']],
+                    ],
+                    'required' => ['label', 'area'],
+                ],
+            ],
+            [
+                'name' => 'mind_delete',
+                'description' => 'Reversibly delete a node that should never have been written — a raw '
+                    .'prompt stored as a node, an empty stub, or one node per daily run. The node is '
+                    .'soft-deleted: it disappears from recall and the graph but stays restorable, and '
+                    .'a tombstone stops the next ingest from recreating it. Never delete knowledge '
+                    .'that is merely outdated — rename or update it instead.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'label' => ['type' => 'string', 'description' => 'Label of the node to delete'],
+                        'reason' => [
+                            'type' => 'string',
+                            'description' => 'Short reason, e.g. raw-prompt, stub, duplicate',
+                        ],
+                        'type' => ['type' => 'string', 'enum' => ['skill', 'memory', 'project']],
+                    ],
+                    'required' => ['label'],
+                ],
+            ],
         ];
     }
 
@@ -247,6 +309,9 @@ class McpController extends Controller
                 'mind_activate' => $this->toolActivate($args, $mind),
                 'mind_overview' => $this->toolOverview($mind),
                 'mind_decision' => $this->toolDecision($args),
+                'mind_rename' => $this->toolRename($args, $mind),
+                'mind_move' => $this->toolMove($args, $mind),
+                'mind_delete' => $this->toolDelete($args, $mind),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {
@@ -335,6 +400,9 @@ class McpController extends Controller
             (string) $args['query'],
             max(1, min((int) ($args['limit'] ?? 12), 30)),
             isset($args['session_key']) ? (string) $args['session_key'] : null,
+            // rozsah sa uplatní už v SQL — zúžiť výsledok až po prijatí by
+            // ušetrilo šum, ale nie payload, a ten je pri lokálnom modeli cena
+            isset($args['areas']) ? array_values(array_filter((array) $args['areas'], 'is_string')) : null,
         );
 
         // A9: bez eager-loadu si každý uzol ťahal tagy vlastným dotazom (N+1,
@@ -372,6 +440,83 @@ class McpController extends Controller
                     'description_truncated' => $short !== $full,
                 ];
             })->all(),
+        ];
+    }
+
+    /**
+     * Spoločné presné vyhľadanie uzla pre rename/move/delete. Nejednoznačný
+     * label skončí chybou — pri týchto operáciách je „skoro ten správny uzol"
+     * horší výsledok než odmietnutie.
+     */
+    protected function requireNode(array $args, MindService $mind): Node
+    {
+        if (blank($args['label'] ?? null)) {
+            throw new \InvalidArgumentException('Missing required argument: label');
+        }
+
+        $node = $mind->findExact(
+            (string) $args['label'],
+            isset($args['type']) ? (string) $args['type'] : null,
+        );
+
+        if (! $node) {
+            throw new \InvalidArgumentException(
+                'No single node matches label: '.$args['label']
+                .'. Use mind_recall to find its exact label first.'
+            );
+        }
+
+        return $node;
+    }
+
+    protected function toolRename(array $args, MindService $mind): array
+    {
+        $node = $this->requireNode($args, $mind);
+
+        if (blank($args['new_label'] ?? null)) {
+            throw new \InvalidArgumentException('Missing required argument: new_label');
+        }
+
+        $before = $node->label;
+        $node = $mind->rename($node, (string) $args['new_label']);
+
+        return ['action' => 'renamed', 'from' => $before, 'node' => $node->toApi()];
+    }
+
+    protected function toolMove(array $args, MindService $mind): array
+    {
+        $node = $this->requireNode($args, $mind);
+
+        if (blank($args['area'] ?? null)) {
+            throw new \InvalidArgumentException('Missing required argument: area');
+        }
+
+        $before = [
+            'area' => $node->area?->name,
+            'department' => $node->department?->name,
+        ];
+
+        $node = $mind->move(
+            $node,
+            (string) $args['area'],
+            isset($args['department']) ? (string) $args['department'] : null,
+        );
+
+        return ['action' => 'moved', 'from' => $before, 'node' => $node->toApi()];
+    }
+
+    protected function toolDelete(array $args, MindService $mind): array
+    {
+        $node = $this->requireNode($args, $mind);
+
+        $label = $node->label;
+        $mind->softDelete($node, (string) ($args['reason'] ?? 'deleted'));
+
+        return [
+            'action' => 'deleted',
+            'label' => $label,
+            'reversible' => true,
+            'note' => 'Soft-deleted: hidden from recall and the graph, edges kept, restorable.',
         ];
     }
 

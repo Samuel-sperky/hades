@@ -447,23 +447,56 @@ class TranscriptIngestService
                 continue;
             }
 
-            if (mb_strlen($sentence) <= 60) {
-                return $sentence;
+            // A7: veta dlhšia než 60 znakov sa doteraz orezala a použila ako názov.
+            // Tak vznikli uzly typu „Potrebujem postaviť chat ako je Claude / Chatgpt a z"
+            // — odseknutý úryvok uprostred myšlienky, ktorý nepomenúva tému.
+            // Fragment nie je názov: radšej padni na `<projekt> — práca <dátum>`.
+            if (mb_strlen($sentence) > 60) {
+                continue;
             }
 
-            // skráť na 60 znakov, ale nikdy uprostred slova
-            $cut = mb_substr($sentence, 0, 60);
-            $lastSpace = mb_strrpos($cut, ' ');
-            if ($lastSpace !== false && $lastSpace > 0) {
-                $cut = mb_substr($cut, 0, $lastSpace);
+            // A7: ani krátka veta nie je názov, keď je to požiadavka. Uzly ako
+            // „potrebujem vylepšíť dizajn hades pošli mi screenshot" opisujú, čo
+            // používateľ chcel, nie čo sa naučilo.
+            if ($this->looksLikeRequest($sentence)) {
+                continue;
             }
 
-            return rtrim($cut, " \t.,;:—-");
+            return $sentence;
         }
 
         $date = $rec['started_at'] ? Carbon::parse($rec['started_at'])->format('j.n.Y') : now()->format('j.n.Y');
 
         return ($rec['project'] ?? 'projekt').' — práca '.$date;
+    }
+
+    /**
+     * A7 — je veta požiadavkou používateľa, nie pomenovaním témy?
+     *
+     * Zámerne úzky zoznam: ide o zopár slovenských obratov, ktorými sa reálne
+     * začínali odpadové uzly nájdené auditom 6.8.2026. Radšej nechá prejsť
+     * hraničnú vetu, než by odrezal poriadny názov — falošný zásah sa nedá
+     * spätne rozoznať, kým prísnejší fallback (`<projekt> — práca <dátum>`)
+     * je vždy použiteľný.
+     */
+    protected function looksLikeRequest(string $sentence): bool
+    {
+        static $openers = [
+            'potrebujem', 'potreboval by som', 'potrebovala by som', 'prosim', 'prosím',
+            'mozes', 'môžeš', 'chcem', 'chcel by som', 'chcela by som',
+            'sprav mi', 'urob mi', 'vytvor mi', 'priprav mi', 'priprav mi',
+            'daj mi', 'posli mi', 'pošli mi', 'skus', 'skús', 'vies', 'vieš',
+        ];
+
+        $normalized = mb_strtolower(trim($sentence));
+
+        foreach ($openers as $opener) {
+            if (str_starts_with($normalized, $opener) || str_contains($normalized, ' '.$opener.' ')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function describe(array $rec): string

@@ -7,6 +7,7 @@ use App\Models\Activation;
 use App\Models\Area;
 use App\Models\Department;
 use App\Models\Edge;
+use App\Models\MergeCandidate;
 use App\Models\Node;
 use App\Models\Tombstone;
 use Illuminate\Support\Collection;
@@ -15,6 +16,28 @@ use Illuminate\Support\Str;
 
 class MindService
 {
+    /**
+     * A5 — tri pásma zhody labelov.
+     *
+     * Pôvodne bola jediná podmienka `similar_text >= 85 % ALEBO pomer dĺžok >= 0,6`.
+     * To „alebo" znamenalo, že samotný pomer dĺžok stačil na nevratné zlúčenie,
+     * a prah 85 % je pri similar_text (najdlhšia spoločná podsekvencia, nie
+     * Levenshtein) veľmi voľný.
+     *
+     *   >= MERGE_THRESHOLD   zlúč automaticky
+     *   >= REVIEW_THRESHOLD  navrhni na review (merge_candidates), uzol vznikne
+     *   inak                 vytvor nový uzol
+     */
+    public const MERGE_THRESHOLD = 95.0;
+
+    public const REVIEW_THRESHOLD = 85.0;
+
+    /** Poistka na pomer dĺžok — teraz brána (AND), nie alternatíva (OR). */
+    public const LENGTH_RATIO_GATE = 0.6;
+
+    /** Koľko znakov slugu tvorí predvýber kandidátov na review. */
+    protected const CANDIDATE_PREFIX = 8;
+
     /**
      * Poradie významu synapsií — silnejší význam nikdy nesmie oslabnúť.
      * manual (ručne/z chatu) > skill_mention > co_activation > similarity.
@@ -69,7 +92,11 @@ class MindService
             }
             $this->syncTags($merged, $tags);
 
-            return ['action' => 'merged', 'node' => $merged->fresh()->toApi()];
+            return array_filter([
+                'action' => 'merged',
+                'node' => $merged->fresh()->toApi(),
+                'duplicate_candidates' => $this->recordCandidatesFor($merged) ?: null,
+            ], fn ($v) => $v !== null);
         }
 
         $area = $this->resolveArea($areaName);
@@ -94,7 +121,28 @@ class MindService
         $this->connectByLabels($node, $connections, $sessionKey);
         $this->coActivate($node, $sessionKey);
 
-        return ['action' => 'created', 'node' => $node->fresh()->toApi()];
+        return array_filter([
+            'action' => 'created',
+            'node' => $node->fresh()->toApi(),
+            'duplicate_candidates' => $this->recordCandidatesFor($node) ?: null,
+        ], fn ($v) => $v !== null);
+    }
+
+    /**
+     * A5/A6 — zapíše návrhy na zlúčenie pre práve zapísaný uzol a vráti ich
+     * počet. Nič nezlučuje; rozhodnutie ostáva na človeku (mind:duplicates).
+     */
+    protected function recordCandidatesFor(Node $node): int
+    {
+        $recorded = 0;
+
+        foreach ($this->findMergeCandidates($node->label, $node->type, $node->id) as $row) {
+            if ($this->recordMergeCandidate($node, $row['node'], $row['score'], $row['reason'])) {
+                $recorded++;
+            }
+        }
+
+        return $recorded;
     }
 
     /**
@@ -109,7 +157,9 @@ class MindService
             if ($name === '') {
                 continue;
             }
-            $ids[] = \App\Models\Tag::firstOrCreate(['name' => $name])->id;
+            if ($tag = \App\Models\Tag::forName($name)) {
+                $ids[] = $tag->id;
+            }
         }
 
         if ($ids) {
@@ -146,11 +196,14 @@ class MindService
      * Najde poznatky relevantne k dopytu. Nezvysuje silu, ale vysle
      * "spomienkovy" pulz do vizualizacie.
      */
-    public function recall(string $query, int $limit = 12, ?string $sessionKey = null): Collection
+    /**
+     * @param  array<int, string>|null  $areas  Obmedzenie na oblasti (názvy alebo slugy).
+     */
+    public function recall(string $query, int $limit = 12, ?string $sessionKey = null, ?array $areas = null): Collection
     {
         // Jeden zdroj pravdy: stemovaný SK-aware engine s tvrdým prahom.
         // recall() pridáva navrch len graph-walk + „spomienkový" pulz.
-        $matches = $this->searchNodes($query, $limit);
+        $matches = $this->searchNodes($query, $limit, $areas);
 
         if ($matches->isEmpty()) {
             return collect();
@@ -182,6 +235,12 @@ class MindService
                 $neighbors = Node::query()
                     ->with(['area', 'department'])
                     ->whereIn('id', $neighborIds->all())
+                    // rozsah musí platiť aj na susedov, inak by hrana vytiahla
+                    // uzol mimo projektu a obmedzenie by tichým bočným kanálom padlo
+                    ->when($areas !== null && $areas !== [], fn ($q) => $q->whereIn(
+                        'area_id',
+                        $scored->pluck('area_id')->filter()->unique()->all() ?: [0],
+                    ))
                     ->orderByDesc('strength')
                     ->limit($neighborSlots)
                     ->get();
@@ -214,7 +273,12 @@ class MindService
      *
      * @return Collection<int, array{node: Node, score: int, snippet: ?string}>
      */
-    public function searchNodes(string $query, int $limit = 12): Collection
+    /**
+     * @param  array<int, string>|null  $areas  Obmedzenie na oblasti (názvy alebo slugy).
+     *                                          Filtruje sa už v SQL — zúžiť výsledok až
+     *                                          po prijatí by ušetrilo šum, nie payload.
+     */
+    public function searchNodes(string $query, int $limit = 12, ?array $areas = null): Collection
     {
         // Koncepty = pôvodné dopytové slová, každé so svojou skupinou koreňov
         // (synonymá + pádové tvary). Skóre počíta ZHODNÉ KONCEPTY, nie korene —
@@ -243,19 +307,47 @@ class MindService
             $orderBindings[] = '%'.$root.'%';
         }
 
-        $nodes = Node::query()
-            ->with(['area', 'department'])
-            ->where(function ($q) use ($roots, $col) {
-                foreach ($roots as $root) {
-                    $like = '%'.$root.'%';
-                    $q->orWhereRaw('label LIKE ?'.$col, [$like])
-                        ->orWhereRaw('description LIKE ?'.$col, [$like]);
-                }
-            })
-            ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
-            ->orderByDesc('strength')
-            ->limit(max($limit * 5, 60))
-            ->get();
+        $take = max($limit * 5, 60);
+
+        // Rozsah projektu (memory_scope v sesterskej chat appke): obmedzí hľadanie
+        // na vybrané oblasti. Prázdne pole = bez obmedzenia.
+        $areaIds = null;
+        if ($areas !== null && $areas !== []) {
+            $wanted = collect($areas)->map(fn ($a) => mb_strtolower(trim((string) $a)))->filter();
+
+            $areaIds = Area::all()
+                ->filter(fn (Area $a) => $wanted->contains(mb_strtolower($a->name)) || $wanted->contains($a->slug))
+                ->pluck('id')
+                ->all();
+
+            // Neznámy rozsah nesmie ticho vrátiť celú sieť — radšej nič.
+            if ($areaIds === []) {
+                return collect();
+            }
+        }
+
+        // A10: rýchla cesta cez FULLTEXT index. LIKE '%koreň%' nevie použiť
+        // žiadny index (EXPLAIN: type ALL, plný sken), ale MATCH matchuje len od
+        // začiatku slova — preto keď rýchla cesta nenaberie dosť kandidátov,
+        // pokračujeme starou cestou a o výsledku aj tak rozhoduje PHP skórovanie nižšie.
+        $nodes = $this->fulltextCandidates($roots, $take, $orderCases, $orderBindings, $areaIds);
+
+        if ($nodes === null || $nodes->count() < $take) {
+            $nodes = Node::query()
+                ->with(['area', 'department'])
+                ->when($areaIds, fn ($q) => $q->whereIn('area_id', $areaIds))
+                ->where(function ($q) use ($roots, $col) {
+                    foreach ($roots as $root) {
+                        $like = '%'.$root.'%';
+                        $q->orWhereRaw('label LIKE ?'.$col, [$like])
+                            ->orWhereRaw('description LIKE ?'.$col, [$like]);
+                    }
+                })
+                ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
+                ->orderByDesc('strength')
+                ->limit($take)
+                ->get();
+        }
 
         return $nodes
             ->map(function (Node $node) use ($concepts, $roots) {
@@ -280,6 +372,45 @@ class MindService
             ->sortByDesc(fn ($row) => $row['score'] * 1000 + min((float) $row['node']->strength, 999))
             ->take($limit)
             ->values();
+    }
+
+    /**
+     * A10 — kandidáti cez FULLTEXT index (rýchla cesta recallu).
+     *
+     * Vráti null, keď je cesta vypnutá alebo ju databáza nepodporuje; volajúci
+     * potom pokračuje pôvodným LIKE dotazom. Korene idú do boolean módu s
+     * hviezdičkou (`koren*`), čo sedí na to, čo robí SK stemmer — orezáva
+     * koncovky, takže hľadáme slová začínajúce koreňom.
+     *
+     * @param  Collection<int, string>  $roots
+     * @return Collection<int, Node>|null
+     */
+    protected function fulltextCandidates(Collection $roots, int $take, array $orderCases, array $orderBindings, ?array $areaIds = null): ?Collection
+    {
+        if (! config('hades.recall_fulltext', false) || DB::getDriverName() !== 'mysql') {
+            return null;
+        }
+
+        // InnoDB fulltext ignoruje tokeny kratšie než innodb_ft_min_token_size (3)
+        $terms = $roots
+            ->filter(fn (string $root) => mb_strlen($root) >= 3)
+            ->map(fn (string $root) => preg_replace('/[^\p{L}\p{N}_]/u', '', $root))
+            ->filter(fn (string $root) => $root !== '')
+            ->unique()
+            ->map(fn (string $root) => $root.'*');
+
+        if ($terms->isEmpty()) {
+            return null;
+        }
+
+        return Node::query()
+            ->with(['area', 'department'])
+            ->when($areaIds, fn ($q) => $q->whereIn('area_id', $areaIds))
+            ->whereRaw('MATCH(label, description) AGAINST (? IN BOOLEAN MODE)', [$terms->implode(' ')])
+            ->orderByRaw(implode(' + ', $orderCases).' DESC', $orderBindings)
+            ->orderByDesc('strength')
+            ->limit($take)
+            ->get();
     }
 
     /**
@@ -455,6 +586,17 @@ class MindService
             return $exact;
         }
 
+        // A5: zhoda cez slug v rámci typu — tá istá vec inak zapísaná (chýbajúca
+        // diakritika, pomlčka namiesto medzery, iná veľkosť písmen). Presne toto
+        // rozdelilo „Opportunity-Solution Tree" a „Opportunity solution tree".
+        $slug = Str::slug($label);
+        if ($slug !== '') {
+            $bySlug = (clone $query)->where('slug', $slug)->first();
+            if ($bySlug) {
+                return $bySlug;
+            }
+        }
+
         if (mb_strlen($normalized) < 4) {
             return null;
         }
@@ -470,17 +612,127 @@ class MindService
             ->orderByDesc('strength')
             ->get();
 
-        // Zluc len skutocne podobne labely — samotny substring nestaci
-        // ("Canva" nesmie splynut s "Canvas visualization").
-        return $candidates->first(function (Node $candidate) use ($normalized) {
-            $other = mb_strtolower($candidate->label);
-            $lengthRatio = min(mb_strlen($normalized), mb_strlen($other))
-                / max(mb_strlen($normalized), mb_strlen($other));
+        // A5: automaticky sa zlúči len naozaj vysoká zhoda. Pôvodný prah bol
+        // 85 % ALEBO pomer dĺžok 0,6 — to „alebo" stačilo samo osebe a lepilo
+        // nesúvisiace uzly. Teraz je pomer dĺžok len poistka (AND) a hranica
+        // zlúčenia je 95 %; pásmo 85–95 % ide na review, nie do merge.
+        return $candidates->first(
+            fn (Node $candidate) => $this->labelSimilarity($normalized, mb_strtolower($candidate->label))
+                >= self::MERGE_THRESHOLD
+        );
+    }
 
-            similar_text($normalized, $other, $percent);
+    /**
+     * Podobnosť dvoch už normalizovaných labelov v percentách.
+     *
+     * Pomer dĺžok je vstupná brána, nie alternatíva: dva reťazce s veľmi
+     * rozdielnou dĺžkou nie sú ten istý pojem, aj keby similar_text hlásil veľa
+     * (to bol prípad „Canva" vs „Canvas visualization"). Pod bránou vracia 0.
+     */
+    protected function labelSimilarity(string $a, string $b): float
+    {
+        $maxLen = max(mb_strlen($a), mb_strlen($b), 1);
+        $ratio = min(mb_strlen($a), mb_strlen($b)) / $maxLen;
 
-            return $lengthRatio >= 0.6 || $percent >= 85;
-        });
+        if ($ratio < self::LENGTH_RATIO_GATE) {
+            return 0.0;
+        }
+
+        similar_text($a, $b, $percent);
+
+        return (float) $percent;
+    }
+
+    /**
+     * A5/A6 — nájde uzly, ktoré vyzerajú ako duplicity, ale na automatické
+     * zlúčenie nestačia. Nič nemení, len vracia podklad pre merge_candidates.
+     *
+     * Dva zdroje návrhov:
+     *   1. rovnaký slug pri INOM type — findByLabel() filtruje zhodu typom,
+     *      takže ten istý poznatok zapísaný raz ako skill a raz ako memory sa
+     *      nikdy nestretol. Deväť z desiatich duplicít nájdených pri backfille
+     *      slugov bolo presne toto.
+     *   2. podobnosť labelu v pásme review (85–95 %) v rámci toho istého typu.
+     *
+     * @return Collection<int, array{node: Node, score: float, reason: string}>
+     */
+    public function findMergeCandidates(string $label, ?string $type = null, ?int $excludeId = null): Collection
+    {
+        $normalized = mb_strtolower(trim($label));
+        $slug = Str::slug($label);
+        $out = collect();
+
+        if ($slug !== '') {
+            Node::query()
+                ->where('slug', $slug)
+                ->when($type, fn ($q) => $q->where('type', '!=', $type))
+                ->when($excludeId, fn ($q) => $q->whereKeyNot($excludeId))
+                ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'session'))
+                ->get()
+                ->each(fn (Node $n) => $out->push([
+                    'node' => $n,
+                    'score' => 100.0,
+                    'reason' => 'cross_type_slug',
+                ]));
+        }
+
+        // Predvýber ide cez prefix SLUGU, nie surového labelu: slug má oddeľovače
+        // už znormalizované, takže „Opportunity-Solution Tree" a „Opportunity
+        // solution trees" zdieľajú prefix, hoci ako text sa nezhodujú ani v
+        // prvom slove. Prefix len zužuje množinu, o zhode rozhoduje až
+        // labelSimilarity() nižšie.
+        if ($slug !== '' && mb_strlen($normalized) >= 4) {
+            $prefix = mb_substr($slug, 0, self::CANDIDATE_PREFIX);
+
+            Node::query()
+                ->when($type, fn ($q) => $q->where('type', $type))
+                ->when($excludeId, fn ($q) => $q->whereKeyNot($excludeId))
+                // session záznamy sa nezlučujú — majú vlastnú cestu cez
+                // mind:archive-old. Bez tejto výnimky by každé dve sessions
+                // toho istého projektu v ten istý deň vyrobili návrh na zlúčenie.
+                ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'session'))
+                ->where('slug', 'like', $prefix.'%')
+                ->limit(50)
+                ->get()
+                ->each(function (Node $n) use ($normalized, $out) {
+                    $score = $this->labelSimilarity($normalized, mb_strtolower($n->label));
+
+                    if ($score >= self::REVIEW_THRESHOLD && $score < self::MERGE_THRESHOLD) {
+                        $out->push(['node' => $n, 'score' => $score, 'reason' => 'similar_label']);
+                    }
+                });
+        }
+
+        return $out->unique(fn (array $row) => $row['node']->id)->values();
+    }
+
+    /**
+     * Zapíše návrh na zlúčenie. Pár sa normalizuje na (menšie id, väčšie id),
+     * takže ten istý návrh z oboch strán vytvorí jeden riadok. Už rozhodnutý
+     * návrh (merged/rejected) sa znovu neotvára — inak by odmietnutý pár
+     * vyskakoval po každom ingeste nanovo.
+     */
+    public function recordMergeCandidate(Node $a, Node $b, float $score, string $reason): ?MergeCandidate
+    {
+        if ($a->id === $b->id) {
+            return null;
+        }
+
+        [$first, $second] = $a->id < $b->id ? [$a->id, $b->id] : [$b->id, $a->id];
+
+        $existing = MergeCandidate::where('node_a_id', $first)->where('node_b_id', $second)->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        return MergeCandidate::create([
+            'node_a_id' => $first,
+            'node_b_id' => $second,
+            'score' => $score,
+            'reason' => $reason,
+            'status' => MergeCandidate::STATUS_PENDING,
+        ]);
     }
 
     /**
@@ -706,6 +958,171 @@ class MindService
         MindPulse::dispatch('node.updated', ['node' => $winner->fresh()->toApi()]);
 
         return $winner->fresh();
+    }
+
+    /**
+     * A4 — presné vyhľadanie uzla podľa labelu (alebo jeho slugu).
+     *
+     * Zámerne NEpoužíva findByLabel(): to zlučuje cez substring a similar_text
+     * na 85 %, čo je v poriadku pri učení, ale pri rename/move/delete by to
+     * znamenalo trafiť nesprávny uzol. Tu musí byť zhoda jednoznačná — pri
+     * viacerých kandidátoch radšej nevráti nič.
+     */
+    public function findExact(string $label, ?string $type = null): ?Node
+    {
+        $normalized = mb_strtolower(trim($label));
+        $slug = Str::slug($label);
+
+        $matches = Node::query()
+            ->when($type, fn ($q) => $q->where('type', $type))
+            ->where(function ($q) use ($normalized, $slug) {
+                $q->whereRaw('LOWER(label) = ?', [$normalized])
+                    ->orWhere('slug', $slug);
+            })
+            ->limit(2)
+            ->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /**
+     * A4 — premenovanie uzla. Mení len label; slug si model dopočíta sám.
+     *
+     * Rieši anti-vzorec „markdownom zmrzačený label" (napr. uzol s názvom
+     * `# Smernica: produkt foto automatizacia cez agentov v chatgpt`), ktorý sa
+     * doteraz nedal opraviť — Hades nemal rename, len pridávanie a zlučovanie.
+     */
+    public function rename(Node $node, string $label): Node
+    {
+        $label = trim($label);
+
+        if ($label === '') {
+            throw new \InvalidArgumentException('Nový názov nesmie byť prázdny.');
+        }
+
+        $node->label = $label;
+        $node->save();
+
+        $fresh = $node->fresh();
+        MindPulse::dispatch('node.updated', ['node' => $fresh->toApi()]);
+
+        return $fresh;
+    }
+
+    /**
+     * A4 — presun uzla do inej oblasti/oddelenia.
+     *
+     * Rozlíšenie je tu ZÁMERNE prísne, na rozdiel od resolveArea() pri učení:
+     * neznáma oblasť skončí výnimkou, nie tichým spadnutím do prvej oblasti
+     * podľa id. Práve ten tichý fallback dostal React, Docker, Backend a
+     * Testing do oblasti „Marketing & SEO".
+     */
+    public function move(Node $node, string $areaName, ?string $departmentName = null): Node
+    {
+        $area = $this->requireArea($areaName);
+
+        $department = blank($departmentName)
+            ? null
+            : $this->requireDepartment($area, (string) $departmentName);
+
+        $node->area_id = $area->id;
+        $node->department_id = $department?->id;
+        $node->save();
+
+        $fresh = $node->fresh();
+        MindPulse::dispatch('node.updated', ['node' => $fresh->toApi()]);
+
+        return $fresh;
+    }
+
+    /**
+     * A4 — vratné zmazanie uzla.
+     *
+     * Náhrobok je nutný, nie kozmetika: bez neho by najbližší ingest ten istý
+     * external_key znovu adoptoval a odpadový uzol by sa vrátil (TranscriptIngest,
+     * ClaudeMemoryIngest aj BrainSync sa na tombstones pýtajú). Samotný stĺpec
+     * external_key uvoľní model v `deleting` hooku, lebo je unique.
+     */
+    public function softDelete(Node $node, string $reason = 'deleted'): Node
+    {
+        DB::transaction(function () use ($node, $reason): void {
+            if ($node->external_key) {
+                Tombstone::firstOrCreate(
+                    ['external_key' => $node->external_key],
+                    ['reason' => $reason, 'created_at' => now()],
+                );
+            }
+
+            $node->delete();
+        });
+
+        MindPulse::dispatch('node.deleted', ['node_id' => $node->id]);
+
+        return $node;
+    }
+
+    /**
+     * A4 — návrat soft-zmazaného uzla vrátane jeho náhrobku a external_key.
+     * Hrany zostali nedotknuté, takže uzol sa vráti aj s väzbami.
+     */
+    public function restoreNode(Node $node): Node
+    {
+        DB::transaction(function () use ($node): void {
+            $key = $node->meta['released_external_key'] ?? null;
+
+            if ($key) {
+                Tombstone::where('external_key', $key)->delete();
+            }
+
+            $node->restore();
+        });
+
+        $fresh = $node->fresh();
+        MindPulse::dispatch('node.updated', ['node' => $fresh->toApi()]);
+
+        return $fresh;
+    }
+
+    /** Prísne rozlíšenie oblasti podľa mena alebo slugu — bez fallbacku. */
+    protected function requireArea(string $name): Area
+    {
+        $normalized = mb_strtolower(trim($name));
+
+        $area = Area::all()->first(
+            fn (Area $a) => mb_strtolower($a->name) === $normalized || $a->slug === $normalized
+        );
+
+        if (! $area) {
+            throw new \InvalidArgumentException(
+                'Neznáma oblasť: '.$name.'. Dostupné: '.Area::orderBy('id')->pluck('name')->implode(', ')
+            );
+        }
+
+        return $area;
+    }
+
+    /**
+     * Prísne rozlíšenie oddelenia v rámci oblasti — nové sa tu NEVYTVÁRA.
+     * Voľné vytváranie cez resolveDepartment() je dôvod, prečo má sieť
+     * 104 oddelení vrátane dvanástich pomenovaných po docker worktree
+     * priečinkoch a dvojíc líšiacich sa len HTML entitou (`&` vs `&amp;`).
+     */
+    protected function requireDepartment(Area $area, string $name): Department
+    {
+        $normalized = mb_strtolower(trim($name));
+
+        $department = $area->departments->first(
+            fn (Department $d) => mb_strtolower($d->name) === $normalized || $d->slug === $normalized
+        );
+
+        if (! $department) {
+            throw new \InvalidArgumentException(
+                'Neznáme oddelenie v oblasti '.$area->name.': '.$name
+                .'. Dostupné: '.$area->departments->pluck('name')->implode(', ')
+            );
+        }
+
+        return $department;
     }
 
     protected function resolveArea(string $name): Area

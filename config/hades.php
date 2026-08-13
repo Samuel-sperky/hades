@@ -12,6 +12,12 @@ return [
     // Interné /api/* (SPA) token nedrží.
     'api_token' => env('HADES_API_TOKEN'),
 
+    // A10 — rýchla cesta recallu cez FULLTEXT index namiesto LIKE '%koreň%'.
+    // Default OFF: MATCH ... AGAINST matchuje od začiatku slova, LIKE aj
+    // uprostred, takže zapnutie mení pokrytie, nie len rýchlosť. Keď rýchla
+    // cesta vráti málo kandidátov, searchNodes aj tak padne späť na LIKE.
+    'recall_fulltext' => (bool) env('HADES_RECALL_FULLTEXT', false),
+
     // A9 — stropy na dĺžku popisov vo výstupe mind_recall. Popisy rástli bez
     // limitu a jeden recall na širokú tému vracal 77 493 znakov. Prvých
     // `top_count` uzlov (najrelevantnejších) dostane väčší strop.

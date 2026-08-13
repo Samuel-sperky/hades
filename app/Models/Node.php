@@ -6,14 +6,66 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Node extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'type', 'layer_role', 'source', 'origin', 'external_key', 'area_id', 'department_id', 'label', 'description',
         'certainty', 'needs_review', 'verified_at', 'source_file', 'source_line', 'content_hash',
-        'meta', 'strength', 'pinned', 'last_activated_at',
+        'meta', 'strength', 'pinned', 'last_activated_at', 'uuid', 'slug',
     ];
+
+    /**
+     * `uuid` a `slug` sa dopĺňajú samy, aby ich nemusel poznať žiadny volajúci —
+     * uzly vznikajú na piatich miestach (MCP, ingest, brain-sync, API, seeder).
+     * `slug` je normalizovaný label a drží sa s ním v synchronizácii.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $node): void {
+            $node->uuid ??= (string) Str::uuid();
+            $node->slug = $node->slug ?: Str::slug((string) $node->label);
+        });
+
+        static::updating(function (self $node): void {
+            if ($node->isDirty('label')) {
+                $node->slug = Str::slug((string) $node->label);
+            }
+        });
+
+        // `external_key` je unique. Soft-zmazaný riadok ostáva v tabuľke, takže
+        // by ten kľúč držal ďalej a najbližší ingest toho istého zdroja by spadol
+        // na unique constrainte. Odložíme ho do meta a stĺpec uvoľníme; návrat
+        // uzla ho vráti späť (viď MindService::restoreNode).
+        static::deleting(function (self $node): void {
+            if ($node->isForceDeleting() || blank($node->external_key)) {
+                return;
+            }
+
+            $meta = $node->meta ?? [];
+            $meta['released_external_key'] = $node->external_key;
+
+            $node->meta = $meta;
+            $node->external_key = null;
+            $node->saveQuietly();
+        });
+
+        static::restoring(function (self $node): void {
+            $meta = $node->meta ?? [];
+            $key = $meta['released_external_key'] ?? null;
+
+            // kľúč vraciame len ak ho medzitým neobsadil iný uzol
+            if ($key && ! static::withTrashed()->where('external_key', $key)->exists()) {
+                unset($meta['released_external_key']);
+                $node->external_key = $key;
+                $node->meta = $meta;
+            }
+        });
+    }
 
     /** Odvodenie type → rola vrstvy pre pohľad "Vrstvy" (fallback keď layer_role chýba). */
     private const TYPE_LAYER_ROLE = [
