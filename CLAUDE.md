@@ -86,6 +86,18 @@ vyzeralo splnené bez toho, aby čokoľvek meralo. Obaľuj `window.requestAnimat
 Pri kontraste neber farbu textu cez `elementFromPoint` — vracia iný element, a tým
 cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na tealovej výplni).
 
+Ďalšie tri pasce toho istého druhu, na každú z nich sa dá naletieť:
+
+- **Nečakaj fixný čas, čakaj na obsah.** `/api/journal` a `/api/dashboard` bežia 3–4 s.
+  Pri kratšom spánku sa nasnímkuje loading skeleton a *všetky* obrazovky vyzerajú
+  prázdne. Čakaj na `waitForFunction`, kým v `.screen.active` nie sú položky.
+- **Nepíš merací skript ako kópiu formuly z kódu.** Po zmene kódu bude merať svoju
+  starú kópiu a hlásiť nezmenené čísla. Nechaj render vystaviť výsledok na `S`
+  (napr. `S._labelBoxes`) a čítaj ten.
+- **Hades je živý.** Medzi dvoma načítaniami sa naučí nové uzly a Denníku narastie
+  celý nový deň, takže „pred a po" screenshoty sa líšia aj bez tvojej zmeny. Pri
+  porovnávaní CSS prepni stylesheet nad tým istým DOM v tom istom okamihu.
+
 ## Testy
 
 `docker compose exec app php artisan test` — 95 testov, všetko PHP (backend, MCP,

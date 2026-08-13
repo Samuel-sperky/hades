@@ -171,6 +171,27 @@ Pri prekročení rozsahu o > 30 % sa beh zastaví a ohlási.
 - **`--focus-ring`** zvýšený na **3,55:1** (tmavá) / **3,77:1** (svetlá) — nad prahom WCAG 2.4.11.
 - **Zvyšky po zrušenej simulácii**: `makeStars()` (no-op volaný 3×) a `S.stars` zmazané, 13 volaní `kickSim()` zbavených ignorovaného parametra, mŕtva vetva `if (S.sim && …)` v `main.js` odstránená.
 
+### Dolaďovanie hustoty (13. 8. 2026)
+
+Zrušenie stropov `max-width` dostalo obsah na 97–98 % šírky, ale vznikol opačný problém: obsah sa v tej šírke rozpŕchol. Riadok Denníka bol titulok vľavo a meta 2000 px vpravo, karta rozhodnutia mala 45 % prázdnych. Šírka sa využívala, ale nezobrazovalo sa viac.
+
+Zoznamy sú teraz `auto-fill` mriežky, rozhodnutia CSS multi-column (nie grid — grid plní po riadkoch, takže by os spájala chronologicky nesúvisiace body):
+
+| Obrazovka | Položiek v prvom viewporte 2560 | Výška zoznamu |
+|---|---|---|
+| Denník | 20 → **41** | 3081 → **1675 px** |
+| Rozhodnutia | 7 → **19** | 4904 → **1860 px** |
+| Dnes | vyžadovalo skrolovanie | **vojde sa celé** |
+| Kontrola | 5 → 5 (fronta má 5) | 581 → **264 px** |
+
+Dni v Denníku zostali štruktúrou (mriežka je vnútri dňa). 28 filtračných chipov zbalených na 8 najčastejších + počet + „viac". Riadok Denníka prestal písať projekt dvakrát — väčšina titulkov ním začína, takže chip opakoval ten istý reťazec a tlačil titulok do troch bodiek.
+
+**Overené:** 84 kombinácií (7 obrazoviek × 6 šírok 900–2560 × 2 témy) bez vodorovného preteku, bez prázdnej obrazovky, bez chýb konzoly.
+
+**Vedomé kompromisy:** dlhé voľné titulky v Denníku sa v stĺpci skrátia (13 z 50 na 1600, 3 z 50 na 2560); dni s jediným záznamom nechajú 2 z 3 stĺpcov prázdne (cena za zachovanie skupín po dňoch); Rozhodnutia sú na 2560 v piatich stĺpcoch hustá stena — dĺžka riadku je 54–69 znakov, teda pohodlná, ale na dlhé čítanie je to veľa. Páka je `columns: 440px → 560px` (4 stĺpce, −20 % hustoty).
+
+**Kontrola zostáva zvislo prázdna** — 5 položiek v 4 stĺpcoch zaberá 264 z 1300 px výšky. To je vlastnosť dát (fronta má 5 uzlov), nie rozloženia; mriežkou sa to vyriešiť nedá.
+
 ### Zostáva (samostatné úlohy)
 
 1. **`/api/tags` vracia 3622 značiek** → `tagfilter.js` z nich robí 3622 checkboxov. Zbalená sekcia to schová, nevyrieši.
