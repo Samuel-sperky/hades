@@ -99,8 +99,17 @@ class MindService
             ], fn ($v) => $v !== null);
         }
 
+        // Pozor na poradie: zlúčenie vyššie oblasť vôbec nerieši (uzol už niekde
+        // je), takže sa sprísnenie dotýka len vetvy, ktorá uzol zakladá — presne
+        // tam, kde tichý fallback škodil. Merge s preklepom v oblasti sa teda
+        // správa ako doteraz.
         $area = $this->resolveArea($areaName);
-        $department = $departmentName ? $this->resolveDepartment($area, $departmentName) : null;
+
+        // filled() namiesto truthy testu: ' ' je v PHP truthy, takže samotná
+        // medzera doteraz vyrobila oddelenie s prázdnym menom aj slugom
+        $department = filled($departmentName)
+            ? $this->resolveDepartment($area, $departmentName)
+            : null;
 
         $node = Node::create([
             'type' => $type,
@@ -125,6 +134,10 @@ class MindService
             'action' => 'created',
             'node' => $node->fresh()->toApi(),
             'duplicate_candidates' => $this->recordCandidatesFor($node) ?: null,
+            // Oddelenie sa smie vytvoriť, ale volajúci to má vidieť — inak
+            // preklep v `department` vyzerá rovnako ako zaradenie do
+            // existujúceho. Keď nič nevzniklo, kľúč v payloade nie je (A9).
+            'department_created' => $department?->wasRecentlyCreated ? $department->name : null,
         ], fn ($v) => $v !== null);
     }
 
@@ -1083,6 +1096,27 @@ class MindService
         return $fresh;
     }
 
+    /**
+     * Meno oblasti/oddelenia na porovnávací tvar: entity → znaky, diakritika →
+     * ASCII (cez {@see fold()}), viacnásobné medzery na jednu. Vďaka tomu sedí
+     * „Vyvoj  &amp;  kod" na „Vývoj & kód".
+     */
+    protected function foldName(string $name): string
+    {
+        $folded = $this->fold($this->decodeEntities($name));
+
+        return trim((string) preg_replace('/\s+/u', ' ', $folded));
+    }
+
+    /**
+     * `&amp;` → `&`. Payload z MCP klienta občas príde HTML-escapovaný a v sieti
+     * sú po tom dvojice líšiace sa len entitou („Reporting &amp; dataviz").
+     */
+    protected function decodeEntities(string $value): string
+    {
+        return html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
     /** Prísne rozlíšenie oblasti podľa mena alebo slugu — bez fallbacku. */
     protected function requireArea(string $name): Area
     {
@@ -1103,9 +1137,13 @@ class MindService
 
     /**
      * Prísne rozlíšenie oddelenia v rámci oblasti — nové sa tu NEVYTVÁRA.
-     * Voľné vytváranie cez resolveDepartment() je dôvod, prečo má sieť
-     * 104 oddelení vrátane dvanástich pomenovaných po docker worktree
-     * priečinkoch a dvojíc líšiacich sa len HTML entitou (`&` vs `&amp;`).
+     *
+     * Pozn.: oddelenia pomenované po docker worktree priečinkoch
+     * („Záznamy — agitated-galileo-3261ac") nevyrobil resolveDepartment(), ale
+     * TranscriptIngestService::classify() vlastným Department::firstOrCreate.
+     * Rovnako tvorí oddelenia ďalších sedem miest (BrainSyncService,
+     * ClaudeMemoryIngestService, MindDigest, MindReorganize, MindSeedSkills,
+     * StructureController) — všetky mimo MindService.
      */
     protected function requireDepartment(Area $area, string $name): Department
     {
@@ -1125,25 +1163,113 @@ class MindService
         return $department;
     }
 
+    /**
+     * Rozlíšenie oblasti pri učení. Oblasti sú pevná, seedovaná pätica — nikdy
+     * sa netvoria za behu, takže neznáme meno je vždy chyba volajúceho.
+     *
+     * Predtým tu bol `?? Area::orderBy('id')->firstOrFail()`: každý preklep
+     * ticho spadol do oblasti s id 1 a mind_learn vrátil „created". Presne tak
+     * skončili React, Docker, Backend, Testing a Accessibility v „Marketing &
+     * SEO" — a s nimi aj oddelenia, ktoré sa v tej nesprávnej oblasti museli
+     * dovytvoriť (`Aplikácie`, `Knižnica`). Tichý fallback teda nerobil bordel
+     * len v oblastiach, ale vyrábal aj duplicitné oddelenia.
+     *
+     * Poradie: presné meno/slug → fold (diakritika, entity) → jednoznačná
+     * podreťazcová zhoda. Až keď nesedí nič, letí výnimka so zoznamom oblastí;
+     * McpController ju zabalí do `isError` odpovede, takže session dostane
+     * čitateľnú chybu, nie spadnutý nástroj.
+     *
+     * @throws \InvalidArgumentException neznáme alebo nejednoznačné meno
+     */
     protected function resolveArea(string $name): Area
     {
+        $areas = Area::orderBy('id')->get();
+
+        // Prázdna oblasť nie je preklep, ale „volajúci ju neuviedol": POST
+        // /api/knowledge má `area` nullable a posiela ''. Doterajšie správanie
+        // (prvá oblasť podľa id) tu ostáva zámerne — len už nie ako náhoda
+        // str_contains($x, ''), ktorý je vždy true, ale ako popísané pravidlo.
+        if (blank(trim($name))) {
+            return $areas->firstOrFail();
+        }
+
         $normalized = mb_strtolower(trim($name));
 
-        $area = Area::all()->first(function (Area $area) use ($normalized) {
-            return mb_strtolower($area->name) === $normalized
-                || str_contains(mb_strtolower($area->name), $normalized)
-                || str_contains($normalized, mb_strtolower($area->name));
-        });
+        $exact = $areas->first(
+            fn (Area $a) => mb_strtolower($a->name) === $normalized || $a->slug === $normalized
+        );
 
-        return $area ?? Area::orderBy('id')->firstOrFail();
+        if ($exact) {
+            return $exact;
+        }
+
+        // fold zvládne aj „Vyvoj & kod" (bez diakritiky) aj „Vývoj &amp; kód"
+        // (entita z JSON payloadu) — oboje sedí na existujúcu oblasť, takže
+        // nemá padať. Slug pokryje „vyvoj-kod".
+        $folded = $this->foldName($name);
+        $slug = Str::slug($this->decodeEntities($name));
+
+        $loose = $areas->first(
+            fn (Area $a) => $this->foldName($a->name) === $folded
+                || ($slug !== '' && $a->slug === $slug)
+        );
+
+        if ($loose) {
+            return $loose;
+        }
+
+        // Skratky ako „Vývoj" alebo „SEO" mierili doteraz správne a nemá zmysel
+        // ich rozbiť — ale len kým je zhoda jediná. Viac kandidátov znamenalo
+        // „prvý podľa id", čo je ten istý tichý omyl v malom.
+        $candidates = $areas->filter(function (Area $a) use ($folded) {
+            $areaFolded = $this->foldName($a->name);
+
+            return str_contains($areaFolded, $folded) || str_contains($folded, $areaFolded);
+        })->values();
+
+        if ($candidates->count() === 1) {
+            return $candidates->first();
+        }
+
+        if ($candidates->count() > 1) {
+            throw new \InvalidArgumentException(
+                'Nejednoznačná oblasť: '.$name.'. Sedí na: '.$candidates->pluck('name')->implode(', ')
+                .'. Použi presný názov.'
+            );
+        }
+
+        throw new \InvalidArgumentException(
+            'Neznáma oblasť: '.$name.'. Dostupné: '.$areas->pluck('name')->implode(', ')
+            .'. Oblasti sa učením nevytvárajú — over si ich cez mind_overview.'
+        );
     }
 
+    /**
+     * Rozlíšenie oddelenia pri učení. Na rozdiel od oblastí sa oddelenie smie
+     * vytvoriť: taxonómia oddelení zámerne rastie (33/44/23 na oblasť) a toto
+     * je jediná cesta, ktorou ho session vie pridať. Prísna verzia by rast
+     * zastavila a proti citovanému odpadu by nepomohla — `Záznamy — <worktree>`
+     * netvorí tento kód, ale TranscriptIngestService::classify()
+     * (Department::firstOrCreate, mimo MindService).
+     *
+     * Čo sa tu naopak sprísnilo, je hľadanie existujúceho: predtým iba presné
+     * `mb_strtolower(name)`, takže „aplikacie", „Aplikácie " či
+     * „Reporting &amp; dataviz" vyrobili dvojča k už existujúcemu oddeleniu.
+     * Teraz sa pred vytvorením skúša aj slug a fold.
+     *
+     * Či oddelenie vzniklo, si volajúci prečíta z `wasRecentlyCreated`.
+     */
     protected function resolveDepartment(Area $area, string $name): Department
     {
         $normalized = mb_strtolower(trim($name));
+        $decoded = trim($this->decodeEntities($name));
+        $folded = $this->foldName($name);
+        $slug = Str::slug($decoded);
 
         $existing = $area->departments->first(
             fn (Department $d) => mb_strtolower($d->name) === $normalized
+                || $this->foldName($d->name) === $folded
+                || ($slug !== '' && $d->slug === $slug)
         );
 
         if ($existing) {
@@ -1151,8 +1277,8 @@ class MindService
         }
 
         $department = $area->departments()->create([
-            'name' => trim($name),
-            'slug' => Str::slug($name),
+            'name' => $decoded !== '' ? $decoded : trim($name),
+            'slug' => $slug !== '' ? $slug : Str::slug($name),
         ]);
 
         MindPulse::dispatch('department.created', [

@@ -42,6 +42,21 @@ services:
     restart: always
     ports:
       - "127.0.0.1:8095:8095"
+    # Tajomstvá pre Caddyfile — predtým boli natvrdo v ňom (git-trackovaný).
+    # `:?` je zámerné: bez hodnoty stack odmietne nabehnúť, namiesto toho aby
+    # tunel bežal s prázdnym tokenom/heslom.
+    #
+    # HADES_MCP_TOKEN je TEN ISTÝ, ktorý číta Laravel (config/hades.php), takže
+    # verejná query cesta a Bearer overenie v appke nemôžu rozbehnúť.
+    #
+    # POZOR na bcrypt hash: compose interpoluje hodnoty z .env, takže surové
+    # `$2y$12$e4ZV…` sa rozpadne na neexistujúce premenné a Caddy dostane
+    # zrezané `$2y$12` — každé heslo potom vráti 401 a vyzerá to ako zlé heslo.
+    # Preto musí byť hodnota v .env v JEDNODUCHÝCH úvodzovkách (tie prežijú
+    # aj compose, aj phpdotenv). Detail je v docs/BEZPECNOST.md, sekcia 8.
+    environment:
+      HADES_MCP_TOKEN: "${HADES_MCP_TOKEN:?HADES_MCP_TOKEN chýba v .env}"
+      CADDY_BASIC_AUTH_HASH: "${CADDY_BASIC_AUTH_HASH:?CADDY_BASIC_AUTH_HASH chýba v .env (bcrypt hash v jednoduchých úvodzovkách)}"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
