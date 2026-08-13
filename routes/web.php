@@ -2,7 +2,11 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => view('mind'));
+// Dashboard je od 13. 8. 2026 pod tým istým UI guardom ako interné /api/*.
+// Bez toho by celá ochrana nefungovala: lokálny proces si spraví GET / a token
+// (aj CSRF) si z HTML vyparsuje. Odomknutie raz cez `/?token=<HADES_UI_TOKEN>`,
+// ďalej drží session cookie; na verejnej ceste hlavičku vkladá Caddy.
+Route::get('/', fn () => view('mind'))->middleware('auth.ui');
 
 if (app()->environment('local')) {
     Route::post('/debug/snapshot', function (Illuminate\Http\Request $request) {

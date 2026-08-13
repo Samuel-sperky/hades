@@ -3,6 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {{-- CSRF token pre zápisy na interné /api/* — mind.js ho pripája do každého
+         non-GET fetchu (ValidateCsrfToken, §3.5 docs/BEZPECNOST.md). --}}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Hades — AI mind</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%23b88a3a'/><circle cx='50' cy='50' r='45' fill='none' stroke='%2303797e' stroke-opacity='.4' stroke-width='4'/></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">

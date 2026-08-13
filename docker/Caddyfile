@@ -12,6 +12,10 @@
 #                          (config/hades.php → AuthenticateMcp). JEDEN zdroj:
 #                          keď sa zmení v .env, zmení sa pre Caddy aj pre appku.
 #   CADDY_BASIC_AUTH_HASH  bcrypt hash hesla na verejný prístup (meno: hades).
+#   HADES_UI_TOKEN         token UI okruhu (config/hades.php → AuthenticateUi).
+#                          Vkladáme ho ako hlavičku do každého requestu, ktorý
+#                          ide na appku, aby verejná cesta fungovala bez
+#                          odomykania — gate na nej je basic-auth.
 #
 # Použité je `{$VAR}`, nie `{env.VAR}`: `{$VAR}` je textová substitúcia pri
 # načítaní Caddyfile, takže funguje všade vrátane basic_auth a query matchera —
@@ -62,6 +66,12 @@
 	# Všetko ostatné (dashboard, chat, priamy /mcp bez tokenu) → basic-auth.
 	handle {
 		import tunnel_auth
-		reverse_proxy app:8080
+		reverse_proxy app:8080 {
+			# Dashboard aj interné /api/* sú od 13. 8. 2026 za UI guardom. Na
+			# verejnej ceste je gate basic-auth, takže odomkneme za používateľa —
+			# inak by musel k heslu poznať aj token. `header_up` hodnotu NASTAVÍ,
+			# takže vlastnú hlavičku od klienta zároveň prepíše (žiadny smuggling).
+			header_up X-Hades-Ui-Token {$HADES_UI_TOKEN}
+		}
 	}
 }

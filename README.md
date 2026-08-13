@@ -13,6 +13,9 @@ docker compose up -d
   (mapa → oblasť → oddelenie → uzol), klik zanorí, `Esc` vyjde o úroveň, `1`–`4`
   skočia na úroveň, breadcrumb v hlavičke drží cestu. Klik na uzol = detail/editácia,
   ambient režim (⛶), chat s Hadesom (💬). Tmavá téma je default.
+  Dashboard je **zamknutý**: odomkni ho raz cez
+  `http://localhost:8080/?token=<HADES_UI_TOKEN z .env>`, ďalej si to pamätá
+  session cookie. Detail v [docs/BEZPECNOST.md](docs/BEZPECNOST.md) §3.3.
 - **MCP endpoint:** http://localhost:8080/mcp (Streamable HTTP)
 - **WebSocket (Reverb):** ws://localhost:8081
 

@@ -18,6 +18,8 @@ tunelovaná cez ngrok**, takže model hrozby má tri vrstvy:
 |---|---|---|
 | Cudzí človek z internetu nájde ngrok domény | čítanie celej pamäte, zápis falošných uzlov | Caddy basic-auth + MCP token (§3) |
 | Iný proces na tom istom stroji (47 docker kontajnerov, skripty) | volanie `mind_learn` / `mind_decision` bez akejkoľvek autorizácie | token guard na `/mcp` (§3.1) |
+| Iný proces si otvorí interné `/api/*` alebo dashboard | čítanie celej pamäte a zápis (`POST /api/nodes`, `DELETE …`) bez autorizácie | session guard na UI okruhu (§3.3) |
+| Cudzia stránka otvorená v prehliadači pošle zápis na `localhost:8080` | uzly a rozhodnutia vytvorené naslepo (odpoveď útočník neprečíta, zápis prejde) | CSRF + `SameSite` cookie na UI okruhu (§3.3) |
 | Samotný model (Claude) uloží tajomstvo | heslo/API kľúč natrvalo v pamäti a v `.md` | `SecretScanner` na serveri (§4) |
 | Zlyhanie zápisu / súbežný beh | polovičný `.md`, stratený uzol, rozbitý sync | atomický zápis, zámky, tombstones (§6) |
 
@@ -55,7 +57,7 @@ Kľúčové vlastnosti (`docker-compose.yml`):
 
 ---
 
-## 3. Autentifikácia — tri nezávislé okruhy
+## 3. Autentifikácia — štyri nezávislé okruhy
 
 ### 3.1 `/mcp` — token guard (`AuthenticateMcp`)
 
@@ -68,6 +70,11 @@ Zaregistrovaný priamo v `bootstrap/app.php` na všetky metódy (`GET`, `POST`,
 - Porovnanie cez `hash_equals()` → timing-safe, nedá sa uhádnuť po znakoch.
 - **Fail-closed**: keď je `hades.mcp_token` prázdny, neprejde nikto (401).
   Nekonfigurovaný server je zamknutý server, nie otvorený.
+- **Jeden zdroj tokenu**: `HADES_MCP_TOKEN` v `.env` čítajú obaja — Laravel
+  cez `config/hades.php`, aj Caddy cez `{$HADES_MCP_TOKEN}` v query matcheri
+  na porte 8095 (§8.2). Nedá sa teda stať, že tunel prepustí token, ktorý
+  appka už neuznáva, alebo naopak. Rotácia = zmeniť jedno miesto a spustiť
+  `docker compose up -d caddy`.
 
 Historický kontext (zapísaný aj v kóde): do 12. 8. 2026 bol `/mcp` úplne bez
 autentifikácie a spoliehal sa len na binding na `127.0.0.1`. To nechránilo pred
@@ -88,19 +95,55 @@ z `.env` — v konfigu klienta žiadna kópia tajomstva nevzniká.
 - `hash_equals()`, rovnaká **fail-closed** logika: prázdny `HADES_API_TOKEN`
   = 401 pre všetkých.
 
-### 3.3 Interné `/api/*` — same-origin, bez tokenu
+### 3.3 UI okruh — dashboard `/` a interné `/api/*` (`AuthenticateUi`)
 
-SPA (dashboard, graf, chat) nikdy nedrží token — volá tie isté controllery
-na neprefixovaných cestách. Ochranou je výhradne sieťová hranica (§2):
-lokálne binding na `127.0.0.1:8080`, zvonku basic-auth na Caddy.
-Je to zámerné rozhodnutie (§4.3 kontraktu), nie opomenutie — ale je to
-zároveň najslabšie miesto celej architektúry, pozri §8.
+Od 13. 8. 2026. Dovtedy tu ochrana nebola žiadna: SPA nedrží token (§4.3
+kontraktu) a interné `/api/*` sa spoliehali výhradne na sieťovú hranicu, čiže
+ktorýkoľvek lokálny proces vedel čítať celú pamäť aj zapisovať do nej. Bola to tá
+istá diera, akú `/mcp` dostal zaplátanú 12. 8. 2026.
+
+**Prečo session a nie token vložený do blade view.** Lokálny proces si spraví
+`GET /` a token si z HTML vyparsuje — per-page token teda nechráni pred hlavnou
+hrozbou. Rovnako kontrola `Origin`/`Referer`: hlavičku si klient, ktorý nie je
+prehliadač, nastaví sám (zatvorila by CSRF, nie lokálne procesy). Ochrana musí
+zamknúť **aj samotný dashboard**, a to znamená tajomstvo, ktoré drží prehliadač
+(cookie), nie stránka. Preto je `/` pod guardom spolu s API — bez toho by celá
+konštrukcia bola len na okrasu.
+
+- **Token**: `HADES_UI_TOKEN`, zámerne **iný** ako `HADES_API_TOKEN` aj
+  `HADES_MCP_TOKEN` — únik jedného okruhu nesmie otvoriť ďalší.
+- **Dve cesty dovnútra**: `?token=` (jednorazové odomknutie v prehliadači; guard
+  hneď presmeruje na URL bez tokenu, aby nezostal v histórii) a hlavička
+  `X-Hades-Ui-Token`, ktorú na verejnej ceste vkladá Caddy (§3.4).
+- **V session je `sha256` odtlačok tokenu**, nie token. Rotácia `HADES_UI_TOKEN`
+  tým zneplatní všetky odomknuté session — nie je potrebné nič mazať.
+- `hash_equals()` na oboch porovnaniach, **fail-closed**: prázdny `hades.ui_token`
+  = 401 pre všetkých vrátane dashboardu.
+- **CSRF**: interné `/api/*` majú `ValidateCsrfToken`, token nesie
+  `<meta name="csrf-token">` a `public/js/mind.js` ho obalením `fetch` pripája do
+  každého non-GET volania. Cudzia stránka teda zápis neprepasuje ani keby cookie
+  nejako získala. Druhá vrstva je `SESSION_SAME_SITE=lax` (cross-site POST cookie
+  nedostane); `strict` zámerne nie, aby kliknutie na tunelový odkaz zvonku
+  neznamenalo zamknuté okno.
+- **Poradie middleware je zámerné** (vypísané ručne v `routes/api.php`, nie group
+  `web`): cookies → session → guard → CSRF, a `AuthenticateUi` je navyše cez
+  `prependToPriorityList` posunutý **pred** `SubstituteBindings`. Inak by
+  neexistujúce id vrátilo `404` skôr, než guard povie `401`, a nezamknutý klient
+  by tým zistil, ktoré uzly v pamäti existujú.
+- **Dôsledok pre klientov**: interné `/api/*` je odteraz cesta pre prehliadač
+  (session + CSRF). Skripty a integrácie patria na `/api/v1/*` s Bearer tokenom —
+  ten CSRF nemá a mať nemusí, lebo cookie nepoužíva.
 
 ### 3.4 Basic-auth na Caddy
 
 Heslo je uložené ako **bcrypt hash** (cost 12), nie plaintext. Platí pre
 dashboard, chat, interné `/api/*` aj WebSocket cestu `/app/*`. Lokálny prístup
 na 8080 basic-auth neobchádza — on ním nikdy neprechádza.
+
+Na tejto ceste Caddy zároveň **vkladá hlavičku `X-Hades-Ui-Token`** do každého
+requestu na appku, takže verejný dashboard netreba odomykať druhýkrát: gate je
+basic-auth. Použité je `header_up` (nastaví, nie pridá), takže vlastnú hlavičku od
+klienta zároveň prepíše — token sa cez tunel nedá podstrčiť ani vyčítať.
 
 ---
 
@@ -150,8 +193,10 @@ Tabuľka toho, čo sa stane, keď je konfigurácia prázdna alebo chybná — te
 
 | Prepínač | Default | Pri prázdnom/OFF |
 |---|---|---|
-| `HADES_MCP_TOKEN` | prázdny | **401 pre všetkých** (fail-closed) |
+| `HADES_MCP_TOKEN` | prázdny | **401 pre všetkých** (fail-closed) + `caddy` sa nespustí (`:?` guard v compose) |
+| `CADDY_BASIC_AUTH_HASH` | prázdny | `caddy` sa nespustí (`:?` guard); prázdny hash by aj tak zhodil parsovanie Caddyfile — tunel sa neotvorí bez hesla |
 | `HADES_API_TOKEN` | prázdny | **401 pre všetkých** (fail-closed) |
+| `HADES_UI_TOKEN` | prázdny | **401 pre všetkých vrátane dashboardu** (fail-closed) + `caddy` sa nespustí (`:?` guard) |
 | `HADES_ALLOW_BRAIN_WRITE` | `false` | brain-write endpointy **403**, `.md` sa nemenia (fail-safe) |
 | `ANTHROPIC_API_KEY` | prázdny | chat odpovie inštrukciou, nič nevolá von |
 | `HADES_RECALL_FULLTEXT` | `false` | recall ide bezpečnejšou LIKE cestou |
@@ -221,17 +266,47 @@ takže sa nikam nevykreslí HTML debug stránka Laravelu.
 
 Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reálne.
 
-1. **Interné `/api/*` sú bez autentifikácie.** Ktorýkoľvek proces na stroji,
-   ktorý dosiahne `127.0.0.1:8080`, môže čítať celú pamäť a zapisovať
-   (`POST /api/nodes`, `DELETE /api/nodes/{id}`, `PUT /api/departments/…`).
-   `/mcp` sme 12. 8. 2026 zamkli presne z tohto dôvodu — interné `/api/*`
-   zostalo otvorené. Zároveň na `api` routách nie je CSRF ochrana, takže
-   web stránka otvorená v prehliadači vie na tieto endpointy poslať POST
-   (bez čítania odpovede, ale zápis prejde).
-2. **Token a bcrypt hash sú natvrdo v `docker/Caddyfile`, ktorý je v gite.**
-   Config sám to priznáva („kým sa tá neprepne na env"). Kto má prístup
-   k repozitáru, má prístup k verejnému MCP endpointu. Riešenie: presunúť
-   do env a rotovať.
+1. **~~Interné `/api/*` sú bez autentifikácie~~ — vyriešené 13. 8. 2026
+   (`AuthenticateUi`, §3.3).** Dashboard aj interné `/api/*` sú za session
+   guardom s `HADES_UI_TOKEN` a zápisy majú CSRF. Lokálny proces bez tokenu
+   dostane `401` na čítaní aj zápise, cudzia stránka v prehliadači `419`.
+
+   Čo tým *nie je* vyriešené:
+   - **Token sa raz objaví v URL** (`/?token=…`), takže skončí v histórii
+     prehliadača a v access logoch — rovnaká cena ako pri `?token=` na `/mcp`
+     (§8.3). Guard ho z URL hneď odstrihne presmerovaním, ale zápis v histórii
+     tým nezmizne. Alternatíva bez tejto ceny je hlavička, tú však prehliadač
+     pri ručnom otvorení URL poslať nevie.
+   - **Odomknutie je dlhé** (`SESSION_LIFETIME=43200`, teda 30 dní). Kompromis:
+     pôvodných 120 minút by znamenalo zamknutý dashboard po dvoch hodinách
+     nečinnosti. Odomknutá session = plný prístup k pamäti pre toho, kto sedí
+     za prehliadačom, a rotácia tokenu je jediný spôsob, ako ju zneplatniť.
+   - **Kto vie čítať `.env`, prejde** — to je ale explicitne mimo modelu hrozby
+     (§1) a platí rovnako pre všetky štyri okruhy.
+   - Guard nechráni `POST /debug/snapshot` (bod 7 nižšie) ani Reverb na 8081.
+2. **~~Token a bcrypt hash sú natvrdo v `docker/Caddyfile`~~ — vyriešené
+   13. 8. 2026, ale staré hodnoty zostávajú v histórii.**
+   Caddyfile už berie oboje z `.env` cez `environment:` v `docker-compose.yml`
+   (`{$HADES_MCP_TOKEN}`, `{$CADDY_BASIC_AUTH_HASH}`), takže MCP token má
+   **jeden zdroj** pre Caddy aj Laravel (`config/hades.php`) a nemôžu sa
+   rozísť. `:?` guard v compose znamená, že bez hodnôt stack vôbec nenabehne.
+
+   Čo tým *nie je* vyriešené: token aj hash žijú v commitoch (hash v `83afa6c`
+   na tejto vetve, token v `5eadb46`/`3246bc4` na `origin/feat/cloudflare-tunnel`,
+   teda aj na remote). Prepnutie na env zabráni ďalšiemu leaku, históriu
+   neprepíše — **obe tajomstvá treba považovať za kompromitované a rotovať.**
+   Rotácia je jediná vec, ktorá ich zneplatní; `git filter-repo` na už
+   pushnutých vetvách je viac škody ako úžitku.
+
+   Pasca pri úprave: `$` v bcrypt hashi. Compose interpoluje hodnoty z `.env`
+   **aj z `env_file`**, takže surové `$2y$12$e4ZV…` sa rozpadne na neexistujúce
+   premenné a Caddy dostane zrezané `$2y$12` — potom *každé* heslo vráti 401
+   a vyzerá to ako zle zadané heslo, nie ako rozbitá konfigurácia. Hodnota
+   preto musí byť v `.env` v **jednoduchých úvodzovkách**
+   (`CADDY_BASIC_AUTH_HASH='$2y$12$…'`); tie prežijú compose aj phpdotenv,
+   a na rozdiel od zdvojovania `$$` fungujú pre oba čitatelia rovnako.
+   V Caddyfile je zámerne `{$VAR}` (textová substitúcia pri načítaní), nie
+   `{env.VAR}` — runtime placeholder sa v hashi `basic_auth` nevyhodnotí.
 3. **Token v query stringu sa loguje.** `?token=` skončí v ngrok dashboarde,
    v access logoch a v histórii URL. Je to nutná cena za **vzdialené** connectory
    appky Claude, takže ten token treba považovať za „polo-verejný". Klienti na
@@ -264,6 +339,7 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
 | Test | Čo overuje |
 |---|---|
 | `tests/Feature/AuthenticateMcpTest.php` | odmietnutie bez tokenu / so zlým tokenom (Bearer aj query), akceptáciu správneho, case-insensitive `bearer`, **fail-closed** pri nenakonfigurovanom tokene, pokrytie `GET`/`DELETE` |
+| `tests/Feature/AuthenticateUiTest.php` | UI okruh: odmietnutie čítania aj zápisu bez odomknutia, zamknutý dashboard, zlý token, odomknutie hlavičkou (Caddy) aj `?token=` s odstrihnutím z URL, **fail-closed**, rotácia tokenu ruší staré session, CSRF na zápisoch (419) a 401 **pred** CSRF aj pred route model bindingom, oddelenie od `/api/v1` a `/mcp` |
 | `tests/Unit/SecretScannerTest.php` | jednotlivé vzory a to, že sa nevracia hodnota |
 | `tests/Feature/McpToolsTest.php` | odmietnutie `mind_learn` s obsahom podobným tajomstvu, klamp recall limitu |
 | `tests/Feature/ApiV1Test.php` | Bearer guard na `v1`, health bez tokenu |
@@ -276,12 +352,18 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
 ## 10. Checklist pri zmene čohokoľvek z tohto
 
 - Nový endpoint pod `/api/v1/*` → patrí do `auth.token` grupy (nie mimo nej).
+- Nový interný endpoint pre SPA → **do `auth.ui` grupy** v `routes/api.php`
+  (nie pod ňu ani vedľa nej), a zápis musí ísť cez `fetch` z `mind.js`, aby
+  dostal CSRF token. Programatický klient patrí na `/api/v1/*`, nie sem.
+- Nová HTML route mimo `/` → tiež `->middleware('auth.ui')`, inak z nej cudzí
+  proces vyčíta CSRF token aj obsah pamäte.
 - Nový MCP nástroj, ktorý zapisuje text → pretlač obsah cez `SecretScanner`.
 - Nová zápisová cesta do `.md` → **len** cez `BrainWriter` (atomicita + sken
   + guard na jednom mieste).
 - Nový destruktívny nástroj → soft-delete alebo tombstone, nikdy tvrdé
   `DELETE` bez možnosti obnovy.
-- Zmena tokenu → `.env` **aj** `docker/Caddyfile` + `docker compose restart caddy`.
+- Zmena tokenu → `.env` (jediný zdroj pre Laravel aj Caddy) + `docker compose up -d caddy`.
+  Pri `HADES_UI_TOKEN` to zároveň zamkne všetky odomknuté okná — odomknúť treba znova.
 - Zmena v auth/uploadoch/exponovaných endpointoch → povinná security prehliadka
   (appka je verejne tunelovaná).
 - Nikdy nevypisuj hodnoty kľúčov do chatu, logov, commitov ani do Hadesa.

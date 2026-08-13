@@ -3,6 +3,7 @@
 import { setupCmdk } from './cmdk.js';
 import { setupControls } from './controls.js';
 import { clearLocal, setLocal } from './filters.js';
+import { installFetchGuard } from './http.js';
 import { setupPrompt } from './chat.js';
 import { setupInput } from './interaction.js';
 import { setupPack } from './pack.js';
@@ -33,6 +34,9 @@ function renderInitError() {
 }
 
 async function init() {
+    // MUSÍ byť prvé — obaľuje window.fetch (CSRF token pre zápisy + hláška pri
+    // zamknutom okruhu), takže to treba stihnúť skôr, než čokoľvek fetchne.
+    installFetchGuard();
     setTheme(initialTheme());
     resize();
     window.addEventListener('resize', () => { resize(); requestDraw(); }); // rozmer sa zmenil → prekresli

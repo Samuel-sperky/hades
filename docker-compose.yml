@@ -57,6 +57,10 @@ services:
     environment:
       HADES_MCP_TOKEN: "${HADES_MCP_TOKEN:?HADES_MCP_TOKEN chýba v .env}"
       CADDY_BASIC_AUTH_HASH: "${CADDY_BASIC_AUTH_HASH:?CADDY_BASIC_AUTH_HASH chýba v .env (bcrypt hash v jednoduchých úvodzovkách)}"
+      # UI token — Caddy ho na verejnej ceste vkladá do hlavičky za basic-auth,
+      # takže dashboard netreba odomykať dvakrát. Rovnaká hodnota, akú overuje
+      # Laravel (config/hades.php → AuthenticateUi): JEDEN zdroj v .env.
+      HADES_UI_TOKEN: "${HADES_UI_TOKEN:?HADES_UI_TOKEN chýba v .env (token UI okruhu)}"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
