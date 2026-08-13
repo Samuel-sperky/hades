@@ -9,6 +9,7 @@ use App\Models\Department;
 use App\Models\Edge;
 use App\Models\MergeCandidate;
 use App\Models\Node;
+use App\Models\Tag;
 use App\Models\Tombstone;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -157,7 +158,7 @@ class MindService
             if ($name === '') {
                 continue;
             }
-            if ($tag = \App\Models\Tag::forName($name)) {
+            if ($tag = Tag::forName($name)) {
                 $ids[] = $tag->id;
             }
         }
@@ -1125,14 +1126,35 @@ class MindService
         return $department;
     }
 
+    /**
+     * Meno oblasti/oddelenia pre porovnanie: HTML entity sa dekódujú, aby
+     * „Reporting &amp; dataviz" našlo existujúce „Reporting & dataviz".
+     *
+     * Klienti (Claude Code sessions) posielajú názvy občas HTML-escapované —
+     * server sám nikde neescapuje, ale doslovné porovnanie tie dve podoby
+     * nespojilo: meno sa nenašlo, spadlo to na fallback a založilo duplicitné
+     * oddelenie s entitou v názve. Odtiaľ dvojice „Reporting & dataviz" /
+     * „Reporting &amp; dataviz" a „Sklad & cenotvorba" / „Sklad &amp; cenotvorba".
+     *
+     * Dekóduje sa LEN meno oblasti/oddelenia, nikdy nie description ani text
+     * rozhodnutia — tam je `&amp;` často legitímny obsah (uzly 2092/2094/2116/2176
+     * a rozhodnutie 29 práve pred variantom s entitou varujú).
+     */
+    protected function decodeName(string $name): string
+    {
+        return trim(html_entity_decode($name, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
     protected function resolveArea(string $name): Area
     {
-        $normalized = mb_strtolower(trim($name));
+        $normalized = mb_strtolower($this->decodeName($name));
 
         $area = Area::all()->first(function (Area $area) use ($normalized) {
-            return mb_strtolower($area->name) === $normalized
-                || str_contains(mb_strtolower($area->name), $normalized)
-                || str_contains($normalized, mb_strtolower($area->name));
+            $candidate = mb_strtolower($this->decodeName($area->name));
+
+            return $candidate === $normalized
+                || str_contains($candidate, $normalized)
+                || str_contains($normalized, $candidate);
         });
 
         return $area ?? Area::orderBy('id')->firstOrFail();
@@ -1140,19 +1162,21 @@ class MindService
 
     protected function resolveDepartment(Area $area, string $name): Department
     {
-        $normalized = mb_strtolower(trim($name));
+        $decoded = $this->decodeName($name);
+        $normalized = mb_strtolower($decoded);
 
         $existing = $area->departments->first(
-            fn (Department $d) => mb_strtolower($d->name) === $normalized
+            fn (Department $d) => mb_strtolower($this->decodeName($d->name)) === $normalized
         );
 
         if ($existing) {
             return $existing;
         }
 
+        // nové oddelenie sa zakladá vždy s obyčajným znakom, nie s entitou
         $department = $area->departments()->create([
-            'name' => trim($name),
-            'slug' => Str::slug($name),
+            'name' => $decoded,
+            'slug' => Str::slug($decoded),
         ]);
 
         MindPulse::dispatch('department.created', [
