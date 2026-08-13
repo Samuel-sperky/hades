@@ -123,7 +123,7 @@ export function renderSuggestCard(sug) {
                 S.nodes.push(n);
                 S.byId.set(n.id, n);
                 buildSim();
-                kickSim(0.4);
+                kickSim();
             }
             updateHeaderMetrics();
             draw();

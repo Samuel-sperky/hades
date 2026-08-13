@@ -149,7 +149,7 @@ export async function linkSuggestion(source, targetId, row) {
                     S.edges.push({ ...e, source: src, target: tgt });
                     S._localFor = null; // hrany sa zmenili — BFS cache neplatí
                     buildSim();
-                    kickSim(0.3);
+                    kickSim();
                     spawnPulse(src, tgt, { speed: 1.2 });
                 }
             }
@@ -339,7 +339,7 @@ export async function createEdge(sourceId, targetId) {
                 S.edges.push({ ...e, source: src, target: tgt });
                 S._localFor = null; // hrany sa zmenili — BFS cache neplatí
                 buildSim();
-                kickSim(0.3);
+                kickSim();
                 spawnPulse(src, tgt, { speed: 1.2 });
             }
             showToast('Prepojené');
@@ -365,7 +365,7 @@ export async function deleteEdge(edgeId) {
         if (i !== -1) S.edges.splice(i, 1);
         S._localFor = null;
         buildSim();
-        kickSim(0.2);
+        kickSim();
         updateHeaderMetrics();
         draw();
         showToast('Spojenie zrušené');
@@ -431,7 +431,7 @@ export async function createNode() {
             S.nodes.push(n);
             S.byId.set(n.id, n);
             buildSim();
-            kickSim(0.4);
+            kickSim();
         }
         closeCreateMode();
         updateHeaderMetrics();

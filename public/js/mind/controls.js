@@ -3,7 +3,7 @@ import { closeDock, dockOpen, openDock } from './dock.js';
 import { clearLocal, persistFilter, persistRelFilter } from './filters.js';
 import { closeMdOverlay, openMdOverlay } from './md.js';
 import { closeCreateMode, closeNodePanel, createMode, createNode, fillDeptOptions, fillMoveSelects, openCreateNode, selectNode } from './panels.js';
-import { draw, fitView, makeStars, requestDraw, zoomBy } from './render.js';
+import { draw, fitView, requestDraw, zoomBy } from './render.js';
 import { setScreen } from './screens.js';
 import { renderLibrary } from './screens/kniznica.js';
 import { toggleHelp } from './shortcuts.js';
@@ -220,19 +220,18 @@ export function setupControls() {
         syncDegBtn();
         markPresetActive();
         buildSim();
-        kickSim(0.3);
+        kickSim();
         draw();
     };
 
     $('opts-reset').onclick = () => {
         S.opts = Object.assign({}, OPT_DEFAULTS);
         localStorage.setItem('hades.opts', JSON.stringify(S.opts));
-        makeStars();
         applyOpts();
         syncAdvancedUi(); // reset vráti sizeByDegree aj edgeSoftHover — prepínače dorovnať
         markPresetActive();
         buildSim();
-        kickSim(0.3);
+        kickSim();
         draw();
         showToast('Predvolené obnovené');
     };
@@ -250,12 +249,11 @@ export function setupControls() {
             localStorage.setItem('hades.opts', JSON.stringify(S.opts));
             localStorage.setItem('hades.minWeight2', String(S.minWeight));
             localStorage.setItem('hades.skeleton', S.skeleton ? '1' : '0');
-            makeStars();       // hustota hviezd závisí od opts.bg
             applyOpts();       // slidery data-opt + --panel-alpha
             syncAdvancedUi();  // prepínače, ktoré nie sú <input>
             markPresetActive();
             buildSim();        // collide polomery podľa sizeByDegree
-            kickSim(0.3);
+            kickSim();
             draw();
             showToast('Predvoľba: ' + PRESET_LABELS[b.dataset.preset]);
         };
@@ -416,7 +414,7 @@ export function setupControls() {
                 S._localFor = null;
                 closeNodePanel();
                 buildSim();
-                kickSim(0.3);
+                kickSim();
                 draw();
                 showToast('Uzol zmazaný');
             } catch (e) {

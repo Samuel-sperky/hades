@@ -37,10 +37,6 @@ export function resize() {
 }
 
 // Časticový systém odstránený — žiadna hmla na papieri. No-op kvôli existujúcim volaniam.
-export function makeStars() {
-    S.stars = [];
-}
-
 export function visibleInReplay(n) {
     if (!S.replay.on) return true;
     const cutoff = S.replay.tMin + (S.replay.tMax - S.replay.tMin) * S.replay.t;

@@ -66,7 +66,7 @@ export function handlePulse(type, data) {
         S.nodes.push(n);
         S.byId.set(n.id, n);
         buildSim();
-        kickSim(0.5);
+        kickSim();
         spawnPulse(hadesNode(), n, { speed: 1.4 });
         emitFlows(n, { tone: 'accent', speed: 1.1 }); // tok po nových hranách uzla
         blip(520);
@@ -85,7 +85,7 @@ export function handlePulse(type, data) {
         const from = neighborsOf(n)[0] || hadesNode();
         spawnPulse(from, n, { speed: 1.6 });
         emitFlows(n, { tone: 'accent' }); // FÁZA ANIMÁCIE (Q10): tok po incidentných hranách
-        kickSim(0.12);
+        kickSim();
         blip(440);
     }
 
@@ -113,7 +113,7 @@ export function handlePulse(type, data) {
         if (S.edges.some((e) => e.id === data.edge.id)) return;
         S.edges.push({ ...data.edge, source: src, target: tgt });
         buildSim();
-        kickSim(0.2);
+        kickSim();
         spawnPulse(src, tgt, { speed: 1.2 });
         blip(660, 0.25, 0.035);
     }

@@ -34,7 +34,7 @@ export async function reloadGraph() {
         S._localFor = null; // nové hrany — BFS množinu prepočítať
 
         buildSim();
-        kickSim(0.3);
+        kickSim();
         updateHeaderMetrics();
         renderBreadcrumb();
         draw();

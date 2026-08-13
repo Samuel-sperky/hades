@@ -8,7 +8,7 @@ import { setupInput } from './interaction.js';
 import { setupPack } from './pack.js';
 import { buildLegend } from './panels.js';
 import { checkJournalUnread } from './rail.js';
-import { draw, fitView, frame, makeStars, publishNavApi, requestDraw, resize, scheduleFrame, setupVisibilityRepaint } from './render.js';
+import { draw, fitView, frame, publishNavApi, requestDraw, resize, scheduleFrame, setupVisibilityRepaint } from './render.js';
 import { setScreen } from './screens.js';
 import { setupHints, setupShortcuts } from './shortcuts.js';
 import { setView } from './sim.js';
@@ -35,7 +35,6 @@ function renderInitError() {
 async function init() {
     setTheme(initialTheme());
     resize();
-    makeStars();
     window.addEventListener('resize', () => { resize(); requestDraw(); }); // rozmer sa zmenil → prekresli
 
     let data;
@@ -71,8 +70,6 @@ async function init() {
     renderBreadcrumb();
     applyOpts();
     setView(S.view);
-    // prvé načítanie: nechaj simuláciu usadiť (~150 tikov spolu so setView) a fitni znova
-    if (S.sim && S.view !== 'layers') { S.sim.tick(120); fitView(); }
     setupCmdk();
     setupPack();
     setupPrompt();

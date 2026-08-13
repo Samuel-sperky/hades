@@ -55,7 +55,10 @@
     --accent-softer: #eef9f9;             /* --accent-tint */
     --accent-press: #a9dedf;              /* --accent-line, pressed */
     --border-accent: #a9dedf;             /* --accent-line */
-    --focus-ring: 0 0 0 3px rgba(3, 121, 126, .28);
+    /* Alfa .28 dávala voči --surface-2 len 1,48:1, WCAG 2.4.11 žiada 3:1 pre
+       indikátor fokusu. Nie je to regresia redizajnu (token bol taký aj predtým),
+       ale pribudli fokusovateľné prvky, takže na ňom teraz záleží. */
+    --focus-ring: 0 0 0 3px rgba(3, 121, 126, .85);
     /* glows are now soft teal-tinted RINGS/SHADOWS, never additive blooms */
     --glow-accent: 0 1px 2px rgba(15, 40, 38, .05), 0 6px 18px -10px rgba(3, 121, 126, .30);
     --glow-accent-lg: 0 8px 24px -12px rgba(3, 121, 126, .28);
@@ -264,7 +267,7 @@
     --accent-softer: rgba(5, 188, 196, .10);
     --accent-press: rgba(5, 188, 196, .24);
     --border-accent: rgba(5, 188, 196, .45);
-    --focus-ring: 0 0 0 3px rgba(5, 188, 196, .32);
+    --focus-ring: 0 0 0 3px rgba(5, 188, 196, .62);   /* .32 dávalo 2,02:1, viď svetlú tému */
     --glow-accent: 0 1px 2px rgba(0, 0, 0, .30), 0 6px 18px -10px rgba(5, 188, 196, .35);
     --glow-accent-lg: 0 8px 24px -12px rgba(5, 188, 196, .30);
     --gold-text: #d8b878;

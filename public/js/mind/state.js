@@ -15,7 +15,6 @@ export const S = {
     cam: { x: 0, y: 0, k: 0.85 },
     dpr: 1, w: 0, h: 0,
     pulses: [],
-    stars: [],
     hover: null,
     selected: null,
     focus: { areaId: null, departmentId: null },
