@@ -87,7 +87,9 @@ class McpController extends Controller
             return null;
         }
 
-        if (isset($result['jsonrpc'])) {
+        // `is_array` musí byť prvé: `ping` vracia (object) [] a `isset($obj['k'])`
+        // na stdClass je v PHP 8 fatálna chyba, takže každý ping padal na 500.
+        if (is_array($result) && isset($result['jsonrpc'])) {
             return $result;
         }
 

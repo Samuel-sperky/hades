@@ -56,6 +56,21 @@ class McpToolsTest extends TestCase
         return json_decode($text, true);
     }
 
+    // ---- ping: keepalive klientov -------------------------------------------
+
+    /**
+     * `ping` vracia prázdny objekt, nie pole — a `isset($result['jsonrpc'])` na
+     * stdClass je v PHP 8 fatálna chyba, takže KAŽDÝ ping padal na HTTP 500.
+     * Odhalilo sa to až pri stdio moste (bin/hades-mcp-stdio.mjs), lebo keepalive
+     * posielajú klienti, nie testy.
+     */
+    public function test_ping_returns_empty_result_instead_of_500(): void
+    {
+        $this->rpc('ping', id: 9)
+            ->assertOk()
+            ->assertExactJson(['jsonrpc' => '2.0', 'id' => 9, 'result' => []]);
+    }
+
     // ---- tools/list: nová schéma + nový tool -------------------------------
 
     public function test_tools_list_exposes_certainty_tags_and_mind_decision(): void
