@@ -9,8 +9,10 @@ use App\Models\Department;
 use App\Models\Edge;
 use App\Models\MergeCandidate;
 use App\Models\Node;
+use App\Models\Tag;
 use App\Models\Tombstone;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -246,7 +248,7 @@ class MindService
 
             if ($neighborIds->isNotEmpty()) {
                 $neighbors = Node::query()
-                    ->with(['area', 'department'])
+                    ->with(['area', 'department', 'tags'])
                     ->whereIn('id', $neighborIds->all())
                     // rozsah musí platiť aj na susedov, inak by hrana vytiahla
                     // uzol mimo projektu a obmedzenie by tichým bočným kanálom padlo
@@ -347,7 +349,7 @@ class MindService
 
         if ($nodes === null || $nodes->count() < $take) {
             $nodes = Node::query()
-                ->with(['area', 'department'])
+                ->with(['area', 'department', 'tags'])
                 ->when($areaIds, fn ($q) => $q->whereIn('area_id', $areaIds))
                 ->where(function ($q) use ($roots, $col) {
                     foreach ($roots as $root) {
@@ -362,11 +364,25 @@ class MindService
                 ->get();
         }
 
+        // Uzly, ktoré sedia LEN tagom. Kandidátske dopyty vyššie pozerajú na
+        // label a description, takže uzol s ručne dopísaným aliasom by sa medzi
+        // ne nedostal a skórovanie by nemalo čo hodnotiť. Namerané na živých
+        // dátach: 4 310 z 10 246 väzieb na tag nesie text, ktorý v uzle inak
+        // nie je — teda 42 % tagov niečo pridáva.
+        $nodes = $nodes->concat($this->tagCandidates($roots, $take, $areaIds))
+            ->unique(fn (Node $node) => $node->id);
+
         return $nodes
             ->map(function (Node $node) use ($concepts, $roots) {
+                // Tagy patria do haystacku: tag je ZÁMERNÝ alias, teda silnejší
+                // signál než náhodné slovo v popise. Skóre počíta zhodné
+                // koncepty, takže zhoda cez tag váži rovnako ako cez label —
+                // presne tak, ako to má byť.
+                $tags = $node->relationLoaded('tags') ? $node->tags->pluck('name')->implode(' ') : '';
+
                 // fold haystack — korene sú už foldnuté v queryConcepts, takže
                 // tvrdý prah je tiež necitlivý na diakritiku
-                $hay = ' '.$this->fold(trim($node->label.' '.(string) $node->description)).' ';
+                $hay = ' '.$this->fold(trim($node->label.' '.(string) $node->description.' '.$tags)).' ';
 
                 // koncept je zhoda, ak ho trafí aspoň jeden jeho koreň
                 $score = $concepts->filter(
@@ -385,6 +401,78 @@ class MindService
             ->sortByDesc(fn ($row) => $row['score'] * 1000 + min((float) $row['node']->strength, 999))
             ->take($limit)
             ->values();
+    }
+
+    /**
+     * Kandidáti nájdení cez TAG.
+     *
+     * Samostatný dopyt, nie ďalšia podmienka v tých vyššie: rýchla cesta cez
+     * FULLTEXT matchuje `MATCH(label, description)` a tag do nej nepatrí, takže
+     * uzol s aliasom by sa medzi kandidátov nedostal vždy — len keď by rýchla
+     * cesta nenaplnila strop a spustila sa tá pomalá.
+     *
+     * Slugy sa porovnávajú aj s pomlčkami nahradenými medzerou: tag „10-rokov“
+     * má nájsť dopyt „10 rokov“.
+     *
+     * Zhoda sa hľadá v PHP nad celou tabuľkou tagov, nie `LIKE`-om v SQL. Prvá
+     * verzia dávala do poddotazu `OR name LIKE '%koren%'` za každý koreň —
+     * pri dopyte s dvanástimi koreňmi to bolo 24 podmienok s úvodným
+     * zástupným znakom, teda bez šance na index: **5,34 s** na jeden recall.
+     * Tagov je 3 640, čo je v pamäti nič, a uzly sa potom doťahujú cez
+     * indexované `id`.
+     *
+     * @param  Collection<int, string>  $roots
+     * @return Collection<int, Node>
+     */
+    protected function tagCandidates(Collection $roots, int $take, ?array $areaIds = null): Collection
+    {
+        $terms = $roots->filter(fn (string $root) => mb_strlen($root) >= 3)->values();
+
+        if ($terms->isEmpty()) {
+            return collect();
+        }
+
+        $tagIds = collect($this->foldedTags())
+            ->filter(fn (string $name) => $terms->contains(fn (string $root) => mb_strpos($name, $root) !== false))
+            ->keys();
+
+        if ($tagIds->isEmpty()) {
+            return collect();
+        }
+
+        return Node::query()
+            ->with(['area', 'department', 'tags'])
+            ->when($areaIds, fn ($q) => $q->whereIn('area_id', $areaIds))
+            ->whereHas('tags', fn ($q) => $q->whereIn('tags.id', $tagIds))
+            ->orderByDesc('strength')
+            ->limit($take)
+            ->get();
+    }
+
+    /**
+     * `id => foldnuté meno` pre všetky tagy.
+     *
+     * Foldovať 3 640 mien pri každom recalle stálo 0,8 s — a recall beží pri
+     * každej správe. Kľúč nesie počet a najvyššie `id`, takže nový tag cache
+     * zneplatní sám a nečaká sa na TTL: uzol uložený pred sekundou musí byť
+     * dohľadateľný hneď.
+     *
+     * @return array<int, string>
+     */
+    protected function foldedTags(): array
+    {
+        $stamp = Tag::query()->selectRaw('COUNT(*) AS c, IFNULL(MAX(id), 0) AS m')->first();
+
+        return Cache::remember(
+            "mind:tags:folded:{$stamp->c}:{$stamp->m}",
+            3600,
+            fn () => Tag::query()
+                ->get(['id', 'name'])
+                ->mapWithKeys(fn (Tag $tag) => [
+                    $tag->id => ' '.$this->fold(str_replace('-', ' ', (string) $tag->name)).' ',
+                ])
+                ->all(),
+        );
     }
 
     /**
