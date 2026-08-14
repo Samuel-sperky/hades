@@ -6,20 +6,39 @@
 // WCAG 3:1 — svetlá téma potrebuje viac, jej akcent je tmavý na svetlom papieri),
 // muteL = cieľová OKLab svetlosť utlmenej palety. Všetky štyri sú kalibrované
 // meraním (scratchpad/gbcontrast.js číta tieto hodnoty živé z plátna).
+//
+// VLNA VZDUCH: ringRest = alfa POKOJOVÉHO prstenca uzla s tvarom. Predtým sa
+// tvarové uzly kreslili na alfe 1,0, a keďže od vlny A je na mape KAŽDÝ uzol
+// tvarový (zanorenie je filter, nie výmena scény), bolo plátno 1065 plne sýtych
+// obrysov — presne to, čo používateľ opakovane hlásil ako „nie je priehľadné".
+// Pokojový prstenec je textúra (informáciu nesie tvar oblaku, nie jeden obrys);
+// nositeľ informácie — pod kurzorom, vo výbere, s popiskom, jadro, hub — ide na
+// alfu 1,0 a hrubší obrys, takže WCAG 1.4.11 platí presne tam, kde má.
+//
+// Hodnoty NIE SÚ estetické, sú dorátané z merania (scratchpad/aircontrast.js číta
+// pixely prstencov pri devicePixelRatio 1, teda v najhoršom prípade antialiasingu):
+// pri ringRest 0,84 mal medián pokojového prstenca 3,85:1 (tmavá) / 3,74:1 (svetlá),
+// čo je hlboko NAD prahom 3:1 — utlmená paleta je oveľa silnejšia než jej vlastná
+// podlaha MUTE_FLOOR, pretože muteL cieli na 0,60 / 0,525, nie na podlahu. Táto
+// rezerva sa tu vymieňa za vzduch: 0,74 / 0,66 posadí medián pokojového prstenca
+// tesne NAD 3:1. Témy majú iné číslo, lebo miešanie k svetlému papieru padá inak
+// než k tmavému — rovnaká hodnota by dala rôzny výsledok, nie rovnaký dojem.
 export const THEMES = {
     light: {
         paper: '#f8f4f7', ink: '#101d1b', inkSoft: '#2d3a38', muted: '#566964',
         labelHalo: 'rgba(248,244,247,0.92)', edge: '45,58,56', gridColor: '3,121,126',
         accent: '3,121,126', outline: 'rgba(16,29,27,0.35)',
-        gridAlpha: 0.05, nodeFloor: 0.30, edgeFloor: 0.20,
-        meshA0: 0.070, meshA1: 0.210, ringA: 0.86, muteL: 0.525, markA: 0.50, hotA: 0.80, dark: false,
+        gridAlpha: 0.028, nodeFloor: 0.30, edgeFloor: 0.20,
+        meshA0: 0.070, meshA1: 0.210, ringA: 0.86, ringRest: 0.76,
+        muteL: 0.525, markA: 0.50, hotA: 0.80, dark: false,
     },
     dark: {
         paper: '#0e1413', ink: '#eaf3f1', inkSoft: '#c3d1ce', muted: '#8a9b98',
         labelHalo: 'rgba(14,20,19,0.92)', edge: '195,209,206', gridColor: '5,188,196',
         accent: '5,188,196', outline: 'rgba(234,243,241,0.30)',
-        gridAlpha: 0.09, nodeFloor: 0.35, edgeFloor: 0.25,
-        meshA0: 0.075, meshA1: 0.225, ringA: 0.82, muteL: 0.600, markA: 0.42, hotA: 0.66, dark: true,
+        gridAlpha: 0.045, nodeFloor: 0.35, edgeFloor: 0.25,
+        meshA0: 0.075, meshA1: 0.225, ringA: 0.82, ringRest: 0.74,
+        muteL: 0.600, markA: 0.42, hotA: 0.66, dark: true,
     },
 };
 export let T = THEMES.dark;

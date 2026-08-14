@@ -23,18 +23,14 @@
 
     <header id="app-header">
         <div class="h-left">
-            {{-- Wordmark: koruna ♛ (znak rodiny Šperky Aura) + názov + eyebrow.
-                 Koruna zostáva viditeľná VŽDY — je to jediná trvalá značka v hlavičke.
-                 Text sa skrýva, keď breadcrumb zobrazí cestu (jej prvý crumb je tiež
-                 „Hades", inak by hlavička písala „Hades / Hades / …") — o to sa stará
-                 syncUpButton() v util.js prepnutím triedy .deep. --}}
-            <span id="brand-name">
-                <span class="bm-mark" aria-hidden="true">♛</span>
-                <span class="bm-text">
-                    <span class="bm-word">Hades</span>
-                    <span class="bm-eyebrow">Šperky Aura · živé vedomie</span>
-                </span>
-            </span>
+            {{-- VLNA CHRÓM: wordmark sa presunul do railu (#brand-core). Hlavička je
+                 odteraz čisto KONTEXT: kde som (breadcrumb), v akom stave je Hades
+                 (čip) a čím na to siahnem (nástroje, hľadanie). Značka v raile je
+                 trvalá a nesúťaží s cestou; predtým boli na obrazovke naraz DVA znaky
+                 značky (lockup v hlavičke + zlaté súosé kruhy v raile) a v 44 px
+                 hlavičke sa dvojriadkový lockup navyše tlačil s breadcrumbom.
+                 Podtitul „Šperky Aura · živé vedomie" bol pri 9 px na hranici
+                 čitateľnosti — žije v tooltipe značky a v <title> dokumentu. --}}
             <button id="btn-up" class="hidden" type="button" title="O úroveň von (Esc)" aria-label="O úroveň von">
                 <span class="ms" aria-hidden="true">arrow_upward</span>
             </button>
@@ -66,11 +62,17 @@
     </header>
 
     <nav id="rail" aria-label="Hlavná navigácia">
-        <button id="brand-core" type="button" title="Hades — vycentrovať graf" aria-label="Hades — vycentrovať graf">
-            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+        {{-- ZNAČKA — jediný výskyt na obrazovke. Súosé kruhy sú kánonový znak Hadesa
+             (ten istý motív nesie favicon) a ich dýchanie je zároveň stav: bdie /
+             spí (trieda .asleep). Slovo pod znakom drží identitu bez toho, aby
+             súťažilo s hlavičkou. Klik naďalej vycentruje graf — logo, ktoré vracia
+             pohľad domov, je zaužívané a nesúperí so žiadnou inou funkciou. --}}
+        <button id="brand-core" type="button" title="Hades — Šperky Aura · živé vedomie (klik vycentruje graf)" aria-label="Hades — vycentrovať graf">
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
                 <circle cx="12" cy="12" r="3.6" fill="currentColor"/>
                 <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-width="1.6"/>
             </svg>
+            <span class="bc-word">Hades</span>
         </button>
 
         <div class="rail-group" role="group" aria-label="Obrazovky">
@@ -283,10 +285,6 @@
                         <input type="range" data-opt="edgeAlpha" min="0.1" max="1.5" step="0.05">
                         <output></output>
                     </label>
-                    <label class="slider">Obrysy uzlov
-                        <input type="range" data-opt="glow" min="0.2" max="1.5" step="0.05">
-                        <output></output>
-                    </label>
                     <label class="slider">Popisky
                         <input type="range" data-opt="labelAlpha" min="0" max="1.5" step="0.05">
                         <output></output>
@@ -300,10 +298,14 @@
                         <input type="range" data-opt="labelSize" min="0.7" max="1.5" step="0.05">
                         <output></output>
                     </label>
-                    <div class="switch-row">
-                        <span id="sizedeg-label">Veľkosť podľa spojení</span>
-                        <button id="sizedeg-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="sizedeg-label"></button>
-                    </div>
+                    {{-- „Žiara" (data-opt="glow") a „Veľkosť podľa spojení" (#sizedeg-toggle)
+                         sú zmazané. Ani jednu hodnotu nečítal žiadny renderovací modul:
+                         nodeRadius() škáluje podľa stupňa VŽDY (je to súčasť vizuálneho
+                         jazyka, nie voľba) a obrysy uzlov si alfu berú z palety témy.
+                         Prepínač navyše platil plný buildSim()+kickSim() (40–190 ms) a
+                         nové usadzovanie za nulovú vizuálnu zmenu. Rovnako predtým
+                         zmizli slidery síl — ovládač, ktorý nič nerobí, je horší než
+                         chýbajúci ovládač. --}}
                     <div class="row">
                         <button id="opts-reset">Obnoviť predvolené</button>
                     </div>

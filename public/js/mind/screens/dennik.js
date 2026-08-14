@@ -1,6 +1,6 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere } from '../screens.js';
-import { $, esc, renderEmpty, renderLoading, ts } from '../util.js';
+import { $, esc, isMachineName, prettyLabel, prettyProject, renderEmpty, renderLoading, ts } from '../util.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
@@ -40,14 +40,31 @@ export async function renderJournal() {
     }
 }
 
+/* Sessions bez projektu majú v dátach každá svoj strojový názov („mystifying-
+   mclaren-23750a"), takže filter z nich robil rad jednopočetných čipov — a po
+   preklade na ľudský text tri čipy „bez projektu 1" vedľa seba. Patria do JEDNEJ
+   skupiny: „bez projektu". Kľúč skupiny je sentinel, ktorý sa nemôže zhodovať so
+   žiadnym názvom projektu (mriežka nie je v adresárových názvoch). */
+export const JOURNAL_NO_PROJECT = '#bez-projektu';
+
+function journalKey(project) {
+    if (!project) return null;
+    return isMachineName(project) ? JOURNAL_NO_PROJECT : project;
+}
+
+function journalKeyLabel(key) {
+    return key === JOURNAL_NO_PROJECT ? 'bez projektu' : prettyProject(key);
+}
+
 export function renderJournalFilter() {
     const wrap = $('journal-filter');
     // Poradie podľa počtu záznamov — v zbalenom rade tak ostanú tie, ktoré sa reálne
     // používajú, nie tie, čo prišli v dátach prvé.
     const counts = new Map();
     for (const r of journalRecords) {
-        if (!r.project) continue;
-        counts.set(r.project, (counts.get(r.project) || 0) + 1);
+        const k = journalKey(r.project);
+        if (!k) continue;
+        counts.set(k, (counts.get(k) || 0) + 1);
     }
     const projects = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b, 'sk'));
     if (journalProject && !projects.includes(journalProject)) journalProject = null;
@@ -60,8 +77,9 @@ export function renderJournalFilter() {
 
     wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '" data-project="">Všetky</button>'
         + shown.map((p) =>
+            // data-project nesie KĽÚČ skupiny (filtruje sa ním), popisok ľudský text
             '<button type="button" class="chip' + (journalProject === p ? ' active' : '') + '" data-project="' + esc(p) + '">'
-            + esc(p) + '<span class="chip-n">' + counts.get(p) + '</span></button>'
+            + esc(journalKeyLabel(p)) + '<span class="chip-n">' + counts.get(p) + '</span></button>'
         ).join('')
         + (hiddenCount ? '<button type="button" class="chip chip-more" id="journal-chips-more">'
             + (journalChipsOpen ? 'menej' : '+' + hiddenCount + ' viac') + '</button>' : '');
@@ -87,7 +105,7 @@ export function renderJournalList() {
     }
 
     const records = journalProject
-        ? journalRecords.filter((r) => r.project === journalProject)
+        ? journalRecords.filter((r) => journalKey(r.project) === journalProject)
         : journalRecords;
 
     if (!records.length) {
@@ -115,7 +133,7 @@ export function renderJournalList() {
         // zjedol šírku (a názov by sa preto skrátil). V takom prípade chip vynecháme.
         const titleHasProject = r.project && r.label
             && r.label.toLowerCase().startsWith(String(r.project).toLowerCase());
-        if (r.project && !titleHasProject) badges.push('<span class="tag">' + esc(r.project) + '</span>');
+        if (r.project && !titleHasProject) badges.push('<span class="tag">' + esc(prettyProject(r.project)) + '</span>');
         if (r.file_count) badges.push('<span class="tag muted">' + r.file_count + ' súb.</span>');
         if (r.commits && r.commits.length) {
             const c = r.commits.length;
@@ -127,7 +145,7 @@ export function renderJournalList() {
         html += '<div class="li-wrap rec-wrap">'
             + '<button type="button" class="record" data-id="' + r.id + '" data-label="' + esc(r.label) + '">'
             + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
-            + '<span class="record-title">' + esc(r.label) + '</span>'
+            + '<span class="record-title">' + esc(prettyLabel(r.label, r.project)) + '</span>'
             + (badges.length ? '<span class="record-tags">' + badges.join('') + '</span>' : '')
             + '<span class="record-time">' + timeHM(r.created_at) + '</span></div>'
             + '</button>'

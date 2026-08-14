@@ -8,7 +8,7 @@ import { buildSim, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
 import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
-import { $, busy, emptyHtml, esc, nodeColor, renderEmpty, timeAgo, updateHeaderMetrics } from './util.js';
+import { $, busy, emptyHtml, esc, nodeColor, plainBlock, renderEmpty, timeAgo, updateHeaderMetrics } from './util.js';
 
 /* ---------- panely ---------- */
 export async function selectNode(n) {
@@ -26,7 +26,10 @@ export async function selectNode(n) {
     $('node-swatch').style.background = nc;
     $('node-panel').style.setProperty('--node-c', nc);
     $('node-label').textContent = n.label;
-    $('node-desc').textContent = n.description || '';
+    // Popis záznamu je markdown („**Čo:** … **Výsledok:** …"). Panel ho vykresľuje
+    // ako text s pre-wrap, takže bez plainBlock() v ňom svietila surová syntax;
+    // riadkovanie zostáva, lebo v ňom je štruktúra záznamu.
+    $('node-desc').textContent = plainBlock(n.description);
     $('node-meta').textContent = 'sila ' + (n.strength || 1).toFixed(0);
     renderNodeBadges(n); // F4: origin + cert + značky
 

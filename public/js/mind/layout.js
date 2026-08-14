@@ -79,14 +79,49 @@ export function viewInsets() {
 export function panelReserve() { return cssPx('--panel-w', 300); }
 export function edgePx() { return cssPx('--edge', 16); }
 
-// Okraje pre kameru: navyše uhnú otvorenému bočnému panelu.
+/* Bočné panely a strana, na ktorej NAOZAJ stoja (CSS: #dock `left`, #node-panel
+   aj #pack-drawer `right`). Predtým tu bol jeden `some()` a rezerva sa pripisovala
+   vždy vpravo — teda aj za ľavý #dock. Dôsledok bol zmeraný: s otvoreným dockom
+   ležalo 13 z 30 popiskov a vodoznakov ZA panelom (layoutNodeLabels si výrez berie
+   presne odtiaľto) a fitView() scénu posunul o ďalších 163 px doľava, teda hlbšie
+   pod panel.
+
+   Šírky čítame z tokenov, nie z getBoundingClientRect(): camInsets() beží v každom
+   frame (render si ním obmedzuje plochu pre popisky), takže meranie z DOM by si
+   vynútilo reflow 60× za sekundu. */
+const SIDE_PANELS = [
+    // #dock je pod 900 px presunutý k pravej hrane; stranu preto neurčuje JS, ale
+    // token --dock-at-left, ktorý prepína to isté @media pravidlo (1 = vľavo).
+    { id: 'dock', side: () => (cssPx('--dock-at-left', 1) ? 'left' : 'right'), token: '--panel-w', fallback: 300 },
+    { id: 'node-panel', side: () => 'right', token: '--panel-w', fallback: 300 },
+    { id: 'pack-drawer', side: () => 'right', token: '--drawer-w', fallback: 320 },
+];
+
+// Otvorené bočné panely. Stav sa číta z DOM pri KAŽDOM volaní (žiadny zapamätaný
+// „wasOpen"), takže hneď po mutácii triedy dáva aktuálnu odpoveď.
+export function openSidePanels() {
+    const out = [];
+    for (const p of SIDE_PANELS) {
+        const el = document.getElementById(p.id);
+        if (el && !el.classList.contains('hidden')) out.push(p);
+    }
+    return out;
+}
+
+// Okraje pre kameru: navyše uhnú otvorenému bočnému panelu — na tej strane, kde
+// panel stojí. Dva panely na tej istej strane sa vizuálne prekrývajú (oba sedia na
+// `right: var(--edge)`), preto sa berie ich maximum, nie súčet.
 export function camInsets() {
     const ins = viewInsets();
-    const open = ['node-panel', 'dock', 'pack-drawer'].some((id) => {
-        const el = document.getElementById(id);
-        return el && !el.classList.contains('hidden');
-    });
-    if (open) ins.right += cssPx('--panel-w', 300) + cssPx('--edge', 16);
+    const gap = edgePx();
+    let addL = 0, addR = 0;
+    for (const p of openSidePanels()) {
+        const w = cssPx(p.token, p.fallback) + gap;
+        if (p.side() === 'left') addL = Math.max(addL, w);
+        else addR = Math.max(addR, w);
+    }
+    ins.left += addL;
+    ins.right += addR;
     return ins;
 }
 
@@ -308,8 +343,12 @@ function buildLayerBands() {
 
 /* ---------- kotvy pre fyziku ---------- */
 
+// S.departments.size tu MUSÍ byť: pod-kotvy oddelení sa rozsievajú zlatým uhlom
+// podľa ich počtu, takže `department.created` (a presun prvého uzla do dovtedy
+// prázdneho oddelenia) mení kotvy. Bez toho podpis nezmenil hodnotu, cache vrátila
+// staré kotvy a nové uzly gravitovali k ťažisku celej oblasti.
 function anchorSig() {
-    return [S.gview, S.nodes.length, S.edges.length, S.areas.size,
+    return [S.gview, S.nodes.length, S.edges.length, S.areas.size, S.departments.size,
         Math.round(targetAspect() * 20), Math.round((S._netStretch || 1) * 100)].join('|');
 }
 

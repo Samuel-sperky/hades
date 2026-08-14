@@ -91,7 +91,23 @@ export function handlePulse(type, data) {
 
     if (type === 'node.updated' && data.node) {
         const n = S.byId.get(data.node.id);
-        if (n) Object.assign(n, data.node);
+        if (n) {
+            // Object.assign sám nestačí: keď sa uzol presunie (mind_move) alebo zmení
+            // typ, zmenila sa jeho KOTVA a jeho miesto vo filtri — a to sú veci, ktoré
+            // si layout aj anchors cachujú. Podpis layoutu pritom závisí len od počtov,
+            // takže po presune zostal uzol vizuálne v starej oblasti (staré dim/kind)
+            // až do najbližšieho reloadu. Prestavbu platíme LEN pri štrukturálnej zmene,
+            // premenovanie a nový popis sú aj naďalej lacné.
+            const sig = (m) => [m.area_id, m.department_id, m.type, m.source].join('|');
+            const before = sig(n);
+            Object.assign(n, data.node);
+            if (sig(n) !== before) {
+                S._anchors = null;   // pod-kotvy oddelení sa počítajú z obsadenosti
+                S._localFor = null;  // BFS cache lokálneho grafu
+                buildSim();          // computeLayout(true) + nové kotvy + dousadenie
+                kickSim();
+            }
+        }
     }
 
     if (type === 'node.deleted') {

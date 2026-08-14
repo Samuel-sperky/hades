@@ -1,7 +1,7 @@
 import { mdToHtml } from '../md.js';
 import { setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyHtml, esc, renderEmpty, renderLoading } from '../util.js';
+import { $, busy, emptyHtml, esc, plainText, renderEmpty, renderLoading } from '../util.js';
 
 /* ---------- obrazovka Smernica (/api/directive/*) ----------
    Prompt builder: úloha → Hades poskladá KDE ČO NÁJDE (skilly, projekty,
@@ -164,7 +164,9 @@ export function dirItem(key, it) {
     let sub = '';
     if (key === 'skills' && it.path) sub = '<code class="dir-path">' + esc(it.path) + '</code>';
     else if (key === 'projects' && it.info) sub = '<span class="dir-sub">' + esc(it.info) + '</span>';
-    else if (it.snippet) sub = '<span class="dir-sub">' + esc(it.snippet) + '</span>';
+    // Náhľad položky = obyčajný text; markdown zostáva len vo VÝSTUPE smernice
+    // (dirOneLine nižšie), ktorý číta Claude Code, nie človek na obrazovke.
+    else if (it.snippet) sub = '<span class="dir-sub">' + esc(plainText(it.snippet)) + '</span>';
 
     let badge = '';
     if (key === 'skills') {

@@ -121,11 +121,14 @@ export function renderBreadcrumb() {
     if (!bc) return;
 
     const crumbs = p.crumbs || [];
-    if (crumbs.length < 2) {
-        // Sme na mape — cesta je len „Hades". Podtitul „živé vedomie" tu BÝVAL,
-        // ale eyebrow wordmarku ho teraz hovorí sám, takže by stál dvakrát vedľa
-        // seba. Breadcrumb preto na mape mlčí.
-        bc.innerHTML = '';
+    if (!crumbs.length) { bc.innerHTML = ''; return; }
+    /* Na najvyššej úrovni breadcrumb odteraz NEMLČÍ (predtým ho zastupoval eyebrow
+       wordmarku v hlavičke, ktorý sa vlnou CHRÓM presunul do railu — hlavička Grafu
+       by inak bola prázdna). Nevypisuje sa tam ale názov vedomia: ten je 150 px
+       vľavo v raile a dve „Hades" vedľa seba nič nepridajú. Koreň jednoprvkovej
+       cesty preto povie STAV — že sieť nie je nijako zúžená. */
+    if (crumbs.length === 1) {
+        bc.innerHTML = '<span class="current">celá sieť</span>';
         return;
     }
 
@@ -148,10 +151,9 @@ export function renderBreadcrumb() {
 }
 
 // W2c: #btn-up nahradil mŕtvy #view-switch — na mape nie je kam ísť, tak sa skryje.
-// Zároveň: prvý crumb je názov vedomia, takže pri zobrazenej ceste by statický
-// wordmark písal „Hades / Hades / …". VLNA BRAND: neskrýva sa už celý lockup
-// (tým by z hlavičky zmizla značka úplne), ale len jeho TEXT — koruna ♛ zostáva
-// ako trvalý znak. Robí to trieda .deep, CSS skryje .bm-text.
+// VLNA CHRÓM: prepínanie triedy .deep na wordmarku zmizlo spolu s wordmarkom —
+// značka je v raile, takže hlavička už nemá s čím kolidovať a breadcrumb nesie
+// celú cestu vrátane koreňového „Hades".
 function syncUpButton(p) {
     const deep = !!(p.crumbs && p.crumbs.length > 1);
     const up = document.getElementById('btn-up');
@@ -160,8 +162,6 @@ function syncUpButton(p) {
         const parent = deep ? p.crumbs[p.crumbs.length - 2].label : 'Hades';
         up.title = 'Späť na „' + parent + '" (Esc)';
     }
-    const brand = document.getElementById('brand-name');
-    if (brand) brand.classList.toggle('deep', deep);
 }
 
 export function markTreeActive() {
@@ -254,6 +254,98 @@ export function updateStateUi() {
 export function $(id) { return document.getElementById(id); }
 export function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ---------- surové strojové čítanie → ľudský text ----------
+
+   Tri veci presakovali z databázy priamo na obrazovku a všetky tri sú kozmetika,
+   ktorá patrí do UI, nie do dát:
+
+   1) markdown v náhľadoch. `description` záznamu je markdown („**Čo:** …
+      **Výsledok:** …"), takže náhľad vypisoval hviezdičky a spätné apostrofy.
+   2) neformátované tisíce — „18322 za rok" sa v mono číta ako kód, nie ako počet.
+   3) strojové názvy sessions („mystifying-mclaren-23750a"), ktoré Claude Code
+      generuje pre dočasné adresáre a ktoré sa sem dostali ako názov projektu.
+
+   Zdrojové dáta sa NEMENIA (Hades ich vidí presne také, aké sú) — mení sa len to,
+   čo z nich prečíta človek. */
+
+// Markdown → obyčajný text pre jednoriadkové náhľady. Nie je to parser: zmaže
+// zvýrazňovanie, kód, odkazy a nadpisy a zlepí zvyšok do jedného riadka.
+export function plainText(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/```[\s\S]*?```/g, ' ')          // bloky kódu
+        .replace(/`([^`]+)`/g, '$1')              // inline kód
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')// odkazy a obrázky → len text
+        .replace(/(\*\*|__)(.*?)\1/g, '$2')       // bold
+        .replace(/(^|[\s(])[*_]([^*_\n]+)[*_](?=[\s).,;:!?]|$)/g, '$1$2') // italic
+        .replace(/^\s{0,3}#{1,6}\s+/gm, '')       // nadpisy
+        .replace(/^\s{0,3}[-*+]\s+/gm, '')        // odrážky
+        .replace(/^\s{0,3}>\s?/gm, '')            // citácie
+        // Zvyšky NEPÁROVÉHO zvýraznenia. Snippety prichádzajú z backendu odseknuté
+        // („… **Výsledok..."), takže párové pravidlá vyššie na ne nesadnú a v UI
+        // svietil zvyšok syntaxe — zmerané na 2 zo 6 živých záznamov.
+        .replace(/\*\*|__|`/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/* To isté pre VIACRIADKOVÝ text (popis uzla v paneli detailu, ktorý sa vykresľuje
+   s `white-space: pre-wrap`): zmaže syntax zvýraznenia, ale NEZLEPÍ riadky —
+   odseky, odrážky a prázdne riadky sú tu nositeľom štruktúry. Zámerne to nie je
+   mdToHtml: panel je 300 px široký a plná sadzba markdownu (tabuľky, bloky kódu)
+   by doň nepatrila. */
+export function plainBlock(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/```([a-z]*)\n?([\s\S]*?)```/gi, '$2')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/(\*\*|__)(.*?)\1/g, '$2')
+        .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+        .replace(/^\s{0,3}>\s?/gm, '')
+        .replace(/\*\*|__|`/g, '')          // nepárové zvyšky (odseknuté snippety)
+        .replace(/[ \t]+$/gm, '')
+        .trim();
+}
+
+// Tisíce s pevnou medzerou (sk formát). Mono + tabular-nums drží čísla v stĺpci,
+// medzera z nich robí počet: 18 322 namiesto 18322.
+export function fmtNum(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '0';
+    // Oddeľovač normalizujeme na NEZLOMITEĽNÚ medzeru explicitným escapom —
+    // toLocaleString vracia podľa platformy raz U+0020, raz U+00A0, raz U+202F
+    // a číslo sa potom v úzkom stĺpci láme na dva riadky.
+    return Math.round(v).toLocaleString('sk-SK').replace(/[\s\u00a0\u202f]/g, '\u00a0');
+}
+
+/* Strojové názvy sessions: „mystifying-mclaren-23750a" — dve anglické slová a hex
+   chvost, ktorý generuje Claude Code pre dočasný adresár. Ako názov projektu
+   nenesie žiadny význam, takže sa v UI ukáže ako „bez projektu". Pravidlo je
+   zámerne úzke (dve slová malými + ≥5 znakov alfanumerického chvosta so číslicou),
+   aby nezožralo reálne názvy typu „sperky-ai" alebo „hades-redizajn". */
+const MACHINE_SLUG = /^[a-z]{3,}-[a-z]{3,}-(?=[a-z0-9]*\d)[a-z0-9]{5,}$/;
+
+export function isMachineName(s) {
+    return MACHINE_SLUG.test(String(s || '').trim());
+}
+
+export function prettyProject(s) {
+    return isMachineName(s) ? 'bez projektu' : String(s || '');
+}
+
+/* Názov záznamu často začína názvom projektu („mystifying-mclaren-23750a — práca
+   13.8.2026"). Keď je ten názov strojový, celý prefix aj s oddeľovačom vypadne a
+   zostane to, čo záznam naozaj hovorí: „Práca 13.8.2026". Dopísať namiesto neho
+   „Bez projektu — …" by len nahradilo jeden šum druhým. */
+export function prettyLabel(label, project) {
+    const l = String(label || '');
+    if (!project || !isMachineName(project) || !l.startsWith(project)) return l;
+    const rest = l.slice(String(project).length).replace(/^\s*[—–-]\s*/, '').trim();
+    if (!rest) return 'Bez projektu';
+    return rest.charAt(0).toUpperCase() + rest.slice(1);
 }
 
 // Async spätná väzba tlačidiel — disable + dočasný text počas behu

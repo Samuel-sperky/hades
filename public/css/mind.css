@@ -110,17 +110,35 @@
          left   = --edge + --rail-w + --edge      (16 + 72 + 16 = 104 → dnes 112)
          top    = --edge + --header-h + --sp-1    (16 + 44 +  8 =  68)
          right  = --edge                          (+ --panel-w + --edge, keď je
-                  otvorený #node-panel/#dock → 16 + 300 + 16 = 332)
+                  otvorený #node-panel → 16 + 300 + 16 = 332)
          bottom = --edge                          (dnes 48 = --edge + --sp-4)
-       --panel-w je responzívny — prepisujú ho @media 1280px a 900px nižšie. */
-    --rail-w: 72px;
+       --panel-w je responzívny — prepisujú ho @media 1280px a 900px nižšie.
+       POZOR na stranu: #dock stojí VĽAVO (left: --content-left), #node-panel aj
+       #pack-drawer vpravo. camInsets() v layout.js pripisuje rezervu podľa toho,
+       preto má zásuvka balíka vlastný token — jej šírka nie je --panel-w. */
+    /* 72 → 80: pri 72 px sa najdlhší názov destinácie („Rozhodnutia") nezmestil a
+       primárna navigácia mala v sebe výpustku („Rozhodnu…"). Slovo je jedno, takže
+       zalomiť sa nedá — jediná čestná oprava je pár pixelov šírky. Layout grafu si
+       hodnotu číta z tokenu, takže sa okraje scény dorovnajú samé. */
+    --rail-w: 80px;
     --header-h: 44px;
     --panel-w: 300px;
+    --drawer-w: 320px;
+    /* Na ktorej strane stojí #dock. 1 = vľavo (predvolené), 0 = vpravo — pod 900px
+       ho @media presúva k pravej hrane. camInsets() si stranu ČÍTA odtiaľto, aby
+       si mediálnu podmienku nekopírovala do JS a nerozišla sa s CSS. */
+    --dock-at-left: 1;
     /* Derivované — ľavý/horný okraj obsahovej plochy (hlavička, #screens, panely) */
     --content-left: calc(var(--edge) + var(--rail-w) + var(--edge));   /* 104px */
     --content-top: calc(var(--edge) + var(--header-h) + var(--sp-1));  /* 68px */
 
-    /* ---- type scale ---- */
+    /* ---- type scale ----
+       VLNA CHRÓM: pridaný --fs-micro. Nebol to nový krok škály, len sa dovtedy
+       písal 13× ručne ako 10px / 10.5px (a 11.5 / 12.5 pri caption a small) —
+       teda tri veľkosti bez tokenu na tých istých úlohách. Škála má odteraz
+       jediný zdroj pravdy: micro → caption → small → body → base → title →
+       display, plus dva zvlášť pomenované displeje (--fs-kpi, --fs-metric). */
+    --fs-micro: 10px;     --lh-micro: 1.3;
     --fs-caption: 11px;   --lh-caption: 1.4;
     --fs-small: 12px;     --lh-small: 1.4;
     --fs-body: 13px;      --lh-body: 1.5;
@@ -136,9 +154,16 @@
     --fw-medium: 500;
     --fw-semibold: 600;
 
-    /* ---- icon size tiers ---- */
+    /* ---- icon size tiers ----
+       VLNA CHRÓM: pod --icon-sm existovali ešte 14px, 15px a 16px ikony písané
+       ručne na 12 miestach — teda tri neevidované stupne. Sú z nich dva tokeny;
+       15px sa dorovnalo na 16. Dekoratívne ilustrácie prázdnych stavov (28px, 48px)
+       zostávajú jednorazové zámerne — nie sú to stupne škály, ale kresba. */
+    --icon-2xs: 14px;
+    --icon-xs: 16px;
     --icon-sm: 18px;
     --icon-md: 20px;
+    --icon-lg: 22px;
 
     /* ---- fonts ---- */
     --font: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -209,8 +234,13 @@
     --heat-3: #189aa0;
     --heat-4: #036d72;                    /* densest — deep accent teal (5.61:1 on paper) */
 
-    /* ---- dashboard type scale ---- */
+    /* ---- dashboard type scale ----
+       Tri stupne odpočtu, aby dashboard mal hierarchiu a nie šesť rovnako veľkých
+       čísel: --fs-hero (jedno hlavné číslo obrazovky) → --fs-kpi (druhý rad) →
+       --fs-metric (čísla v paneloch a kartách). */
+    --fs-hero: 44px;  --lh-hero: 1;       /* JEDNO primárne číslo na obrazovku */
     --fs-kpi: 30px;   --lh-kpi: 1;        /* big mono KPI readouts */
+    --fs-metric: 24px;                    /* readouts v paneloch (dock, karty) */
     --fs-h1: 28px;                        /* screen title (serif) */
     --fs-h2: 16px;                        /* dashboard block / section heading */
 
@@ -548,18 +578,31 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     z-index: var(--z-chrome);
 }
 
-/* The breathing consciousness core — the ONE reserved gold moment. */
+/* ZNAČKA V RAILE — dýchajúce jadro vedomia (jediná vyhradená zlatá plocha)
+   plus wordmark. VLNA CHRÓM: identita sa presunula z hlavičky sem, takže znak
+   a slovo tvoria jeden zvislý lockup v šírke destinácií (60px), nie dva súperiace
+   znaky na dvoch miestach. Zlatá zostáva len na znaku — slovo je v --text, inak by
+   z lockupu bola jedna zlatá škvrna a „jeden vyhradený zlatý moment" by padol. */
 #brand-core {
     position: relative;
     color: var(--brand-gold);
-    width: 44px; height: 44px;
-    display: flex; align-items: center; justify-content: center;
+    width: 68px; height: auto;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px;
     background: none; border: none;
     filter: drop-shadow(0 1px 2px rgba(138, 100, 23, .35));
     animation: core-pulse 4s var(--ease) infinite;
     transition: filter var(--dur-ambient) var(--ease), opacity var(--dur-ambient) var(--ease);
-    padding-bottom: var(--sp-1);
+    padding: var(--sp-0) 2px var(--sp-1);
     margin-bottom: var(--sp-0);
+}
+#brand-core .bc-word {
+    font-family: var(--font);
+    font-size: var(--fs-micro);
+    font-weight: 660;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+    color: var(--text);
 }
 #brand-core::after {
     content: "";
@@ -569,11 +612,13 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     background: var(--line-soft);
 }
 #brand-core:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-md); }
+/* Spánok stlmí ZNAK, nie slovo: pri opacity na celom tlačidle by wordmark spadol
+   na polovičnú alfu a s ňou pod 4,5:1 — stav vedomia sa nesmie platiť čitateľnosťou. */
 #brand-core.asleep {
     animation-play-state: paused;
-    opacity: .5;
     filter: drop-shadow(0 0 2px rgba(216, 184, 120, .25));
 }
+#brand-core.asleep svg { opacity: .5; }
 
 @keyframes core-pulse {
     0%, 100% { filter: drop-shadow(0 0 6px rgba(216, 184, 120, .45)); }
@@ -625,16 +670,16 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 
 /* FÁZA SHELL: pomenované destinácie — ikona + text pod ňou */
 #rail .rail-group button.dest {
-    width: 60px; height: auto; min-height: 52px;
+    width: 68px; height: auto; min-height: 52px;
     flex-direction: column;
     justify-content: center;
     gap: 3px;
     padding: var(--sp-1) 2px;
     border-radius: var(--r-md);
 }
-#rail .rail-group button.dest .ms { font-size: 22px; line-height: 1; }
+#rail .rail-group button.dest .ms { font-size: var(--icon-lg); line-height: 1; }
 #rail .rail-group button.dest .lbl {
-    font-size: 10px;
+    font-size: var(--fs-micro);
     font-weight: var(--fw-medium);
     letter-spacing: 0.01em;
     line-height: 1.1;
@@ -676,52 +721,12 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     overflow: hidden;
 }
 #app-header .h-center { flex: 0 0 auto; }
-/* ---------------------------------------------------------------------------
-   WORDMARK — koruna ♛ + „Hades" + eyebrow (kánon rodiny Šperky Aura).
-   Hlavička má zostať odľahčená (overený stav: sklo + hairline, žiadne tienidlá),
-   takže lockup je tichý a malý: koruna 13px zlatá, názov 660/−.025em, eyebrow
-   9px uppercase .2em. Vertikálne sa to zmestí do --header-h (44px).
-   --------------------------------------------------------------------------- */
-#brand-name {
-    display: flex; align-items: center; gap: var(--sp-1);
-    flex-shrink: 0;
-    min-width: 0;
-}
-/* Koruna je ZNAK ZNAČKY, preto zlatá — jediná vyhradená zlatá plocha v hlavičke.
-   Vlastný font-stack: Geist glyf U+265B nemá, bez fallbacku by tu bolo tofu. */
-#brand-name .bm-mark {
-    font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", var(--serif), serif;
-    font-size: 13px;
-    line-height: 1;
-    color: var(--gold-text);
-    flex-shrink: 0;
-}
-#brand-name .bm-text {
-    display: flex; flex-direction: column; gap: 1px;
-    min-width: 0;
-}
-#brand-name .bm-word {
-    font-family: var(--font);
-    font-weight: 660;
-    font-size: var(--fs-body);
-    letter-spacing: -.025em;
-    line-height: 1.05;
-    color: var(--text);
-    white-space: nowrap;
-}
-#brand-name .bm-eyebrow {
-    font-family: var(--font);
-    font-size: 9px;
-    font-weight: var(--fw-medium);
-    text-transform: uppercase;
-    letter-spacing: .2em;
-    line-height: 1;
-    color: var(--gold-text);
-    white-space: nowrap;
-}
-/* Zanorená cesta: breadcrumb už názov nesie sám, takže text lockupu ustúpi
-   a v hlavičke zostane len koruna ako trvalá značka. */
-#brand-name.deep .bm-text { display: none; }
+/* VLNA CHRÓM: #brand-name (koruna ♛ + „Hades" + eyebrow) je z hlavičky zmazaný —
+   značka žije v raile (#brand-core). Hlavička nesie len kontext a nástroje, takže
+   breadcrumb začína na ľavej hrane a v 44 px sa už netlačí s dvojriadkovým lockupom.
+   Koruna sa zo chrómu stiahla celá: dva rôzne znaky tej istej značky (koruna +
+   súosé kruhy) boli o jeden viac. Vrátiť ju znamená doplniť <span class="bc-mark">♛
+   do #brand-core a dať mu font-stack so „Segoe UI Symbol" (Geist glyf U+265B nemá). */
 #breadcrumb {
     display: flex; align-items: center; gap: 2px;
     min-width: 0;
@@ -744,7 +749,14 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 }
 #breadcrumb .crumb:hover { background: var(--hover-fill); color: var(--text); }
 #breadcrumb .crumb:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-#breadcrumb .current { color: var(--text); padding: 2px 6px; }
+/* Aktuálne miesto je jediná vec, ktorú hlavička hovorí o obsahu (mimo Grafu je to
+   názov obrazovky), takže má váhu — pri 12 px vedľa stavového čipu sa strácalo. */
+#breadcrumb .current {
+    color: var(--text);
+    padding: 2px 6px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+}
 #breadcrumb .sep { color: var(--border-strong); flex-shrink: 0; }
 /* .crumb-idle zmazané: podtitul „živé vedomie" na mape prevzal eyebrow wordmarku
    (renderBreadcrumb v util.js už na mape nič nevypisuje), takže selektor nemal
@@ -1039,7 +1051,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
    Tichšia než riadky legendy, ale stále nad AA: --muted drží 6,4:1 / 5,35:1. */
 .legend-note {
     margin: var(--sp-1) 10px 0;
-    font-size: 11px;
+    font-size: var(--fs-caption);
     line-height: var(--lh-body);
     color: var(--muted);
 }
@@ -1049,7 +1061,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .legend-row.legend-strength .cap {
     margin-left: var(--sp-0);
     font-family: var(--mono);
-    font-size: 10.5px;
+    font-size: var(--fs-micro);
     letter-spacing: var(--ls-mono);
     color: var(--muted);
 }
@@ -1076,7 +1088,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .result-divider {
     display: flex; align-items: center; gap: var(--sp-1);
     font-family: var(--mono);
-    font-size: 10.5px;
+    font-size: var(--fs-micro);
     line-height: var(--lh-caption);
     text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
@@ -1112,7 +1124,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pb-item .pb-snippet {
-    font-size: 11.5px;
+    font-size: var(--fs-caption);
     color: var(--muted);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1403,7 +1415,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     background: none;
     color: var(--gold-text);
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: var(--fs-caption);
     font-weight: var(--fw-semibold);
     display: inline-flex; align-items: center; justify-content: center;
     flex-shrink: 0;
@@ -1473,7 +1485,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     padding: 0;
     border-radius: 50%;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--icon-2xs);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .ctx-x:hover { background: var(--accent-soft); color: var(--accent-ink); }   /* W3b: 2,58:1 → ink */
@@ -1818,12 +1830,12 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     opacity: .5;
     font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
-.empty p { font-size: 12.5px; line-height: var(--lh-body); color: var(--muted); }
+.empty p { font-size: var(--fs-small); line-height: var(--lh-body); color: var(--muted); }
 /* Druhý riadok „čo s tým" — o stupeň tichší než konštatovanie nad ním.
    Zámerne NIE nová farba: rovnaký --muted, len menšie písmo, aby prázdny stav
    zostal jednou tichou plochou a nezačal vyzerať ako upozornenie. */
 .empty .hint {
-    font-size: 11.5px;
+    font-size: var(--fs-caption);
     margin-top: -2px;
     max-width: 34ch;
     color: var(--muted);
@@ -1890,8 +1902,11 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .empty.empty-network .ms { font-size: 48px; color: var(--gold); opacity: 1; }
 .empty.empty-network .title {
     font-family: var(--serif);
-    font-weight: var(--fw-semibold);
-    font-size: 28px;
+    /* Kánon nadpisov: 660 / −.025em — to isté, čo .screen-head h1 (predtým tu bolo
+       600 bez trackingu, teda dva rôzne serifové nadpisy v jednej appke). */
+    font-weight: 660;
+    letter-spacing: -.025em;
+    font-size: var(--fs-h1);
     line-height: 1.2;
     color: var(--text);
 }
@@ -1953,12 +1968,18 @@ body.ambient #toasts {
     border-radius: var(--r-md);
     padding: 12px var(--sp-2);
 }
+/* Číslo v paneli je ODPOČET, nie nadpis: mono + tabular-nums ako každý iný odpočet
+   v appke (--fs-hero / --fs-kpi / #header-metrics). Playfair tu bol jediné miesto,
+   kde serif nesie číslicu — a práve to z neho robilo ozdobu namiesto systému.
+   Serif v appke drží NÁZVY (nadpis obrazovky, titulok prázdneho stavu), nič iné. */
 .metric-val {
-    font-family: var(--serif);
-    font-size: 26px;
+    font-family: var(--mono);
+    font-size: var(--fs-metric);
     line-height: 1.1;
     color: var(--text);
     font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
 }
 .metric-label {
     font-size: var(--fs-caption);
@@ -1980,7 +2001,7 @@ body.ambient #toasts {
     font-size: var(--fs-small); color: var(--text-secondary);
 }
 .mini-record:hover { background: var(--hover-fill); }
-.mini-record .ms { font-size: 15px; color: var(--muted); flex-shrink: 0; }
+.mini-record .ms { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
 .mr-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mr-time { color: var(--muted); font-family: var(--mono); font-size: var(--fs-caption); flex-shrink: 0; }
 
@@ -1990,7 +2011,7 @@ body.ambient #toasts {
 }
 .record:hover { border-left-color: var(--accent); background: var(--surface-2); }
 .record-head { display: flex; align-items: center; gap: var(--sp-1); }
-.rec-ico { font-size: 16px; color: var(--accent); flex-shrink: 0; }
+.rec-ico { font-size: var(--icon-xs); color: var(--accent); flex-shrink: 0; }
 .record-title { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .record-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
 .record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: 6px; }
@@ -2036,7 +2057,7 @@ body.ambient #toasts {
 .day-head {
     display: flex; align-items: center; gap: var(--sp-1);
     font-family: var(--mono);
-    font-size: 10.5px;
+    font-size: var(--fs-micro);
     line-height: var(--lh-caption);
     text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
@@ -2082,7 +2103,7 @@ body.ambient #toasts {
     margin: 0;
     padding-left: var(--sp-3);
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: var(--fs-caption);
     line-height: 1.5;
     letter-spacing: var(--ls-mono);
     color: var(--text-secondary);
@@ -2120,7 +2141,7 @@ body.ambient #toasts {
     font-size: var(--fs-small);
     color: var(--text-secondary);
 }
-.rec-commit .ms { font-size: 15px; color: var(--muted); flex-shrink: 0; }
+.rec-commit .ms { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
 .rec-commit span:last-child {
     min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -2187,7 +2208,7 @@ body.ambient #toasts {
 .tree-row .dept-more {
     width: 24px; height: 24px; min-height: 24px;
     padding: 0;
-    font-size: 16px;
+    font-size: var(--icon-xs);
     flex-shrink: 0;
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease);
@@ -2291,7 +2312,7 @@ body.ambient #toasts {
    --------------------------------------------------------------------------- */
 .check-cap {
     font-family: var(--mono);
-    font-size: 10.5px;
+    font-size: var(--fs-micro);
     line-height: var(--lh-caption);
     text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
@@ -2359,7 +2380,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #legend-areas .legend-area .la-eye {
-    font-size: 16px;
+    font-size: var(--icon-xs);
     color: var(--muted);
     flex-shrink: 0;
     opacity: 0;
@@ -2391,7 +2412,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
     width: 24px; height: 24px; min-height: 24px;
     padding: 0;
     flex-shrink: 0;
-    font-size: 14px;
+    font-size: var(--icon-2xs);
     color: var(--muted);
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
@@ -2535,7 +2556,7 @@ body[data-screen="graf"] #screens { display: none; }
 #cmdk-trigger:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #cmdk-trigger .ms { font-size: var(--icon-sm); }
 #cmdk-trigger kbd {
-    font-family: var(--mono); font-size: 10px;
+    font-family: var(--mono); font-size: var(--fs-micro);
     padding: 1px 5px;
     border: 1px solid var(--border-strong);
     border-radius: 5px;
@@ -2578,7 +2599,7 @@ body[data-screen="graf"] #screens { display: none; }
 #cmdk-input::placeholder { color: var(--muted); }
 #cmdk-input:focus { outline: none; }
 .cmdk-input-row kbd {
-    font-family: var(--mono); font-size: 10px;
+    font-family: var(--mono); font-size: var(--fs-micro);
     padding: 1px 6px;
     border: 1px solid var(--border-strong);
     border-radius: 5px;
@@ -2620,7 +2641,7 @@ body[data-screen="graf"] #screens { display: none; }
     display: flex; flex-direction: column; gap: var(--sp-0);
 }
 .tc-val {
-    font-family: var(--mono); font-size: 30px; font-weight: 600;
+    font-family: var(--mono); font-size: var(--fs-kpi); font-weight: 600;
     color: var(--text); font-variant-numeric: tabular-nums; line-height: 1;
 }
 .tc-label { font-size: var(--fs-small); color: var(--muted); }
@@ -2715,7 +2736,7 @@ body[data-screen="graf"] #screens { display: none; }
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .today-search kbd {
-    font-family: var(--mono); font-size: 10px;
+    font-family: var(--mono); font-size: var(--fs-micro);
     padding: 2px 6px; flex-shrink: 0;
     border: 1px solid var(--border-strong); border-radius: 5px;
     color: var(--muted); background: var(--surface-2);
@@ -2766,7 +2787,7 @@ body[data-screen="graf"] #screens { display: none; }
     display: inline-flex; align-items: center; justify-content: center;
     background: none; border: none;
     border-radius: var(--r-sm);
-    color: var(--muted); font-size: 18px;
+    color: var(--muted); font-size: var(--icon-sm);
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
                 background var(--dur-fast) var(--ease);
@@ -2801,7 +2822,7 @@ body[data-screen="graf"] #screens { display: none; }
     position: fixed;
     top: var(--content-top); bottom: var(--edge);
     right: var(--edge);
-    width: 320px;
+    width: var(--drawer-w);
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
@@ -2824,7 +2845,7 @@ body[data-screen="graf"] #screens { display: none; }
     font-size: var(--fs-body); color: var(--text);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pack-row-del { flex: 0 0 auto; width: 28px; min-height: 28px; padding: 0; font-size: 15px; }
+.pack-row-del { flex: 0 0 auto; width: 28px; min-height: 28px; padding: 0; font-size: var(--icon-xs); }
 .pack-actions { margin-top: var(--sp-2); }
 
 /* ---- Čítačka: pätička s viacerými akciami ---- */
@@ -2846,12 +2867,14 @@ body[data-screen="graf"] #screens { display: none; }
 }
 
 @media (max-width: 900px) {
-    :root { --panel-w: min(340px, calc(100vw - var(--content-left))); }
+    :root {
+        --panel-w: min(340px, calc(100vw - var(--content-left)));
+        --dock-at-left: 0;   /* dock sa presúva k pravej hrane — viď camInsets() */
+    }
     #dock, #node-panel {
         left: auto; right: var(--edge);
         z-index: var(--z-panel);
     }
-    #brand-name { display: none; }
     #cmdk-trigger .cmdk-hint,
     #cmdk-trigger kbd { display: none; }
 }
@@ -2937,7 +2960,7 @@ label.check.dir-check.off { opacity: .5; }
     color: var(--accent); word-break: break-all;
 }
 .dir-badge {
-    font-size: 10px; font-weight: var(--fw-medium);
+    font-size: var(--fs-micro); font-weight: var(--fw-medium);
     text-transform: uppercase; letter-spacing: var(--ls-caps);
     padding: 1px 7px; border-radius: var(--r-pill); flex-shrink: 0;
 }
@@ -3086,6 +3109,67 @@ select {
 }
 
 /* ---------------------------------------------------------------------------
+   HERO OBRAZOVKY DNES (.today-hero) — JEDNO primárne číslo + veta o týždni,
+   vpravo jediná výzva na akciu (poznatky čakajúce na overenie).
+
+   Dôvod: dashboard bol mriežka šiestich rovnako veľkých KPI kariet, takže
+   nepovedal, čo je dôležité — všetko malo rovnakú váhu a oko nemalo kde začať.
+   Hero preto NIE JE karta: hierarchiu nesie typografia (44 → 30 → 11 px), nie
+   ďalší rám. Rám by pridal štvrtú škatuľu do radu škatúľ.
+   --------------------------------------------------------------------------- */
+.today-hero {
+    display: flex; flex-wrap: wrap; align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--sp-2) var(--gutter);
+}
+.hero-main { min-width: 0; }
+.hero-val {
+    display: flex; align-items: baseline; gap: var(--sp-1);
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: var(--fs-hero); line-height: var(--lh-hero);
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+    color: var(--text);
+}
+.hero-unit {
+    font-family: var(--font);
+    font-size: var(--fs-title); line-height: var(--lh-title);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--ls-normal);
+    color: var(--muted);
+}
+.today-hero .today-line { margin-top: var(--sp-1); margin-bottom: 0; }
+
+/* Výzva na akciu — jediné číslo dashboardu, s ktorým sa dá niečo urobiť.
+   Tlačidlo (vedie na Kontrolu), keď fronta nie je prázdna; tichý riadok, keď je. */
+.hero-action {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    background: var(--accent-soft);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-pill);
+    color: var(--accent-ink);
+    font-family: var(--font); font-size: var(--fs-body);
+    text-align: left;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.hero-action .ms { font-size: var(--icon-sm); flex-shrink: 0; }
+.hero-action .ha-val {
+    font-family: var(--mono); font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+}
+button.hero-action:hover { border-color: var(--accent); }
+button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Prázdna fronta nie je akcia — nesmie vyzerať ako tlačidlo ani kričať akcentom. */
+.hero-action.is-clear {
+    background: none;
+    border-color: var(--line-soft);
+    color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
    KPI GRID (.kpi-*) — compact mono readouts, one row across the dashboard top
    --------------------------------------------------------------------------- */
 .kpi-grid {
@@ -3094,8 +3178,14 @@ select {
     gap: var(--sp-1);
     margin-bottom: var(--gutter);
 }
+/* Druhý rad odpočtov je STRIP, nie blok: číslo a popisok na jednej účaří.
+   V dvojriadkovej podobe mala karta na 1600 px ~350 px šírky a 80 px výšky pre
+   dve slová, takže rad čítal ako štyri prázdne škatule. Jednoriadkový strip je
+   polovičný a proti dvojriadkovému heru navyše jasne druhý v poradí. */
 .kpi-card {
-    display: flex; flex-direction: column; gap: 2px;
+    display: flex; flex-direction: row; align-items: baseline;
+    gap: var(--sp-1);
+    flex-wrap: wrap;
 }
 .kpi-label {
     font-family: var(--mono);
@@ -3155,7 +3245,7 @@ select {
     gap: 3px;
     margin-bottom: var(--sp-0);
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: var(--fs-micro);
     letter-spacing: var(--ls-mono);
     color: var(--muted);
     width: max-content;
@@ -3165,7 +3255,7 @@ select {
     display: flex; align-items: center; gap: var(--sp-0);
     margin-top: var(--sp-1);
     font-family: var(--mono);
-    font-size: 10px; letter-spacing: var(--ls-mono);
+    font-size: var(--fs-micro); letter-spacing: var(--ls-mono);
     color: var(--muted);
 }
 .heat-legend .heat-cell { pointer-events: none; }
@@ -3194,7 +3284,7 @@ select {
 }
 .donut-total .dt-lbl {
     font-family: var(--mono);
-    font-size: 10px; text-transform: uppercase;
+    font-size: var(--fs-micro); text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
     color: var(--muted);
     margin-top: 2px;
@@ -3265,7 +3355,7 @@ select {
     color: var(--cert-none);
     background: var(--cert-none-soft);
 }
-.cert .ms { font-size: 14px; line-height: 1; }
+.cert .ms { font-size: var(--icon-2xs); line-height: 1; }
 .cert[data-cert="overene"] { color: var(--cert-overene); background: var(--cert-overene-soft); }
 .cert[data-cert="hypoteza"] { color: var(--cert-hypoteza); background: var(--cert-hypoteza-soft); }
 .cert[data-cert="pasca"] { color: var(--cert-pasca); background: var(--cert-pasca-soft); }
@@ -3295,7 +3385,7 @@ select {
     background: var(--surface-2);
     border: 1px solid var(--border);
 }
-.origin .ms { font-size: 14px; line-height: 1; }
+.origin .ms { font-size: var(--icon-2xs); line-height: 1; }
 /* brain reads a touch stronger (indexed source of truth) */
 .origin[data-origin="brain"] {
     color: var(--text-secondary);
@@ -3310,7 +3400,7 @@ select {
 .dtl-month {
     display: flex; align-items: center; gap: var(--sp-1);
     font-family: var(--mono);
-    font-size: 10.5px;
+    font-size: var(--fs-micro);
     line-height: var(--lh-caption);
     text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
@@ -3466,7 +3556,7 @@ select {
     color: var(--on-accent);
     border-radius: var(--r-pill);
     font-family: var(--mono);
-    font-size: 10px; font-weight: var(--fw-semibold);
+    font-size: var(--fs-micro); font-weight: var(--fw-semibold);
     font-variant-numeric: tabular-nums;
     line-height: 1;
 }
@@ -3538,10 +3628,13 @@ select {
 .dtl-card,
 .dir-saved-item { --card-pad: var(--sp-2h); }
 
-/* Karty so stĺpcovým obsahom — deti na celú šírku karty (ruší UA centrovanie) */
+/* Karty so stĺpcovým obsahom — deti na celú šírku karty (ruší UA centrovanie).
+   .kpi-card tu už NIE JE: je to jednoriadkový strip so zarovnaním na účiaru
+   (align-items: baseline pri jeho vlastnej deklarácii). Toto je presne ten
+   dvojitý zápis, ktorý v tomto súbore robí, že zmena „nemá efekt" — override
+   blok je nižšie, takže by baseline prebil. */
 .today-card,
 .today-card-link,
-.kpi-card,
 .dash-card,
 .lib-skill,
 .dtl-card,
@@ -3748,7 +3841,7 @@ select {
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
     color: var(--muted);
-    font-size: 16px;
+    font-size: var(--icon-xs);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
                 border-color var(--dur-fast) var(--ease);
 }

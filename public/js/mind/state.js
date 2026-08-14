@@ -103,11 +103,12 @@ export const OPT_DEFAULTS = {
     panelAlpha: 0.92,
     bg: 1,
     edgeAlpha: 1,
-    glow: 1,
     labelAlpha: 1,
     nodeScale: 1,
     labelSize: 1,
-    sizeByDegree: false,
+    // `glow` a `sizeByDegree` sú zmazané spolu s ich ovládačmi (viď #sec-settings
+    // v blade): žiadny renderovací modul ich nečítal. Staré hodnoty môžu ešte ležať
+    // v localStorage — Object.assign ich prenesie, ale nikto sa ich nespýta.
     edgeSoftHover: true, // FÁZA HRANY: v pokoji sú hrany jemné, rozsvietia sa pri hover/fokuse uzla
     anim: 0.5,           // FÁZA ANIMÁCIE: intenzita udalostných animácií (toky, zrod, morph; 0 = vyp)
     life: 0.5,           // FÁZA ANIMÁCIE (Living): intenzita ambientného života (dýchanie, drift, synapsie; 0 = pokoj)

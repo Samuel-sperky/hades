@@ -16,7 +16,7 @@ import { $ } from './util.js';
 export const SHORTCUTS = [
     ['Ctrl K / F / /', 'Hľadať (paleta)'],
     ['1 / 2 / 3 / 4', 'Filter: celá sieť / oblasť / oddelenie / uzol'],
-    ['V', 'Pohľad: Sieť ↔ Vrstvy'],
+    ['V', 'Pohľad: Sieť ↔ Vrstvy (na Grafe)'],
     ['Enter', 'Zamerať zvolený uzol'],
     ['Esc', 'Zrušiť filter'],
     ['Backspace', 'O úroveň von'],
@@ -185,7 +185,13 @@ export function setupShortcuts() {
                 }
                 break;
             case 'n': case 'N': openCreateNode(); break;
-            case 'v': case 'V': setView(S.gview === 'layers' ? 'net' : 'layers'); break;
+            // Pohľad grafu má zmysel len na Grafe. Mimo neho V prestavovalo fyziku
+            // celej siete (zmerané 143 ms zaseknutého vlákna) bez akejkoľvek spätnej
+            // väzby — obrazovka sa nezmenila, takže sa to javilo ako zaseknutie appky.
+            case 'v': case 'V':
+                if (S.screen !== 'graf') { showToast('Pohľad prepneš na obrazovke Graf'); break; }
+                setView(S.gview === 'layers' ? 'net' : 'layers');
+                break;
             case 'c': case 'C':
                 if (document.body.classList.contains('chat-on')) {
                     e.preventDefault();

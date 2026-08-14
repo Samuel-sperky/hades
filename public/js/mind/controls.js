@@ -31,37 +31,40 @@ export let libraryTimer = null;
 
    Aktívna predvoľba sa NEUKLADÁ; zisťuje sa spätne porovnaním hodnôt
    (detectPreset). Ručný pohyb sliderom tak označenie zruší sám a vrátenie
-   hodnoty späť ho zase obnoví — bez tretieho zdroja pravdy. */
+   hodnoty späť ho zase obnoví — bez tretieho zdroja pravdy.
+
+   Predvoľby ZÁMERNE neinzerujú `glow` ani `sizeByDegree` — obe hodnoty boli mŕtve
+   (nečítal ich žiadny renderovací modul) a zmizli spolu so svojimi ovládačmi. */
 export const PRESET_LABELS = { clean: 'Čisté', live: 'Živé', dense: 'Husté', ambient: 'Ambient' };
 
 export const PRESETS = {
     // Čisté — minimum pohybu a spojení: len kostra, tvrdý filter váhy, tiché pozadie.
     clean: {
-        life: 0, anim: 0.15, bg: 0.4, edgeAlpha: 0.35, glow: 0.6,
+        life: 0, anim: 0.15, bg: 0.4, edgeAlpha: 0.35,
         labelAlpha: 1, labelSize: 1, nodeScale: 1, panelAlpha: 1,
-        edgeSoftHover: true, sizeByDegree: false, minWeight: 2, skeleton: true,
+        edgeSoftHover: true, minWeight: 2, skeleton: true,
     },
     // Živé — predvolený stav appky (= OPT_DEFAULTS + predvolený minWeight/skeleton).
     // minWeight 0 = celá sieť; musí sedieť s defaultom v state.js, inak by čerstvý
     // profil hlásil „vlastné nastavenie" namiesto „Živé".
     live: {
-        life: 0.5, anim: 0.5, bg: 1, edgeAlpha: 1, glow: 1,
+        life: 0.5, anim: 0.5, bg: 1, edgeAlpha: 1,
         labelAlpha: 1, labelSize: 1, nodeScale: 1, panelAlpha: 0.92,
-        edgeSoftHover: true, sizeByDegree: false, minWeight: 0, skeleton: false,
+        edgeSoftHover: true, minWeight: 0, skeleton: false,
     },
     // Husté — viac spojení a popiskov: bez filtra váhy, hrany svietia stále,
-    // uzly menšie (aby sa popisky zmestili) a veľkosť podľa stupňa.
+    // uzly menšie (aby sa popisky zmestili).
     dense: {
-        life: 0.35, anim: 0.4, bg: 0.7, edgeAlpha: 1.3, glow: 0.9,
+        life: 0.35, anim: 0.4, bg: 0.7, edgeAlpha: 1.3,
         labelAlpha: 1.4, labelSize: 1.1, nodeScale: 0.85, panelAlpha: 0.92,
-        edgeSoftHover: false, sizeByDegree: true, minWeight: 0, skeleton: false,
+        edgeSoftHover: false, minWeight: 0, skeleton: false,
     },
     // Ambient — na pozeranie na celú obrazovku: maximum života a svetla,
     // popisky stlmené (šum z 1000 textov), uzly väčšie a viditeľné z diaľky.
     ambient: {
-        life: 1, anim: 1, bg: 1.5, edgeAlpha: 1.15, glow: 1.5,
+        life: 1, anim: 1, bg: 1.5, edgeAlpha: 1.15,
         labelAlpha: 0.35, labelSize: 1, nodeScale: 1.25, panelAlpha: 0.75,
-        edgeSoftHover: false, sizeByDegree: true, minWeight: 1, skeleton: false,
+        edgeSoftHover: false, minWeight: 1, skeleton: false,
     },
 };
 
@@ -219,28 +222,17 @@ export function setupControls() {
 
     // W2c: slidery síl (Odpudzovanie / Vzdialenosť / Sila spojení / Gravitácia) aj
     // „Obnoviť sily" sú zmazané — d3 simulácia neexistuje, nič neovládali.
-
-    // Veľkosť podľa spojení (Obsidian size by degree) — rebuild kvôli collide polomerom
-    const degBtn = $('sizedeg-toggle');
-    const syncDegBtn = () => degBtn.setAttribute('aria-checked', S.opts.sizeByDegree ? 'true' : 'false');
-    syncers.push(syncDegBtn);
-    syncDegBtn();
-    degBtn.onclick = () => {
-        setOpt('sizeByDegree', !S.opts.sizeByDegree);
-        syncDegBtn();
-        markPresetActive();
-        buildSim();
-        kickSim();
-        draw();
-    };
+    // VLNA CHRÓM: rovnako zmizol prepínač „Veľkosť podľa spojení" (#sizedeg-toggle)
+    // a slider „Žiara" (data-opt="glow") — nodeRadius() škáluje podľa stupňa vždy
+    // a alfu obrysov nesie paleta témy, takže ani jedna hodnota nič neriadila.
 
     $('opts-reset').onclick = () => {
         S.opts = Object.assign({}, OPT_DEFAULTS);
         localStorage.setItem('hades.opts', JSON.stringify(S.opts));
         applyOpts();
-        syncAdvancedUi(); // reset vráti sizeByDegree aj edgeSoftHover — prepínače dorovnať
+        syncAdvancedUi(); // reset vráti edgeSoftHover — prepínač dorovnať
         markPresetActive();
-        buildSim();
+        buildSim();       // nodeScale sa vrátil na 1 → collide si musí prepočítať polomery
         kickSim();
         draw();
         showToast('Predvolené obnovené');
@@ -262,7 +254,7 @@ export function setupControls() {
             applyOpts();       // slidery data-opt + --panel-alpha
             syncAdvancedUi();  // prepínače, ktoré nie sú <input>
             markPresetActive();
-            buildSim();        // collide polomery podľa sizeByDegree
+            buildSim();        // predvoľba mení nodeScale → collide polomery nanovo
             kickSim();
             draw();
             showToast('Predvoľba: ' + PRESET_LABELS[b.dataset.preset]);

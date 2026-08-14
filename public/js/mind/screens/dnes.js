@@ -1,9 +1,9 @@
 import { openCmdk } from '../cmdk.js';
 import { bindPackButtons, packBtn } from '../pack.js';
-import { openNodeFromAnywhere } from '../screens.js';
+import { openNodeFromAnywhere, setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
-import { $, busy, emptyHtml, esc, renderEmpty, timeAgo } from '../util.js';
+import { $, busy, emptyHtml, esc, fmtNum, plainText, prettyLabel, prettyProject, renderEmpty, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
 
@@ -19,11 +19,14 @@ export function originBadge(origin) {
         + '<span class="ms" aria-hidden="true">' + icon + '</span>' + ORIGIN_LABEL[o] + '</span>';
 }
 
-// Shimmer skeleton počas načítania dashboardu (loading stav)
+// Shimmer skeleton počas načítania dashboardu (loading stav). Kostra kopíruje
+// hierarchiu hotovej obrazovky (hľadanie → hero → druhý rad → karty), aby sa
+// rozloženie po dobehnutí dát neprelialo.
 export function todaySkeleton() {
     const bar = (w, h) => '<div class="shimmer" style="width:' + w + ';height:' + h + ';border-radius:var(--r-md);"></div>';
     return '<div style="display:flex;flex-direction:column;gap:var(--gutter);">'
         + bar('100%', '46px')
+        + bar('min(420px, 60%)', '84px')
         + '<div class="kpi-grid">' + [0, 0, 0, 0].map(() => bar('100%', '58px')).join('') + '</div>'
         + '<div class="dash-grid">' + bar('100%', '160px') + bar('100%', '160px') + '</div>'
         + '</div>';
@@ -56,13 +59,11 @@ export async function renderToday() {
         + '<span class="ts-text">Hľadaj vo vedomí — skilly, záznamy, projekty…</span>'
         + '<kbd>Ctrl K</kbd></button>';
 
-    h += '<p class="today-line">Tento týždeň pribudlo <strong>' + esc(String(wb.nodes ?? 0))
-        + '</strong> ' + plural(wb.nodes ?? 0, 'poznatok', 'poznatky', 'poznatkov')
-        + ', <strong>' + esc(String(wb.sessions ?? 0)) + '</strong> '
-        + plural(wb.sessions ?? 0, 'záznam', 'záznamy', 'záznamov') + '.</p>';
-
-    // ---- Dashboard agregáty (KPI + charty + Sync) z /api/dashboard ----
-    if (dash) h += dashboardHtml(dash);
+    // ---- Dashboard agregáty (hero + KPI + charty + Sync) z /api/dashboard ----
+    // Veta „tento týždeň pribudlo…" už nestojí samostatne nad mriežkou — je
+    // podtitulom hlavného čísla, teda súčasťou hierarchie, nie ďalším riadkom.
+    if (dash) h += dashboardHtml(dash, wb);
+    else h += weekLine(wb);
 
     // ---- Naposledy / záznamy / projekty (z /api/today) ----
     const sessions = d.recent_sessions || [];
@@ -82,7 +83,7 @@ export async function renderToday() {
     const projects = d.top_projects || [];
     if (projects.length) {
         h += '<section class="today-sec"><h2>Aktívne projekty</h2><div class="today-chips">'
-            + projects.map((p) => '<span class="today-chip">' + esc(p.project)
+            + projects.map((p) => '<span class="today-chip">' + esc(prettyProject(p.project))
                 + '<span class="n">' + (p.count || 0) + '</span></span>').join('')
             + '</div></section>';
     }
@@ -94,32 +95,68 @@ export async function renderToday() {
 
     const searchBtn = $('today-search');
     if (searchBtn) searchBtn.onclick = openCmdk;
+    // Jediné číslo na obrazovke, s ktorým sa dá niečo urobiť, vedie na Kontrolu.
+    const reviewBtn = $('hero-review');
+    if (reviewBtn) reviewBtn.onclick = () => setScreen('kontrola');
     body.querySelectorAll('.today-item[data-id], .today-card-link[data-id]').forEach((el) => {
         el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
     });
     bindPackButtons(body);
 }
 
-// Statický HTML dashboardu — KPI rad + grid kariet s prázdnymi kontajnermi pre charty (charts.js).
-export function dashboardHtml(dash) {
+// Veta o týždni — podtitul hlavného čísla (a záložný riadok, keď /api/dashboard padne).
+export function weekLine(wb) {
+    const w = wb || {};
+    return '<p class="today-line">Tento týždeň pribudlo <strong>' + esc(fmtNum(w.nodes ?? 0))
+        + '</strong> ' + plural(w.nodes ?? 0, 'poznatok', 'poznatky', 'poznatkov')
+        + ' v <strong>' + esc(fmtNum(w.sessions ?? 0)) + '</strong> '
+        + plural(w.sessions ?? 0, 'zázname', 'záznamoch', 'záznamoch') + '.</p>';
+}
+
+/* Statický HTML dashboardu — hero + druhý rad KPI + grid kariet (charty dopĺňa
+   charts.js do prázdnych kontajnerov).
+
+   HIERARCHIA (predtým: šesť rovnako veľkých kariet, z ktorých žiadna nepovedala,
+   čo je dôležité):
+     1. HERO — jedno číslo, veľkosť uzlov vedomia, s vetou o tomto týždni pod ním.
+     2. Druhý rad — spojenia, playbooky, záznamy, rozhodnutia (o krok menšie).
+     3. Výzva na akciu — „na overenie" je jediné číslo, s ktorým sa dá niečo urobiť,
+        takže nie je karta v rade, ale tlačidlo do Kontroly.
+   Odpočty držia tri stupne škály (--fs-hero → --fs-kpi → --fs-caption). */
+export function dashboardHtml(dash, wb) {
     const counts = dash.counts || {};
     const cert = dash.certainty || {};
-    const num = (n) => esc(String(n ?? 0));
+    const num = (n) => esc(fmtNum(n ?? 0));
+    const review = +(cert.needs_review || 0);
 
     const kpi = (val, label, suffix) =>
         '<div class="kpi-card"><div class="kpi-val">' + num(val)
         + (suffix ? '<span class="kpi-suffix">' + esc(suffix) + '</span>' : '')
         + '</div><div class="kpi-label">' + esc(label) + '</div></div>';
 
-    let h = '<div class="kpi-grid">'
-        + kpi(counts.nodes, 'uzlov')
+    let h = '<section class="today-hero">'
+        + '<div class="hero-main">'
+        + '<div class="hero-val">' + num(counts.nodes) + '<span class="hero-unit">'
+        + plural(counts.nodes ?? 0, 'uzol', 'uzly', 'uzlov') + ' vo vedomí</span></div>'
+        + weekLine(wb)
+        + '</div>'
+        + (review
+            ? '<button type="button" id="hero-review" class="hero-action">'
+              + '<span class="ms" aria-hidden="true">fact_check</span>'
+              + '<span class="ha-val">' + num(review) + '</span>'
+              + '<span class="ha-lbl">' + plural(review, 'poznatok', 'poznatky', 'poznatkov')
+              + ' čaká na overenie</span></button>'
+            : '<div class="hero-action is-clear"><span class="ms" aria-hidden="true">check_circle</span>'
+              + '<span class="ha-lbl">Nič nečaká na overenie</span></div>')
+        + '</section>';
+
+    h += '<div class="kpi-grid">'
         + kpi(counts.edges, 'spojení')
         // „brain"/„session" boli jediné neslovenské popisky na dashboarde; appka tie
         // isté množiny inde nazýva Playbooky a Záznamy (viď filter zdrojov v blade).
         + kpi(counts.brain, 'playbookov')
         + kpi(counts.session, 'záznamov')
         + kpi(counts.decisions, 'rozhodnutí')
-        + kpi(cert.needs_review, 'na overenie')
         + '</div>';
 
     h += '<div class="dash-grid">';
@@ -127,7 +164,7 @@ export function dashboardHtml(dash) {
     // Heatmapa aktivity — cez 2 stĺpce; .heat sám skroluje horizontálne.
     h += '<div class="dash-card span-2"><div class="dash-head">'
         + '<span class="dash-title">Aktivita</span>'
-        + '<span class="dash-note">' + num((dash.heatmap || {}).total) + ' za rok</span>'
+        + '<span class="dash-note">' + num((dash.heatmap || {}).total) + ' aktivít za rok</span>'
         + '</div><div id="dash-heat"></div></div>';
 
     // Donut istoty + legenda (rozloženie rieši .dash-cert v CSS, nie inline štýly)
@@ -277,25 +314,32 @@ export function plural(n, one, few, many) {
     return many;
 }
 
+/* Popisky sessions chodia z databázy tak, ako ich zapísal Claude Code — vrátane
+   strojových názvov dočasných adresárov („mystifying-mclaren-23750a — práca
+   13.8.2026"). data-label zostáva SUROVÝ (je to identita uzla pre panel detailu a
+   balík), mení sa len to, čo číta človek. */
 export function todaySessionCard(s) {
     return '<div class="today-card-wrap">'
         + '<button type="button" class="today-card-link" data-id="' + s.id + '" data-label="' + esc(s.label || '') + '">'
-        + '<span class="tcl-title">' + esc(s.label || '') + '</span>'
+        + '<span class="tcl-title">' + esc(prettyLabel(s.label, s.project)) + '</span>'
         + '<span class="tcl-meta">'
-        + (s.project ? '<span class="tcl-proj">' + esc(s.project) + '</span>' : '')
+        + (s.project ? '<span class="tcl-proj">' + esc(prettyProject(s.project)) + '</span>' : '')
         + (s.created_at ? '<span class="tcl-time">' + esc(timeAgo(s.created_at)) + '</span>' : '')
         + '</span></button>'
         + packBtn(s.id, s.label) + '</div>';
 }
 
 export function todayRow(icon, id, label, project, snippet, iso) {
+    // plainText: snippet je markdown z popisu uzla, takže bez neho tu svietilo
+    // „**Čo:** …" — surová syntax vystavená používateľovi.
+    const snip = plainText(snippet);
     return '<div class="li-wrap">'
         + '<button type="button" class="today-item" data-id="' + id + '" data-label="' + esc(label || '') + '">'
         + '<span class="ms ti-ico" aria-hidden="true">' + icon + '</span>'
-        + '<span class="ti-text"><span class="ti-title">' + esc(label || '') + '</span>'
-        + (snippet ? '<span class="ti-snip">' + esc(snippet) + '</span>' : '')
+        + '<span class="ti-text"><span class="ti-title">' + esc(prettyLabel(label, project)) + '</span>'
+        + (snip ? '<span class="ti-snip">' + esc(snip) + '</span>' : '')
         + '</span>'
-        + (project ? '<span class="ti-tag">' + esc(project) + '</span>' : '')
+        + (project ? '<span class="ti-tag">' + esc(prettyProject(project)) + '</span>' : '')
         + (iso ? '<span class="ti-time">' + esc(timeAgo(iso)) + '</span>' : '')
         + '</button>'
         + packBtn(id, label) + '</div>';

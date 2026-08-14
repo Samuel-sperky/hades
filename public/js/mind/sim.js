@@ -269,17 +269,24 @@ export function buildSim() {
     }
 
     const L = computeLayout(true);          // ensureSeeded() dá nové uzly ku kotvám
+    // Ťahaný uzol je pripnutý na fx/fy. Keď prestavbu vyvolá niečo iné než ťahanie
+    // (prepnutie pohľadu, WS zrod uzla), nová simulácia začínala s alphaTarget 0 —
+    // a keďže holdSim() sa už nemá kto zavolať, sieť sa okolo držaného uzla prestala
+    // prelievať až do mouseup (zmerané: „po prepnutí na Vrstvy: pinned=1, alphaT=0").
+    // Držanie je stav uzlov, nie stav simulácie, takže si ho nová simulácia prečíta.
+    const held = S.nodes.some((n) => n.fx != null || n.fy != null);
     const sim = window.d3.forceSimulation(S.nodes)
         .velocityDecay(PHYS.velocityDecay)
         .alphaDecay(PHYS.alphaDecay)
         .alphaMin(PHYS.alphaMin)
-        .alphaTarget(0);
+        .alphaTarget(held ? HOLD_ALPHA : 0);
     sim.stop();                             // tikáme sami (rAF pumpa nižšie)
     S.sim = sim;
     makeForces(sim);
     sim.alpha(warm ? PHYS.alphaWarm : PHYS.alphaCold);
 
     S._simSettled = false;
+    if (held) sim.alpha(Math.max(sim.alpha(), HOLD_ALPHA));
     if (!warm) { S._simTicks = 0; S._fitOnSettle = true; }
     // Tichý rozbeh, nech prvý frame nie je chaos. Pri teplom rebuilde (zrod uzla
     // z WS) len pár krokov — 26 tikov naraz je ~100 ms zaseknutého vlákna.
@@ -302,11 +309,15 @@ export function kickSim(alpha) {
     requestDraw();
 }
 
+// Teplota, ktorú drží ťahanie uzla. Musí byť nad PHYS.alphaMin, inak sim zaspí.
+// Číta ju aj buildSim() — prestavba počas ťahania si držanie prevezme.
+export const HOLD_ALPHA = 0.12;
+
 // Ťahanie uzla: kým drží, sim nesmie zaspať (alphaTarget > alphaMin).
 export function holdSim(on) {
     if (!S.sim) { requestDraw(); return; }
-    S.sim.alphaTarget(on ? 0.12 : 0);
-    if (on) { S._simSettled = false; S.sim.alpha(Math.max(S.sim.alpha(), 0.12)); startPump(); }
+    S.sim.alphaTarget(on ? HOLD_ALPHA : 0);
+    if (on) { S._simSettled = false; S.sim.alpha(Math.max(S.sim.alpha(), HOLD_ALPHA)); startPump(); }
 }
 
 /* ---------- verejné API: zanorenie ako filter ---------- */

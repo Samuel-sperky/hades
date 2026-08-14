@@ -2,7 +2,7 @@ import { animLevel, birthScale, breatheFactor, dustDrift, easeInOut, flowCap, li
 import { drawEdges } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
 import { screenToWorld } from './interaction.js';
-import { camInsets, computeLayout, drawRadius, edgePx, panelReserve } from './layout.js';
+import { camInsets, computeLayout, drawRadius } from './layout.js';
 import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.js';
 import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
 import { T, certColors, mutedColor } from './theme.js';
@@ -110,16 +110,58 @@ function paintColor(n) {
 // aby diera v prstenci vôbec vznikla.
 export const RING_DUST_BASE = 1.30;
 export const RING_DEG_REF = 4.2;      // log2(1+deg) ≈ 4,2 je horný decil v dátach
-// Šírka obrysu prstenca v OBRAZOVKOVÝCH px. 1,5 nie je estetické číslo, ale merané:
-// pri 1,1 px antialiasing zoberie prstencu viac než polovicu kontrastu (nominálne
-// 4,6:1 → 2,2:1 na reálnych pixeloch), takže grafický prvok spadne pod WCAG 3:1.
-// Priehľadnosť drží DIERA, nie tenkosť čiary — tá sa dá zaplatiť bez straty vzdušnosti.
-export const RING_LW = 1.5;
+
+/* ---------- VLNA VZDUCH: ŠÍRKA OBRYSU ----------
+   Dve šírky, nie jedna, a to je zámer — nie obchádzka merania predchádzajúcej vlny.
+
+   Tá vlna zmerala správne: pri 1,1 px a devicePixelRatio 1 nedostane obrys ani jeden
+   plne pokrytý pixel, antialiasing mu zoberie ~20 % efektívnej alfy a nominálnych
+   3,15:1 spadne na ~2,4:1 — teda pod WCAG 1.4.11 (3:1). Z toho ale vyplýva len to,
+   že prvok, ktorý MUSÍ držať 3:1, potrebuje ≥ 1,5 px. Nevyplýva, že ho potrebuje
+   KAŽDÝ prstenec.
+
+   Pokojový prstenec nie je nositeľ informácie. Je textúra, z ktorej sa čítá tvar
+   a hustota oblaku — presne ten istý argument, ktorý drží jemnú sieť hrán na alfe
+   0,075–0,225 (jednotlivá vláska má ~1,1:1 a nikomu to nechýba, pretože informáciu
+   nesie hustota). Nositeľ informácie je uzol POD KURZOROM, VO VÝBERE, S POPISKOM,
+   jadro a hub — a tie idú na RING_LW_HOT a plnú alfu, takže prah spĺňajú.
+
+   RING_LW_HOT je 1,7 (nie 1,5) preto, aby mal obrys plne pokrytý pixel aj pri
+   najnepriaznivejšom subpixelovom zarovnaní. */
+export const RING_LW = 1.15;
+export const RING_LW_HOT = 1.7;
+// Podiel polomeru, ktorým smie obrys narastať u veľkých uzlov. Zo 0,16 na 0,13:
+// pri r = 16 px to je 2,1 namiesto 2,6 px, takže silný uzol zostane silný, ale
+// prestane byť takmer plný kotúč.
+export const RING_LW_FRAC = 0.13;
+// Strop 0,30 × r je to, čo drží DIERU. Bez neho mal najslabší uzol (r ≈ 2,4 px)
+// obrys široký viac než polovicu svojho polomeru a prstenec sa čítal ako bodka.
+export const RING_HOLE_FRAC = 0.30;
+// Šírka obrysu v OBRAZOVKOVÝCH px pre prstenec s polomerom rPx (tiež v obrazovkových).
+export function ringWidthPx(rPx, strong) {
+    const base = strong ? RING_LW_HOT : RING_LW;
+    return Math.min(Math.max(rPx * RING_LW_FRAC, base), Math.max(base, rPx * RING_HOLE_FRAC));
+}
+
+/* ---------- VLNA VZDUCH: HIERARCHIA VEĽKOSTI ----------
+   Vzdušnosť nerobí len alfa. Na výreze 1:1 bolo vidieť, že prstence sa takmer
+   DOTÝKAJÚ — medzi obrysmi zostávalo pár pixelov, takže „prázdna plocha", z ktorej
+   vzniká dojem vzduchu, v strede oblaku vôbec nebola. Rozostupy vlastní layout.js
+   (ten nevlastníme), ale polomer áno: slabé uzly zmenšíme o ~28 %, silné necháme.
+   Tým sa zároveň zvýrazní hierarchia (najčitateľnejší signál referencie) A otvoria
+   sa medzery, pretože slabých uzlov je väčšina. */
+export const RING_NODE_MIN = 0.72;    // násobič polomeru pri stupni 0
 export function ringRadius(n, ent, invK) {
     const r = drawRadius(n, ent, invK);
-    if (!ent || (ent.kind !== 'dust' && ent.kind !== 'ctx')) return r;
+    if (!ent) return r;
     const deg = S.degree.get(n.id) || 0;
-    const s = 1 + 0.62 * Math.min(1, Math.log2(1 + deg) / RING_DEG_REF);
+    const t = Math.min(1, Math.log2(1 + deg) / RING_DEG_REF);
+    if (ent.kind !== 'dust' && ent.kind !== 'ctx') {
+        // jadro si veľkosť nesie z mul (1,5 / 0,9) — hierarchiu stupňa mu nevnucujeme
+        if (ent.kind === 'core' || n.type === 'core') return r;
+        return r * (RING_NODE_MIN + (1 - RING_NODE_MIN) * t);
+    }
+    const s = 1 + 0.62 * t;
     return r * (ent.kind === 'ctx' ? 1.06 : RING_DUST_BASE) * s;
 }
 
@@ -168,6 +210,10 @@ export function publishNavApi() {
         // prekalibrovaní palety meralo starú verziu a tvrdilo, že je všetko v poriadku.
         theme: () => T,
         mutedColor,
+        // ringRadius je tu z toho istého dôvodu ako theme(): merač vzdušnosti musí
+        // čítať ŽIVÝ polomer prstenca, nie kópiu formuly (dýchanie, nodeScale a mul
+        // by ju rozhodili a merali by sme mimo prstenca).
+        ringRadius, ringWidthPx,
         inkAlphas: () => ({ label: LABEL_A, mark: T.markA, ring: T.ringA, sleepDim: SLEEP_DIM }),
     });
 }
@@ -281,6 +327,19 @@ export function draw() {
     // Vodoznaky oblastí tu zámerne NIE SÚ: kreslia sa POD sieť, takže žiadny uzol
     // neprekrývajú (sú v S._watermarkBoxes, keby ich chcel niekto merať zvlášť).
     S._labelBoxes = nodeLabels;
+
+    /* ---- VLNA VZDUCH: KTO NESIE INFORMÁCIU SÁM ZA SEBA ----
+       Pokojový prstenec je textúra a smie byť ľahký (tenší obrys, nižšia alfa).
+       Tieto uzly ale textúra NIE SÚ — používateľ z nich čítá konkrétny údaj —
+       takže dostanú plnú alfu a RING_LW_HOT, a tým aj WCAG 1.4.11 (3:1).
+       Množina sa stavia AŽ TU, pretože až rozloženie popiskov vie, ktorý uzol sa
+       reálne pomenoval (rozpočet podľa zoomu + štyri kandidátske polohy). */
+    const carriers = new Set();
+    for (const b of nodeLabels) if (b.id != null) carriers.add(b.id);
+    if (S.hover) carriers.add(S.hover.id);
+    if (S.selected) carriers.add(S.selected.id);
+    S._carriers = carriers;      // debug hook — merač kontrastu si ich vie oddeliť
+
     // Maska pre prach: len rámy s NEPRIEHĽADNÝM podkladom (karta pod kurzorom).
     // Bežné popisky uzlov podklad nemajú a sedia v ploche bez uzlov, takže pod nimi
     // netreba nič vynechávať.
@@ -361,10 +420,21 @@ export function draw() {
         if (S.hover === n) r *= 1.18;
         r *= breatheFactor(n) * birthScale(n);
         if (n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
-        const alpha = entAlpha(n, ent, hl);
+        // Jadro je jediný sýty prvok kompozície a hub-y sú klikacie plochy — obom
+        // zostáva plná alfa. Zľahčuje sa POKOJOVÝ prstenec, teda textúra.
+        const strong = n.type === 'core' || carriers.has(n.id);
+        /* Pokojový faktor a spánok (S.dim) tvrdia TO ISTÉ — „toto nie je to, na čo sa
+           práve pozeráš" — takže sa nesmú vynásobiť. Súčin 0,74 × 0,78 = 0,58 poslal
+           pokojový prstenec na 2,4:1 (merané, scratchpad/gbcontrast.js), a to v stave,
+           ktorý je pri obyčajnom prezeraní NORMÁLNY: „bdie" nie je stav používateľa,
+           ale Hadesa. Berieme preto prísnejší z oboch, nie ich súčin. Spánok naďalej
+           tlmí sieť, areoly, mriežku a jadro a hlavička ho hlási textom, takže signál
+           sa nestráca — len sa neplatí dvakrát tým istým prvkom. */
+        const restF = strong ? 1 : Math.min(T.ringRest, S.dim) / (S.dim || 1);
+        const alpha = entAlpha(n, ent, hl) * restF;
         ctx.globalAlpha = alpha;
         drawShape(n, x, y, r, paintColor(n), {
-            cert: showCert && ent.dim >= 0.5, dim: ent.dim < 0.5, glow: ent.glow || 0,
+            cert: showCert && ent.dim >= 0.5, dim: ent.dim < 0.5, glow: ent.glow || 0, strong,
         });
 
         if (ent.dim < 0.5) { if (n.flash) n.flash = Math.max(0, n.flash - 0.02); continue; }
@@ -436,7 +506,10 @@ function rgbTriplet(col) {
 function drawAreolas(L) {
     for (const h of L.hubs) {
         if (!(h.crx > 0) || !(h.cry > 0)) continue;
-        const a = 0.07 * (h.dim || 1) * S.dim;
+        // VLNA VZDUCH: 0,07 → 0,05. Areola je závoj cez celý región, takže sa počíta
+        // dvakrát — raz ako farba a raz ako plocha, ktorá nie je papier. Regióny už
+        // ohraničuje vodoznak aj hustota siete, tón teda môže byť ešte tichší.
+        const a = 0.05 * (h.dim || 1) * S.dim;
         if (a < 0.004) continue;
         const rgb = rgbTriplet(mutedColor(h.color));
         const R = h.crx * 1.08;
@@ -475,11 +548,13 @@ function drawHub(h, invK, markBox) {
     const r = Math.max(6 * invK, h.rw);
     const a = h.dim * S.dim;
     const col = mutedColor(h.color);
-    ctx.globalAlpha = 0.07 * a;
+    ctx.globalAlpha = 0.05 * a;
     ctx.fillStyle = col;
     ctx.beginPath();
     ctx.arc(h.x, h.y, r * 1.7, 0, 7);
     ctx.fill();
+    // Prstenec hubu zostáva na plnej alfe: je to KLIKACIA plocha (pickHub → zanorenie),
+    // takže je nositeľ informácie a WCAG 1.4.11 (3:1) na neho platí bez výnimky.
     ctx.globalAlpha = Math.min(1, 0.95 * a);
     ctx.lineWidth = Math.max(2 * invK, r * 0.055);
     ctx.strokeStyle = col;
@@ -697,6 +772,9 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
             if (clash) continue;
             if (rectHasNode(grid, rect, nodePad)) continue;
             placed = Object.assign(rect, {
+                // `id` drží väzbu na uzol: pomenovaný uzol je NOSITEĽ informácie,
+                // takže mu draw() dá plnú alfu a hrubší obrys (WCAG 1.4.11).
+                id: c.n.id,
                 label, cx: p.cx, baseline: p.base, fs: fontSize,
                 alpha: baseLabelAlpha * (c.isHover ? 1 : LABEL_A), opaque: false,
             });
@@ -707,6 +785,7 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
         if (!placed && c.isHover) {
             const p = cands[0];
             placed = {
+                id: c.n.id,
                 x: p.cx - w / 2, y: p.base - fontSize, w, h: fontSize * 1.32,
                 label, cx: p.cx, baseline: p.base, fs: fontSize,
                 alpha: baseLabelAlpha, opaque: true,
@@ -815,20 +894,29 @@ export function drawShape(n, x, y, r, color, opts) {
          spomienka → jeden tenký prstenec
          skill     → dva súosé prstence (nadväzuje na starý „donut")
          projekt   → prstenec + malý plný stred (zostatok starej výplne = váha projektu)
-       Rozlíšenie typu tak zostáva, ale všetko je duté. Šírka obrysu má podlahu
-       1,1 px v obrazovkových px, aby prstenec nezmizol v antialiasingu (a s ním
-       ani kontrast voči papieru). */
-    const lw = Math.max(RING_LW * invK, r * 0.16);
+       Rozlíšenie typu tak zostáva, ale všetko je duté.
+
+       VLNA VZDUCH: šírku obrysu už nepočítame tu, ale v ringWidthPx() — jednak aby
+       ju merač mohol čítať živú (window.HADES.ringWidthPx), jednak preto, že má
+       teraz aj HORNÝ strop (0,30 × r). Bez stropu bol u najslabších uzlov obrys
+       širší než polovica polomeru a diera, ktorá má nesť priehľadnosť, prakticky
+       neexistovala. Podlahu 1,7 px (WCAG) dostane len NOSITEĽ informácie
+       (opts.strong): pod kurzorom, vo výbere, s popiskom. */
+    const strong = !!(opts && opts.strong);
+    const lw = ringWidthPx(r * k, strong) * invK;
     if (type === 'skill') {
         ctx.lineWidth = lw;
         ctx.strokeStyle = color;
         ctx.beginPath();
         ctx.arc(x, y, Math.max(0.6, r), 0, 7);
         ctx.stroke();
-        ctx.globalAlpha = a * 0.78;
-        ctx.lineWidth = Math.max(1.2 * invK, r * 0.12);
+        // Druhý súosý prstenec je DRUHÝ ťah na tom istom uzle — v hustom oblaku sa
+        // sčítal do dojmu plného kotúča. Tichšie a tenšie: typ sa z neho stále čítá,
+        // ale prestal zdvojovať hustotu.
+        ctx.globalAlpha = a * (strong ? 0.78 : 0.58);
+        ctx.lineWidth = Math.max((strong ? 1.2 : 0.9) * invK, r * 0.10);
         ctx.beginPath();
-        ctx.arc(x, y, Math.max(0.5, r * 0.50), 0, 7);
+        ctx.arc(x, y, Math.max(0.5, r * 0.46), 0, 7);
         ctx.stroke();
         ctx.globalAlpha = a;
     } else if (type === 'project') {
@@ -837,10 +925,16 @@ export function drawShape(n, x, y, r, color, opts) {
         ctx.beginPath();
         ctx.arc(x, y, Math.max(0.6, r), 0, 7);
         ctx.stroke();
+        // Plný stred je najmenej priehľadná značka na plátne po jadre a na výreze 1:1
+        // bol najťažší prvok celej kompozície (450 projektov = 450 plných bodiek).
+        // Menší priemer (0,26 r namiesto 0,32 r = o 34 % menej plochy) a nižšia alfa
+        // ju nechajú čitateľnú ako „bodka v prstenci", ale prestane z uzla robiť škvrnu.
+        ctx.globalAlpha = a * (strong ? 1 : 0.70);
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, Math.max(0.5, r * 0.32), 0, 7);
+        ctx.arc(x, y, Math.max(0.5, r * 0.26), 0, 7);
         ctx.fill();
+        ctx.globalAlpha = a;
     } else {
         // memory (a neznámy typ) — jeden prstenec
         ctx.lineWidth = lw;
@@ -1079,40 +1173,11 @@ export function setupVisibilityRepaint() {
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) { lastFrame = now(); requestDraw(); }
     });
-    setupPanelDodge();
 }
 
-// Otvorenie bočného panela zmenší využiteľnú plochu (camInsets), takže scéna sa mu
-// má uhnúť. Kameru ale NEfitujeme — fit by zahodil ručný pan/zoom a zrušil by
-// tween pri zanorení do uzla (panely.selectNode odkrýva panel ešte pred goInto).
-// Namiesto toho posunieme kameru len o polovicu rozdielu pravého insetu, čím sa
-// obsah odsunie spod panela a zoom aj rozbehnutá animácia zostanú nedotknuté.
-function setupPanelDodge() {
-    const targets = ['node-panel', 'dock', 'pack-drawer']
-        .map((id) => document.getElementById(id))
-        .filter(Boolean);
-    if (!targets.length) return;
-
-    const anyOpen = () => targets.some((el) => !el.classList.contains('hidden'));
-    let wasOpen = anyOpen();
-    let queued = false;
-
-    const obs = new MutationObserver(() => {
-        // graphActive() a stav panela testujeme SYNCHRÓNNE — keby sme čakali na
-        // rAF callback, samotné naplánovanie rAF by už bolo kreslenie mimo Grafu.
-        if (queued || !graphActive() || !S.nodes.length) return;
-        const open = anyOpen();
-        if (open === wasOpen) return;                 // iná class, nie otvorenie/zatvorenie
-        wasOpen = open;
-        queued = true;
-        requestAnimationFrame(() => {
-            queued = false;
-            // Posun berieme z šírky panela, nie z rozdielu insetov: pri zatváraní je
-            // panel už skrytý, takže camInsets() − viewInsets() by dalo nulu.
-            const shift = (panelReserve() + edgePx()) / 2;
-            S.cam.x += open ? -shift : shift;
-            requestDraw();
-        });
-    });
-    for (const el of targets) obs.observe(el, { attributes: true, attributeFilter: ['class'] });
-}
+// Uhýbanie kamery otvorenému panelu je ZRUŠENÉ (bolo tu setupPanelDodge).
+// Posúvalo scénu vždy tak, ako keby panel stál vpravo — ale #dock je vľavo, takže
+// scéna liezla POD panel (merané: camX 73 → −85, 5 z 5 cyklov, 12 popiskov a
+// vodoznak za panelom). A hlavne to už netreba: camInsets() rezervuje stranu, kde
+// panel skutočne je, takže fitView() sa mu uhne a layoutNodeLabels() popisky pod
+// panel vôbec nekreslí. Posúvať kameru pri otvorení panela len zahadzovalo pohľad.
