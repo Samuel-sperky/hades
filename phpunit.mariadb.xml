@@ -1,15 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+     Sada proti MariaDB.
+
+     Testy recallu stoja na `COLLATE utf8mb4_unicode_ci` a na FULLTEXT, čo
+     SQLite nevie — na predvolenej sade sa preto preskakujú a vetva, ktorá
+     v ostrej prevádzke naozaj beží, nemá pokrytie. Táto konfigurácia ju
+     spustí proti scratch databáze.
+
+     Databáza MUSÍ končiť na `_test`; Tests\TestCase to overuje a inak beh
+     odmietne. `RefreshDatabase` tabuľky zahadzuje a preklep v mene by zmazal
+     ostrého Hadesa.
+
+     Spustenie:
+       docker compose exec app php artisan test -c phpunit.mariadb.xml
+-->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
-         colors="true"
->
+         colors="true">
     <testsuites>
-        <testsuite name="Unit">
-            <directory>tests/Unit</directory>
-        </testsuite>
-        <testsuite name="Feature">
+        <testsuite name="Mariadb">
             <directory>tests/Feature</directory>
+            <directory>tests/Unit</directory>
         </testsuite>
     </testsuites>
     <source>
@@ -19,18 +31,11 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <!--
-             SQLite je predvolený, lebo je rýchly a nepotrebuje kontajner. Časť
-             testov ale stojí na MariaDB (searchNodes používa COLLATE) a tie sa
-             na ňom PRESKOČIA — vetva, ktorá beží v ostrej prevádzke, tak nemá
-             pokrytie. Na ich spustenie slúži phpunit.mariadb.xml.
-        -->
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="DB_CONNECTION" value="mysql"/>
+        <env name="DB_DATABASE" value="hades_test"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
