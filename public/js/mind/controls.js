@@ -7,7 +7,7 @@ import { draw, fitView, requestDraw, zoomBy } from './render.js';
 import { setScreen } from './screens.js';
 import { renderLibrary } from './screens/kniznica.js';
 import { toggleHelp } from './shortcuts.js';
-import { buildSim, goUp, kickSim } from './sim.js';
+import { buildSim, goUp, kickSim, setView, syncViewButtons } from './sim.js';
 import { OPT_DEFAULTS, S, canvas } from './state.js';
 import { renderStructure } from './structure.js';
 import { setupCertTagFilter } from './tagfilter.js';
@@ -42,10 +42,12 @@ export const PRESETS = {
         edgeSoftHover: true, sizeByDegree: false, minWeight: 2, skeleton: true,
     },
     // Živé — predvolený stav appky (= OPT_DEFAULTS + predvolený minWeight/skeleton).
+    // minWeight 0 = celá sieť; musí sedieť s defaultom v state.js, inak by čerstvý
+    // profil hlásil „vlastné nastavenie" namiesto „Živé".
     live: {
         life: 0.5, anim: 0.5, bg: 1, edgeAlpha: 1, glow: 1,
         labelAlpha: 1, labelSize: 1, nodeScale: 1, panelAlpha: 0.92,
-        edgeSoftHover: true, sizeByDegree: false, minWeight: 1, skeleton: false,
+        edgeSoftHover: true, sizeByDegree: false, minWeight: 0, skeleton: false,
     },
     // Husté — viac spojení a popiskov: bez filtra váhy, hrany svietia stále,
     // uzly menšie (aby sa popisky zmestili) a veľkosť podľa stupňa.
@@ -101,6 +103,14 @@ export function setupControls() {
     document.querySelectorAll('#rail .dest[data-screen]').forEach((b) => {
         b.onclick = () => setScreen(b.dataset.screen);
     });
+
+    // VLNA GRAF A: prepínač pohľadu (Sieť / Vrstvy). Zanorenie je filter nad
+    // jednou scénou, pohľad mení fyzikálne rozloženie — to sú dve rôzne veci,
+    // preto dva prepínače v hlavičke a nie ďalšia úroveň v breadcrumbe.
+    const vNet = $('btn-view-net'), vLay = $('btn-view-layers');
+    if (vNet) vNet.onclick = () => setView('net');
+    if (vLay) vLay.onclick = () => setView('layers');
+    syncViewButtons();
 
     // graph-tools (v hlavičke, viditeľné len na Grafe) + systém (rail)
     $('btn-structure').onclick = () => openDock('structure');
@@ -200,7 +210,7 @@ export function setupControls() {
         syncMw();
         mw.oninput = () => {
             S.minWeight = parseFloat(mw.value);
-            localStorage.setItem('hades.minWeight2', String(S.minWeight));
+            localStorage.setItem('hades.minWeight3', String(S.minWeight));
             syncMw();
             markPresetActive();
             draw();
@@ -247,7 +257,7 @@ export function setupControls() {
                 else S.opts[k] = p[k];
             }
             localStorage.setItem('hades.opts', JSON.stringify(S.opts));
-            localStorage.setItem('hades.minWeight2', String(S.minWeight));
+            localStorage.setItem('hades.minWeight3', String(S.minWeight));
             localStorage.setItem('hades.skeleton', S.skeleton ? '1' : '0');
             applyOpts();       // slidery data-opt + --panel-alpha
             syncAdvancedUi();  // prepínače, ktoré nie sú <input>

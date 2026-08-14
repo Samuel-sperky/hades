@@ -32,10 +32,12 @@ export const S = {
     replay: { on: false, t: 1, playing: false, tMin: 0, tMax: 0 },
     sound: localStorage.getItem('hades.sound') !== 'off',
     audio: null,
-    // W2a: jediný graf so štyrmi úrovňami zanorenia. Náhľady map/net/layers sú zrušené;
-    // S.view ostáva len ako spätne kompatibilné zrkadlo úrovne pre staré čítania.
+    // S.view ostáva len ako spätne kompatibilné zrkadlo ('graph') pre staré čítania.
     view: 'graph',
-    // Stavový stroj zanorenia — jediný zdroj pravdy o tom, čo je na plátne.
+    // VLNA GRAF A: pohľad na scénu — 'net' (organická sieť) alebo 'layers'
+    // (vodorovné pásy podľa layer_role). Prepínač je v hlavičke (#graph-tools).
+    gview: (() => { const v = localStorage.getItem('hades.gview'); return v === 'layers' ? 'layers' : 'net'; })(),
+    // Zanorenie = FILTER nad jednou veľkou scénou (nie prepnutie scény):
     // level: 'map' | 'area' | 'dept' | 'node'; area/dept/node = id kontextu.
     nav: (() => {
         try {
@@ -46,15 +48,33 @@ export const S = {
         } catch (e) { /* poškodený nav — späť na mapu */ }
         return { level: 'map', area: null, dept: null, node: null };
     })(),
-    layout: null,          // výsledok computeLayout() pre aktuálnu úroveň (cache podľa signatúry)
+    layout: null,          // prezentácia scény z computeLayout() (cache podľa signatúry)
+    // VLNA GRAF A: stav d3 simulácie. Pumpa (sim.js) tiká ručne, aby sa mimo
+    // obrazovky Graf nesiahalo na rAF. Metriky sú tu preto, aby ich overovací
+    // harness ČÍTAL z appky a nemeral kópiu formuly.
+    _simMs: 2,             // EMA nákladu jedného kroku simulácie (ms)
+    _simTicks: 0,          // počet odtikaných krokov od studeného štartu
+    _simAlpha: 0,          // alpha simulácie minulý krok (0 = usadené)
+    _simSettled: false,    // dosadla? (harness čaká na toto, nie na fixný čas)
+    _pumpFps: 0,           // EMA fps počas usadzovania (kolo pumpy = jeden frame)
+    _pumpAt: 0,            // čas posledného kola pumpy (ms)
+    _fitOnSettle: false,   // po usadení dorovnaj kameru na fokusovú skupinu
+    _needKick: 0,          // layout zistil zmenu pomeru strán → dousaď sieť
+    _netStretch: 1,        // jednorazové roztiahnutie po X (kritérium šírky)
+    _layoutAr: 0,          // pomer strán, na ktorý je postavený aktuálny layout
+    _anchors: null,        // cache kotiev fyziky (ťažiská oblastí / pásy vrstiev)
+    _nbFor: null,          // cache okolia uzla pre filter úrovne 'node'
+    _nbSet: null,
     _camTween: null,       // tweenovaná kamera pri zanorení: { from, to, t, dur }
     _navFocusKey: null,    // posledný S.focus, ktorý sme sami zapísali (detekcia zmien zvonku)
     _navApi: 0,            // window.HADES.go/currentPath už exportované?
     // FÁZA SHELL: aktívna obrazovka (Dnes / Denník / Graf / Knižnica). Plátno (rAF) beží len na 'graf'.
     screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica', 'rozhodnutia', 'kontrola', 'smernica'].includes(v) ? v : 'dnes'; })(),
-    // FÁZA HRANY: default 1.0 (skryje similarity 0.5 + jednorazové co_activation 0.6).
-    // Nový kľúč 'hades.minWeight2', aby sa nový default prejavil aj starým používateľom.
-    minWeight: (() => { const v = localStorage.getItem('hades.minWeight2'); return v == null ? 1.0 : (parseFloat(v) || 0); })(),
+    // Default 0 = celá sieť. Predtým tu bolo 1.0, čo skrylo 791 z 2877 hrán (všetky
+    // similarity 0.5 a jednorazové co_activation 0.6) — a odkedy sú hrany hlavným
+    // nosičom neurónového dojmu, je to presne to, čo nemá byť skryté.
+    // Kľúč 'hades.minWeight3', aby sa nový default prejavil aj starým používateľom.
+    minWeight: (() => { const v = localStorage.getItem('hades.minWeight3'); return v == null ? 0 : (parseFloat(v) || 0); })(),
     // FÁZA HRANY: režim kostry — zobraz len najsilnejšiu štruktúru (manual + part_of + skill_mention)
     skeleton: localStorage.getItem('hades.skeleton') === '1',
     // FÁZA ANIMÁCIE: stav animačnej vrstvy
@@ -95,9 +115,8 @@ export const OPT_DEFAULTS = {
 
 S.opts = Object.assign({}, OPT_DEFAULTS, JSON.parse(localStorage.getItem('hades.opts') || '{}'));
 
-// Fyzika — null = predvolená hodnota náhľadu; slidery (F2) zapisujú čísla + localStorage
-// S.forces / FORCE_DEFAULTS odstránené vlnou W2c — d3 forceSimulation už neexistuje
-// (layout je deterministický v layout.js), takže nemal kto tie hodnoty čítať.
+// Fyzika: konštanty sú v layout.js (PHYS). Slidery síl v Nastaveniach zostávajú
+// zmazané — vlna GRAF A vrátila d3 forceSimulation, ale nie 4 ovládače k nej.
 
 // Filtre siete (Obsidian filters) — množiny SKRYTÝCH typov / zdrojov / oblastí.
 // tags je POZITÍVNY filter (F4): množina VYBRANÝCH značiek — prázdna = bez filtra,

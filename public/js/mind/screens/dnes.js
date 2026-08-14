@@ -2,6 +2,7 @@ import { openCmdk } from '../cmdk.js';
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere } from '../screens.js';
 import { showToast } from '../toasts.js';
+import { mutedColor } from '../theme.js';
 import { $, busy, emptyHtml, esc, renderEmpty, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
@@ -169,7 +170,7 @@ export function perAreaHtml(areas) {
     const max = Math.max.apply(null, areas.map((a) => +a.count || 0).concat([1]));
     return areas.map((a) => {
         const pct = Math.round(((+a.count || 0) / max) * 100);
-        const color = a.color || 'var(--accent)';
+        const color = a.color ? mutedColor(a.color) : 'var(--accent)';
         return '<div class="dbar" style="--lobe:' + esc(color) + ';">'
             + '<div class="dbar-head"><span class="db-dot"></span>'
             + '<span class="db-name">' + esc(a.name || a.slug || '') + '</span>'

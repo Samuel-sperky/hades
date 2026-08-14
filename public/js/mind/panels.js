@@ -6,6 +6,7 @@ import { updatePackUi } from './pack.js';
 import { draw, focusNode, requestDraw } from './render.js';
 import { buildSim, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
+import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
 import { $, busy, emptyHtml, esc, nodeColor, renderEmpty, timeAgo, updateHeaderMetrics } from './util.js';
 
@@ -105,7 +106,7 @@ export async function renderSuggestions(n) {
 
     wrap.innerHTML = list.map((s) => {
         const area = S.areas.get(s.area_id);
-        const color = area ? area.color : 'var(--muted)';
+        const color = area ? mutedColor(area.color) : 'var(--muted)';
         return '<div class="sug-row" data-id="' + s.id + '">'
             + '<span class="swatch" style="background:' + esc(color) + '" aria-hidden="true"></span>'
             + '<span class="sug-label">' + esc(s.label) + '</span>'
@@ -230,10 +231,14 @@ export function renderNodeRecord(node) {
 }
 // Tvarové glyfy typov — neutrálny ink (var(--muted)); farba v legende patrí len oblastiam.
 // Jadro je jediná výnimka: dvojitý zlatý prstenec (brand moment).
+// Glyfy legendy MUSIA hovoriť ten istý jazyk ako plátno. Od vlny „Graf B" sú uzly
+// prstence (priehľadnosť nesie diera, nie nízka alfa), takže plné disky by legenda
+// učila nesprávne: spomienka = jeden prstenec, skill = dva súosé, projekt = prstenec
+// s plným stredom, jadro = jediný plný, zlatý prvok.
 export const TYPE_GLYPHS = {
-    memory: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="var(--muted)"/></svg>',
-    skill: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="var(--muted)"/><circle cx="8" cy="8" r="2.3" fill="var(--bg)"/></svg>',
-    project: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" fill="var(--muted)"/><circle cx="8" cy="8" r="6.8" fill="none" stroke="var(--muted)" stroke-opacity=".7" stroke-width="1.2"/></svg>',
+    memory: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--muted)" stroke-width="1.6"/></svg>',
+    skill: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--muted)" stroke-width="1.6"/><circle cx="8" cy="8" r="2.6" fill="none" stroke="var(--muted)" stroke-width="1.2"/></svg>',
+    project: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--muted)" stroke-width="1.6"/><circle cx="8" cy="8" r="1.8" fill="var(--muted)"/></svg>',
     core: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4" fill="var(--gold)"/><circle cx="8" cy="8" r="6.8" fill="none" stroke="var(--gold)" stroke-opacity=".5" stroke-width="1.2"/></svg>',
 };
 
@@ -250,8 +255,8 @@ export function buildLegend() {
         return '<button type="button" class="legend-row legend-area' + (off ? ' off' : '')
             + '" data-area="' + a.id + '" aria-pressed="' + (off ? 'false' : 'true')
             + '" title="Prepnúť viditeľnosť oblasti">'
-            + '<span class="swatch" style="background:' + esc(a.color)
-            + ';box-shadow:0 0 6px ' + esc(a.color) + '"></span>'
+            + '<span class="swatch" style="background:' + esc(mutedColor(a.color))
+            + ';box-shadow:0 0 6px ' + esc(mutedColor(a.color)) + '"></span>'
             + '<span class="la-name">' + esc(a.name) + '</span>'
             + '<span class="ms la-eye" aria-hidden="true">' + (off ? 'visibility_off' : 'visibility') + '</span>'
             + '</button>';
@@ -498,7 +503,7 @@ export async function refreshStats() {
     });
 
     $('stats-areas').innerHTML = [...S.areas.values()].map((a) =>
-        '<div class="stat-row"><span><span class="swatch" style="background:' + a.color + '"></span>'
+        '<div class="stat-row"><span><span class="swatch" style="background:' + esc(mutedColor(a.color)) + '"></span>'
         + esc(a.name) + '</span><span class="val">' + (st.by_area[a.id] || 0) + '</span></div>'
     ).join('');
 

@@ -2,6 +2,7 @@ import { certBadge } from '../certainty.js';
 import { openMdOverlay } from '../md.js';
 import { bindPackButtons, packBtn } from '../pack.js';
 import { originBadge } from './dnes.js';
+import { mutedColor } from '../theme.js';
 import { $, esc, renderEmpty } from '../util.js';
 
 /* ---------- obrazovka Knižnica (/api/library) ---------- */
@@ -32,7 +33,7 @@ export async function renderLibrary() {
         }
         body.innerHTML = areas.map((a) =>
             '<section class="lib-area"><h2>'
-            + '<span class="lib-dot" style="background:' + esc(a.color || 'var(--muted)') + '"></span>'
+            + '<span class="lib-dot" style="background:' + esc(a.color ? mutedColor(a.color) : 'var(--muted)') + '"></span>'
             + esc(a.name) + '<span class="lib-count">' + (a.skills ? a.skills.length : 0) + '</span></h2>'
             + '<div class="lib-skills">'
             + (a.skills || []).map((s) =>

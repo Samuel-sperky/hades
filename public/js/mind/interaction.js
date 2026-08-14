@@ -3,7 +3,7 @@ import { localSet, nodeVisible } from './filters.js';
 import { drawRadius } from './layout.js';
 import { cancelConnect, closeNodePanel, createEdge, selectNode } from './panels.js';
 import { graphActive, requestDraw, visibleInReplay } from './render.js';
-import { goInto, goUp } from './sim.js';
+import { clearFilter, goInto, goUp, holdSim } from './sim.js';
 import { S, canvas } from './state.js';
 import { $, esc } from './util.js';
 
@@ -36,6 +36,7 @@ export function pick(px, py) {
 }
 
 // Hub (oblasť / oddelenie) pod kurzorom — huby majú prednosť pred prachom pod nimi.
+// Značky pásov (kind 'layer') sú len popisky, klik nimi prejde na uzly pod nimi.
 export function pickHub(px, py) {
     const L = S.layout;
     if (!L) return null;
@@ -43,6 +44,7 @@ export function pickHub(px, py) {
     const invK = 1 / S.cam.k;
     let best = null, bestD = Infinity;
     for (const h of L.hubs) {
+        if (h.kind === 'layer' || h.dim < 0.5) continue;
         const d = Math.hypot(h.x - w.x, h.y - w.y);
         const r = Math.max(9 * invK, h.rw) + 6 * invK;
         if (d < r && d < bestD) { best = h; bestD = d; }
@@ -62,12 +64,23 @@ export function pickTarget(px, py) {
 export function setupInput() {
     let dragging = false, moved = false, lx = 0, ly = 0;
     let lastHoverId = null;
+    // VLNA GRAF A: uzly sa opäť dajú ťahať — pozície drží fyzika, takže fx/fy
+    // uzol pripne a sieť sa okolo neho preleje. Ťahanie prázdna = pan plátna.
+    let dragNode = null;
 
     canvas.addEventListener('mousedown', (e) => {
         dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
         S._interacting = true;
         canvas.style.cursor = '';
-        // W2a: uzly sa neťahajú — layout je deterministický. Ťahanie plátna = pan.
+        dragNode = null;
+        if (!S.connectFrom && !pickHub(e.clientX, e.clientY)) {
+            const n = pick(e.clientX, e.clientY);
+            if (n) {
+                dragNode = n;
+                n.fx = n.x; n.fy = n.y;
+                holdSim(true);
+            }
+        }
         canvas.classList.add('dragging');
         requestDraw();
     });
@@ -84,8 +97,17 @@ export function setupInput() {
         if (dragging) {
             const dx = e.clientX - lx, dy = e.clientY - ly;
             if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-            S.cam.x += dx; S.cam.y += dy;
-            S._camTween = null; // ručný pan preruší tween kamery
+            if (dragNode) {
+                const w = screenToWorld(e.clientX, e.clientY);
+                // fx/fy pre fyziku, x/y priamo — aby ťahanie fungovalo aj vtedy,
+                // keď sa d3 nenačítalo a simulácia neexistuje
+                dragNode.fx = w.x; dragNode.fy = w.y;
+                dragNode.x = w.x; dragNode.y = w.y;
+            } else {
+                S.cam.x += dx; S.cam.y += dy;
+                S._camTween = null;      // ručný pan preruší tween kamery
+                S._fitOnSettle = false;  // ...aj automatické dorovnanie po usadení
+            }
             lx = e.clientX; ly = e.clientY;
             requestDraw();
         } else {
@@ -108,6 +130,12 @@ export function setupInput() {
     window.addEventListener('mouseup', (e) => {
         S._interacting = false;
         canvas.classList.remove('dragging');
+        if (dragNode) {
+            // pusti uzol späť fyzike (pripnutie by zamrzlo klaster okolo neho)
+            dragNode.fx = null; dragNode.fy = null;
+            dragNode = null;
+            holdSim(false);
+        }
         if (!graphActive()) { dragging = false; return; }   // klik mimo Grafu nesmie vyberať uzly
         if (dragging && !moved) {
             const hit = pickTarget(e.clientX, e.clientY);
@@ -129,10 +157,10 @@ export function setupInput() {
         requestDraw();
     });
 
-    // Dvojklik do prázdna vyskočí až na mapu (rýchly reset zanorenia).
+    // Dvojklik do prázdna zruší celý filter (rýchly reset zanorenia).
     canvas.addEventListener('dblclick', (e) => {
         if (pickTarget(e.clientX, e.clientY)) return;
-        goUp();
+        clearFilter();
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -144,6 +172,7 @@ export function setupInput() {
         S.cam.x += (after.x - before.x) * S.cam.k;
         S.cam.y += (after.y - before.y) * S.cam.k;
         S._camTween = null;
+        S._fitOnSettle = false;   // ručný zoom má prednosť pred dorovnaním po usadení
         requestDraw();
     }, { passive: false });
 

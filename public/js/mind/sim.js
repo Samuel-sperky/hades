@@ -1,43 +1,56 @@
 import { animLevel } from './anim.js';
-import { computeLayout } from './layout.js';
-import { draw, fitBBox, fitCam, requestDraw } from './render.js';
+import {
+    PHYS, anchorOf, bandOf, computeLayout, gravityOf, nodeRadius,
+    normalizeAspect, syncLayout,
+} from './layout.js';
+import { draw, fitBBox, fitCam, graphActive, requestDraw } from './render.js';
 import { REDUCED_MOTION, S } from './state.js';
 import { renderBreadcrumb } from './util.js';
 
-/* ---------- W2a: STAVOVÝ STROJ ZANORENIA ----------
+/* ---------- VLNA „GRAF A": FYZIKA + FILTER ZANORENIA ----------
 
-   Jediný graf, štyri úrovne: 'map' → 'area' → 'dept' → 'node'.
-   Vstupný bod je go({ level, area, dept, node }), stav sa čita cez currentPath().
-   Pozície sú deterministické (layout.js), d3 simulácia je zrušená — nie je potrebná
-   a jej náhodnosť by rozbila požiadavku „rovnaké dáta → rovnaké pozície".
-*/
+   d3 forceSimulation je späť (odpudzovanie, hrany, gravitácia k oblasti,
+   collide) — z toho vzniká organická sieť, v ktorej sa klastre prelievajú.
+   Determinizmus prestal byť požiadavkou.
+
+   Simuláciu tikáme SAMI (sim.stop() hneď po vytvorení) v rAF pumpe, ktorá:
+     • mimo obrazovky Graf nešahá na requestAnimationFrame vôbec (kritérium
+       „rAF mimo Grafu = 0") a ani netiká — len raz za 400 ms pozrie, či sa už
+       máme prebudiť,
+     • po usadení (alpha < alphaMin) skončí, takže v pokoji je CPU ticho.
+
+   Zanorenie je LEN filter: go() nastaví S.nav, prepočíta prezentáciu (kind/dim)
+   a zamieri kameru. Pozície uzlov sa pri zanorení nemenia — scéna je jedna. */
 
 export const LEVEL_ORDER = ['map', 'area', 'dept', 'node'];
 
 /* ---------- pozície ---------- */
 
-// Prenesie vypočítaný layout do n.x/n.y. Uzly mimo úrovne si nechajú staré pozície,
-// ale nekreslia sa (render aj pick idú výhradne cez S.layout.pos).
+// Prenesie layout do n.x/n.y. Pozície v layoute vznikli z uzlov, takže je to
+// zvyčajne no-op; význam má po normalizeAspect() a pri prvom builde.
+// POZOR: fx/fy sa tu NEnulujú (na rozdiel od W2a) — držia ťahaný uzol.
 export function applyLayoutPositions(L) {
+    if (!L) return;
     for (const n of S.nodes) {
         const e = L.pos.get(n.id);
         if (e) { n.x = e.x; n.y = e.y; }
-        else if (n.x === undefined) { n.x = 0; n.y = 0; }
-        n.fx = null; n.fy = null;
+        else if (!Number.isFinite(n.x)) { n.x = 0; n.y = 0; }
     }
+    if (S._needKick) { S._needKick = 0; kickSim(0.45); }
 }
 
 /* ---------- normalizácia cieľa ---------- */
 
-function firstAreaId() {
-    let best = null, bestC = -1;
+// Najväčšia oblasť / oddelenie — cieľ pre klávesy 2 a 3, keď kontext chýba.
+export function largestAreaId() {
     const cnt = new Map();
     for (const n of S.nodes) if (n.area_id != null) cnt.set(n.area_id, (cnt.get(n.area_id) || 0) + 1);
-    for (const [id, c] of cnt) if (c > bestC) { best = id; bestC = c; }
+    let best = null, bestC = -1;
+    for (const [id, c] of cnt) if (c > bestC && S.areas.has(id)) { best = id; bestC = c; }
     return best;
 }
 
-function firstDeptId(areaId) {
+export function largestDeptId(areaId) {
     const cnt = new Map();
     for (const n of S.nodes) if (n.department_id) cnt.set(n.department_id, (cnt.get(n.department_id) || 0) + 1);
     let best = null, bestC = -1;
@@ -76,8 +89,8 @@ export function clampNav(t) {
 
 function navKey(n) { return n.level + ':' + n.area + ':' + n.dept + ':' + n.node; }
 
-// S.focus je od W2a už len zrkadlo úrovne pre breadcrumb a strom štruktúry —
-// stmievanie si render/edges počítajú samy z layoutu (ent.dim), nie z focusPass.
+// S.focus je zrkadlo filtra pre breadcrumb a strom štruktúry — stmievanie si
+// render/edges počítajú z layoutu (ent.dim), nie z focusPass.
 function syncFocus(nav) {
     const areaId = nav.level === 'map' ? null : nav.area;
     const deptId = (nav.level === 'dept' || nav.level === 'node') ? nav.dept : null;
@@ -85,9 +98,196 @@ function syncFocus(nav) {
     S._navFocusKey = S.focus.areaId + ':' + S.focus.departmentId;
 }
 
-/* ---------- verejné API ---------- */
+/* ---------- fyzika ---------- */
 
-// Stupeň uzla (podklad pre nodeRadius) — prepočíta sa raz, buildSim ho obnoví.
+let pumping = false;
+
+function d3ok() {
+    return typeof window !== 'undefined' && window.d3 && typeof window.d3.forceSimulation === 'function';
+}
+
+function makeForces(sim) {
+    const d3 = window.d3;
+    const layers = S.gview === 'layers';
+    sim.force('x', d3.forceX((d) => anchorOf(d).x).strength((d) => gravityOf(d).sx));
+    sim.force('y', d3.forceY((d) => anchorOf(d).y).strength((d) => gravityOf(d).sy));
+    sim.force('charge', d3.forceManyBody()
+        .strength(layers ? PHYS.layerCharge : PHYS.charge)
+        .distanceMax(layers ? PHYS.layerChargeMax : PHYS.chargeMax));
+    sim.force('collide', d3.forceCollide((d) => nodeRadius(d) + PHYS.collidePad));
+    sim.force('link', d3.forceLink(S.edges)
+        .id((d) => d.id)
+        .distance(layers ? PHYS.layerLinkDist : PHYS.linkDist)
+        .strength(layers
+            ? PHYS.layerLinkStr
+            : (e) => Math.min(PHYS.linkCap, PHYS.linkPer * (e.weight || 1))));
+}
+
+// Kotvy sa d3 zapekajú pri initialize, nie pri každom tiku — po normalizeAspect()
+// (ktorý mení veniec) ich treba prepiecť, inak by fyzika scénu stiahla späť.
+function reinitAnchors() {
+    if (!S.sim || !d3ok()) return;
+    const d3 = window.d3;
+    S.sim.force('x', d3.forceX((d) => anchorOf(d).x).strength((d) => gravityOf(d).sx));
+    S.sim.force('y', d3.forceY((d) => anchorOf(d).y).strength((d) => gravityOf(d).sy));
+}
+
+// Vrstvy: tvrdý clamp y do pásu. Bez neho by collide + hrany vrstvy premiešali
+// a metafora neurónovej siete by sa rozpadla.
+function clampBands() {
+    for (const n of S.nodes) {
+        const b = bandOf(n);
+        if (!b) continue;
+        const r = Math.min(nodeRadius(n) * 0.6, (b.y1 - b.y0) * 0.4);
+        if (n.y < b.y0 + r) { n.y = b.y0 + r; n.vy = 0; }
+        else if (n.y > b.y1 - r) { n.y = b.y1 - r; n.vy = 0; }
+    }
+}
+
+// Kamera, ktorá obsiahne fokusovú skupinu (bez filtra = celú sieť).
+function fitTarget() {
+    return fitCam(focusBBox(S.layout));
+}
+
+// Počas usadzovania kamera plynulo dobieha rastúci oblak (inak by sieť vyliezla
+// z viewportu a používateľ by videl len jej stred).
+function easeFit(t) {
+    const c = fitTarget();
+    S.cam.x += (c.x - S.cam.x) * t;
+    S.cam.y += (c.y - S.cam.y) * t;
+    S.cam.k += (c.k - S.cam.k) * t;
+}
+
+function pump() {
+    if (!S.sim) { pumping = false; return; }
+    // Mimo Grafu netikáme ani nekreslíme (a nesiahame na rAF) — len sa raz za
+    // chvíľu spýtame, či sa už máme prebudiť.
+    if (!graphActive()) {
+        pumping = true;
+        setTimeout(() => {
+            pumping = false;
+            if (S.sim && S.sim.alpha() > S.sim.alphaMin()) pump();
+        }, 400);
+        return;
+    }
+    pumping = true;
+    const t0 = performance.now();
+    // fps usadzovania: jedno kolo pumpy = jeden vyžiadaný frame, takže rozdiel
+    // časov medzi kolami JE frame time. Harness číta S._pumpFps, nemeria si sám.
+    if (S._pumpAt) S._pumpFps += (1000 / Math.max(1, t0 - S._pumpAt) - S._pumpFps) * 0.2;
+    S._pumpAt = t0;
+    const a = S.sim.alpha();
+    const steps = a > 0.35 ? 2 : 1;
+    for (let i = 0; i < steps; i++) S.sim.tick();
+    if (S.gview === 'layers') clampBands();
+    S._simMs += (Math.min(90, performance.now() - t0) - S._simMs) * 0.15;
+    S._simTicks += steps;
+    S._simAlpha = S.sim.alpha();
+
+    syncLayout(S.layout);
+    if (S._fitOnSettle && S._simTicks % 6 === 0) easeFit(0.26);
+    requestDraw();
+
+    if (S.sim.alpha() > S.sim.alphaMin()) { requestAnimationFrame(pump); return; }
+    pumping = false;
+    S._pumpAt = 0;
+    finishSettle();
+}
+
+function startPump() {
+    if (!pumping && S.sim) pump();
+}
+
+function finishSettle() {
+    S._simSettled = true;
+    S._simAlpha = S.sim ? S.sim.alpha() : 0;
+    const f = normalizeAspect();
+    if (f > 1.001) { reinitAnchors(); syncLayout(S.layout); }
+    if (S._fitOnSettle || f > 1.001) {
+        const c = fitTarget();
+        const from = { x: S.cam.x, y: S.cam.y, k: S.cam.k };
+        if (REDUCED_MOTION || animLevel() <= 0) { S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k; }
+        else S._camTween = { from, to: c, t: 0, dur: 0.45 };
+        S._fitOnSettle = false;
+    }
+    requestDraw();
+}
+
+// Prepočet po zmene dát alebo pohľadu (WS zrod, reload, presun uzla, filtre).
+// Pozície si uzly nechávajú — nový uzol dosadne k svojej kotve a sieť sa len
+// dousadí (teplý štart), takže sa graf pri každom zrode neprehádže.
+export function buildSim() {
+    S.degree = new Map();
+    for (const e of S.edges) {
+        S.degree.set(e.source_id, (S.degree.get(e.source_id) || 0) + 1);
+        S.degree.set(e.target_id, (S.degree.get(e.target_id) || 0) + 1);
+    }
+    S._nbFor = null; S._nbSet = null;
+
+    const next = clampNav(S.nav);
+    if (navKey(next) !== navKey(S.nav)) { S.nav = next; syncFocus(next); renderBreadcrumb(); }
+
+    const warm = S._simTicks > 0 && S.nodes.some((n) => Number.isFinite(n.x));
+    if (S.sim) S.sim.stop();
+
+    if (!d3ok()) {
+        // d3 sa nenačítalo (offline CDN) — appka musí fungovať aj tak: uzly
+        // zostanú na semienkach zo svojich kotiev, len bez relaxácie.
+        S.sim = null;
+        const L0 = computeLayout(true);
+        applyLayoutPositions(L0);
+        if (!warm) {
+            S._fitOnSettle = false;
+            const c = fitTarget();
+            S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k;
+        }
+        requestDraw();
+        return L0;
+    }
+
+    const L = computeLayout(true);          // ensureSeeded() dá nové uzly ku kotvám
+    const sim = window.d3.forceSimulation(S.nodes)
+        .velocityDecay(PHYS.velocityDecay)
+        .alphaDecay(PHYS.alphaDecay)
+        .alphaMin(PHYS.alphaMin)
+        .alphaTarget(0);
+    sim.stop();                             // tikáme sami (rAF pumpa nižšie)
+    S.sim = sim;
+    makeForces(sim);
+    sim.alpha(warm ? PHYS.alphaWarm : PHYS.alphaCold);
+
+    S._simSettled = false;
+    if (!warm) { S._simTicks = 0; S._fitOnSettle = true; }
+    // Tichý rozbeh, nech prvý frame nie je chaos. Pri teplom rebuilde (zrod uzla
+    // z WS) len pár krokov — 26 tikov naraz je ~100 ms zaseknutého vlákna.
+    sim.tick(warm ? 4 : PHYS.burst);
+    if (S.gview === 'layers') clampBands();
+    syncLayout(L);
+    applyLayoutPositions(L);
+    startPump();
+    requestDraw();
+    return L;
+}
+
+// Legacy „nakopnutie simulácie" — reštartuje usadzovanie (dáta, filtre, drag).
+export function kickSim(alpha) {
+    const a = alpha == null ? 0.35 : alpha;
+    if (!S.sim) { requestDraw(); return; }
+    S._simSettled = false;
+    S.sim.alpha(Math.max(S.sim.alpha(), a));
+    startPump();
+    requestDraw();
+}
+
+// Ťahanie uzla: kým drží, sim nesmie zaspať (alphaTarget > alphaMin).
+export function holdSim(on) {
+    if (!S.sim) { requestDraw(); return; }
+    S.sim.alphaTarget(on ? 0.12 : 0);
+    if (on) { S._simSettled = false; S.sim.alpha(Math.max(S.sim.alpha(), 0.12)); startPump(); }
+}
+
+/* ---------- verejné API: zanorenie ako filter ---------- */
+
 function ensureDegree() {
     if (S.degree && S.degree.size) return;
     S.degree = new Map();
@@ -97,19 +297,55 @@ function ensureDegree() {
     }
 }
 
-// Prechod na úroveň. Kamera aj pozície sa tweenujú (ease-in-out cubic, ~600 ms).
+// Rám fokusovej skupiny — čo má kamera po zanorení obsiahnuť. Berie uzly s
+// ent.dim ≥ 0.5 (presne fokus z computeLayout) plus ich popisky.
+function focusBBox(L) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, cnt = 0;
+    const add = (x, y) => {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        cnt++;
+    };
+    for (const [id, e] of L.pos) {
+        if (e.dim < 0.5) continue;
+        const n = S.byId.get(id);
+        if (!n) continue;
+        const r = nodeRadius(n) * (e.mul || 1) + 8;
+        add(e.x - r, e.y - r);
+        add(e.x + r, e.y + r);
+    }
+    for (const h of L.hubs) {
+        if (h.dim < 0.5 || h.kind === 'layer') continue;
+        add(h.x - h.rw, h.y - h.rw);
+        add(h.x + h.rw, h.y + h.rw + 46);
+    }
+    if (cnt < 2) return fitBBox(L);
+    // minimálny rozsah — zanorenie na jeden uzol nesmie vystreliť zoom na strop
+    const MIN = 620;
+    if (maxX - minX < MIN) { const c = (minX + maxX) / 2; minX = c - MIN / 2; maxX = c + MIN / 2; }
+    if (maxY - minY < MIN * 0.6) { const c = (minY + maxY) / 2; minY = c - MIN * 0.3; maxY = c + MIN * 0.3; }
+    return { minX, minY, maxX, maxY };
+}
+
+function aimCamera(L, animate) {
+    const to = fitCam(focusBBox(L));
+    if (!animate) {
+        S.cam.x = to.x; S.cam.y = to.y; S.cam.k = to.k;
+        S._camTween = null;
+        return;
+    }
+    S._camTween = { from: { x: S.cam.x, y: S.cam.y, k: S.cam.k }, to, t: 0, dur: 0.55 };
+}
+
+// Nastavenie filtra zanorenia + zameranie kamery. Pozície sa nemenia.
 export function go(target = {}) {
     ensureDegree();
     const next = clampNav(Object.assign({}, S.nav, target));
-    const changed = navKey(next) !== navKey(S.nav);
+    const same = navKey(next) === navKey(S.nav);
     const first = !S.layout;
-    // klik na už zanorený cieľ nemá trhnúť kamerou — používateľ si ju možno posunul
-    if (!changed && !first) { requestDraw(); return next; }
-
-    const animate = changed && S.nodes.length > 0 && !REDUCED_MOTION && animLevel() > 0;
-    const from = animate ? new Map() : null;
-    if (animate) for (const n of S.nodes) if (n.x != null) from.set(n.id, { x: n.x, y: n.y });
-    const camFrom = { x: S.cam.x, y: S.cam.y, k: S.cam.k };
+    if (same && !first) { requestDraw(); return next; }
 
     S.nav = next;
     try { localStorage.setItem('hades.nav', JSON.stringify(next)); } catch (e) { /* full storage — nič */ }
@@ -117,31 +353,12 @@ export function go(target = {}) {
     S.view = 'graph';
 
     const L = computeLayout(true);
-    applyLayoutPositions(L);
-    // fitBBox (nie L.bbox) — zaráta polomer hubov aj miesto na ich popisky, inak by
-    // hub na okraji scény vyliezol pod hlavičku
-    const camTo = fitCam(fitBBox(L));
-
     renderBreadcrumb();
-
-    if (!animate) {
-        S.cam.x = camTo.x; S.cam.y = camTo.y; S.cam.k = camTo.k;
-        S._morph = null; S._camTween = null;
-        requestDraw();
-        return next;
-    }
-
-    // uzly, ktoré na predošlej úrovni neboli, priletia z hubu svojho kontextu
-    const to = new Map();
-    for (const [id, e] of L.pos) to.set(id, { x: e.x, y: e.y });
-    const fallback = { x: 0, y: 0 };
-    const full = new Map();
-    for (const [id, t] of to) full.set(id, from.get(id) || fallback);
-
-    S._camTween = { from: camFrom, to: camTo, t: 0, dur: 0.6 };
-    S._morph = { from: full, to, t: 0, dur: 0.6 };
-    for (const n of S.nodes) { const f = full.get(n.id); if (f) { n.x = f.x; n.y = f.y; } }
-    draw(); // prekresli na štartové pozície, nech cieľ nezabliká pred prvým rAF framom
+    // Používateľ zamieril sám → usadzovanie mu už kameru nemá preberať.
+    if (!first) S._fitOnSettle = false;
+    aimCamera(L, !first && !REDUCED_MOTION && animLevel() > 0);
+    S._morph = null;
+    if (graphActive()) draw();   // nech cieľ nezabliká pred prvým rAF framom
     requestDraw();
     return next;
 }
@@ -162,17 +379,24 @@ export function currentPath() {
         areaName: area ? area.name : null,
         deptName: dept ? dept.name : null,
         nodeName: node ? node.label : null,
+        view: S.gview,
         crumbs,
     };
 }
 
-// O úroveň von (klik do prázdna, Esc).
+// O úroveň von (klik do prázdna, #btn-up).
 export function goUp() {
     const nav = S.nav;
     if (nav.level === 'node') return go({ level: nav.dept != null ? 'dept' : (nav.area != null ? 'area' : 'map') });
     if (nav.level === 'dept') return go({ level: nav.area != null ? 'area' : 'map' });
     if (nav.level === 'area') return go({ level: 'map' });
     return nav;
+}
+
+// Zrušenie celého filtra (Esc) — späť na celú sieť.
+export function clearFilter() {
+    if (S.nav.level === 'map') return S.nav;
+    return go({ level: 'map' });
 }
 
 // Zanorenie na to, na čo sa kliklo (hub oblasti / hub oddelenia / uzol).
@@ -192,52 +416,51 @@ export function goInto(hit) {
     return S.nav;
 }
 
-/* ---------- spätná kompatibilita ---------- */
+/* ---------- pohľady: Sieť / Vrstvy ---------- */
 
-// Legacy vstup z controls.js / shortcuts.js / chat.js. Náhľady sú zrušené, takže
-// klávesy 1/2/3 a tri tlačidlá teraz prepínajú ÚROVEŇ: 1 = mapa, 2 = oblasť, 3 = oddelenie.
+export function syncViewButtons() {
+    for (const [id, v] of [['btn-view-net', 'net'], ['btn-view-layers', 'layers']]) {
+        const b = document.getElementById(id);
+        if (!b) continue;
+        const on = S.gview === v;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+}
+
+// 'net' | 'layers' prepnú POHĽAD (fyzika sa prekotví a sieť sa preleje do
+// nového rozloženia). 'map' je legacy vstup z chatu = zruš filter. Čokoľvek iné
+// (main.js posiela S.view === 'graph') znamená „obnov uložený stav".
 export function setView(view) {
+    if (view === 'net' || view === 'layers') {
+        const changed = S.gview !== view;
+        S.gview = view;
+        try { localStorage.setItem('hades.gview', view); } catch (e) { /* full storage — nič */ }
+        syncViewButtons();
+        if (changed) {
+            S._anchors = null;
+            S._layerCache = null;
+            S._netStretch = 1;
+            S._fitOnSettle = true;
+            S._simTicks = 0;              // studený štart → kamera dobehne nový rám
+            buildSim();
+        } else requestDraw();
+        return currentPath();
+    }
     if (view === 'map') return go({ level: 'map' });
-    if (view === 'net') {
-        const a = S.nav.area != null ? S.nav.area : firstAreaId();
-        return go({ level: 'area', area: a });
-    }
-    if (view === 'layers') {
-        const a = S.nav.area != null ? S.nav.area : firstAreaId();
-        const d = S.nav.dept != null ? S.nav.dept : firstDeptId(a);
-        return go({ level: 'dept', area: a, dept: d });
-    }
-    // main.js volá setView(S.view) na štarte — S.view je 'graph', čo znamená
-    // „obnov uložený stav zanorenia" (localStorage 'hades.nav').
-    return go(S.nav);
+    // main.js posiela S.view ('graph') = „postav fyziku a obnov uložený filter".
+    // Kamera sa dorovná až po usadení (finishSettle → fokusová skupina).
+    syncViewButtons();
+    const nav = clampNav(S.nav);
+    S.nav = nav;
+    syncFocus(nav);
+    buildSim();
+    renderBreadcrumb();
+    return currentPath();
 }
 
-// Prepočet po zmene dát (WS zrod, reload, presun uzla, filtre).
-export function buildSim() {
-    S.sim = null;   // d3 simulácia zrušená — layout je deterministický
-
-    S.degree = new Map();
-    for (const e of S.edges) {
-        S.degree.set(e.source_id, (S.degree.get(e.source_id) || 0) + 1);
-        S.degree.set(e.target_id, (S.degree.get(e.target_id) || 0) + 1);
-    }
-
-    const next = clampNav(S.nav);
-    if (navKey(next) !== navKey(S.nav)) { S.nav = next; syncFocus(next); renderBreadcrumb(); }
-
-    const L = computeLayout(true);
-    applyLayoutPositions(L);
-    requestDraw();
-    return L;
-}
-
-// Legacy „nakopnutie simulácie" — bez simulácie stačí prekresliť.
-export function kickSim() {
-    requestDraw();
-}
-
-// Zmena S.focus zvonku (strom štruktúry, Esc, breadcrumb v util.js) → dorovnaj úroveň.
-// Volá to render.frame(), takže externý setFocus() naďalej funguje bez zmeny util.js.
+// Zmena S.focus zvonku (strom štruktúry, breadcrumb v util.js) → dorovnaj filter.
+// Volá to render.frame(), takže externý setFocus() naďalej funguje.
 export function syncNavFromFocus() {
     const key = S.focus.areaId + ':' + S.focus.departmentId;
     if (key === S._navFocusKey) return false;

@@ -1,11 +1,11 @@
 import { animLevel, birthScale, breatheFactor, dustDrift, easeInOut, flowCap, lifeLevel, lifeTier, maybeSynapse } from './anim.js';
-import { drawEdges, drawRibbons, drawStubs } from './edges.js';
+import { drawEdges } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
 import { screenToWorld } from './interaction.js';
 import { camInsets, computeLayout, drawRadius, edgePx, panelReserve } from './layout.js';
 import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.js';
 import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
-import { T, certColors } from './theme.js';
+import { T, certColors, mutedColor } from './theme.js';
 import { stopReplay, updateTimelineLabel } from './timeline.js';
 import { highlightSet, isAwake, nodeColor, now, syncSlider, ts, updateStateUi } from './util.js';
 
@@ -60,15 +60,94 @@ function entAlpha(n, ent, hl) {
     return a * S.dim;
 }
 
+/* ---------- GRAF B: VIZUÁLNY JAZYK ---------- */
+
+// Farba, ktorou sa uzol reálne kreslí. Jadro je JEDINÝ sýty prvok kompozície
+// (zlato), všetko ostatné ide cez utlmenú paletu (theme.mutedColor).
+function paintColor(n) {
+    const c = nodeColor(n);
+    return n.type === 'core' ? c : mutedColor(c);
+}
+
+// Polomer prstenca. Pre uzly s tvarom ho dáva layout (nodeRadius × mul — už rastie so
+// stupňom). Pre kontextový prach je ale v layoute KONŠTANTNÝ v px (LOD), takže sila
+// uzla z neho zmizla; referencia ju má a je to jej najčitateľnejší signál. Dopĺňame ju
+// tu (layout.js nevlastníme) násobičom podľa stupňa, plus mierne zväčšenie základu,
+// aby diera v prstenci vôbec vznikla.
+export const RING_DUST_BASE = 1.30;
+export const RING_DEG_REF = 4.2;      // log2(1+deg) ≈ 4,2 je horný decil v dátach
+// Šírka obrysu prstenca v OBRAZOVKOVÝCH px. 1,5 nie je estetické číslo, ale merané:
+// pri 1,1 px antialiasing zoberie prstencu viac než polovicu kontrastu (nominálne
+// 4,6:1 → 2,2:1 na reálnych pixeloch), takže grafický prvok spadne pod WCAG 3:1.
+// Priehľadnosť drží DIERA, nie tenkosť čiary — tá sa dá zaplatiť bez straty vzdušnosti.
+export const RING_LW = 1.5;
+export function ringRadius(n, ent, invK) {
+    const r = drawRadius(n, ent, invK);
+    if (!ent || (ent.kind !== 'dust' && ent.kind !== 'ctx')) return r;
+    const deg = S.degree.get(n.id) || 0;
+    const s = 1 + 0.62 * Math.min(1, Math.log2(1 + deg) / RING_DEG_REF);
+    return r * (ent.kind === 'ctx' ? 1.06 : RING_DUST_BASE) * s;
+}
+
+/* Mriežka nakreslených uzlov — jediná otázka, ktorú rieši: „padá do tohto rámu
+   nejaký nakreslený uzol?" Bez nej by bol test popisku O(popisky × 1060). */
+function buildNodeGrid(drawn, invK) {
+    const cell = 44 * invK;
+    const g = new Map();
+    let maxR = 0;
+    for (const d of drawn) {
+        if (d.r > maxR) maxR = d.r;
+        const k = Math.floor(d.x / cell) + ',' + Math.floor(d.y / cell);
+        let a = g.get(k);
+        if (!a) { a = []; g.set(k, a); }
+        a.push(d);
+    }
+    return { g, cell, maxR };
+}
+// Zasahuje do rámu disk niektorého nakresleného uzla? (polomer uzla + pad)
+function rectHasNode(grid, rect, pad) {
+    const m = grid.maxR + pad;
+    const cx0 = Math.floor((rect.x - m) / grid.cell), cx1 = Math.floor((rect.x + rect.w + m) / grid.cell);
+    const cy0 = Math.floor((rect.y - m) / grid.cell), cy1 = Math.floor((rect.y + rect.h + m) / grid.cell);
+    for (let cx = cx0; cx <= cx1; cx++) {
+        for (let cy = cy0; cy <= cy1; cy++) {
+            const a = grid.g.get(cx + ',' + cy);
+            if (!a) continue;
+            for (const d of a) {
+                const e = d.r + pad;
+                if (d.x > rect.x - e && d.x < rect.x + rect.w + e
+                    && d.y > rect.y - e && d.y < rect.y + rect.h + e) return true;
+            }
+        }
+    }
+    return false;
+}
+
 // API stavového stroja pre konzolu a testy. Publikuje sa z main.js na konci init(),
 // nie z draw() — tam to fungovalo len vďaka poradiu: keby draw() prebehol prvý,
 // _navApi by bolo 1 a priradenie window.HADES v main.js by go/currentPath zahodilo.
 export function publishNavApi() {
-    window.HADES = Object.assign(window.HADES || {}, { go, currentPath, computeLayout });
+    window.HADES = Object.assign(window.HADES || {}, {
+        go, currentPath, computeLayout,
+        // GRAF B: kontrastné overenie musí čítať ŽIVÉ hodnoty plátna (utlmená paleta,
+        // alfy prstenca / siete / vodoznaku), nie svoju kópiu konštánt. Inak by po
+        // prekalibrovaní palety meralo starú verziu a tvrdilo, že je všetko v poriadku.
+        theme: () => T,
+        mutedColor,
+        inkAlphas: () => ({ label: LABEL_A, mark: T.markA, ring: T.ringA, sleepDim: SLEEP_DIM }),
+    });
 }
 
+// GRAF B: podlaha tlmenia v stave „spí". Pôvodných 0,5 znamenalo, že celé plátno
+// (prstence, vodoznak, sieť) je na polovičnej alfe — a keďže „bdie" nie je stav
+// používateľa, ale stav Hadesa (aktívna session v posledných 5 minútach), je toto
+// pri obyčajnom prezeraní dashboardu ten NORMÁLNY stav. Pri 0,5 spadli prstence na
+// ~2,0:1, teda pod WCAG 1.4.11. Pri 0,78 držia 3,3:1 a rozdiel voči bdeniu je
+// stále zreteľný (plus stav nesie textovo hlavička).
+export const SLEEP_DIM = 0.78;
+
 export function draw() {
-    const targetDim = isAwake() ? 1 : 0.5;
+    const targetDim = isAwake() ? 1 : SLEEP_DIM;
     S.dim += (targetDim - S.dim) * 0.02;
     if (Math.abs(targetDim - S.dim) < 0.001) S.dim = targetDim;
 
@@ -114,13 +193,66 @@ export function draw() {
     /* ---- W3a: areola regiónu — veľmi jemný tón pod oblakom prachu ---- */
     drawAreolas(L);
 
-    /* ---- spojenia: agregované stuhy (map/area) alebo reálne hrany (dept/node) ---- */
-    if (L.edgeMode === 'real') {
-        drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView);
-        drawStubs(L);
-    } else {
-        drawRibbons(L);
+    /* ---- GRAF B: ZBER NAKRESLENÝCH UZLOV (bez malovania) ----
+       Zbierame pozície a polomery skôr, než sa čokoľvek namaľuje, pretože rozloženie
+       popiskov ich potrebuje (popisok sa musí uhnúť KAŽDÉMU nakreslenému uzlu) a
+       naopak maska pod nepriehľadnými popiskami rozhoduje, ktorý prach sa vynechá.
+       Predtým sa prach maľoval hneď v zbernej slučke, takže popisky uzlov nemali
+       ako o uzloch vedieť — a preto ani nemohli byť na mape. */
+    const dustBuckets = new Map();   // color → { col, items, alpha }
+    const solid = [];                // uzly s tvarom (kind node/center/core)
+    const drawn = [];                // VŠETKO nakreslené — vstup pre mriežku popiskov
+    for (const [id, ent] of L.pos) {
+        const n = S.byId.get(id);
+        if (!n) continue;
+        if (!visibleInReplay(n) || !nodeVisible(n, loc)) continue;
+        const isDust = ent.kind === 'dust' || ent.kind === 'ctx';
+        const dr = isDust ? dustDrift(id, invK) : null;
+        const x = n.x + (dr ? dr.x : 0), y = n.y + (dr ? dr.y : 0);
+        n._ox = dr ? dr.x : 0; n._oy = dr ? dr.y : 0;
+        if (!inView(x, y)) continue;
+        if (isDust && n !== S.hover && n !== S.selected) {
+            const r = ringRadius(n, ent, invK);
+            const col = paintColor(n);
+            const key = col + '|' + (ent.kind === 'ctx' ? 'c' : 'd') + Math.round((ent.dim || 1) * 20);
+            let b = dustBuckets.get(key);
+            if (!b) {
+                b = {
+                    col, items: [],
+                    alpha: T.ringA * (ent.kind === 'ctx' ? 0.62 : 1) * (ent.dim || 1),
+                };
+                dustBuckets.set(key, b);
+            }
+            b.items.push({ x, y, r, n, ent });
+            drawn.push({ x, y, r });
+            continue;
+        }
+        solid.push({ n, ent, x, y });
+        drawn.push({ x, y, r: ringRadius(n, ent, invK) });
     }
+
+    /* ---- GRAF B: ROZLOŽENIE POPISKOV UZLOV (pred malovaním) ---- */
+    const grid = buildNodeGrid(drawn, invK);
+    const nodeLabels = layoutNodeLabels(L, solid, dustBuckets, hl, invK, null, grid);
+    // Debug hook: A3 meria TOTO — rámy, ktoré render reálne PREKRÝVA uzlami.
+    // Vodoznaky oblastí tu zámerne NIE SÚ: kreslia sa POD sieť, takže žiadny uzol
+    // neprekrývajú (sú v S._watermarkBoxes, keby ich chcel niekto merať zvlášť).
+    S._labelBoxes = nodeLabels;
+    // Maska pre prach: len rámy s NEPRIEHĽADNÝM podkladom (karta pod kurzorom).
+    // Bežné popisky uzlov podklad nemajú a sedia v ploche bez uzlov, takže pod nimi
+    // netreba nič vynechávať.
+    const maskBoxes = nodeLabels.filter((b) => b.opaque);
+
+    /* ---- vodoznak oblasti (najspodnejšia vrstva) ---- */
+    const marks = layoutHubMarks(L, invK);
+    S._watermarkBoxes = marks;
+    paintHubMarks(marks);
+
+    /* ---- spojenia: jemná sieť (hustá scéna) alebo reálne hrany (málo uzlov) ----
+       GRAF B: hrany sa kreslia VŽDY a pre všetky uzly v layoute. Agregované stuhy
+       (drawRibbons) ani pahýle (drawStubs) už neexistujú — s viditeľnou sieťou boli
+       redundantné a po organickom layoute ich L.ribbons/L.stubs aj tak nikto neplní. */
+    drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView);
 
     ctx.globalCompositeOperation = 'source-over';
 
@@ -157,58 +289,40 @@ export function draw() {
         ctx.globalAlpha = 1;
     }
 
-    /* ---- PRACH (kind dust/ctx): dávkovo po farbách, bez hrán a popiskov ----
-       LOD: prach je konštantne malý v obrazovkových pixeloch a veľmi priehľadný —
-       pri oddialení nesie len tvar galaxie, pri priblížení nepridáva šum. */
-    const dustPaths = new Map();   // color → { path, alpha }
-    const solid = [];              // uzly s tvarom (kind node/center/core)
-    const labelBoxes = layoutHubLabels(L, invK);   // rezervácia pred prachom (A3)
-    S._labelBoxes = labelBoxes;                    // debug hook: overenie A3 meria toto, nie kópiu formuly
-    for (const [id, ent] of L.pos) {
-        const n = S.byId.get(id);
-        if (!n) continue;
-        if (!visibleInReplay(n) || !nodeVisible(n, loc)) continue;
-        if (ent.kind === 'dust' || ent.kind === 'ctx') {
-            const dr = dustDrift(id, invK);
-            const x = n.x + (dr ? dr.x : 0), y = n.y + (dr ? dr.y : 0);
-            n._ox = dr ? dr.x : 0; n._oy = dr ? dr.y : 0;
-            if (!inView(x, y)) continue;
-            // pod popiskom hubu prach nekreslíme — jeho podklad by ho aj tak prekryl
-            if (n !== S.hover && n !== S.selected && inLabelBox(labelBoxes, x, y, 2.6 * invK)) continue;
-            if (n === S.hover || n === S.selected) { solid.push({ n, ent, x, y }); continue; }
-            const col = nodeColor(n);
-            const key = col + '|' + (ent.kind === 'ctx' ? 'c' : 'd') + Math.round((ent.dim || 1) * 20);
-            let b = dustPaths.get(key);
-            if (!b) {
-                b = { col, path: new Path2D(), alpha: (ent.kind === 'ctx' ? 0.85 : 0.42) * (ent.dim || 1) };
-                dustPaths.set(key, b);
-            }
-            const r = drawRadius(n, ent, invK);
-            b.path.moveTo(x + r, y);
-            b.path.arc(x, y, r, 0, 7);
-            continue;
+    /* ---- PRACH AKO PRSTENCE: dávkovo po farbách, jedno stroke() na farbu ----
+       Priehľadnosť nesie DIERA v prstenci, nie nízka alfa. Vďaka tomu sa prekrývajúce
+       uzly dajú prečítať (to bola hlavná estetická požiadavka) a zároveň zostáva
+       kompozitná farba nad WCAG 1.4.11 podlahou 3:1 — pri alfe 0,42 (starý plný bod)
+       by utlmená paleta spadla na ~1,8:1. Šírka obrysu je konštantná v obrazovkových
+       px, takže prstenec nezhrubne pri zoome. */
+    ctx.lineWidth = RING_LW * invK;
+    for (const b of dustBuckets.values()) {
+        const path = new Path2D();
+        let any = false;
+        for (const it of b.items) {
+            // pod nepriehľadným popiskom prach nekreslíme — podklad by ho aj tak prekryl
+            if (inLabelBox(maskBoxes, it.x, it.y, it.r)) continue;
+            path.moveTo(it.x + it.r, it.y);
+            path.arc(it.x, it.y, it.r, 0, 7);
+            any = true;
         }
-        n._ox = 0; n._oy = 0;
-        if (!inView(n.x, n.y)) continue;
-        solid.push({ n, ent, x: n.x, y: n.y });
-    }
-    for (const b of dustPaths.values()) {
+        if (!any) continue;
         ctx.globalAlpha = b.alpha * S.dim * (hl ? 0.45 : 1);
-        ctx.fillStyle = b.col;
-        ctx.fill(b.path);
+        ctx.strokeStyle = b.col;
+        ctx.stroke(path);
     }
     ctx.globalAlpha = 1;
 
     /* ---- UZLY S TVAROM — dual-channel: farba = oblasť, tvar = typ ---- */
     const showCert = level === 'dept' || level === 'node';
     for (const { n, ent, x, y } of solid) {
-        let r = drawRadius(n, ent, invK);
+        let r = ringRadius(n, ent, invK);
         if (S.hover === n) r *= 1.18;
         r *= breatheFactor(n) * birthScale(n);
         if (n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
         const alpha = entAlpha(n, ent, hl);
         ctx.globalAlpha = alpha;
-        drawShape(n, x, y, r, nodeColor(n), {
+        drawShape(n, x, y, r, paintColor(n), {
             cert: showCert && ent.dim >= 0.5, dim: ent.dim < 0.5, glow: ent.glow || 0,
         });
 
@@ -249,10 +363,8 @@ export function draw() {
     for (const h of L.hubs) drawHub(h, invK);
 
     /* ---- POPISKY ---- */
-    // rámy popiskov hubov sú rezervované už pred prachom (labelBoxes); tu sa len
-    // vykreslia a popisky uzlov sa im uhnú
-    paintHubLabels(labelBoxes);
-    drawNodeLabels(L, solid, hl, invK, labelBoxes);
+    // rozloženie je hotové pred malovaním; tu sa už len vykreslia
+    paintNodeLabels(nodeLabels);
 }
 
 /* ---------- W3a: areoly regiónov ---------- */
@@ -274,13 +386,16 @@ function rgbTriplet(col) {
 
 // Každý oblak prachu má svoj hub. Bez tónovania sa 1026 bodov čítalo ako šum cez celé
 // plátno; jemná areola (radiálny gradient vo farbe oblasti, doslova pár percent alfy)
-// región ohraničí, ale prach nechá priehľadný a bez hrán. Kreslí sa PRED stuhami.
+// región ohraničí, ale prach nechá priehľadný a bez hrán. Kreslí sa PRED sieťou.
+// GRAF B: alfa dole z 0,12 na 0,07 a farba cez utlmenú paletu — regióny teraz
+// ohraničuje aj hustota siete, takže farebný závoj môže byť oveľa tichší (predtým
+// z neho boli výrazné barevné škvrny, ktoré prekričali štruktúru).
 function drawAreolas(L) {
     for (const h of L.hubs) {
         if (!(h.crx > 0) || !(h.cry > 0)) continue;
-        const a = 0.12 * (h.dim || 1) * S.dim;
+        const a = 0.07 * (h.dim || 1) * S.dim;
         if (a < 0.004) continue;
-        const rgb = rgbTriplet(h.color);
+        const rgb = rgbTriplet(mutedColor(h.color));
         const R = h.crx * 1.08;
         ctx.save();
         ctx.translate(h.x, h.y);
@@ -304,27 +419,27 @@ function drawAreolas(L) {
 
 /* ---------- huby ---------- */
 
+// GRAF B: hub je najväčší prstenec kompozície a zároveň klikacia plocha (pickHub →
+// zanorenie do oblasti/oddelenia), takže viditeľný zostať MUSÍ. Papierové telo ale
+// padlo: vyrezávalo do siete prázdny kruh a prekrývalo aj vodoznak pod ňou, takže
+// hub vyzeral ako cudzí artefakt zavesený nad oblakom. Teraz je to len prstenec
+// v jazyku uzlov — o stupeň hrubší, s veľmi jemným halom, sieť ním presvitá.
 function drawHub(h, invK) {
+    // Značka pásu (pohľad Vrstvy) nie je klikateľná (pickHub ju preskakuje) a jej x/y
+    // je počiatok vľavo zarovnaného vodoznaku — kotúčik tam sedel priamo na prvom
+    // písmene názvu („JADRO" sa čítalo ako „ADRO"). Pás nesie vodoznak, kruh netreba.
+    if (h.kind === 'layer') return;
     const r = Math.max(6 * invK, h.rw);
     const a = h.dim * S.dim;
-    // mäkké halo — hub sa vynorí nad prachom svojej oblasti
-    ctx.globalAlpha = 0.13 * a;
-    ctx.fillStyle = h.color;
+    const col = mutedColor(h.color);
+    ctx.globalAlpha = 0.07 * a;
+    ctx.fillStyle = col;
     ctx.beginPath();
-    ctx.arc(h.x, h.y, r * 1.85, 0, 7);
-    ctx.fill();
-    // telo (papierové) + farebný prstenec
-    ctx.globalAlpha = 0.92 * a;
-    ctx.fillStyle = T.paper;
-    ctx.beginPath();
-    ctx.arc(h.x, h.y, r, 0, 7);
-    ctx.fill();
-    ctx.globalAlpha = 0.28 * a;
-    ctx.fillStyle = h.color;
+    ctx.arc(h.x, h.y, r * 1.7, 0, 7);
     ctx.fill();
     ctx.globalAlpha = Math.min(1, 0.95 * a);
-    ctx.lineWidth = Math.max(1.2 * invK, r * 0.10);
-    ctx.strokeStyle = h.color;
+    ctx.lineWidth = Math.max(2 * invK, r * 0.055);
+    ctx.strokeStyle = col;
     ctx.beginPath();
     ctx.arc(h.x, h.y, r, 0, 7);
     ctx.stroke();
@@ -338,75 +453,79 @@ function drawHub(h, invK) {
 // stratil väzbu na hub a lezol susedom do plochy) — namiesto odsúvania popisku sa
 // pod ním prach nekreslí, takže jeho podklad nemá čo prekryť. Predtým podklad
 // prekrýval 26–51 uzlov na mape a 59–76 v oblasti.
-function layoutHubLabels(L, invK) {
-    const strong = L.hubs.filter((h) => h.dim >= 0.5);
-    if (!strong.length) return [];
-    const fs = (L.level === 'map' ? 14 : 12) * invK;
-    const sub = fs * 0.82;
-    const items = [];
-    for (const h of strong.slice().sort((a, b) => b.count - a.count)) {
-        // Odstup od klastra uzlov (lry), nie len od kruhu hubu — inak popisok sedí
-        // v strede zhluku. Na mape lry nie je (prach je príliš rozsiahly, popisok by
-        // odletel od hubu); tam sa prach pod rámom nekreslí, viď inLabelBox.
-        const r = Math.max(6 * invK, h.rw, h.lry || 0);
-        ctx.font = '600 ' + fs + 'px "Geist", system-ui, sans-serif';
-        const w = Math.max(ctx.measureText(h.name).width, 20 * invK);
-        const bw = w + 10 * invK, bh = fs * 1.35 + sub * 1.2;
+/* ---------- GRAF B: NÁZOV OBLASTI AKO VODOZNAK ----------
+   Predtým: chip s papierovým podkladom NAD sieťou, umiestnený k svojmu hubu; prach
+   sa pod ním vynechával, aby nič neprekryl. To fungovalo, kým bol layout
+   deterministický a stred klastra bol prázdny.
 
-        // Kandidáti umiestnenia: pod klastrom, nad ním, potom o kúsok ďalej pod/nad.
-        // Prvý, ktorý nekoliduje s iným popiskom ani s tvarovým uzlom, vyhráva.
-        // Bez toho popisok odsadený pod vlastný klaster padne na uzly susedného.
-        const gap = fs * 1.35;
-        const cands = [h.y + r + gap, h.y - r - gap * 0.5, h.y + r + gap * 2.1, h.y - r - gap * 1.7];
-        let placed = null;
-        for (let ci = 0; ci < cands.length; ci++) {
-            const y = cands[ci];
-            const rect = { x: h.x - w / 2 - 5 * invK, y: y - fs, w: bw, h: bh };
-            const clash = items.some((t) => rect.x < t.x + t.w && t.x < rect.x + rect.w
-                && rect.y < t.y + t.h && t.y < rect.y + rect.h);
-            if (clash) continue;
-            // posledný kandidát berieme aj s uzlami — lepšie popisok s prekryvom než žiadny
-            if (ci < cands.length - 1 && shapeNodesIn(L, rect)) continue;
-            placed = Object.assign(rect, { name: h.name, count: h.count, cx: h.x, baseline: y, fs, sub });
-            break;
-        }
-        if (!placed) continue;
-        items.push(placed);
+   V organickom (silovom) rozložení je ale ťažisko klastra presne to miesto, kde je
+   uzlov NAJVIAC — nepriehľadný chip tam musí niečo prekryť, nech ho posunieme kam
+   chceme (A3 to hneď ukázala: 32 prekrytých uzlov na mape). Riešenie je obrátiť
+   vrstvenie: názov oblasti je veľký bledý VODOZNAK pod sieťou. Uzly idú NAD ním,
+   takže neprekrýva nič — kritérium „popisok neprekrýva nakreslený uzol" platí
+   konštrukčne, nie kalibráciou.
+
+   Veľkosť sa riadi rozptylom klastra (h.spreadX), takže veľká oblasť má veľké písmo
+   a malá malé — mapa sa dá čítať aj bez legendy. Písmo je verzálkové, tučné a
+   rozšírené, aby bolo pri nízkej alfe stále čitateľné ako slovo, nie ako šum.
+
+   Kontrast: pri fs ≥ 19 px a weight 700 ide o „large text" podľa WCAG (≥ 18,66 px
+   bold), takže platí prah 3:1 — a T.markA je nastavená tak, aby ho splnil v oboch
+   témach. Preto je aj počet na TOM ISTOM riadku a v tej istej veľkosti; ako menší
+   druhý riadok by spadol pod prah malého textu (4,5:1). */
+export const MARK_MIN = 19, MARK_MAX = 116;
+
+function layoutHubMarks(L, invK) {
+    let strong = L.hubs.filter((h) => h.dim >= 0.5 && (h.count > 0 || h.kind === 'layer'));
+    if (!strong.length) return [];
+    // Z hierarchie oblasť→oddelenie berieme len NAJHLBŠIU zaostrenú úroveň. Na úrovni
+    // oddelenia mali oblasť aj oddelenie takmer rovnaké ťažisko, takže sa dva vodoznaky
+    // prekrývali do kaše — a názov nadradenej oblasti aj tak nesie breadcrumb.
+    // Značky pásov (kind 'layer') sú iná os (pohľad Vrstvy) a zostávajú vždy.
+    const bands = strong.filter((h) => h.kind === 'layer');
+    let tree = strong.filter((h) => h.kind !== 'layer');
+    for (const kind of ['dept', 'area']) {
+        const deep = tree.filter((h) => h.kind === kind);
+        if (deep.length) { tree = deep; break; }
+    }
+    strong = bands.concat(tree);
+    const items = [];
+    for (const h of strong) {
+        const label = String(h.name || '').toLocaleUpperCase('sk-SK')
+            + (h.count > 0 ? '  ·  ' + h.count : '');
+        // Šírka nápisu ≈ 1,45 × rozptyl klastra → vodoznak podloží klaster, nevytŕča.
+        const target = Math.max(150 * invK, (h.spreadX || 0) * 1.45);
+        ctx.font = '700 100px "Geist", system-ui, sans-serif';
+        const w100 = ctx.measureText(label).width || 1;
+        const fs = Math.min(MARK_MAX * invK, Math.max(MARK_MIN * invK, (target / w100) * 100));
+        ctx.font = '700 ' + fs + 'px "Geist", system-ui, sans-serif';
+        const w = ctx.measureText(label).width;
+        const left = h.kind === 'layer';
+        items.push({
+            label, fs, left, cx: h.x, baseline: h.y + fs * 0.34,
+            x: left ? h.x : h.x - w / 2, y: h.y - fs * 0.5, w, h: fs * 1.1,
+        });
     }
     return items;
 }
 
-function paintHubLabels(items) {
+// Kreslí sa PRED hranami a uzlami — vodoznak je najspodnejšia vrstva kompozície.
+function paintHubMarks(items) {
     if (!items.length) return;
-    ctx.textAlign = 'center';
+    const prevLs = ctx.letterSpacing;
+    ctx.fillStyle = T.ink;
     for (const it of items) {
-        ctx.globalAlpha = 0.93 * S.dim;
-        ctx.fillStyle = T.paper;
-        ctx.fillRect(it.x, it.y, it.w, it.h);
-
-        ctx.globalAlpha = 0.97 * S.dim;
-        ctx.fillStyle = T.ink;
-        ctx.font = '600 ' + it.fs + 'px "Geist", system-ui, sans-serif';
-        ctx.fillText(it.name, it.cx, it.baseline);
-
-        ctx.globalAlpha = 0.88 * S.dim;
-        ctx.fillStyle = T.inkSoft;
-        ctx.font = '600 ' + it.sub + 'px "Geist Mono", ui-monospace, monospace';
-        ctx.fillText(String(it.count), it.cx, it.baseline + it.sub * 1.25);
+        ctx.textAlign = it.left ? 'left' : 'center';
+        ctx.font = '700 ' + it.fs + 'px "Geist", system-ui, sans-serif';
+        ctx.letterSpacing = (it.fs * 0.06).toFixed(2) + 'px';
+        // Text sa stavom „spí" NEtlmí (rovnako ako popisky uzlov) — inak by vodoznak
+        // spadol na 2,4:1. Tlmí sa grafika: prstence, sieť, areoly.
+        ctx.globalAlpha = T.markA;
+        ctx.fillText(it.label, it.cx, it.baseline);
     }
+    ctx.letterSpacing = prevLs || '0px';
+    ctx.textAlign = 'center';
     ctx.globalAlpha = 1;
-}
-
-// Sedí v ráme aspoň jeden TVAROVÝ uzol (nie prach)? Prach sa pod rámom nekreslí,
-// takže neprekáža; tvarový uzol nesie informáciu a prekryť sa nesmie.
-function shapeNodesIn(L, rect) {
-    for (const [id, ent] of L.pos) {
-        if (ent.kind === 'dust' || ent.kind === 'ctx') continue;
-        const n = S.byId.get(id);
-        if (!n) continue;
-        if (n.x > rect.x && n.x < rect.x + rect.w && n.y > rect.y && n.y < rect.y + rect.h) return true;
-    }
-    return false;
 }
 
 // Padá bod do niektorého rezervovaného rámu popisku? (rozšírené o polomer uzla,
@@ -418,62 +537,144 @@ function inLabelBox(boxes, x, y, pad) {
     return false;
 }
 
-/* ---------- popisky uzlov ---------- */
+/* ---------- GRAF B: POPISKY UZLOV PODĽA ZOOMU ----------
+   Pravidlo, ktoré si vybral používateľ: oddialené len najsilnejšie uzly, pri
+   približovaní pribúdajú ostatné. Rieši to ROZPOČET (koľko popiskov smie byť) krát
+   poradie podľa sily uzla — nie stmievanie. Stmievanie by popisky poslalo pod
+   kontrastnú podlahu (pri alfe 0,4 má ink na tmavom papieri už len 3,5:1), takže
+   popisok sa buď zobrazí čitateľne, alebo sa nezobrazí vôbec.
 
-function drawNodeLabels(L, solid, hl, invK, reserved) {
-    // LOD: na mape a v oblasti nesú význam popisky hubov; jednotlivé uzly sa
-    // pomenujú až od úrovne oddelenia (alebo pod kurzorom / vo výbere).
-    const levelLabels = L.level === 'dept' || L.level === 'node';
-    const zoomFade = Math.min(1, Math.max(0, (S.cam.k - 0.42) / 0.22));
+   Popisky sú teraz aj na mape — predtým sa uzly pomenovali až od úrovne oddelenia,
+   takže mapa bola anonymný prach. Cenou je striktnejšie umiestňovanie: rám popisku
+   nesmie zasahovať do disku ŽIADNEHO nakresleného uzla (štyri kandidátske pozície
+   okolo uzla), inak sa popisok zahodí. Preto nemusí mať podklad — a preto sa pod ním
+   nemusí (a nesmie) nič vynechávať. */
+
+// Alfa, pri ktorej ink na papieri drží ≥ 4,5:1 v OBOCH témach (dark 6,7:1, light 5,4:1).
+export const LABEL_A = 0.72;
+export const LBL_K0 = 0.20, LBL_K1 = 1.30;
+
+// Rozpočet popiskov podľa priblíženia. Kvadraticky, aby pri oddialení bola mapa
+// naozaj len o najsilnejších menách a názvy pribúdali plynule, nie skokom.
+export function labelBudget(k) {
+    const t = Math.min(1, Math.max(0, (k - LBL_K0) / (LBL_K1 - LBL_K0)));
+    return Math.round(12 + 96 * t * t);
+}
+
+function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
     const baseLabelAlpha = Math.min(1, S.opts.labelAlpha);
-    if (baseLabelAlpha < 0.02) { S._labelShown = new Set(); return; }
+    if (baseLabelAlpha < 0.02) { S._labelShown = new Set(); return []; }
 
+    // kandidáti: tvarové uzly + prach (prach nesie label až teraz)
     const candidates = [];
-    for (const { n, ent, x, y } of solid) {
+    const push = (n, ent, x, y) => {
         const isHover = S.hover === n || S.selected === n;
-        const inHl = !!(hl && hl.has(n.id));
-        const allowed = isHover || (levelLabels && ent.dim >= 0.5 && zoomFade > 0) || (inHl && zoomFade > 0);
-        if (!allowed) continue;
-        const alpha = baseLabelAlpha * entAlpha(n, ent, hl) * (isHover ? 1 : zoomFade);
-        if (alpha < 0.12) continue;
-        candidates.push({ n, ent, x, y, isHover, alpha });
+        // pri aktívnom zvýraznení pomenúvame len okolie kotvy — utlmený popisok by
+        // spadol pod kontrastnú podlahu, tak radšej žiadny
+        if (hl && !hl.has(n.id) && !isHover) return;
+        if (ent.dim < 0.5 && !isHover) return;
+        candidates.push({ n, ent, x, y, isHover, core: n.type === 'core' ? 1 : 0, deg: S.degree.get(n.id) || 0 });
+    };
+    for (const s of solid) push(s.n, s.ent, s.x, s.y);
+    // prach: iterujeme L.pos znova len pre uzly, ktoré sa reálne dostali do vedierok
+    for (const b of dustBuckets.values()) {
+        for (const it of b.items) {
+            if (it.n) push(it.n, it.ent, it.x, it.y);
+        }
     }
 
+    // Poradie: kurzor → jadro (má meno vždy, je to stred vedomia) → čo bolo pomenované
+    // minulý frame (stabilita, popisky pri pohybe siete neblikajú) → sila uzla → id
+    // (deterministický tie-break, nech sa dva reloady zhodnú).
     const shown = S._labelShown || (S._labelShown = new Set());
     candidates.sort((a, b) =>
         (b.isHover - a.isHover)
+        || (b.core - a.core)
         || ((shown.has(b.n.id) ? 1 : 0) - (shown.has(a.n.id) ? 1 : 0))
-        || (b.alpha - a.alpha)
-        || ((S.degree.get(b.n.id) || 0) - (S.degree.get(a.n.id) || 0)));
+        || (b.deg - a.deg)
+        || (a.n.id - b.n.id));
 
     const fontSize = (12 * S.opts.labelSize) * invK;
+    const gap = fontSize * 1.55;
+    const nodePad = 1.5 * invK;
+    const budget = labelBudget(S.cam.k);
+    // Použiteľná plocha vo SVETOVÝCH súradniciach: popisok, ktorý by skončil pod railom,
+    // hlavičkou alebo otvoreným panelom, sa nekreslí vôbec. Fit (fitBBox) počíta len
+    // geometriu uzlov, o šírkach textov nevie — a s popiskami po celej sieti to bolo
+    // vidieť: mená pri ľavom okraji lezli pod rail a čítalo sa z nich pol slova.
+    const ins = camInsets();
+    const wTL = screenToWorld(ins.left, ins.top);
+    const wBR = screenToWorld(S.w - ins.right, S.h - ins.bottom);
     const taken = reserved ? reserved.slice() : [];
+    const out = [];
     const newShown = new Set();
     ctx.textAlign = 'center';
     ctx.font = fontSize + 'px "Geist", system-ui, sans-serif';
-    for (const { n, ent, x, y, isHover, alpha } of candidates) {
-        const label = truncLabel(n.label);
-        const w = ctx.measureText(label).width;
-        const ly = y + drawRadius(n, ent, invK) * (S.hover === n ? 1.18 : 1) + 13 * invK;
-        const rect = { x: x - w / 2, y: ly - fontSize, w, h: fontSize * 1.4 };
-        const collides = taken.some((t) =>
-            rect.x < t.x + t.w && t.x < rect.x + rect.w
-            && rect.y < t.y + t.h && t.y < rect.y + rect.h);
-        if (collides && !isHover) continue;
-        taken.push(rect);
-        newShown.add(n.id);
 
-        if (isHover) {
-            const px = 5 * invK, py = 3 * invK;
-            ctx.globalAlpha = alpha * 0.82;
-            ctx.fillStyle = T.paper;
-            ctx.fillRect(rect.x - px, rect.y - py, rect.w + 2 * px, rect.h + 2 * py);
+    for (const c of candidates) {
+        if (out.length >= budget && !c.isHover) continue;
+        const label = truncLabel(c.n.label);
+        const w = ctx.measureText(label).width;
+        if (!(w > 0)) continue;
+        const r = ringRadius(c.n, c.ent, invK) * (S.hover === c.n ? 1.18 : 1);
+        // pod / nad / vpravo / vľavo — prvá poloha bez kolízie vyhráva
+        const cands = [
+            { cx: c.x, base: c.y + r + gap },
+            { cx: c.x, base: c.y - r - gap * 0.55 },
+            { cx: c.x + r + gap * 0.6 + w / 2, base: c.y + fontSize * 0.34 },
+            { cx: c.x - r - gap * 0.6 - w / 2, base: c.y + fontSize * 0.34 },
+        ];
+        let placed = null;
+        for (const p of cands) {
+            const rect = { x: p.cx - w / 2, y: p.base - fontSize, w, h: fontSize * 1.32 };
+            if (rect.x < wTL.x || rect.y < wTL.y
+                || rect.x + rect.w > wBR.x || rect.y + rect.h > wBR.y) continue;
+            const clash = taken.some((t) => rect.x < t.x + t.w && t.x < rect.x + rect.w
+                && rect.y < t.y + t.h && t.y < rect.y + rect.h);
+            if (clash) continue;
+            if (rectHasNode(grid, rect, nodePad)) continue;
+            placed = Object.assign(rect, {
+                label, cx: p.cx, baseline: p.base, fs: fontSize,
+                alpha: baseLabelAlpha * (c.isHover ? 1 : LABEL_A), opaque: false,
+            });
+            break;
         }
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = T.ink;
-        ctx.fillText(label, x, ly);
+        // uzol pod kurzorom / vo výbere musí mať meno vždy — dostane nepriehľadný
+        // podklad (a prach sa pod ním potom vynechá, viď maskBoxes)
+        if (!placed && c.isHover) {
+            const p = cands[0];
+            placed = {
+                x: p.cx - w / 2, y: p.base - fontSize, w, h: fontSize * 1.32,
+                label, cx: p.cx, baseline: p.base, fs: fontSize,
+                alpha: baseLabelAlpha, opaque: true,
+            };
+        } else if (placed && c.isHover) {
+            placed.opaque = true;
+        }
+        if (!placed) continue;
+        taken.push(placed);
+        out.push(placed);
+        newShown.add(c.n.id);
     }
     S._labelShown = newShown;
+    return out;
+}
+
+function paintNodeLabels(items) {
+    if (!items.length) return;
+    ctx.textAlign = 'center';
+    for (const it of items) {
+        ctx.font = it.fs + 'px "Geist", system-ui, sans-serif';
+        if (it.opaque) {
+            const px = 5 * it.fs / 12, py = 3 * it.fs / 12;
+            ctx.globalAlpha = it.alpha * 0.85;
+            ctx.fillStyle = T.paper;
+            ctx.fillRect(it.x - px, it.y - py, it.w + 2 * px, it.h + 2 * py);
+        }
+        ctx.globalAlpha = it.alpha;
+        ctx.fillStyle = T.ink;
+        ctx.fillText(it.label, it.cx, it.baseline);
+    }
     ctx.globalAlpha = 1;
 }
 
@@ -544,34 +745,46 @@ export function drawShape(n, x, y, r, color, opts) {
         return;
     }
 
+    /* GRAF B: TVARY V PRSTENCOVOM JAZYKU
+       Predtým: spomienka = plný disk, skill = donut, projekt = disk s prstencom.
+       Plný disk je ale najmenej priehľadný prvok, aký sa dá nakresliť — pri hustom
+       grafe sa dva prekryté disky čítajú ako jedna škvrna. Preložené do prstencov:
+         spomienka → jeden tenký prstenec
+         skill     → dva súosé prstence (nadväzuje na starý „donut")
+         projekt   → prstenec + malý plný stred (zostatok starej výplne = váha projektu)
+       Rozlíšenie typu tak zostáva, ale všetko je duté. Šírka obrysu má podlahu
+       1,1 px v obrazovkových px, aby prstenec nezmizol v antialiasingu (a s ním
+       ani kontrast voči papieru). */
+    const lw = Math.max(RING_LW * invK, r * 0.16);
     if (type === 'skill') {
-        // donut — anulus kreslený hrubým obrysom (žiadne compositing triky, diera
-        // ostane naozaj priehľadná, takže sa nebije s papierom ani s hranami pod ňou)
-        const rw = r * 0.56;
-        ctx.lineWidth = Math.max(1.2 * invK, rw);
+        ctx.lineWidth = lw;
         ctx.strokeStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, Math.max(0.6, r - rw / 2), 0, 7);
+        ctx.arc(x, y, Math.max(0.6, r), 0, 7);
         ctx.stroke();
-    } else if (type === 'project') {
-        // disk + vonkajší prstenec
-        ctx.fillStyle = color;
+        ctx.globalAlpha = a * 0.78;
+        ctx.lineWidth = Math.max(1.2 * invK, r * 0.12);
         ctx.beginPath();
-        ctx.arc(x, y, r * 0.66, 0, 7);
-        ctx.fill();
-        ctx.globalAlpha = a * 0.9;
-        ctx.lineWidth = Math.max(1 * invK, r * 0.14);
-        ctx.strokeStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, r * 1.08, 0, 7);
+        ctx.arc(x, y, Math.max(0.5, r * 0.50), 0, 7);
         ctx.stroke();
         ctx.globalAlpha = a;
-    } else {
-        // memory (a neznámy typ) — plný disk
+    } else if (type === 'project') {
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(0.6, r), 0, 7);
+        ctx.stroke();
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, 7);
+        ctx.arc(x, y, Math.max(0.5, r * 0.32), 0, 7);
         ctx.fill();
+    } else {
+        // memory (a neznámy typ) — jeden prstenec
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(0.6, r), 0, 7);
+        ctx.stroke();
     }
 
     if (!opts || !opts.cert) return;
@@ -691,7 +904,7 @@ export function frame() {
         if (S.replay.t >= 1) stopReplay();
     }
 
-    const dimTarget = isAwake() ? 1 : 0.5;
+    const dimTarget = isAwake() ? 1 : SLEEP_DIM;
     const dimActive = Math.abs(dimTarget - S.dim) > 0.001;
     const ambientLife = S._life > 0; // pokoj = dýchajúce jadro + veľmi pomalý prach
     const responsive = !!S._morph || !!S._camTween || S.replay.playing || S._interacting

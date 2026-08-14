@@ -8,16 +8,18 @@ import { cancelConnect, closeNodePanel, openCreateNode } from './panels.js';
 import { fitView, zoomBy } from './render.js';
 import { openNodeFromAnywhere, setScreen } from './screens.js';
 import { armKontrolaAction, disarmKontrolaBtn, kontrolaBtn, kontrolaMove, kontrolaNodeRef, kontrolaResolve, kontrolaState, kontrolaVerify } from './screens/kontrola.js';
-import { currentPath, go, goUp, setView } from './sim.js';
+import { clearFilter, currentPath, go, goUp, largestAreaId, largestDeptId, setView } from './sim.js';
 import { S } from './state.js';
 import { showToast } from './toasts.js';
 import { $ } from './util.js';
 
 export const SHORTCUTS = [
     ['Ctrl K / F / /', 'Hľadať (paleta)'],
-    ['1 / 2 / 3 / 4', 'Úroveň: Mapa / Oblasť / Oddelenie / Uzol'],
-    ['Enter', 'Zanoriť sa do zvoleného uzla'],
-    ['Esc / Backspace', 'O úroveň von'],
+    ['1 / 2 / 3 / 4', 'Filter: celá sieť / oblasť / oddelenie / uzol'],
+    ['V', 'Pohľad: Sieť ↔ Vrstvy'],
+    ['Enter', 'Zamerať zvolený uzol'],
+    ['Esc', 'Zrušiť filter'],
+    ['Backspace', 'O úroveň von'],
     ['D', 'Denník'],
     ['R', 'Štruktúra'],
     ['S', 'Prehľad'],
@@ -30,17 +32,18 @@ export const SHORTCUTS = [
 ];
 
 export const MOUSE_HINTS = [
-    ['ťahanie', 'Posun plátna'],
+    ['ťahanie plátna', 'Posun scény'],
+    ['ťahanie uzla', 'Prehodenie uzla (sieť sa preleje)'],
     ['koliesko', 'Zoom'],
-    ['klik na uzol', 'Detail + zanorenie'],
+    ['klik na uzol', 'Detail + zúženie filtra'],
     ['klik do prázdna', 'O úroveň von'],
 ];
 
-/* W2c: klávesy 1–4 skáču na úroveň zanorenia. go({level}) sám doplní chýbajúci
-   kontext z S.nav, ale keď ho nemá odkiaľ vziať (napr. „2" priamo z mapy),
-   clampNav by úroveň zhodil späť na mapu a kláves by nerobil nič. Preto pri
-   nedosiahnutom cieli dobehne setView(), ktorý vyberie najväčšiu oblasť /
-   oddelenie — jediný zvyšný dôvod, prečo shim setView ešte žije. */
+/* VLNA GRAF A: klávesy 1–4 zužujú FILTER nad jednou scénou. go({level}) doplní
+   chýbajúci kontext z S.nav; keď ho nemá odkiaľ vziať (napr. „2" bez zvolenej
+   oblasti), clampNav by úroveň zhodil na mapu a kláves by ticho nerobil nič —
+   preto tu doplníme najväčšiu oblasť / oddelenie. setView() sa už NEpoužíva,
+   ten dnes prepína pohľad (Sieť / Vrstvy), nie úroveň. */
 function goLevel(level) {
     if (level === 'node') {
         if (S.selected) return go({ level: 'node', node: S.selected.id });
@@ -49,9 +52,16 @@ function goLevel(level) {
         showToast('Najprv vyber uzol (klik alebo Ctrl+K)');
         return currentPath();
     }
-    const res = go({ level });
-    if (res.level === level || level === 'map') return res;
-    return setView(level === 'area' ? 'net' : 'layers');
+    if (level === 'map') return go({ level: 'map' });
+    if (level === 'area') {
+        const a = S.nav.area != null ? S.nav.area : largestAreaId();
+        if (a == null) return currentPath();
+        return go({ level: 'area', area: a });
+    }
+    const area = S.nav.area != null ? S.nav.area : largestAreaId();
+    const d = S.nav.dept != null ? S.nav.dept : largestDeptId(area);
+    if (d == null) return currentPath();
+    return go({ level: 'dept', dept: d });
 }
 
 export let helpReturnFocus = null;
@@ -116,9 +126,10 @@ export function setupShortcuts() {
                 return;
             }
             if (S.local) { clearLocal(); return; }
-            // W2c: posledný stupienok kaskády = O JEDNU úroveň von (predtým setFocus(null,null),
-            // čo skočilo z uzla/oddelenia rovno na mapu a stratilo kontext).
-            goUp();
+            // VLNA GRAF A: posledný stupienok kaskády = ZRUŠ FILTER. Scéna je jedna,
+            // takže niet kam „vyskakovať" — Esc len vráti celú sieť do plnej sily.
+            // Postupné vynáranie po jednej úrovni má #btn-up a Backspace.
+            clearFilter();
             return;
         }
 
@@ -174,6 +185,7 @@ export function setupShortcuts() {
                 }
                 break;
             case 'n': case 'N': openCreateNode(); break;
+            case 'v': case 'V': setView(S.gview === 'layers' ? 'net' : 'layers'); break;
             case 'c': case 'C':
                 if (document.body.classList.contains('chat-on')) {
                     e.preventDefault();
@@ -192,7 +204,7 @@ export function setupShortcuts() {
 export const HINTS = [
     { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš obrazovky — Dnes, Denník, Graf a Knižnica. Hades sa otvorí na Dnes.' },
     { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
-    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Na obrazovke Graf sa klikom zanoríš hlbšie — oblasť, oddelenie, uzol. Esc (alebo klik do prázdna) ťa vráti o úroveň von, klávesy 1–4 skočia priamo.' },
+    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Graf je jedna veľká sieť — chodíš po nej ťahaním a zoomom. Klik na oblasť, oddelenie alebo uzol ju len zaostrí (zvyšok stmavne), Esc filter zruší. V prepne na Vrstvy.' },
     { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, sieť, chat) a Pomocníka.' },
 ];
 

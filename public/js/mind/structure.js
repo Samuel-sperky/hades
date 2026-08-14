@@ -1,6 +1,7 @@
 import { reloadGraph } from './api.js';
 import { dockOpen } from './dock.js';
 import { S } from './state.js';
+import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
 import { $, busy, emptyHtml, esc, markTreeActive, renderEmpty, setFocus } from './util.js';
 
@@ -16,7 +17,7 @@ export async function renderStructure() {
         let html = '';
         for (const a of data.areas || []) {
             html += '<div class="tree-row area" role="button" tabindex="0" data-area="' + a.id + '">'
-                + '<span class="dot" style="background:' + esc(a.color || '#566964') + '"></span>'
+                + '<span class="dot" style="background:' + esc(mutedColor(a.color || '#566964')) + '"></span>'
                 + '<span class="t-name">' + esc(a.name) + '</span>'
                 + '<span class="count">' + (a.node_count || 0) + '</span></div>';
             for (const d of a.departments || []) {

@@ -27,6 +27,9 @@
         </div>
         <div class="h-center">
             <div id="graph-tools" role="group" aria-label="Nástroje grafu">
+                <!-- VLNA GRAF A: prepínač pohľadu — organická Sieť / neurónové Vrstvy (V) -->
+                <button id="btn-view-net" class="ms" title="Sieť (V)" aria-label="Pohľad Sieť" aria-pressed="true">hub</button>
+                <button id="btn-view-layers" class="ms" title="Vrstvy (V)" aria-label="Pohľad Vrstvy" aria-pressed="false">layers</button>
                 <button id="btn-structure" class="ms" title="Štruktúra (R)" aria-label="Štruktúra">account_tree</button>
                 <button id="btn-stats" class="ms" title="Prehľad (S)" aria-label="Prehľad">monitoring</button>
                 <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
@@ -412,6 +415,10 @@
         </div>
     </div>
 
+    <!-- VLNA GRAF A: d3 je späť — layout uzlov počíta d3.forceSimulation (sim.js).
+         Keby CDN nedobehlo, buildSim() to zvládne aj bez neho (uzly zostanú na
+         deterministických semienkach pri svojich kotvách, len bez relaxácie). -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8/dist/web/pusher.min.js"></script>
     <script src="/js/charts.js"></script>
     <script type="module" src="/js/mind/main.js"></script>
