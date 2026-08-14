@@ -122,8 +122,10 @@ export function renderBreadcrumb() {
 
     const crumbs = p.crumbs || [];
     if (crumbs.length < 2) {
-        // sme na mape — cesta je len „Hades", takže radšej tichý podtitul
-        bc.innerHTML = '<span class="crumb-idle">živé vedomie</span>';
+        // Sme na mape — cesta je len „Hades". Podtitul „živé vedomie" tu BÝVAL,
+        // ale eyebrow wordmarku ho teraz hovorí sám, takže by stál dvakrát vedľa
+        // seba. Breadcrumb preto na mape mlčí.
+        bc.innerHTML = '';
         return;
     }
 
@@ -147,7 +149,9 @@ export function renderBreadcrumb() {
 
 // W2c: #btn-up nahradil mŕtvy #view-switch — na mape nie je kam ísť, tak sa skryje.
 // Zároveň: prvý crumb je názov vedomia, takže pri zobrazenej ceste by statický
-// #brand-name písal „Hades / Hades / …". Kým je cesta viditeľná, brand ustúpi jej.
+// wordmark písal „Hades / Hades / …". VLNA BRAND: neskrýva sa už celý lockup
+// (tým by z hlavičky zmizla značka úplne), ale len jeho TEXT — koruna ♛ zostáva
+// ako trvalý znak. Robí to trieda .deep, CSS skryje .bm-text.
 function syncUpButton(p) {
     const deep = !!(p.crumbs && p.crumbs.length > 1);
     const up = document.getElementById('btn-up');
@@ -157,7 +161,7 @@ function syncUpButton(p) {
         up.title = 'Späť na „' + parent + '" (Esc)';
     }
     const brand = document.getElementById('brand-name');
-    if (brand) brand.classList.toggle('hidden', deep);
+    if (brand) brand.classList.toggle('deep', deep);
 }
 
 export function markTreeActive() {
@@ -262,13 +266,34 @@ export async function busy(btn, fn, busyText) {
     finally { btn.disabled = false; btn.textContent = old; }
 }
 
-// Jednotný prázdny stav — jedna šablóna pre všetky sekcie
-export function emptyHtml(icon, text) {
-    return '<div class="empty"><span class="ms" aria-hidden="true">' + icon + '</span><p>' + esc(text) + '</p></div>';
+/* ---------- prázdne a načítavacie stavy ----------
+   Hlas značky: vecne, krátko, po slovensky, bez zdrobnenín a bez „Ups!".
+   Prvý riadok povie ČO JE, nepovinný druhý ČO S TÝM — a to len tam, kde sa
+   naozaj dá niečo urobiť. Nepovinný `hint` je pridaný ako TRETÍ parameter, aby
+   ostali funkčné volania z modulov, ktoré táto vlna nevlastní (cmdk.js, md.js,
+   pack.js) — tie ho jednoducho neposielajú. */
+export function emptyHtml(icon, text, hint) {
+    return '<div class="empty"><span class="ms" aria-hidden="true">' + icon + '</span><p>' + esc(text) + '</p>'
+        + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '')
+        + '</div>';
 }
 
-export function renderEmpty(container, icon, text) {
-    container.innerHTML = emptyHtml(icon, text);
+export function renderEmpty(container, icon, text, hint) {
+    container.innerHTML = emptyHtml(icon, text, hint);
+}
+
+/* Načítavanie NIE JE prázdny stav — má vlastný znak: súosé kruhy značky, ktoré
+   dýchajú (rovnaká motív ako jadro vedomia a favicon), namiesto generických
+   presýpacích hodín. Text zostáva v prvej osobe („Načítavam…"), pretože Hades
+   o sebe hovorí v prvej osobe aj inde v UI. Pohyb rieši CSS a vypína ho
+   prefers-reduced-motion. */
+export function loadingHtml(text) {
+    return '<div class="empty empty-loading"><span class="load-mark" aria-hidden="true"></span>'
+        + '<p>' + esc(text || 'Načítavam…') + '</p></div>';
+}
+
+export function renderLoading(container, text) {
+    container.innerHTML = loadingHtml(text);
 }
 export function timeAgo(iso) {
     if (!iso) return '';

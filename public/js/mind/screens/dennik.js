@@ -1,6 +1,6 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere } from '../screens.js';
-import { $, esc, renderEmpty, ts } from '../util.js';
+import { $, esc, renderEmpty, renderLoading, ts } from '../util.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
@@ -29,14 +29,14 @@ export function timeHM(iso) {
 
 export async function renderJournal() {
     const list = $('journal-list');
-    renderEmpty(list, 'hourglass_empty', 'Načítavam…');
+    renderLoading(list, 'Načítavam denník…');
     try {
         const data = await (await fetch('/api/journal')).json();
         journalRecords = data.records || [];
         renderJournalFilter();
         renderJournalList();
     } catch (e) {
-        renderEmpty(list, 'cloud_off', 'Nepodarilo sa načítať');
+        renderEmpty(list, 'cloud_off', 'Nepodarilo sa načítať denník', 'Skús obnoviť stránku.');
     }
 }
 
@@ -82,7 +82,7 @@ export function renderJournalList() {
     const list = $('journal-list');
 
     if (!journalRecords.length) {
-        renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy');
+        renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy', 'Pribudnú, keď si Hades zapamätá prvý poznatok.');
         return;
     }
 
@@ -91,7 +91,7 @@ export function renderJournalList() {
         : journalRecords;
 
     if (!records.length) {
-        renderEmpty(list, 'filter_alt_off', 'Žiadne záznamy pre tento projekt');
+        renderEmpty(list, 'filter_alt_off', 'Žiadne záznamy pre tento projekt', 'Zruš filter a uvidíš celý denník.');
         return;
     }
 

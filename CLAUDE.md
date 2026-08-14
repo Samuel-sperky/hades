@@ -29,25 +29,55 @@ na `ReferenceError: Cannot access 'foo' before initialization`.
 
 ### Graf
 
-Jeden graf, štyri úrovne zanorenia: `map` → `area` → `dept` → `node`, riadené
-`go()` v `sim.js`. Pohľady Mapa/Sieť/Vrstvy sú zrušené, `setView()` je len shim.
+**Jedna veľká scéna, dva pohľady, zanorenie je len filter.**
 
-**d3 `forceSimulation` neexistuje.** `S.sim` je vždy `null`, layout je čisto
-deterministický (`hash01()` namiesto `Math.random()`, všetko zoradené). Preto:
-nepridávaj fyziku ani ťahanie uzlov — rozbije to determinizmus a s ním garanciu,
-že scéna vyplní viewport.
+- `S.gview` = `'net'` (organický oblak) alebo `'layers'` (vodorovné pásy podľa
+  `layer_role`: vstup → skryté → jadro → výstup). Prepínače `#btn-view-net` /
+  `#btn-view-layers` v hlavičke, kláves `V`. **Pohľady NIE SÚ zrušené** —
+  `setView()` je živý kód, nie shim.
+- `go({level, area, dept, node})` v `sim.js` **nemení pozície ani nevymieňa scénu**.
+  Je to filter: fokusová skupina zostane plná, zvyšok stmavne na `DIM_CTX` (0,34).
+  `L.pos` preto obsahuje **vždy všetkých ~1065 uzlov**, na každej úrovni.
+  `Esc` zruší filter, `#btn-up` ide o úroveň von.
 
-**Ako sa scéna fituje** (a prečo bola predtým úzka): každá úroveň sa rozloží
-radiálne (pomer ~1:1) a jej bbox sa jednou afinnou transformáciou namapuje na
-cieľovú elipsu, ktorej pomer strán kopíruje využiteľnú plochu viewportu.
-`fitCam()` používa tie isté okraje, takže fit vyjde na oboch osiach naraz.
-Okraje sa čítajú z CSS tokenov (`--rail-w`, `--header-h`, `--panel-w`, `--edge`) —
-nezadrôtuj ich znova do JS.
+**d3 `forceSimulation` JE späť** (od `a4497ff`) a pozície sú organické, nie
+deterministické. Determinizmus bola moja vlastná podmienka z augusta 2026, ktorú
+používateľ nikdy nežiadal a ktorá zabila živý dojem siete — nezavádzaj ju znova.
+Ťahanie uzlov funguje (`fx/fy` + `holdSim`).
 
-**Vizuálna sémantika** (existujúci štandard projektu, jeden význam na kanál):
-farba = oblasť, tvar = typ (spomienka = plný disk, skill = donut, projekt = disk
-s prstencom, jadro = zlaté súosé kruhy). Značka istoty sa kreslí až od úrovne
-`dept`. Na `map` sú uzly 2,6 px prach — tvar tam nie je čitateľný a ani nemá byť.
+**Simuláciu tiká vlastná rAF pumpa** (`pump()` v `sim.js`), nie d3 timer — ten beží
+na `requestAnimationFrame` a rozbil by pravidlo „mimo Grafu sa nekreslí". Mimo Grafu
+pumpa **netiká na rAF, ale dosadá ticho** cez `setTimeout` (10 ms dávka / 50 ms):
+bez toho by alpha nikdy neklesla, timer sa preplanoval navždy a každý WS zrod uzla
+by zaplatil studený burst ~150 ms na zablokovanom vlákne.
+
+**Ako scéna vyplní viewport bez determinizmu:** gravitácia je **anizotropná** — v Y
+je `ar^squashPow`-krát silnejšia (`PHYS.squashPow = 2`). V rovnováhe má oblak pomer
+strán ≈ pomer viewportu, takže fit sadne na obe osi naraz. Bez toho by sa force
+layout usadil do kruhu a na 16:9 pokryl ~55 % šírky. `normalizeAspect()` to po
+usadení dotiahne. Okraje sa čítajú z CSS tokenov (`--rail-w`, `--header-h`,
+`--panel-w`, `--edge`) — nezadrôtuj ich znova do JS.
+
+**Vizuálna sémantika** (jeden význam na kanál): farba = oblasť, tvar = typ.
+Uzly sú **priehľadné prstence**, nie plné disky — priehľadnosť nesie *diera*, nie
+nízka alfa, takže sa prekrývajúce uzly dajú čítať a každý drží kontrast (obrys má
+podlahu `RING_LW = 1,5` px v obraznovkových px; pri 1,1 px zoberie antialiasing
+viac než polovicu kontrastu). Spomienka = jeden prstenec, skill = dva súosé,
+projekt = prstenec s plným stredom, **jadro = jediný sýty plný prvok** (zlato).
+Legenda v `panels.js` musí hovoriť ten istý jazyk — plné disky tam učili zle.
+
+**Farby oblastí sa utlmujú v OKLCh** (`mutedColor()` v `theme.js`): zrezaná chroma
+a **jednotná cieľová svetlosť** pre všetky oblasti, takže oko ich číta ako jednu
+tichú vrstvu a rozlišuje len tónom. Podlaha kontrastu (3,15:1 voči papieru) je
+súčasťou funkcie, nie kozmetika. Každý swatch oblasti v DOM (legenda, štatistiky,
+strom, Knižnica, Dnes) musí ísť cez `mutedColor()`, inak UI hovorí inou farbou než
+plátno. V HSL to nerob — z gold by bola špinavo hnedá.
+
+**Hrany sú hlavný nosič dojmu, nie dekorácia.** Kreslia sa všetky (~2882) ako
+vlásková textúra; hustota nesie štruktúru. `S.minWeight` default je **0** (bolo 1,0
+a skrývalo 791 hrán). Jednotlivá hrana zámerne nedosahuje 3:1 — pri 2000 vláskach
+to je nezlučiteľné s „jemnou sieťou"; význam nesie hustota a pri hoveri ide hrana
+na akcent, kde prah **spĺňa**.
 
 Mimo obrazovky Graf sa `requestAnimationFrame` **zastaví** (`graphActive()`).
 Keď pridávaš window listener, ktorý siaha na graf, daj mu `graphActive()` strážcu —

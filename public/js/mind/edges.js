@@ -120,8 +120,21 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
         alpha *= dimCtx;
 
         const incident = !!(hlAnchor && (e.source.id === hlAnchor.id || e.target.id === hlAnchor.id));
-        if (hl && !incident) alpha *= 0.22;
-        alpha = Math.max(hl && !incident ? T.edgeFloor * 0.5 : alpha, alpha);
+        if (hl && !incident) {
+            alpha *= 0.22;
+            // PODLAHA PLATÍ LEN PRE REÁLNE HRANY. Tam sú alfy 0,18–0,62, po stlmení
+            // spadnú na 0,04–0,14 a bez podlahy by kontext zmizol.
+            //
+            // V mesh režime sú alfy 0,075–0,225, takže podlaha T.edgeFloor*0.5
+            // (0,125 na tmavej) je VYŠŠIA než väčšina z nich — Math.max ich preto
+            // nezdvíhal na minimum, ale ROVNO na 0,125 všetky. A keďže highlightSet()
+            // reaguje aj na S.selected, stačilo raz kliknúť na uzol a celá vlásková
+            // sieť stratila gradient podľa váhy: namerané 1 vedierko a všetkých
+            // 2882 hrán na alfe 0,12 (slabé +5×, silné zoslabnuté) — teda presne tá
+            // „sivá vata", ktorej sa komentár k mesh režimu vyššie chce vyhnúť.
+            // Stlmenie nesmie hranu nikdy zosilniť.
+            if (real) alpha = Math.max(T.edgeFloor * 0.5, alpha);
+        }
 
         if (incident) {
             // Incidentná hrana je JEDINÝ stav, v ktorom má jedna čiara nesť informáciu

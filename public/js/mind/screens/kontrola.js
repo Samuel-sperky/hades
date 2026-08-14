@@ -5,7 +5,7 @@ import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast, showUndoToast } from '../toasts.js';
-import { $, busy, esc, renderEmpty, timeAgo } from '../util.js';
+import { $, busy, esc, renderEmpty, renderLoading, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
    Fronta needs_review uzlov (.queue*), klávesnica j/k/Enter/v/r/Delete (len na
@@ -17,7 +17,7 @@ export const kontrolaState = { items: [], idx: 0, total: 0 };
 export async function renderKontrola() {
     const body = $('kontrola-body');
     if (!body) return;
-    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
+    renderLoading(body, 'Načítavam frontu…');
     try {
         const d = await (await fetch('/api/review/queue')).json();
         kontrolaState.items = d.queue || [];
@@ -25,7 +25,7 @@ export async function renderKontrola() {
         kontrolaState.idx = 0;
         rerenderKontrola();
     } catch (e) {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať frontu', 'Skús obnoviť stránku.');
     }
 }
 
@@ -35,7 +35,7 @@ export function rerenderKontrola() {
     setRailBadge('kontrola', kontrolaState.total);
     const items = kontrolaState.items;
     if (!items.length) {
-        renderEmpty(body, 'fact_check', 'Fronta na overenie je prázdna');
+        renderEmpty(body, 'fact_check', 'Fronta na overenie je prázdna', 'Nové poznatky sem prídu po ďalšej session.');
         return;
     }
     kontrolaState.idx = Math.max(0, Math.min(kontrolaState.idx, items.length - 1));

@@ -1,7 +1,7 @@
 import { mdToHtml } from '../md.js';
 import { setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyHtml, esc, renderEmpty } from '../util.js';
+import { $, busy, emptyHtml, esc, renderEmpty, renderLoading } from '../util.js';
 
 /* ---------- obrazovka Smernica (/api/directive/*) ----------
    Prompt builder: úloha → Hades poskladá KDE ČO NÁJDE (skilly, projekty,
@@ -106,7 +106,7 @@ export async function runDirectiveBuild(task) {
     task = (task || '').trim();
     const suggest = $('dir-suggest');
     if (task === '') { showToast('Napíš úlohu alebo vyber šablónu'); return; }
-    if (suggest) renderEmpty(suggest, 'hourglass_empty', 'Skladám…');
+    if (suggest) renderLoading(suggest, 'Skladám kontext…');
     const seq = ++directiveBuildSeq;
     try {
         const res = await fetch('/api/directive/build', {
@@ -124,7 +124,7 @@ export async function runDirectiveBuild(task) {
         renderDirectiveSuggest();
         renderDirectivePreview();
     } catch (e) {
-        if (seq === directiveBuildSeq && suggest) renderEmpty(suggest, 'cloud_off', 'Nepodarilo sa poskladať');
+        if (seq === directiveBuildSeq && suggest) renderEmpty(suggest, 'cloud_off', 'Nepodarilo sa poskladať smernicu', 'Skús to znova.');
     }
 }
 
@@ -133,7 +133,7 @@ export function renderDirectiveSuggest() {
     if (!wrap || !directiveData) return;
     const sug = directiveData.suggested || {};
     const total = DIR_SECTIONS.reduce((n, s) => n + ((sug[s.key] || []).length), 0);
-    if (!total) { renderEmpty(wrap, 'search_off', 'Nič relevantné sa nenašlo'); return; }
+    if (!total) { renderEmpty(wrap, 'search_off', 'Nič relevantné sa nenašlo', 'Opíš úlohu inými slovami.'); return; }
 
     let h = '';
     for (const sec of DIR_SECTIONS) {
@@ -295,7 +295,7 @@ export async function loadDirectiveSaved() {
     try {
         const d = await (await fetch('/api/directives')).json();
         const items = d.directives || [];
-        if (!items.length) { renderEmpty(box, 'folder_open', 'Zatiaľ žiadne uložené smernice'); return; }
+        if (!items.length) { renderEmpty(box, 'folder_open', 'Zatiaľ žiadne uložené smernice', 'Poskladanú smernicu môžeš uložiť a vrátiť sa k nej.'); return; }
         box.innerHTML = items.map((it) =>
             '<button type="button" class="dir-saved-item" data-name="' + esc(it.name) + '">'
             + '<span class="ms" aria-hidden="true">description</span>'
@@ -305,7 +305,7 @@ export async function loadDirectiveSaved() {
         box.querySelectorAll('.dir-saved-item').forEach((b) => {
             b.onclick = () => openSavedDirective(b.dataset.name);
         });
-    } catch (e) { renderEmpty(box, 'cloud_off', 'Nepodarilo sa načítať'); }
+    } catch (e) { renderEmpty(box, 'cloud_off', 'Nepodarilo sa načítať uložené smernice', 'Skús obnoviť stránku.'); }
 }
 
 export async function openSavedDirective(name) {

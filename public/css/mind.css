@@ -320,6 +320,11 @@ body {
     font-family: var(--font);
     font-size: var(--fs-base);
     line-height: var(--lh-base);
+    /* Kánon rodiny Aura: tabular-nums GLOBÁLNE. Doteraz to bolo dopísané na ~15
+       jednotlivých miestach, takže čísla v zoznamoch a čipoch (počty, dátumy,
+       „× 3") pri zmene hodnoty poskakovali do strán. Jedna deklarácia tu drží
+       celú appku a lokálne opakovania sú od teraz len zbytočné, nie potrebné. */
+    font-variant-numeric: tabular-nums;
     user-select: none;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -671,14 +676,52 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     overflow: hidden;
 }
 #app-header .h-center { flex: 0 0 auto; }
+/* ---------------------------------------------------------------------------
+   WORDMARK — koruna ♛ + „Hades" + eyebrow (kánon rodiny Šperky Aura).
+   Hlavička má zostať odľahčená (overený stav: sklo + hairline, žiadne tienidlá),
+   takže lockup je tichý a malý: koruna 13px zlatá, názov 660/−.025em, eyebrow
+   9px uppercase .2em. Vertikálne sa to zmestí do --header-h (44px).
+   --------------------------------------------------------------------------- */
 #brand-name {
-    font-family: var(--mono);
-    font-weight: var(--fw-semibold);
-    font-size: var(--fs-body);
-    letter-spacing: var(--ls-mono);
-    color: var(--text);
+    display: flex; align-items: center; gap: var(--sp-1);
+    flex-shrink: 0;
+    min-width: 0;
+}
+/* Koruna je ZNAK ZNAČKY, preto zlatá — jediná vyhradená zlatá plocha v hlavičke.
+   Vlastný font-stack: Geist glyf U+265B nemá, bez fallbacku by tu bolo tofu. */
+#brand-name .bm-mark {
+    font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", var(--serif), serif;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--gold-text);
     flex-shrink: 0;
 }
+#brand-name .bm-text {
+    display: flex; flex-direction: column; gap: 1px;
+    min-width: 0;
+}
+#brand-name .bm-word {
+    font-family: var(--font);
+    font-weight: 660;
+    font-size: var(--fs-body);
+    letter-spacing: -.025em;
+    line-height: 1.05;
+    color: var(--text);
+    white-space: nowrap;
+}
+#brand-name .bm-eyebrow {
+    font-family: var(--font);
+    font-size: 9px;
+    font-weight: var(--fw-medium);
+    text-transform: uppercase;
+    letter-spacing: .2em;
+    line-height: 1;
+    color: var(--gold-text);
+    white-space: nowrap;
+}
+/* Zanorená cesta: breadcrumb už názov nesie sám, takže text lockupu ustúpi
+   a v hlavičke zostane len koruna ako trvalá značka. */
+#brand-name.deep .bm-text { display: none; }
 #breadcrumb {
     display: flex; align-items: center; gap: 2px;
     min-width: 0;
@@ -703,7 +746,9 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 #breadcrumb .crumb:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #breadcrumb .current { color: var(--text); padding: 2px 6px; }
 #breadcrumb .sep { color: var(--border-strong); flex-shrink: 0; }
-#breadcrumb .crumb-idle { color: var(--muted); padding: 2px 6px; }
+/* .crumb-idle zmazané: podtitul „živé vedomie" na mape prevzal eyebrow wordmarku
+   (renderBreadcrumb v util.js už na mape nič nevypisuje), takže selektor nemal
+   v DOM čo obslúžiť. */
 #header-metrics {
     flex: 0 0 auto;                    /* nesmie tlačiť .h-center — drží si obsah */
     text-align: right;
@@ -990,7 +1035,16 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .legend-row svg { flex-shrink: 0; }
 
-/* legenda — sila uzla: tri kruhy 6/10/14 px + mono popis */
+/* Poznámka pod legendou spojení — vysvetľuje, kde platí prerušovanie (lokálny graf).
+   Tichšia než riadky legendy, ale stále nad AA: --muted drží 6,4:1 / 5,35:1. */
+.legend-note {
+    margin: var(--sp-1) 10px 0;
+    font-size: 11px;
+    line-height: var(--lh-body);
+    color: var(--muted);
+}
+
+/* legenda — sila uzla: tri prstence 6/10/14 px + mono popis */
 .legend-row.legend-strength { gap: var(--sp-1); }
 .legend-row.legend-strength .cap {
     margin-left: var(--sp-0);
@@ -1765,6 +1819,65 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
 .empty p { font-size: 12.5px; line-height: var(--lh-body); color: var(--muted); }
+/* Druhý riadok „čo s tým" — o stupeň tichší než konštatovanie nad ním.
+   Zámerne NIE nová farba: rovnaký --muted, len menšie písmo, aby prázdny stav
+   zostal jednou tichou plochou a nezačal vyzerať ako upozornenie. */
+.empty .hint {
+    font-size: 11.5px;
+    margin-top: -2px;
+    max-width: 34ch;
+    color: var(--muted);
+}
+
+/* Načítavanie — súosé kruhy značky (tealový prstenec + zlaté jadro), ktoré dýchajú.
+   Ten istý motív nesie favicon aj #brand-core, takže čakanie vyzerá ako Hades,
+   nie ako generický spinner. Prstenec drží 3:1 voči papieru v oboch témach,
+   pretože je kreslený tokenmi akcentu, nie priehľadnou šedou. */
+/* Prstenec je JEDINÝ nositeľ informácie „pracujem", takže musí sám držať WCAG
+   1.4.11 (3:1) — preto PLNÝ --accent, nie --border-accent (ten je poloprehľadný
+   dekoratívny okraj: na tmavej dával 2,7:1 a na svetlej 1,5:1).
+   Animácia hýbe LEN mierkou. Keď dýchala aj opacitou, v spodnej fáze (.55) klesol
+   kontrast na svetlej téme na 2,3:1 — teda prvok padal pod prah v polovici cyklu. */
+.empty.empty-loading .load-mark {
+    position: relative;
+    width: 26px; height: 26px;
+    border-radius: var(--r-pill);
+    border: 2px solid var(--accent);
+    animation: load-breathe 1.8s var(--ease) infinite;
+}
+.empty.empty-loading .load-mark::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 8px; height: 8px;
+    margin: -4px 0 0 -4px;
+    border-radius: var(--r-pill);
+    background: var(--gold-text);
+}
+@keyframes load-breathe {
+    0%, 100% { transform: scale(.84); }
+    50%      { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .empty.empty-loading .load-mark { animation: none; }
+}
+
+/* Zoznam, ktorý čaká na novšiu odpoveď — ostáva čitateľný, len ustúpi. Náhrada
+   za blikanie naprázdno pri filtrovaní (viď renderLibrary v screens/kniznica.js). */
+#library-body.is-stale {
+    opacity: .45;
+    transition: opacity var(--dur-fast) var(--ease);
+    pointer-events: none;
+}
+
+/* Prázdny stav NA OBRAZOVKE dostane vlastnú výšku a vycentruje sa v nej — inak
+   sa lepil pod nadpis a pod ním zostávala prázdna stena, čo vyzeralo ako chyba
+   rozloženia. Panely (#dock, #node-panel) sú mimo .screen, takže ich drobné
+   „Bez spojení" si ponechá pôvodnú kompaktnú výšku. */
+.screen .empty {
+    min-height: 220px;
+    justify-content: center;
+}
 
 /* Hero nad plátnom (prázdna sieť / chyba štartu) — jediný serif moment */
 .empty.empty-network {
@@ -2350,10 +2463,20 @@ body[data-screen="graf"] #screens { display: none; }
 .screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
 
 .screen-head { margin-bottom: var(--sp-3); }
+/* Kánon: nadpis weight ~660, letter-spacing −.025em. Serif (Playfair) je štandard
+   APPIEK rodiny Aura (reporty používajú Inter — to je iný štandard, nezamieňať).
+   Veľkosť ide cez --fs-h1, ktorý bol deklarovaný, ale nikde sa nepoužíval. */
 .screen-head h1 {
     font-family: var(--serif);
-    font-size: 28px; font-weight: 600;
+    font-size: var(--fs-h1); font-weight: 660;
+    letter-spacing: -.025em;
     color: var(--text); line-height: 1.2;
+}
+/* Akcentované slovo v nadpise = teal (kánon). Zatiaľ ho nič nepoužíva — názvy
+   obrazoviek sú jednoslovné — ale pravidlo má byť v systéme, nie v hlave. */
+.screen-head h1 em {
+    font-style: normal;
+    color: var(--accent-ink);
 }
 .screen-head .screen-sub {
     margin-top: var(--sp-0);

@@ -8,11 +8,15 @@ import { $, busy, emptyHtml, esc, renderEmpty, timeAgo } from '../util.js';
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
 
 // Origin badge — brain (.md, zdroj pravdy) vs session (DB). §4.8 ikony menu_book/bolt.
+// „brain" je názov z backendu; v UI má stáť slovo, ktoré appka používa inde —
+// filter zdrojov v Nastaveniach volá tieto uzly „Playbooky". `data-origin` si
+// SUROVÚ hodnotu ponecháva, lebo na ňu vešia štýly CSS.
+const ORIGIN_LABEL = { brain: 'playbook', session: 'session' };
 export function originBadge(origin) {
     const o = origin === 'brain' ? 'brain' : 'session';
     const icon = o === 'brain' ? 'menu_book' : 'bolt';
     return '<span class="origin" data-origin="' + o + '">'
-        + '<span class="ms" aria-hidden="true">' + icon + '</span>' + o + '</span>';
+        + '<span class="ms" aria-hidden="true">' + icon + '</span>' + ORIGIN_LABEL[o] + '</span>';
 }
 
 // Shimmer skeleton počas načítania dashboardu (loading stav)
@@ -39,7 +43,7 @@ export async function renderToday() {
     ]);
 
     if (todayRes.status !== 'fulfilled') {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať prehľad', 'Skús obnoviť stránku.');
         return;
     }
     const d = todayRes.value;
@@ -110,8 +114,10 @@ export function dashboardHtml(dash) {
     let h = '<div class="kpi-grid">'
         + kpi(counts.nodes, 'uzlov')
         + kpi(counts.edges, 'spojení')
-        + kpi(counts.brain, 'brain')
-        + kpi(counts.session, 'session')
+        // „brain"/„session" boli jediné neslovenské popisky na dashboarde; appka tie
+        // isté množiny inde nazýva Playbooky a Záznamy (viď filter zdrojov v blade).
+        + kpi(counts.brain, 'playbookov')
+        + kpi(counts.session, 'záznamov')
         + kpi(counts.decisions, 'rozhodnutí')
         + kpi(cert.needs_review, 'na overenie')
         + '</div>';
@@ -208,9 +214,9 @@ export function syncCardHtml(dash) {
         + stats
         + '<div style="' + rowStyle + 'font-family:var(--mono);font-size:var(--fs-caption);color:var(--muted);">'
         + '<span class="ms" aria-hidden="true" style="font-size:var(--icon-sm);">' + (guardOn ? 'lock_open' : 'lock') + '</span>'
-        + 'Zápis do brain: <strong style="color:var(--text-secondary);">' + (guardOn ? 'zapnutý' : 'vypnutý') + '</strong></div>'
+        + 'Zápis do playbookov: <strong style="color:var(--text-secondary);">' + (guardOn ? 'zapnutý' : 'vypnutý') + '</strong></div>'
         + '<button type="button" id="sync-now" class="primary" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;">'
-        + '<span class="ms" aria-hidden="true">sync</span> Sync teraz</button>'
+        + '<span class="ms" aria-hidden="true">sync</span> Synchronizovať</button>'
         + '</div>';
 }
 
@@ -250,17 +256,17 @@ export async function doSync(btn) {
                 body: '{}',
             });
         } catch (e) {
-            showToast('Sync zlyhal', null, 'error');
+            showToast('Synchronizácia zlyhala', null, 'error');
             return;
         }
-        if (res.status === 423) { showToast('Sync už prebieha', null, 'warn'); return; }
+        if (res.status === 423) { showToast('Synchronizácia už prebieha', null, 'warn'); return; }
         let j = {};
         try { j = await res.json(); } catch (e) { /* prázdna odpoveď */ }
-        if (!res.ok) { showToast(j.message || j.error || 'Sync zlyhal', null, 'error'); return; }
+        if (!res.ok) { showToast(j.message || j.error || 'Synchronizácia zlyhala', null, 'error'); return; }
         const st = j.stats || j.sync || j.run || j;
-        showToast('Sync hotový: +' + (st.created ?? 0) + ' / ~' + (st.updated ?? 0), null, 'success');
+        showToast('Synchronizácia hotová: +' + (st.created ?? 0) + ' / ~' + (st.updated ?? 0), null, 'success');
         renderToday();
-    }, 'Sync…');
+    }, 'Synchronizujem…');
 }
 
 // SK plurál 1 / 2-4 / 5+ (a 0)

@@ -3,7 +3,7 @@ import { openMdOverlay } from '../md.js';
 import { bindPackButtons, packBtn } from '../pack.js';
 import { originBadge } from './dnes.js';
 import { mutedColor } from '../theme.js';
-import { $, esc, renderEmpty } from '../util.js';
+import { $, esc, renderEmpty, renderLoading } from '../util.js';
 
 /* ---------- obrazovka Knižnica (/api/library) ---------- */
 
@@ -18,17 +18,33 @@ export function libMeta(s) {
         + parts + '</span>';
 }
 
+// Poradové číslo dotazu — filtrovanie je debouncované (controls.js, 220 ms), ale
+// nie serializované, takže pomalšia STARŠIA odpoveď dokáže prepísať novšiu a v
+// zozname zostane výsledok pre predchádzajúci výraz. Guard zahodí všetko, čo už
+// nie je posledný dotaz.
+let librarySeq = 0;
+
 export async function renderLibrary() {
     const body = $('library-body');
     if (!body) return;
-    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
+    const seq = ++librarySeq;
     const q = ($('library-search').value || '').trim();
+    // Načítavaciu značku ukazujeme LEN keď nie je čo zachovať. Pri filtrovaní
+    // zoznam necháme stáť a iba ho ztlmíme — inak obrazovka pri každom stlačení
+    // klávesy zablikala naprázdno (a s výraznejšou značkou to bije ešte viac).
+    const hasList = !!body.querySelector('.lib-area');
+    if (hasList) body.classList.add('is-stale');
+    else renderLoading(body, 'Načítavam knižnicu…');
     try {
         const url = '/api/library' + (q ? ('?q=' + encodeURIComponent(q)) : '');
         const d = await (await fetch(url)).json();
+        if (seq !== librarySeq) return;                 // medzitým prišiel novší dotaz
+        body.classList.remove('is-stale');
         const areas = d.areas || [];
         if (!areas.length) {
-            renderEmpty(body, 'menu_book', q ? 'Nič sa nenašlo' : 'Prázdna knižnica');
+            renderEmpty(body, 'menu_book',
+                q ? 'Nič sa nenašlo' : 'Knižnica je prázdna',
+                q ? 'Skús kratší výraz.' : 'Playbooky sa tu objavia, keď ich Hades dostane.');
             return;
         }
         body.innerHTML = areas.map((a) =>
@@ -52,6 +68,8 @@ export async function renderLibrary() {
         });
         bindPackButtons(body);
     } catch (e) {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+        if (seq !== librarySeq) return;
+        body.classList.remove('is-stale');
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať knižnicu', 'Skús obnoviť stránku.');
     }
 }

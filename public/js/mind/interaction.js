@@ -68,7 +68,23 @@ export function setupInput() {
     // uzol pripne a sieť sa okolo neho preleje. Ťahanie prázdna = pan plátna.
     let dragNode = null;
 
+    // Pustí ťahaný uzol späť fyzike. Musí sa dať zavolať aj z ciest, kde mouseup
+    // nikdy nepríde (pustenie mimo okna, kontextové menu, strata fokusu) — inak
+    // uzol zostane pripnutý na fx/fy, holdSim drží alphaTarget a slučka beží
+    // na 60 fps naveky.
+    const releaseDrag = () => {
+        if (dragNode) {
+            dragNode.fx = null; dragNode.fy = null;
+            dragNode = null;
+            holdSim(false);
+        }
+        dragging = false;
+        S._interacting = false;
+        canvas.classList.remove('dragging');
+    };
+
     canvas.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;   // len ľavé tlačidlo — pravé/stredné inak štartovalo drag, ktorý sa nikdy neskončil
         dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
         S._interacting = true;
         canvas.style.cursor = '';
@@ -86,6 +102,12 @@ export function setupInput() {
     });
 
     canvas.addEventListener('mouseleave', () => { S.cursor.on = false; });
+
+    // Záchytné body, kde mouseup nepríde: strata fokusu okna, zrušené gesto,
+    // kontextové menu. Bez nich zostane uzol pripnutý a slučka beží naveky.
+    window.addEventListener('blur', () => { if (dragging) { releaseDrag(); requestDraw(); } });
+    canvas.addEventListener('pointercancel', () => { if (dragging) { releaseDrag(); requestDraw(); } });
+    canvas.addEventListener('contextmenu', () => { if (dragging) { releaseDrag(); requestDraw(); } });
 
     window.addEventListener('mousemove', (e) => {
         // Listener je na window (kvôli panu aj mimo plátna), takže mimo Grafu by
@@ -128,16 +150,10 @@ export function setupInput() {
     });
 
     window.addEventListener('mouseup', (e) => {
-        S._interacting = false;
-        canvas.classList.remove('dragging');
-        if (dragNode) {
-            // pusti uzol späť fyzike (pripnutie by zamrzlo klaster okolo neho)
-            dragNode.fx = null; dragNode.fy = null;
-            dragNode = null;
-            holdSim(false);
-        }
-        if (!graphActive()) { dragging = false; return; }   // klik mimo Grafu nesmie vyberať uzly
-        if (dragging && !moved) {
+        const wasDragging = dragging, wasMoved = moved;
+        releaseDrag();   // uvoľní uzol aj príznaky; klik vyhodnotíme z uložených hodnôt
+        if (!graphActive()) return;   // klik mimo Grafu nesmie vyberať uzly
+        if (wasDragging && !wasMoved) {
             const hit = pickTarget(e.clientX, e.clientY);
             if (S.connectFrom) {
                 // connect mode: klik na iný uzol prepája, klik do prázdna ruší

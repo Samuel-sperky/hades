@@ -7,7 +7,12 @@
          non-GET fetchu (ValidateCsrfToken, §3.5 docs/BEZPECNOST.md). --}}
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Hades — AI mind</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%23b88a3a'/><circle cx='50' cy='50' r='45' fill='none' stroke='%2303797e' stroke-opacity='.4' stroke-width='4'/></svg>">
+    {{-- Favicon = súosé kruhy značky (tmavý papier / tealový prstenec / zlaté jadro).
+         Predtým to bol zlatý disk s tenkým prstencom na 40 % alfy — pri 16 px prstenec
+         zmizol a v karte ostala len zlatá škvrna bez identity. Teraz: nepriehľadný
+         tmavý podklad (čitateľné na svetlej aj tmavej liste prehliadača), plný
+         tealový prstenec a zlaté jadro. Farby sú kánonové (#0e1413 / #05bcc4 / #d8b878). --}}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='33' fill='none' stroke='%2305bcc4' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Playfair+Display:wght@500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=swap">
@@ -18,7 +23,18 @@
 
     <header id="app-header">
         <div class="h-left">
-            <span id="brand-name">Hades</span>
+            {{-- Wordmark: koruna ♛ (znak rodiny Šperky Aura) + názov + eyebrow.
+                 Koruna zostáva viditeľná VŽDY — je to jediná trvalá značka v hlavičke.
+                 Text sa skrýva, keď breadcrumb zobrazí cestu (jej prvý crumb je tiež
+                 „Hades", inak by hlavička písala „Hades / Hades / …") — o to sa stará
+                 syncUpButton() v util.js prepnutím triedy .deep. --}}
+            <span id="brand-name">
+                <span class="bm-mark" aria-hidden="true">♛</span>
+                <span class="bm-text">
+                    <span class="bm-word">Hades</span>
+                    <span class="bm-eyebrow">Šperky Aura · živé vedomie</span>
+                </span>
+            </span>
             <button id="btn-up" class="hidden" type="button" title="O úroveň von (Esc)" aria-label="O úroveň von">
                 <span class="ms" aria-hidden="true">arrow_upward</span>
             </button>

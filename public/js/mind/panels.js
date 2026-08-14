@@ -277,27 +277,44 @@ export function buildLegend() {
 
     const strengthEl = $('legend-strength');
     if (strengthEl) {
+        // Sila = POLOMER PRSTENCA, nie plnosť disku. Plné disky tu učili nesprávne:
+        // uzly sú od vlny „Graf B" prstence (priehľadnosť nesie diera), presne ako
+        // to hovorí komentár nad TYPE_GLYPHS o pár riadkov vyššie.
         strengthEl.innerHTML = '<div class="legend-row legend-strength">'
             + [6, 10, 14].map((d) =>
-                '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="' + (d / 2) + '" fill="var(--muted)"/></svg>'
+                '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">'
+                + '<circle cx="8" cy="8" r="' + (d / 2) + '" fill="none" stroke="var(--muted)" stroke-width="1.5"/></svg>'
             ).join('')
             + '<span class="cap">slabšia → silnejšia</span></div>';
     }
 
-    // A10 + FÁZA HRANY: druhy spojení — jedna ink farba, rozlíšenie štýlom čiary.
-    // relation (part_of kostra, uses) má prednosť pred kind (aktivácia, podobnosť).
+    /* FÁZA HRANY → vlna BRAND: legenda musí učiť to, čo plátno KRESLÍ.
+       Učila štyri vzory prerušovania, ktoré v celej sieti nikdy nevzniknú:
+       drawEdges() zapína dash len v režime `real`, a ten platí pri ≤ 140 uzloch
+       v layoute alebo v lokálnom grafe. Po vlne A je v L.pos VŽDY všetkých 1065
+       uzlov (zanorenie je filter, nie výmena scény), takže celá sieť ide vždy
+       režimom `mesh` = samé plné vlásky. Typ hrany tam nesie JASNOSŤ, konkrétne
+       edgeKindDim() v edges.js: part_of / uses / ručné = 1, spoločná aktivácia
+       = 0,6, podobnosť = 0,4.
+
+       Tiery preto kódujeme ŠÍRKOU, nie alfou. Alfa by bola vernejšia, ale glyf
+       legendy je informačná grafika s prahom 3:1 a --muted pod ~0,7 alfy ho
+       nespĺňa (merané: 2,33:1 na tmavej pri 0,55; 2,81:1 na svetlej už pri 0,7).
+       Šírka rozdiel ukáže a kontrast nechá nedotknutý.
+
+       Prerušovanie je pravda len v lokálnom grafe uzla (G), preto je z neho
+       poznámka pod riadkami, nie hlavný jazyk legendy. */
     const connEl = $('legend-connections');
     if (connEl) {
-        const line = (dash, w) =>
+        const line = (w) =>
             '<svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true">'
-            + '<line x1="1" y1="5" x2="25" y2="5" stroke="var(--muted)" stroke-width="' + (w || 1.4) + '"'
-            + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/></svg>';
+            + '<line x1="1" y1="5" x2="25" y2="5" stroke="var(--muted)" stroke-width="' + w + '"/></svg>';
         connEl.innerHTML =
-            '<div class="legend-row">' + line('', 1) + '<span>Kostra · part_of</span></div>'
-            + '<div class="legend-row">' + line('') + '<span>Ručné · silné</span></div>'
-            + '<div class="legend-row">' + line('6 4') + '<span>Použitie · uses</span></div>'
-            + '<div class="legend-row">' + line('5 3') + '<span>Spoločná aktivácia</span></div>'
-            + '<div class="legend-row">' + line('1.5 3') + '<span>Podobnosť</span></div>';
+            '<div class="legend-row">' + line(2.2) + '<span>Kostra, použitie, ručné</span></div>'
+            + '<div class="legend-row">' + line(1.3) + '<span>Spoločná aktivácia</span></div>'
+            + '<div class="legend-row">' + line(0.8) + '<span>Podobnosť</span></div>'
+            + '<p class="legend-note">V celej sieti sú spojenia plné a líšia sa jasnosťou.'
+            + ' Prerušované vzory podľa typu ukazuje až lokálny graf uzla (G).</p>';
     }
 }
 
@@ -472,7 +489,7 @@ export async function refreshStats() {
         const res = await fetch('/api/mind/stats');
         st = await res.json();
     } catch (e) {
-        renderEmpty($('stats-cards'), 'cloud_off', 'Nepodarilo sa načítať');
+        renderEmpty($('stats-cards'), 'cloud_off', 'Nepodarilo sa načítať prehľad', 'Skús obnoviť stránku.');
         return;
     }
 

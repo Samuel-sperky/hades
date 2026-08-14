@@ -19,6 +19,32 @@ export function graphActive() {
 }
 
 export function resize() {
+    /* Zmena rozmeru NESMIE zahodiť pohľad. Predtým sa kamera bezpodmienečne
+       prepísala na fitCam(fitBBox(L)), a keďže po vlne A obsahuje L.pos VŽDY
+       všetkých 1065 uzlov (zanorenie je filter, nie výmena scény), fitBBox je
+       vlastne základný fit MAPY. Dôsledok bol meraný: po zanorení camK 2,242,
+       po zmene výšky okna o 1 px camK 0,618 — teda späť na mapu, hoci filter
+       stále hlásil úroveň 'area' (popiskov z 13 na 4). To isté zabíjalo ručný zoom.
+
+       Riešenie bez zásahu do sim.js (focusBBox je jeho privátna funkcia): kameru
+       si nepamätáme absolútne, ale VOČI ZÁKLADNÉMU FITU. Odchýlku (násobok zoomu
+       a posun v svetových jednotkách) zmeriame pred zmenou rozmeru a po prepočítaní
+       layoutu ju priložíme na nový fit. Kto sa kamery nedotkol, dostane presne nový
+       fit ako doteraz; kto bol zanorený alebo si priblížil, zostane tam, kde bol —
+       a to aj keď normalizeAspect() scénu preškáluje, pretože fit aj kamera sa
+       škálujú spolu. */
+    let rel = null;
+    if (S.nodes.length && S.layout) {
+        const before = fitCam(fitBBox(S.layout));   // ešte so STARÝMI S.w/S.h
+        if (before.k > 0) {
+            rel = {
+                kMul: S.cam.k / before.k,
+                dx: (S.cam.x - before.x) / before.k,
+                dy: (S.cam.y - before.y) / before.k,
+            };
+        }
+    }
+
     S.dpr = window.devicePixelRatio || 1;
     S.w = window.innerWidth;
     S.h = window.innerHeight;
@@ -32,7 +58,15 @@ export function resize() {
         applyLayoutPositions(L);
         S._morph = null; S._camTween = null;
         const c = fitCam(fitBBox(L));
-        S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k;
+        if (rel) {
+            // Strop/podlaha zoomu držíme rovnaké ako fitCam a zoomAt, aby sa kamera
+            // nedala resizeom vytlačiť za hranice, ktoré inde platia.
+            S.cam.k = Math.min(3.2, Math.max(0.14, c.k * rel.kMul));
+            S.cam.x = c.x + rel.dx * c.k;
+            S.cam.y = c.y + rel.dy * c.k;
+        } else {
+            S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k;
+        }
     }
 }
 
@@ -231,9 +265,18 @@ export function draw() {
         drawn.push({ x, y, r: ringRadius(n, ent, invK) });
     }
 
+    /* ---- vodoznaky oblastí: ROZLOŽENIE (malovanie je nižšie) ----
+       Musí byť PRED rozložením popiskov uzlov, aby si ich popisky mohli
+       rezervovať. Predtým sa `marks` počítali až za popiskami a do
+       layoutNodeLabels() šlo `reserved = null`, takže meno uzla mohlo sadnúť
+       priamo na verzálky vodoznaku (merané: Vrstvy 3 kolízie, Sieť 1–2 —
+       ink na inku, teda najhoršie čitateľná kombinácia). */
+    const marks = layoutHubMarks(L, invK);
+    S._watermarkBoxes = marks;
+
     /* ---- GRAF B: ROZLOŽENIE POPISKOV UZLOV (pred malovaním) ---- */
     const grid = buildNodeGrid(drawn, invK);
-    const nodeLabels = layoutNodeLabels(L, solid, dustBuckets, hl, invK, null, grid);
+    const nodeLabels = layoutNodeLabels(L, solid, dustBuckets, hl, invK, marks, grid);
     // Debug hook: A3 meria TOTO — rámy, ktoré render reálne PREKRÝVA uzlami.
     // Vodoznaky oblastí tu zámerne NIE SÚ: kreslia sa POD sieť, takže žiadny uzol
     // neprekrývajú (sú v S._watermarkBoxes, keby ich chcel niekto merať zvlášť).
@@ -243,9 +286,7 @@ export function draw() {
     // netreba nič vynechávať.
     const maskBoxes = nodeLabels.filter((b) => b.opaque);
 
-    /* ---- vodoznak oblasti (najspodnejšia vrstva) ---- */
-    const marks = layoutHubMarks(L, invK);
-    S._watermarkBoxes = marks;
+    /* ---- vodoznak oblasti (najspodnejšia vrstva; rozložený vyššie) ---- */
     paintHubMarks(marks);
 
     /* ---- spojenia: jemná sieť (hustá scéna) alebo reálne hrany (málo uzlov) ----
@@ -360,7 +401,9 @@ export function draw() {
     ctx.globalAlpha = 1;
 
     /* ---- HUBY oblastí / oddelení ---- */
-    for (const h of L.hubs) drawHub(h, invK);
+    const markOf = new Map();
+    for (const m of marks) if (m.hub) markOf.set(m.hub, m);
+    for (const h of L.hubs) drawHub(h, invK, markOf.get(h));
 
     /* ---- POPISKY ---- */
     // rozloženie je hotové pred malovaním; tu sa už len vykreslia
@@ -424,7 +467,7 @@ function drawAreolas(L) {
 // padlo: vyrezávalo do siete prázdny kruh a prekrývalo aj vodoznak pod ňou, takže
 // hub vyzeral ako cudzí artefakt zavesený nad oblakom. Teraz je to len prstenec
 // v jazyku uzlov — o stupeň hrubší, s veľmi jemným halom, sieť ním presvitá.
-function drawHub(h, invK) {
+function drawHub(h, invK, markBox) {
     // Značka pásu (pohľad Vrstvy) nie je klikateľná (pickHub ju preskakuje) a jej x/y
     // je počiatok vľavo zarovnaného vodoznaku — kotúčik tam sedel priamo na prvom
     // písmene názvu („JADRO" sa čítalo ako „ADRO"). Pás nesie vodoznak, kruh netreba.
@@ -440,9 +483,26 @@ function drawHub(h, invK) {
     ctx.globalAlpha = Math.min(1, 0.95 * a);
     ctx.lineWidth = Math.max(2 * invK, r * 0.055);
     ctx.strokeStyle = col;
+
+    /* Hub sedí na ťažisku klastra — a to je presne stred jeho vlastného vodoznaku.
+       Prstenec sa kreslí až za uzlami, takže názov oblasti preškrtával vodorovnou
+       čiarou cez verzálky. Preto prstenec kreslíme s DIEROU v ráme vodoznaku:
+       výrez je „celý viewport MÍNUS rám" (evenodd), takže sa ním strihá len tento
+       jeden ťah a ostatné vrstvy zostávajú nedotknuté. */
+    const cut = markBox && r > 0;
+    if (cut) {
+        ctx.save();
+        const p = new Path2D();
+        const vp = S._vp;
+        p.rect(vp.x0, vp.y0, vp.x1 - vp.x0, vp.y1 - vp.y0);
+        const pad = markBox.h * 0.18;
+        p.rect(markBox.x - pad, markBox.y - pad, markBox.w + 2 * pad, markBox.h + 2 * pad);
+        ctx.clip(p, 'evenodd');
+    }
     ctx.beginPath();
     ctx.arc(h.x, h.y, r, 0, 7);
     ctx.stroke();
+    if (cut) ctx.restore();
     ctx.globalAlpha = 1;
 }
 
@@ -502,6 +562,9 @@ function layoutHubMarks(L, invK) {
         const w = ctx.measureText(label).width;
         const left = h.kind === 'layer';
         items.push({
+            // `hub` drží väzbu na svoj hub — drawHub() si podľa nej vystrihne z
+            // prstenca dieru, aby neškrtol cez vlastný názov.
+            hub: h,
             label, fs, left, cx: h.x, baseline: h.y + fs * 0.34,
             x: left ? h.x : h.x - w / 2, y: h.y - fs * 0.5, w, h: fs * 1.1,
         });

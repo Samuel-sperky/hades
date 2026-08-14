@@ -1,6 +1,6 @@
 import { animLevel } from './anim.js';
 import {
-    PHYS, anchorOf, bandOf, computeLayout, gravityOf, nodeRadius,
+    PHYS, anchorOf, anchors, computeLayout, gravityOf, nodeRadius,
     normalizeAspect, syncLayout,
 } from './layout.js';
 import { draw, fitBBox, fitCam, graphActive, requestDraw } from './render.js';
@@ -135,8 +135,14 @@ function reinitAnchors() {
 // Vrstvy: tvrdý clamp y do pásu. Bez neho by collide + hrany vrstvy premiešali
 // a metafora neurónovej siete by sa rozpadla.
 function clampBands() {
+    // Kotvy si vyžiadame RAZ na kolo. Predtým sa tu volalo bandOf(n) pre každý uzol
+    // a to cez anchors() → anchorSig() → targetAspect() → getComputedStyle, teda
+    // ~5 čítaní štýlu × 1065 uzlov × každé kolo pumpy = 579 000 volaní na jedno
+    // usadenie Vrstiev (+550 ms CPU, 7,1 ms/tik vs 4,2 ms v Sieti).
+    const A = anchors();
+    if (A.mode !== 'layers') return;
     for (const n of S.nodes) {
-        const b = bandOf(n);
+        const b = A.of.get(n.id);
         if (!b) continue;
         const r = Math.min(nodeRadius(n) * 0.6, (b.y1 - b.y0) * 0.4);
         if (n.y < b.y0 + r) { n.y = b.y0 + r; n.vy = 0; }
@@ -160,14 +166,31 @@ function easeFit(t) {
 
 function pump() {
     if (!S.sim) { pumping = false; return; }
-    // Mimo Grafu netikáme ani nekreslíme (a nesiahame na rAF) — len sa raz za
-    // chvíľu spýtame, či sa už máme prebudiť.
+    // Mimo Grafu sa NEKRESLÍ a nesiahame na rAF, ale tikať musíme — inak alpha
+    // nikdy neklesne a nastanú dve veci naraz: (1) tento setTimeout sa preplanuje
+    // navždy, (2) `warm` v buildSim() zostane false, takže každý WS zrod uzla
+    // zaplatí studený burst ~150 ms na zablokovanom vlákne. Appka pritom štartuje
+    // na Dnes, takže to je bežný stav, nie okrajový. Dosadíme teda ticho: tiky
+    // v krátkych dávkach cez setTimeout, žiadny requestAnimationFrame.
     if (!graphActive()) {
         pumping = true;
         setTimeout(() => {
             pumping = false;
-            if (S.sim && S.sim.alpha() > S.sim.alphaMin()) pump();
-        }, 400);
+            if (!S.sim) return;
+            const t0 = performance.now();
+            // Dávka s časovým stropom, aby sa vlákno nezablokovalo na dlho. 10 ms na
+            // 50 ms interval = ~20 % vyťaženia, teda nepostrehnuteľné pri čítaní
+            // dashboardu, a scéna dosadá za ~4 s. Pri 8 ms/120 ms to bolo 6 % a
+            // usadenie trvalo cez 9 s, čo vyzeralo ako nekonečný timer.
+            while (S.sim.alpha() > S.sim.alphaMin() && performance.now() - t0 < 10) {
+                S.sim.tick();
+                S._simTicks++;
+            }
+            if (S.gview === 'layers') clampBands();
+            S._simAlpha = S.sim.alpha();
+            if (S.sim.alpha() > S.sim.alphaMin()) pump();
+            else finishSettle();
+        }, 50);
         return;
     }
     pumping = true;

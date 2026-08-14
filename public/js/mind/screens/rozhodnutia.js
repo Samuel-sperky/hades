@@ -2,7 +2,7 @@ import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyHtml, esc, renderEmpty } from '../util.js';
+import { $, busy, emptyHtml, esc, renderEmpty, renderLoading } from '../util.js';
 
 /* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
    Časová os rozhodnutí zoskupená po mesiacoch (.dtl*), filtre obdobie/oblasť
@@ -14,14 +14,14 @@ export const decisionsState = { all: [], year: null, areaId: null, adding: false
 export async function renderDecisions() {
     const body = $('rozhodnutia-body');
     if (!body) return;
-    renderEmpty(body, 'hourglass_empty', 'Načítavam…');
+    renderLoading(body, 'Načítavam rozhodnutia…');
     try {
         const d = await (await fetch('/api/decisions')).json();
         decisionsState.all = d.decisions || [];
         // filtre, ktoré prestali existovať, vynuluj
         renderDecisionsView();
     } catch (e) {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať');
+        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať rozhodnutia', 'Skús obnoviť stránku.');
     }
 }
 
@@ -68,7 +68,9 @@ export function renderDecisionsView() {
     });
 
     if (!list.length) {
-        h += emptyHtml('gavel', all.length ? 'Žiadne rozhodnutia pre tento filter' : 'Zatiaľ žiadne rozhodnutia');
+        h += emptyHtml('gavel',
+            all.length ? 'Žiadne rozhodnutia pre tento filter' : 'Zatiaľ žiadne rozhodnutia',
+            all.length ? 'Zruš filter a uvidíš celú os.' : 'Objavia sa, keď Hades zaznamená prvé rozhodnutie.');
     } else {
         h += decisionsTimelineHtml(list);
     }
