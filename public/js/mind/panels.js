@@ -8,7 +8,7 @@ import { buildSim, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
 import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
-import { $, busy, emptyHtml, esc, nodeColor, plainBlock, renderEmpty, timeAgo, updateHeaderMetrics } from './util.js';
+import { $, busy, emptyHtml, esc, nodeColor, plainBlock, prettyProject, renderEmpty, timeAgo, typeName, updateHeaderMetrics } from './util.js';
 
 /* ---------- panely ---------- */
 export async function selectNode(n) {
@@ -21,11 +21,14 @@ export async function selectNode(n) {
     $('node-panel').classList.remove('hidden');
     $('node-form').classList.add('hidden');
     $('node-view').classList.remove('hidden');
-    $('node-type-label').textContent = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' }[n.type] || n.type;
+    $('node-type-label').textContent = typeName(n.type);
     const nc = nodeColor(n); // farba oblasti — typ hovorí tvar, nie farba
     $('node-swatch').style.background = nc;
     $('node-panel').style.setProperty('--node-c', nc);
-    $('node-label').textContent = n.label;
+    /* 21 projektových uzlov nemá vlastný názov a nesie strojový slug
+       („adoring-driscoll-6e9398"). Denník na ten istý stav už hovorí „bez projektu";
+       panel to teraz hovorí tiež, aby appka na jednu vec nemala dva jazyky. */
+    $('node-label').textContent = prettyProject(n.label);
     // Popis záznamu je markdown („**Čo:** … **Výsledok:** …"). Panel ho vykresľuje
     // ako text s pre-wrap, takže bez plainBlock() v ňom svietila surová syntax;
     // riadkovanie zostáva, lebo v ňom je štruktúra záznamu.
@@ -61,7 +64,7 @@ export async function selectNode(n) {
                 (x.source_id === n.id && x.target_id === m.id)
                 || (x.source_id === m.id && x.target_id === n.id));
             return '<div class="nb-row">'
-                + '<button type="button" class="chip" data-id="' + m.id + '">' + esc(m.label) + '</button>'
+                + '<button type="button" class="chip" data-id="' + m.id + '">' + esc(prettyProject(m.label)) + '</button>'
                 + (edge
                     ? '<button type="button" class="ghost ms nb-del" data-edge="' + edge.id
                         + '" title="Zrušiť spojenie" aria-label="Zrušiť spojenie">close</button>'
@@ -309,13 +312,21 @@ export function buildLegend() {
        poznámka pod riadkami, nie hlavný jazyk legendy. */
     const connEl = $('legend-connections');
     if (connEl) {
+        /* Šírky boli 2,2 / 1,3 / 0,8 px v 26×10 boxe a tri tiery sa nedali odlíšiť:
+           0,8 px je POD podlahou, ktorú si projekt už raz zmeral pri prstencoch uzlov
+           (RING_LW = 1,5 px — „pri 1,1 px zoberie antialiasing viac než polovicu
+           kontrastu"). Tá istá fyzika platí aj tu, takže najtenšia čiara sedí na
+           podlahe 1,5 px a ďalšie dva stupne sú jej celé násobky (×2, ×3). Trojnásobok
+           medzi najtenšou a najhrubšou vidí oko bez porovnávania — a každá čiara
+           zostáva nad prahom 3:1. Box je 14 px vysoký, aby sa 4,5 px čiara zmestila. */
         const line = (w) =>
-            '<svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true">'
-            + '<line x1="1" y1="5" x2="25" y2="5" stroke="var(--muted)" stroke-width="' + w + '"/></svg>';
+            '<svg width="30" height="14" viewBox="0 0 30 14" aria-hidden="true">'
+            + '<line x1="1" y1="7" x2="29" y2="7" stroke="var(--muted)" stroke-width="' + w + '"'
+            + ' stroke-linecap="round"/></svg>';
         connEl.innerHTML =
-            '<div class="legend-row">' + line(2.2) + '<span>Kostra, použitie, ručné</span></div>'
-            + '<div class="legend-row">' + line(1.3) + '<span>Spoločná aktivácia</span></div>'
-            + '<div class="legend-row">' + line(0.8) + '<span>Podobnosť</span></div>'
+            '<div class="legend-row">' + line(4.5) + '<span>Kostra, použitie, ručné</span></div>'
+            + '<div class="legend-row">' + line(3) + '<span>Spoločná aktivácia</span></div>'
+            + '<div class="legend-row">' + line(1.5) + '<span>Podobnosť</span></div>'
             + '<p class="legend-note">V celej sieti sú spojenia plné a líšia sa jasnosťou.'
             + ' Prerušované vzory podľa typu ukazuje až lokálny graf uzla (G).</p>';
     }
@@ -511,7 +522,7 @@ export async function refreshStats() {
     $('stats-recent').innerHTML = (st.recent_records || []).map((r) =>
         '<button type="button" class="mini-record" data-id="' + r.id + '">'
         + '<span class="ms" aria-hidden="true">article</span>'
-        + '<span class="mr-title">' + esc(r.label) + '</span>'
+        + '<span class="mr-title">' + esc(prettyProject(r.label)) + '</span>'
         + '<span class="mr-time">' + timeAgo(r.created_at) + '</span></button>'
     ).join('') || emptyHtml('receipt_long', 'Zatiaľ žiadne záznamy');
 
@@ -528,7 +539,7 @@ export async function refreshStats() {
     ).join('');
 
     $('stats-top').innerHTML = st.top_nodes.map(
-        (n) => row(esc(n.label), n.strength.toFixed(0))
+        (n) => row(esc(prettyProject(n.label)), n.strength.toFixed(0))
     ).join('') || emptyHtml('leaderboard', 'Zatiaľ žiadne uzly');
 
     const gc = $('growth-chart');

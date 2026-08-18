@@ -2,7 +2,7 @@ import { certBadge } from './certainty.js';
 import { openNodeFromAnywhere, setScreen } from './screens.js';
 import { gotoDirective } from './screens/smernica.js';
 import { certTagMatch, parseQueryFilter } from './search.js';
-import { $, emptyHtml, esc } from './util.js';
+import { $, emptyHtml, esc, plainText, prettyProject, typeName } from './util.js';
 
 /* ---------- Cmd-K paleta (zjednotené hľadanie + navigácia) ---------- */
 
@@ -72,7 +72,11 @@ export function bindCmdkItems(root) {
     });
 }
 
-export const CMDK_TYPE_NAMES = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+/* Vlastná kópia mapy typov je zrušená — jediný zdroj je TYPE_NAMES v util.js,
+   čítaný cez hoistovanú typeName(). Eager alias by tu bol pasca: const sa vyhodnotí
+   pri načítaní modulu a util.js je súčasťou cyklov (importuje render.js aj sim.js),
+   takže by mohol byť undefined. Pravidlo projektu je jasné — cez cyklus sa ťahajú
+   HOISTOVANÉ funkcie, nie hodnoty. */
 export const CMDK_TYPE_ICO = { core: 'brightness_7', skill: 'bolt', memory: 'psychology', project: 'inventory_2' };
 export const cmdkGroup = (t) => '<div class="cmdk-group">' + t + '</div>';
 
@@ -124,9 +128,9 @@ export function renderCmdk(q) {
                     + filtered.map((n) => '<button type="button" class="cmdk-item" data-id="' + n.id + '"'
                         + ' data-label="' + esc(n.label || '') + '" data-type="' + esc(n.type || 'skill') + '">'
                         + '<span class="ms" aria-hidden="true">' + (CMDK_TYPE_ICO[n.type] || 'circle') + '</span>'
-                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label)
+                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(prettyProject(n.label))
                         + (n.certainty ? ' ' + certBadge(n.certainty, true) : '') + '</span>'
-                        + '<span class="cmdk-sub">' + (n.snippet ? esc(n.snippet) : (CMDK_TYPE_NAMES[n.type] || esc(n.type || ''))) + '</span>'
+                        + '<span class="cmdk-sub">' + (n.snippet ? esc(plainText(n.snippet)) : esc(typeName(n.type))) + '</span>'
                         + '</span></button>').join('');
             }
             if (books.length) {
@@ -134,7 +138,7 @@ export function renderCmdk(q) {
                     + books.map((b, i) => '<button type="button" class="cmdk-item" data-pb="' + i + '">'
                         + '<span class="ms" aria-hidden="true">menu_book</span>'
                         + '<span class="cmdk-text"><span class="cmdk-title">' + esc(b.title || b.path || '') + '</span>'
-                        + (b.snippet ? '<span class="cmdk-sub">' + esc(b.snippet) + '</span>' : '')
+                        + (b.snippet ? '<span class="cmdk-sub">' + esc(plainText(b.snippet)) + '</span>' : '')
                         + '</span></button>').join('');
             }
             if (!filtered.length && !books.length) h = emptyHtml('search_off', 'Nič sa nenašlo');

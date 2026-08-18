@@ -5,7 +5,7 @@ import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast, showUndoToast } from '../toasts.js';
-import { $, busy, esc, renderEmpty, renderLoading, timeAgo } from '../util.js';
+import { $, busy, esc, renderEmpty, renderLoading, timeAgo, typeName } from '../util.js';
 
 /* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
    Fronta needs_review uzlov (.queue*), klávesnica j/k/Enter/v/r/Delete (len na
@@ -51,7 +51,7 @@ export function queueItemHtml(n, i) {
         + ' data-id="' + n.id + '" data-idx="' + i + '" tabindex="-1">'
         + '<div class="queue-body">'
         + '<div class="queue-meta">'
-        + '<span>' + esc(n.type || 'uzol') + '</span>'
+        + '<span>' + esc(typeName(n.type)) + '</span>'
         + originBadge(n.origin) + certBadge(n.certainty)
         + (n.created_at ? '<span>' + esc(timeAgo(n.created_at)) + '</span>' : '')
         + '</div>'

@@ -126,9 +126,11 @@ export function renderBreadcrumb() {
        wordmarku v hlavičke, ktorý sa vlnou CHRÓM presunul do railu — hlavička Grafu
        by inak bola prázdna). Nevypisuje sa tam ale názov vedomia: ten je 150 px
        vľavo v raile a dve „Hades" vedľa seba nič nepridajú. Koreň jednoprvkovej
-       cesty preto povie STAV — že sieť nie je nijako zúžená. */
+       cesty preto povie STAV — že sieť nie je nijako zúžená. Veľké „C": v tom istom
+       slote píše renderScreenBreadcrumb() názvy obrazoviek („Dnes", „Denník"), takže
+       malé „celá sieť" bolo jediné, čo v hlavičke začínalo malým písmenom. */
     if (crumbs.length === 1) {
-        bc.innerHTML = '<span class="current">celá sieť</span>';
+        bc.innerHTML = '<span class="current">Celá sieť</span>';
         return;
     }
 
@@ -332,6 +334,17 @@ export function isMachineName(s) {
     return MACHINE_SLUG.test(String(s || '').trim());
 }
 
+/* Slovenské názvy typov uzlov — JEDEN zdroj pravdy. Ten istý objekt bol
+   skopírovaný v panels.js, search.js, structure.js, cmdk.js a interaction.js
+   (päťkrát), a obrazovka Kontrola nemala kópiu žiadnu, takže v jej čipoch svietilo
+   surové anglické „memory" — jediné neslovenské slovo v tom riadku, hneď vedľa
+   slovenského „Bez istoty". */
+export const TYPE_NAMES = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+
+export function typeName(t) {
+    return TYPE_NAMES[t] || String(t || 'uzol');
+}
+
 export function prettyProject(s) {
     return isMachineName(s) ? 'bez projektu' : String(s || '');
 }
@@ -372,6 +385,15 @@ export function emptyHtml(icon, text, hint) {
 
 export function renderEmpty(container, icon, text, hint) {
     container.innerHTML = emptyHtml(icon, text, hint);
+}
+
+/* Prázdno VNÚTRI karty je iná veta než prázdno na celej obrazovke. Karta má
+   vlastný nadpis, ktorý už povedal, o čo ide, takže 28px ikona pod ním len
+   zdvojí to isté a z malej kartičky urobí plakát — presne tak vyzerali „Aktivita"
+   a „Podľa oblasti", keď nemali dáta. Zostáva jeden tichý riadok v --muted.
+   Zámerne bez ikony a bez hintu: v karte nie je čo robiť, len sa ešte nič nestalo. */
+export function emptyCardHtml(text) {
+    return '<p class="card-empty">' + esc(text) + '</p>';
 }
 
 /* Načítavanie NIE JE prázdny stav — má vlastný znak: súosé kruhy značky, ktoré

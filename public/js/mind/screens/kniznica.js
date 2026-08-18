@@ -14,8 +14,7 @@ export function libMeta(s) {
     const chips = tags.slice(0, 5).map((t) => '<span class="tag">' + esc(t) + '</span>').join('');
     const cert = s.certainty ? certBadge(s.certainty, true) : '';
     const parts = originBadge(s.origin) + cert + chips;
-    return '<span class="lib-skill-meta" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;">'
-        + parts + '</span>';
+    return '<span class="lib-skill-meta">' + parts + '</span>';
 }
 
 // Poradové číslo dotazu — filtrovanie je debouncované (controls.js, 220 ms), ale

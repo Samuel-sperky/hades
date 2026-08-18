@@ -25,8 +25,12 @@ export async function renderDecisions() {
     }
 }
 
-export function decChip(label, active, attrs) {
-    return '<button type="button" class="chip' + (active ? ' active' : '') + '" ' + attrs + '>' + esc(label) + '</button>';
+/* Filtračný čip hovorí tým istým jazykom ako v Denníku: popisok + počet v
+   .chip-n. Predtým tu čipy počty nemali, takže dve obrazovky mali dva rôzne
+   filtračné idiomy — a človek nevedel, či sa filtrom niečo vôbec ukáže. */
+export function decChip(label, active, attrs, n) {
+    return '<button type="button" class="chip' + (active ? ' active' : '') + '" ' + attrs + '>'
+        + esc(label) + (n == null ? '' : '<span class="chip-n">' + n + '</span>') + '</button>';
 }
 
 export function renderDecisionsView() {
@@ -37,29 +41,53 @@ export function renderDecisionsView() {
     const years = [...new Set(all.map((x) => (x.decided_on || '').slice(0, 4)).filter(Boolean))].sort().reverse();
     const areaIds = [...new Set(all.map((x) => x.area_id).filter((v) => v != null))];
 
-    // Toolbar + manuálne pridanie
-    let h = '<div class="dec-toolbar" style="display:flex;justify-content:flex-end;margin-bottom:var(--sp-2);">'
-        + '<button type="button" id="dec-add-toggle" class="chip">'
+    /* Akcia „Pridať rozhodnutie" stála na SAMOSTATNOM riadku nad filtrami, takže
+       medzi podtitulom a čipmi zostal celý prázdny pás — Denník aj Knižnica dávajú
+       pod hlavičku hneď ovládanie. Tlačidlo preto ide do TOHO ISTÉHO riadku ako
+       posledný rad filtrov (vpravo, margin-left:auto v .dec-toolbar-row) a vlastný
+       pás si vyžiada len vtedy, keď filtre nie sú (jeden rok, jedna oblasť). */
+    const addBtn = '<button type="button" id="dec-add-toggle" class="chip">'
         + '<span class="ms" aria-hidden="true">' + (decisionsState.adding ? 'close' : 'add') + '</span>'
-        + (decisionsState.adding ? 'Zrušiť' : 'Pridať rozhodnutie') + '</button></div>';
-    if (decisionsState.adding) h += decAddFormHtml();
+        + (decisionsState.adding ? 'Zrušiť' : 'Pridať rozhodnutie') + '</button>';
 
-    // Filtre obdobie / oblasť
+    // Filtre obdobie / oblasť — s počtami, ako v Denníku
+    const yearN = new Map();
+    for (const x of all) {
+        const y = (x.decided_on || '').slice(0, 4);
+        if (y) yearN.set(y, (yearN.get(y) || 0) + 1);
+    }
+    const areaN = new Map();
+    for (const x of all) {
+        if (x.area_id == null) continue;
+        areaN.set(x.area_id, (areaN.get(x.area_id) || 0) + 1);
+    }
+    const rows = [];
     if (years.length > 1) {
-        h += '<div class="dtl-filter">'
-            + decChip('Celé obdobie', decisionsState.year === null, 'data-year=""')
-            + years.map((y) => decChip(y, decisionsState.year === y, 'data-year="' + y + '"')).join('')
-            + '</div>';
+        // Roky zostávajú chronologicky — je to os, nie množina, ktorú by sa dalo
+        // preusporiadať podľa frekvencie bez toho, aby prestala byť čitateľná.
+        rows.push(decChip('Celé obdobie', decisionsState.year === null, 'data-year=""', all.length)
+            + years.map((y) => decChip(y, decisionsState.year === y, 'data-year="' + y + '"', yearN.get(y) || 0)).join(''));
     }
     if (areaIds.length > 1) {
-        h += '<div class="dtl-filter">'
-            + decChip('Všetky oblasti', decisionsState.areaId === null, 'data-area=""')
-            + areaIds.map((aid) => {
+        // Oblasti podľa počtu zhora, ako projekty v Denníku: v rade tak ostanú tie,
+        // ktoré sa reálne používajú, nie tie, čo prišli v dátach prvé.
+        const sortedAreas = [...areaIds].sort((a, b) => (areaN.get(b) || 0) - (areaN.get(a) || 0));
+        rows.push(decChip('Všetky oblasti', decisionsState.areaId === null, 'data-area=""', all.length)
+            + sortedAreas.map((aid) => {
                 const a = S.areas.get(aid);
-                return decChip(a ? a.name : ('#' + aid), decisionsState.areaId === aid, 'data-area="' + aid + '"');
-            }).join('')
-            + '</div>';
+                return decChip(a ? a.name : ('#' + aid), decisionsState.areaId === aid,
+                    'data-area="' + aid + '"', areaN.get(aid) || 0);
+            }).join(''));
     }
+
+    let h = '';
+    rows.forEach((chips, i) => {
+        const last = i === rows.length - 1;
+        h += '<div class="dtl-filter' + (last ? ' dec-toolbar-row' : '') + '">'
+            + chips + (last ? addBtn : '') + '</div>';
+    });
+    if (!rows.length) h += '<div class="dec-toolbar">' + addBtn + '</div>';
+    if (decisionsState.adding) h += decAddFormHtml();
 
     const list = all.filter((x) => {
         if (decisionsState.year !== null && (x.decided_on || '').slice(0, 4) !== decisionsState.year) return false;
@@ -83,14 +111,12 @@ export function decAddFormHtml() {
     const areaOpts = '<option value="">— oblasť (voliteľné) —</option>'
         + [...S.areas.values()].map((a) => '<option value="' + a.id + '">' + esc(a.name) + '</option>').join('');
     const today = new Date().toISOString().slice(0, 10);
-    return '<div class="dec-add" style="display:flex;flex-direction:column;gap:var(--sp-1);'
-        + 'background:var(--panel-solid);border:1px solid var(--border);border-radius:var(--r-md);'
-        + 'padding:var(--sp-2);margin-bottom:var(--sp-2);">'
+    return '<div class="dec-add">'
         + '<input id="dec-text" placeholder="Čo si rozhodol?" autocomplete="off" maxlength="5000" aria-label="Text rozhodnutia">'
         + '<textarea id="dec-reason" rows="2" placeholder="Dôvod (voliteľné)" maxlength="5000" aria-label="Dôvod"></textarea>'
-        + '<div style="display:flex;gap:var(--sp-1);flex-wrap:wrap;align-items:center;">'
-        + '<select id="dec-area" aria-label="Oblasť" style="flex:1;min-width:160px;">' + areaOpts + '</select>'
-        + '<input id="dec-date" type="date" value="' + today + '" aria-label="Dátum" style="flex:0 0 auto;">'
+        + '<div class="dec-add-row">'
+        + '<select id="dec-area" aria-label="Oblasť">' + areaOpts + '</select>'
+        + '<input id="dec-date" type="date" value="' + today + '" aria-label="Dátum">'
         + '<button type="button" id="dec-save" class="primary">Uložiť</button>'
         + '</div></div>';
 }

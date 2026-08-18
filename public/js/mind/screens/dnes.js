@@ -1,9 +1,8 @@
-import { openCmdk } from '../cmdk.js';
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere, setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
-import { $, busy, emptyHtml, esc, fmtNum, plainText, prettyLabel, prettyProject, renderEmpty, timeAgo } from '../util.js';
+import { $, busy, emptyCardHtml, esc, fmtNum, plainText, prettyLabel, prettyProject, renderEmpty, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
 
@@ -53,11 +52,14 @@ export async function renderToday() {
     const dash = dashRes.status === 'fulfilled' ? dashRes.value : null;
     const wb = d.week_added || {};
 
-    // Veľké hľadacie pole — primárny prvok obrazovky (otvorí Cmd-K paletu)
-    let h = '<button type="button" id="today-search" class="today-search">'
-        + '<span class="ms" aria-hidden="true">search</span>'
-        + '<span class="ts-text">Hľadaj vo vedomí — skilly, záznamy, projekty…</span>'
-        + '<kbd>Ctrl K</kbd></button>';
+    /* Veľké hľadacie pole je ODTIAĽ PREČ. Otvárelo presne tú istú Cmd-K paletu ako
+       #cmdk-trigger v hlavičke, takže tá istá akcia mala dve rôzne podoby a jedna
+       z nich žila len na jednej zo siedmich obrazoviek. Ostáva tá v hlavičke:
+       je trvalá (rovnaké miesto všade), nesie ikonu, slovo „Hľadať" aj skratku
+       Ctrl K, takže sa nič neučí horšie — a Dnes tým získalo najcennejší pás
+       obrazovky nad hlavným číslom pre obsah, nie pre druhý vstup do hľadania.
+       Bonus: pole bolo <button> maskovaný za textové pole, čo je malá lož. */
+    let h = '';
 
     // ---- Dashboard agregáty (hero + KPI + charty + Sync) z /api/dashboard ----
     // Veta „tento týždeň pribudlo…" už nestojí samostatne nad mriežkou — je
@@ -93,8 +95,6 @@ export async function renderToday() {
     // Charty + Sync wiring — kontajnery sú už v DOM po nastavení innerHTML.
     if (dash) renderDashboardBlocks(dash);
 
-    const searchBtn = $('today-search');
-    if (searchBtn) searchBtn.onclick = openCmdk;
     // Jediné číslo na obrazovke, s ktorým sa dá niečo urobiť, vedie na Kontrolu.
     const reviewBtn = $('hero-review');
     if (reviewBtn) reviewBtn.onclick = () => setScreen('kontrola');
@@ -209,7 +209,7 @@ export function certLegend(cert) {
 
 // Bary per oblasť — farba oblasti cez inline --lobe (dedí sa na dot aj fill).
 export function perAreaHtml(areas) {
-    if (!areas.length) return emptyHtml('category', 'Žiadne oblasti');
+    if (!areas.length) return emptyCardHtml('Zatiaľ žiadne oblasti');
     const max = Math.max.apply(null, areas.map((a) => +a.count || 0).concat([1]));
     return areas.map((a) => {
         const pct = Math.round(((+a.count || 0) / max) * 100);
@@ -262,7 +262,11 @@ export function renderDashboardBlocks(dash) {
     if (!window.HadesCharts) return;
 
     const heat = $('dash-heat');
-    if (heat) HadesCharts.heatmap(heat, dash.heatmap || {});
+    if (heat) {
+        const weeks = (dash.heatmap || {}).weeks;
+        if (Array.isArray(weeks) && weeks.length) HadesCharts.heatmap(heat, dash.heatmap);
+        else heat.innerHTML = emptyCardHtml('Zatiaľ žiadna aktivita');
+    }
 
     const donutEl = $('dash-donut');
     if (donutEl) {
@@ -276,7 +280,11 @@ export function renderDashboardBlocks(dash) {
     }
 
     const growth = $('dash-growth');
-    if (growth) HadesCharts.growthLine(growth, dash.growth || {});
+    if (growth) {
+        const vals = (dash.growth || {}).values;
+        if (Array.isArray(vals) && vals.length) HadesCharts.growthLine(growth, dash.growth);
+        else growth.innerHTML = emptyCardHtml('Zatiaľ žiadny rast');
+    }
 
     const syncBtn = $('sync-now');
     if (syncBtn) syncBtn.onclick = () => doSync(syncBtn);

@@ -3,7 +3,7 @@ import { dockOpen } from './dock.js';
 import { S } from './state.js';
 import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
-import { $, busy, emptyHtml, esc, markTreeActive, renderEmpty, setFocus } from './util.js';
+import { $, busy, emptyHtml, esc, markTreeActive, renderEmpty, setFocus, typeName } from './util.js';
 
 /* ---------- štruktúra (oblasti a oddelenia) ---------- */
 
@@ -156,14 +156,13 @@ export async function deptRequest(deptId, method, body, okMsg) {
 export async function findDuplicates() {
     const wrap = $('dup-list');
     renderEmpty(wrap, 'hourglass_empty', 'Načítavam…');
-    const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
     try {
         const data = await (await fetch('/api/duplicates')).json();
         const pairs = data.pairs || [];
         if (!pairs.length) { renderEmpty(wrap, 'done_all', 'Žiadne duplicity'); return; }
 
         const nodeHtml = (n) => '<div class="dup-node"><span class="dup-label">' + esc(n.label) + '</span>'
-            + '<span class="tag muted">' + (typeNames[n.type] || esc(n.type)) + '</span></div>';
+            + '<span class="tag muted">' + esc(typeName(n.type)) + '</span></div>';
 
         wrap.innerHTML = pairs.map((p, i) =>
             '<div class="dup-card" data-i="' + i + '">'

@@ -7,7 +7,7 @@ import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.j
 import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
 import { T, certColors, mutedColor } from './theme.js';
 import { stopReplay, updateTimelineLabel } from './timeline.js';
-import { highlightSet, isAwake, nodeColor, now, syncSlider, ts, updateStateUi } from './util.js';
+import { highlightSet, isAwake, nodeColor, now, prettyProject, syncSlider, ts, updateStateUi } from './util.js';
 
 /* ---------- render ---------- */
 
@@ -1142,10 +1142,16 @@ function paintNodeLabels(items) {
     ctx.globalAlpha = 1;
 }
 
-// Skrátenie labelu LEN pri kreslení (hover-card a panel používajú n.label v plnej dĺžke)
+/* Skrátenie labelu LEN pri kreslení. Najprv ide label cez prettyProject(): 21
+   projektových uzlov nemá vlastný názov a v grafe svietil ich strojový slug
+   („adoring-driscoll-6e9398"), čo je posledné miesto, kde surové čítanie pretekalo
+   do UI. prettyLabel(label, project) by tu nepomohol — /api/mind uzol pole `project`
+   vôbec nemá, takže by to bol no-op; prettyProject() rieši práve ten prípad, keď je
+   strojovým slugom sám label, a používa presne tie slová, ktoré na to má Denník. */
 export function truncLabel(s) {
-    const chars = Array.from(String(s));
-    return chars.length > 24 ? chars.slice(0, 23).join('').trimEnd() + '…' : s;
+    const pretty = prettyProject(s);
+    const chars = Array.from(pretty);
+    return chars.length > 24 ? chars.slice(0, 23).join('').trimEnd() + '…' : pretty;
 }
 
 // FÁZA CERTAINTY (F4, §4.6): mapovanie istoty → štýl prstenca (CVD-safe double-encoding).

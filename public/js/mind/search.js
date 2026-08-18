@@ -3,7 +3,7 @@ import { selectNode } from './panels.js';
 import { focusNode } from './render.js';
 import { originBadge } from './screens/dnes.js';
 import { S } from './state.js';
-import { $, emptyHtml, esc } from './util.js';
+import { $, emptyHtml, esc, plainText, prettyProject, typeName } from './util.js';
 
 export let searchTimer = null;
 export let searchSeq = 0;
@@ -13,7 +13,6 @@ export function renderSearch(q) {
     const pf = parseQueryFilter(q);
     const query = pf.text.toLowerCase();
     const hasCertTag = !!(pf.cert || pf.tag);
-    const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
     const wrap = $('search-results');
 
     // Lokálne uzly — okamžité výsledky bez čakania na server
@@ -24,8 +23,8 @@ export function renderSearch(q) {
         .slice(0, 8);
 
     const local = matches.map((n) =>
-        '<button type="button" class="search-item" data-id="' + n.id + '"><span>' + esc(n.label)
-        + '</span><span class="sub">' + typeNames[n.type]
+        '<button type="button" class="search-item" data-id="' + n.id + '"><span>' + esc(prettyProject(n.label))
+        + '</span><span class="sub">' + esc(typeName(n.type))
         + (n.certainty ? ' ' + certBadge(n.certainty, true) : '')
         + ' ' + originBadge(n.origin) + '</span></button>'
     ).join('');
@@ -62,7 +61,7 @@ export function renderSearch(q) {
                     '<button type="button" class="pb-item" data-i="' + i + '">'
                     + '<span class="ms" aria-hidden="true">menu_book</span>'
                     + '<span class="pb-text"><span class="pb-title">' + esc(b.title || b.path || '') + '</span>'
-                    + (b.snippet ? '<span class="pb-snippet">' + esc(b.snippet) + '</span>' : '')
+                    + (b.snippet ? '<span class="pb-snippet">' + esc(plainText(b.snippet)) + '</span>' : '')
                     + '</span></button>'
                 ).join('');
             pb.querySelectorAll('.pb-item').forEach((el) => {

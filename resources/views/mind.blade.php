@@ -13,9 +13,14 @@
          tmavý podklad (čitateľné na svetlej aj tmavej liste prehliadača), plný
          tealový prstenec a zlaté jadro. Farby sú kánonové (#0e1413 / #05bcc4 / #d8b878). --}}
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='33' fill='none' stroke='%2305bcc4' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Playfair+Display:wght@500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=swap">
+    {{-- Fonty sú self-hosted v public/fonts/ (@font-face na začiatku mind.css).
+         Google Fonts CDN je zámerne PREČ: pri jeho nedostupnosti sa každá ikona
+         vykreslila ako svoj ligatúrový názov a chróm sa rozpadol. Preload len na
+         tri súbory, ktoré chróm potrebuje v prvom rámci — ikony railu a základnú
+         latinku vrátane slovenskej diakritiky. --}}
+    <link rel="preload" href="/fonts/material-symbols-rounded-subset.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/geist-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/css/mind.css">
 </head>
 <body>
