@@ -1,6 +1,6 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere } from '../screens.js';
-import { $, esc, isMachineName, prettyLabel, prettyProject, renderEmpty, renderLoading, ts } from '../util.js';
+import { $, esc, getJson, isMachineName, prettyLabel, prettyProject, renderEmpty, renderLoading, ts } from '../util.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
@@ -31,7 +31,7 @@ export async function renderJournal() {
     const list = $('journal-list');
     renderLoading(list, 'Načítavam denník…');
     try {
-        const data = await (await fetch('/api/journal')).json();
+        const data = await getJson('/api/journal');
         journalRecords = data.records || [];
         renderJournalFilter();
         renderJournalList();

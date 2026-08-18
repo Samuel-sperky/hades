@@ -1,7 +1,7 @@
 import { mdToHtml } from '../md.js';
 import { setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyHtml, esc, plainText, renderEmpty, renderLoading } from '../util.js';
+import { $, busy, emptyCardHtml, esc, getJson, plainText, renderEmpty, renderLoading } from '../util.js';
 
 /* ---------- obrazovka Smernica (/api/directive/*) ----------
    Prompt builder: úloha → Hades poskladá KDE ČO NÁJDE (skilly, projekty,
@@ -60,7 +60,14 @@ export function renderDirective(prefillTask) {
     loadDirectiveTemplates();
     loadDirectiveSaved();
 
-    if (prefillTask != null && taskInput) taskInput.value = prefillTask;
+    /* Obrazovka sa pri každom vstupe prekresľuje od nuly, takže napísaná úloha zmizla
+       len tým, že si človek odskočil na Graf a vrátil sa — hoci vedľa stále svietil
+       návrh poskladaný PRESNE z tejto úlohy. Vstup preto dopĺňame z posledného
+       /build (directiveData.task), keď nepríde prefill. */
+    if (taskInput) {
+        if (prefillTask != null) taskInput.value = prefillTask;
+        else if (directiveData && directiveData.task) taskInput.value = directiveData.task;
+    }
 
     if (directiveData) {
         renderDirectiveSuggest();
@@ -86,7 +93,7 @@ export async function loadDirectiveTemplates() {
     if (!box) return;
     try {
         if (!directiveTemplates) {
-            const d = await (await fetch('/api/directive/templates')).json();
+            const d = await getJson('/api/directive/templates');
             directiveTemplates = d.templates || [];
         }
         box.innerHTML = directiveTemplates.map((t, i) =>
@@ -117,6 +124,10 @@ export async function runDirectiveBuild(task) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ task }),
         });
+        // Bez kontroly res.ok skončila serverová chyba (500 s JSON telom) ako „Nič
+        // relevantné sa nenašlo" — čo je nepravda, a človek potom preformuloval úlohu,
+        // hoci problém bol na serveri.
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         if (seq !== directiveBuildSeq) return;
         directiveData = { task: data.task || task, suggested: data.suggested || {} };
@@ -190,7 +201,9 @@ export function renderDirectivePreview() {
     if (!pv) return;
     if (!directiveData) {
         directiveMarkdown = '';
-        pv.innerHTML = emptyHtml('description', 'Napíš úlohu a poskladaj smernicu');
+        // Nad kartou stojí nadpis „Náhľad smernice", takže 28px ikona pod ním hovorí
+        // to isté druhýkrát — ostáva jeden tichý riadok (emptyCardHtml).
+        pv.innerHTML = emptyCardHtml('Napíš úlohu a poskladaj smernicu');
         return;
     }
     directiveMarkdown = buildDirectiveMarkdown();
@@ -318,9 +331,10 @@ export async function loadDirectiveSaved() {
     const box = $('dir-saved');
     if (!box) return;
     try {
-        const d = await (await fetch('/api/directives')).json();
+        const d = await getJson('/api/directives');
         const items = d.directives || [];
-        if (!items.length) { renderEmpty(box, 'folder_open', 'Zatiaľ žiadne uložené smernice', 'Poskladanú smernicu môžeš uložiť a vrátiť sa k nej.'); return; }
+        // Sekcia sa menuje „Uložené smernice" — prázdny stav ju nemá prehovoriť znova.
+        if (!items.length) { box.innerHTML = emptyCardHtml('Zatiaľ žiadne — poskladanú smernicu môžeš uložiť a vrátiť sa k nej.'); return; }
         box.innerHTML = items.map((it) =>
             '<button type="button" class="dir-saved-item" data-name="' + esc(it.name) + '">'
             + '<span class="ms" aria-hidden="true">description</span>'
@@ -330,12 +344,12 @@ export async function loadDirectiveSaved() {
         box.querySelectorAll('.dir-saved-item').forEach((b) => {
             b.onclick = () => openSavedDirective(b.dataset.name);
         });
-    } catch (e) { renderEmpty(box, 'cloud_off', 'Nepodarilo sa načítať uložené smernice', 'Skús obnoviť stránku.'); }
+    } catch (e) { box.innerHTML = emptyCardHtml('Uložené smernice sa nepodarilo načítať.'); }
 }
 
 export async function openSavedDirective(name) {
     try {
-        const d = await (await fetch('/api/directive/' + encodeURIComponent(name))).json();
+        const d = await getJson('/api/directive/' + encodeURIComponent(name));
         if (!d || !d.markdown) { showToast('Smernica sa nenašla'); return; }
         directiveMarkdown = d.markdown;
         const pv = $('dir-preview');

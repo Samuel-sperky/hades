@@ -5,7 +5,7 @@ import { cancelConnect, closeNodePanel, createEdge, selectNode } from './panels.
 import { graphActive, requestDraw, visibleInReplay } from './render.js';
 import { clearFilter, goInto, goUp, holdSim } from './sim.js';
 import { S, canvas } from './state.js';
-import { $, esc } from './util.js';
+import { $, esc, plainInline, typeName } from './util.js';
 
 /* ---------- interakcia ---------- */
 
@@ -208,14 +208,17 @@ export function updateHoverCard(e, hub) {
         card.innerHTML = '<div class="t">' + esc(hub.name) + '</div>'
             + '<div class="m">' + kind + ' · ' + hub.count + ' uzlov · klik zanorí</div>';
     } else {
-        const typeNames = { core: 'jadro', skill: 'skill', memory: 'spomienka', project: 'projekt' };
+        // ŠIESTA kópia mapy názvov typov bola práve tu — komentár pri TYPE_NAMES
+        // v util.js síce interaction.js menoval, ale tento lokálny objekt prežil,
+        // takže hover karta mala vlastný zdroj pravdy. Teraz ide cez typeName().
         const area = S.areas.get(n.area_id);
         const dept = S.departments.get(n.department_id);
-        const meta = [typeNames[n.type], area && area.name, dept && dept.name]
+        const meta = [typeName(n.type), area && area.name, dept && dept.name]
             .filter(Boolean)
             .map((v) => esc(String(v)))
             .join(' · ');
-        card.innerHTML = '<div class="t">' + esc(n.label) + '</div><div class="m">' + meta + '</div>';
+        // label je surový z databázy (nesie `backticky`) — rovnako ako v Denníku
+        card.innerHTML = '<div class="t">' + esc(plainInline(n.label)) + '</div><div class="m">' + meta + '</div>';
     }
     card.classList.remove('hidden');
     card.classList.add('show');

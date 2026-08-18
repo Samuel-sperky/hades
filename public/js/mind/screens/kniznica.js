@@ -3,7 +3,7 @@ import { openMdOverlay } from '../md.js';
 import { bindPackButtons, packBtn } from '../pack.js';
 import { originBadge } from './dnes.js';
 import { mutedColor } from '../theme.js';
-import { $, esc, plainText, renderEmpty, renderLoading } from '../util.js';
+import { $, esc, getJson, plainInline, plainText, renderEmpty, renderLoading } from '../util.js';
 
 /* ---------- obrazovka Knižnica (/api/library) ---------- */
 
@@ -36,7 +36,7 @@ export async function renderLibrary() {
     else renderLoading(body, 'Načítavam knižnicu…');
     try {
         const url = '/api/library' + (q ? ('?q=' + encodeURIComponent(q)) : '');
-        const d = await (await fetch(url)).json();
+        const d = await getJson(url);
         if (seq !== librarySeq) return;                 // medzitým prišiel novší dotaz
         body.classList.remove('is-stale');
         const areas = d.areas || [];
@@ -55,7 +55,7 @@ export async function renderLibrary() {
                 '<div class="li-wrap lib-wrap">'
                 + '<button type="button" class="lib-skill" data-id="' + s.id + '" data-label="' + esc(s.label) + '"'
                 + (s.path ? ' data-path="' + esc(s.path) + '"' : '') + '>'
-                + '<span class="lib-skill-label">' + esc(s.label) + '</span>'
+                + '<span class="lib-skill-label">' + esc(plainInline(s.label)) + '</span>'
                 // popis playbooku je markdown — v náhľade z neho chceme len text
                 + (s.snippet ? '<span class="lib-skill-snip">' + esc(plainText(s.snippet)) + '</span>' : '')
                 + libMeta(s)

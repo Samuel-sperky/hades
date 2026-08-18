@@ -15,6 +15,9 @@ import { $ } from './util.js';
 
 export const SHORTCUTS = [
     ['Ctrl K / F / /', 'Hľadať (paleta)'],
+    // Šípky v palete existovali len ako Enter na prvej položke; odkedy posúvajú
+    // fokus po výsledkoch, patrí to aj do pomocníka — inak je to skrytá funkcia.
+    ['↑ / ↓ / Enter', 'Pohyb v palete a potvrdenie'],
     ['1 / 2 / 3 / 4', 'Filter: celá sieť / oblasť / oddelenie / uzol'],
     ['V', 'Pohľad: Sieť ↔ Vrstvy (na Grafe)'],
     ['Enter', 'Zamerať zvolený uzol'],

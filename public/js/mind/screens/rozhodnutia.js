@@ -2,7 +2,7 @@ import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyHtml, esc, renderEmpty, renderLoading } from '../util.js';
+import { $, busy, emptyHtml, esc, getJson, plainBlock, plainInline, renderEmpty, renderLoading } from '../util.js';
 
 /* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
    Časová os rozhodnutí zoskupená po mesiacoch (.dtl*), filtre obdobie/oblasť
@@ -16,12 +16,29 @@ export async function renderDecisions() {
     if (!body) return;
     renderLoading(body, 'Načítavam rozhodnutia…');
     try {
-        const d = await (await fetch('/api/decisions')).json();
+        const d = await getJson('/api/decisions');
         decisionsState.all = d.decisions || [];
-        // filtre, ktoré prestali existovať, vynuluj
+        pruneDecisionFilters();
         renderDecisionsView();
     } catch (e) {
         renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať rozhodnutia', 'Skús obnoviť stránku.');
+    }
+}
+
+/* Filter, ktorý po znovunačítaní nemá ani jeden záznam, je pasca: rady čipov sa
+   vypisujú len keď je z čoho vyberať (years.length > 1), takže po uložení
+   rozhodnutia v inom roku mohla obrazovka ostať prázdna BEZ čipu, ktorým sa filter
+   zruší. Denník to isté robí pri projektoch (journalProject sa vynuluje) — tu to
+   dosiaľ sľuboval len komentár. */
+export function pruneDecisionFilters() {
+    const all = decisionsState.all;
+    if (decisionsState.year !== null
+        && !all.some((x) => (x.decided_on || '').slice(0, 4) === decisionsState.year)) {
+        decisionsState.year = null;
+    }
+    if (decisionsState.areaId !== null
+        && !all.some((x) => x.area_id === decisionsState.areaId)) {
+        decisionsState.areaId = null;
     }
 }
 
@@ -157,18 +174,24 @@ export function fmtDecDate(iso) {
 export function decisionCardHtml(dec) {
     const area = dec.area_id != null ? S.areas.get(dec.area_id) : null;
     const hasReason = !!(dec.reason && String(dec.reason).trim());
+    // Text aj dôvod chodia z mind_decision tak, ako ich zapísal Claude Code — a nesú
+    // `backticky` okolo identifikátorov (zmerané na 4 zo 41 živých rozhodnutí).
+    // plainInline pre jednoriadkový text, plainBlock pre dôvod (má white-space: pre-wrap,
+    // takže odseky sú v ňom nositeľom štruktúry).
     return '<div class="dtl-item">'
         + '<span class="dtl-dot" data-origin="' + (dec.origin === 'brain' ? 'brain' : 'session') + '" aria-hidden="true"></span>'
         + '<button type="button" class="dtl-card" data-id="' + dec.id + '"'
         + (dec.node_id != null ? ' data-node="' + dec.node_id + '"' : '')
-        + (hasReason ? ' data-reason="1"' : '') + '>'
+        + (hasReason ? ' data-reason="1" aria-expanded="false"' : '') + '>'
         + '<div class="dtl-head"><span class="dtl-date">' + esc(fmtDecDate(dec.decided_on)) + '</span>'
-        + '<span class="dtl-text">' + esc(dec.text) + '</span></div>'
-        + (hasReason ? '<div class="dtl-reason hidden">' + esc(dec.reason) + '</div>' : '')
+        + '<span class="dtl-text">' + esc(plainInline(dec.text)) + '</span></div>'
+        + (hasReason ? '<div class="dtl-reason hidden">' + esc(plainBlock(dec.reason)) + '</div>' : '')
         + '<div class="dtl-meta">' + originBadge(dec.origin)
         + (area ? '<span class="tag">' + esc(area.name) + '</span>' : '')
         + (dec.node_id != null ? '<span class="tag muted">uzol #' + dec.node_id + '</span>' : '')
-        + (hasReason ? '<span class="tag muted">dôvod ▾</span>' : '')
+        // Šípka je JEDINÝ indikátor toho, či je dôvod rozbalený — statické „▾" na
+        // rozbalenej karte tvrdilo, že sa dá rozbaliť ešte raz.
+        + (hasReason ? '<span class="tag muted dtl-reason-chip">dôvod ▾</span>' : '')
         + '</div></button></div>';
 }
 
@@ -190,7 +213,10 @@ export function wireDecisions(body) {
         card.onclick = () => {
             const reason = card.querySelector('.dtl-reason');
             if (card.dataset.reason && reason) {
-                reason.classList.toggle('hidden');
+                const open = reason.classList.toggle('hidden') === false;
+                card.setAttribute('aria-expanded', open ? 'true' : 'false');
+                const chip = card.querySelector('.dtl-reason-chip');
+                if (chip) chip.textContent = open ? 'dôvod ▴' : 'dôvod ▾';
             } else if (card.dataset.node) {
                 openNodeFromAnywhere({ id: +card.dataset.node });
             }

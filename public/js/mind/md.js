@@ -1,5 +1,5 @@
 import { packHas } from './pack.js';
-import { $, emptyHtml, esc } from './util.js';
+import { $, emptyHtml, esc, loadingHtml } from './util.js';
 
 /* ---------- dokument uzla (markdown preview) ---------- */
 
@@ -104,7 +104,7 @@ export async function openMdOverlay(node) {
     mdLabel = node.label || '';
     mdPath = node.path || null;
     $('md-title').textContent = mdLabel;
-    $('md-body').innerHTML = emptyHtml('hourglass_empty', 'Načítavam…');
+    $('md-body').innerHTML = loadingHtml('Načítavam dokument…');
     syncMdFoot();
     mdReturnFocus = document.activeElement;
     overlay.classList.remove('hidden');

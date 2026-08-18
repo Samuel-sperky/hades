@@ -4,11 +4,17 @@ import { $, esc } from './util.js';
 /* ---------- certainty badge (.cert) — zdieľaný helper (F3; F4 ho reuse-uje) ----
    §4.5/§4.8: data-cert="overene|hypoteza|pasca|bez|pending"; ikony
    verified/science/warning/radio_button_unchecked/pending. iconOnly = .cert--icon. */
+/* POZOR: `pending` NIE JE úroveň istoty. Backend pozná len overene / hypoteza /
+   pasca (MindService::certainty_levels) a `bez` je „bez značky". `pending` je čisto
+   UI odznak pre `needs_review` — a hovoril „Neštruktúrované", čo je iný pojem než
+   ten, ktorý appka používa všade inde („čaká na overenie": hero na Dnes, podtitul
+   Kontroly, texty toastov). Kľúč zostáva, je to CSS hook (data-cert="pending");
+   mení sa iba to, čo číta človek v tooltipe. */
 export const CERT_META = {
     overene: ['verified', 'Overené'],
     hypoteza: ['science', 'Hypotéza'],
     pasca: ['warning', 'Pasca'],
-    pending: ['pending', 'Neštruktúrované'],
+    pending: ['pending', 'Čaká na overenie'],
     bez: ['radio_button_unchecked', 'Bez istoty'],
 };
 

@@ -5,7 +5,7 @@ import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast, showUndoToast } from '../toasts.js';
-import { $, busy, esc, renderEmpty, renderLoading, timeAgo, typeName } from '../util.js';
+import { $, busy, esc, getJson, plainInline, plainText, renderEmpty, renderLoading, timeAgo, typeName } from '../util.js';
 
 /* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
    Fronta needs_review uzlov (.queue*), klávesnica j/k/Enter/v/r/Delete (len na
@@ -19,7 +19,7 @@ export async function renderKontrola() {
     if (!body) return;
     renderLoading(body, 'Načítavam frontu…');
     try {
-        const d = await (await fetch('/api/review/queue')).json();
+        const d = await getJson('/api/review/queue');
         kontrolaState.items = d.queue || [];
         kontrolaState.total = d.total != null ? d.total : kontrolaState.items.length;
         kontrolaState.idx = 0;
@@ -29,7 +29,10 @@ export async function renderKontrola() {
     }
 }
 
-export function rerenderKontrola() {
+/* moveFocus=true — prekreslenie po AKCII (overiť / vyriešiť / preskočiť / zmazať).
+   innerHTML vymení celý zoznam, takže fokus by inak zostal na <body> presne v tom
+   okamihu, keď človek pokračuje v práci s frontou. */
+export function rerenderKontrola(moveFocus) {
     const body = $('kontrola-body');
     if (!body) return;
     setRailBadge('kontrola', kontrolaState.total);
@@ -43,10 +46,14 @@ export function rerenderKontrola() {
         + items.map((n, i) => queueItemHtml(n, i)).join('')
         + '</div>' + kontrolaHintsHtml();
     wireKontrola(body);
+    if (moveFocus) markKontrolaSelected(true);
 }
 
 export function queueItemHtml(n, i) {
-    const desc = n.description ? String(n.description).replace(/\s+/g, ' ').trim() : '';
+    // description je markdown (rovnaký zdroj ako snippety v Denníku a Knižnici), takže
+    // bez plainText tu svietilo „**Čo:** …". Zlepenie riadkov robí plainText tiež,
+    // pôvodné .replace(/\s+/g,' ') je v ňom obsiahnuté.
+    const desc = plainText(n.description);
     return '<div class="queue-item' + (i === kontrolaState.idx ? ' selected' : '') + '"'
         + ' data-id="' + n.id + '" data-idx="' + i + '" tabindex="-1">'
         + '<div class="queue-body">'
@@ -55,7 +62,7 @@ export function queueItemHtml(n, i) {
         + originBadge(n.origin) + certBadge(n.certainty)
         + (n.created_at ? '<span>' + esc(timeAgo(n.created_at)) + '</span>' : '')
         + '</div>'
-        + '<div class="queue-text"><strong>' + esc(n.label || '') + '</strong>'
+        + '<div class="queue-text"><strong>' + esc(plainInline(n.label)) + '</strong>'
         + (desc ? ' — ' + esc(desc) : '') + '</div>'
         + '</div>'
         + '<div class="queue-actions">'
@@ -102,18 +109,24 @@ export function wireKontrola(body) {
     });
 }
 
-export function markKontrolaSelected() {
+/* focus=true presunie aj skutočný fokus prehliadača na zvolenú položku (.queue-item
+   má preto tabindex="-1"). Bez toho zostal fokus po každej akcii na <body>: klávesy
+   j/k/v/r fungovali (listener je na window), ale čítač obrazovky ani prstenec fokusu
+   nemali čo sledovať a Tab začínal odznova od hlavičky. */
+export function markKontrolaSelected(focus) {
     const items = document.querySelectorAll('#kontrola-body .queue-item');
     items.forEach((el, i) => el.classList.toggle('selected', i === kontrolaState.idx));
     const cur = items[kontrolaState.idx];
-    if (cur) cur.scrollIntoView({ block: 'nearest' });
+    if (!cur) return;
+    if (focus) cur.focus({ preventScroll: true });
+    cur.scrollIntoView({ block: 'nearest' });
 }
 
 export function kontrolaMove(delta) {
     if (!kontrolaState.items.length) return;
     const n = kontrolaState.items.length;
     kontrolaState.idx = (kontrolaState.idx + delta + n) % n;
-    markKontrolaSelected();
+    markKontrolaSelected(true);
 }
 
 // Odober položku z fronty; decBadge=true znižuje rail počítadlo (server-affecting).
@@ -123,7 +136,7 @@ export function removeKontrolaItem(id, decBadge) {
     kontrolaState.items.splice(i, 1);
     if (decBadge) kontrolaState.total = Math.max(0, kontrolaState.total - 1);
     if (kontrolaState.idx > i) kontrolaState.idx--;
-    rerenderKontrola();
+    rerenderKontrola(true);
 }
 
 export async function kontrolaVerify(id) {
@@ -185,12 +198,12 @@ export function kontrolaSkip(id) {
     if (kontrolaState.idx > i || kontrolaState.idx >= kontrolaState.items.length) {
         kontrolaState.idx = Math.max(0, kontrolaState.idx - (kontrolaState.idx > i ? 1 : 0));
     }
-    rerenderKontrola();
+    rerenderKontrola(true);
     // preskočenie je len lokálne (uzol ostáva v serverovej fronte) → total badge nemeníme
     showUndoToast('Preskočené', () => {
         kontrolaState.items.splice(Math.min(i, kontrolaState.items.length), 0, removed);
         kontrolaState.idx = i;
-        rerenderKontrola();
+        rerenderKontrola(true);
     });
 }
 

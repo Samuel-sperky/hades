@@ -2,7 +2,7 @@ import { reloadGraph } from './api.js';
 import { mdLabel, mdNodeId, mdPath, syncMdFoot } from './md.js';
 import { S } from './state.js';
 import { showToast } from './toasts.js';
-import { $, busy, esc, renderEmpty } from './util.js';
+import { $, busy, emptyCardHtml, esc } from './util.js';
 
 export function persistPack() {
     localStorage.setItem('hades.pack', JSON.stringify([...S.pack].map(([id, label]) => ({ id, label }))));
@@ -77,13 +77,37 @@ export function packDrawerOpen() {
     const d = $('pack-drawer');
     return d ? !d.classList.contains('hidden') : false;
 }
-export function openPackDrawer() { const d = $('pack-drawer'); if (d) { d.classList.remove('hidden'); renderPackList(); } }
-export function closePackDrawer() { const d = $('pack-drawer'); if (d) d.classList.add('hidden'); }
+
+// Fokus si zásuvka berie a vracia rovnako ako čítačka (md.js) a pomocník —
+// bez toho spadol po zavretí na <body> a Tab začínal od začiatku dokumentu.
+export let packReturnFocus = null;
+
+export function openPackDrawer() {
+    const d = $('pack-drawer');
+    if (!d) return;
+    if (!packDrawerOpen()) packReturnFocus = document.activeElement;
+    d.classList.remove('hidden');
+    renderPackList();
+    const close = $('pack-close');
+    if (close) close.focus();
+}
+export function closePackDrawer() {
+    const d = $('pack-drawer');
+    if (d) d.classList.add('hidden');
+    const back = packReturnFocus;
+    packReturnFocus = null;
+    // <body> nie je „kam sa vrátiť" (viď closeCmdk) — vtedy fokus dostane spúšťač,
+    // a keď ten medzitým zmizol (balík sa vyprázdnil), ostane tam, kde je.
+    if (back && back !== document.body && back.isConnected && typeof back.focus === 'function') back.focus();
+    else { const t = $('pack-trigger'); if (t && !t.classList.contains('hidden')) t.focus(); }
+}
 
 export function renderPackList() {
     const list = $('pack-list');
     if (!list) return;
-    if (!S.pack.size) { renderEmpty(list, 'inventory_2', 'Balík je prázdny'); return; }
+    // Zásuvka sa menuje „Balík pre Claude Code" a hneď pod nadpisom vysvetľuje, na čo
+    // je — 28px ikona s vetou pod ňou to isté zopakuje po tretie. Jeden tichý riadok.
+    if (!S.pack.size) { list.innerHTML = emptyCardHtml('Balík je prázdny'); return; }
     list.innerHTML = [...S.pack].map(([id, label]) =>
         '<div class="pack-row">'
         + '<span class="pack-row-label" title="' + esc(label) + '">' + esc(label) + '</span>'

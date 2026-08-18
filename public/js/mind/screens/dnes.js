@@ -2,7 +2,7 @@ import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere, setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
-import { $, busy, emptyCardHtml, esc, fmtNum, plainText, prettyLabel, prettyProject, renderEmpty, timeAgo } from '../util.js';
+import { $, busy, emptyCardHtml, emptyHtml, esc, fmtNum, plainText, prettyLabel, prettyProject, renderEmpty, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
 
@@ -39,9 +39,12 @@ export async function renderToday() {
     body.innerHTML = todaySkeleton();
 
     // /api/today je ľahký (sessions/records/projekty); ťažké agregáty sú v /api/dashboard (§4.1).
+    // res.ok kontrolujeme explicitne: 500 s JSON telom by inak prešlo ako úspech a
+    // obrazovka by mlčky ukázala nuly namiesto toho, aby priznala chybu.
+    const okJson = (r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); };
     const [todayRes, dashRes] = await Promise.allSettled([
-        fetch('/api/today').then((r) => r.json()),
-        fetch('/api/dashboard').then((r) => r.json()),
+        fetch('/api/today').then(okJson),
+        fetch('/api/dashboard').then(okJson),
     ]);
 
     if (todayRes.status !== 'fulfilled') {
@@ -65,7 +68,15 @@ export async function renderToday() {
     // Veta „tento týždeň pribudlo…" už nestojí samostatne nad mriežkou — je
     // podtitulom hlavného čísla, teda súčasťou hierarchie, nie ďalším riadkom.
     if (dash) h += dashboardHtml(dash, wb);
-    else h += weekLine(wb);
+    else {
+        // Keď padne LEN /api/dashboard, obrazovka predtým ticho zhodila hlavné číslo,
+        // KPI rad aj všetky štyri karty a zostal jediný riadok o týždni — vyzeralo to
+        // ako prázdne vedomie, nie ako chyba. Zvyšok (z /api/today) je platný, takže
+        // sa nezahadzuje; chýbajúca časť to o sebe povie sama.
+        h += weekLine(wb);
+        h += emptyHtml('cloud_off', 'Súhrnné čísla sa nepodarilo načítať',
+            'Zvyšok obrazovky je aktuálny — skús obnoviť stránku.');
+    }
 
     // ---- Naposledy / záznamy / projekty (z /api/today) ----
     const sessions = d.recent_sessions || [];

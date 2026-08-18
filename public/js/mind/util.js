@@ -293,6 +293,27 @@ export function plainText(s) {
         .trim();
 }
 
+/* To isté pre NÁZVY (label uzla, text rozhodnutia). Rozdiel proti plainText je
+   jediný, ale podstatný: NEMAŽE nepárové zvyšky zvýraznenia. Názvy nie sú odseknuté
+   snippety, takže nepárová dvojica podčiarkovníkov v nich nie je zvyšok syntaxe, ale
+   OBSAH — v Knižnici žije skill „__Host- cookie prefix" a plainText by z neho urobil
+   „Host- cookie prefix", teda vecnú chybu v mene veci, ktorú ten skill učí.
+   Zmerané na živých dátach: 2 názvy v Denníku a 4 rozhodnutia nesú `backticky`
+   (Claude Code do nich píše identifikátory), 1 skill v Knižnici nesie `__`. */
+export function plainInline(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/`([^`]+)`/g, '$1')              // inline kód
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')// odkazy a obrázky → len text
+        .replace(/(\*\*|__)(.*?)\1/g, '$2')       // bold (len párový)
+        // Nepárový spätný apostrof padá tiež: názvy prichádzajú odseknuté („The
+        // production build (`docker compose exec…"), takže párové pravidlo naň
+        // nesadne — a na rozdiel od `__` nie je samotný apostrof nikdy obsahom.
+        .replace(/`/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 /* To isté pre VIACRIADKOVÝ text (popis uzla v paneli detailu, ktorý sa vykresľuje
    s `white-space: pre-wrap`): zmaže syntax zvýraznenia, ale NEZLEPÍ riadky —
    odseky, odrážky a prázdne riadky sú tu nositeľom štruktúry. Zámerne to nie je
@@ -353,12 +374,27 @@ export function prettyProject(s) {
    13.8.2026"). Keď je ten názov strojový, celý prefix aj s oddeľovačom vypadne a
    zostane to, čo záznam naozaj hovorí: „Práca 13.8.2026". Dopísať namiesto neho
    „Bez projektu — …" by len nahradilo jeden šum druhým. */
+/* Zároveň je to JEDINÉ miesto, kde sa z názvu odstraňuje inline markdown (plainInline):
+   labely chodia z databáze tak, ako ich zapísal Claude Code, a v živých dátach nesú
+   `backticky` okolo identifikátorov. Denník aj Dnes vypisujú názvy cez túto funkciu,
+   takže obe obrazovky tým hovoria jedným jazykom. */
 export function prettyLabel(label, project) {
-    const l = String(label || '');
+    const l = plainInline(label);
     if (!project || !isMachineName(project) || !l.startsWith(project)) return l;
     const rest = l.slice(String(project).length).replace(/^\s*[—–-]\s*/, '').trim();
     if (!rest) return 'Bez projektu';
     return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
+/* GET + JSON s kontrolou stavu — JEDEN zdroj pravdy pre čítacie volania obrazoviek.
+   `(await fetch(u)).json()` samo o sebe stav neprečíta: pri 500 s JSON telom
+   (`{"message": "..."}`) sa parsovanie podarí, `d.records` je undefined a obrazovka
+   ukáže PRÁZDNY stav namiesto chyby — teda povie „nič tu nie je" o dátach, ktoré
+   existujú. Chybová cesta obrazoviek stojí na tom, že táto funkcia hodí výnimku. */
+export async function getJson(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
 }
 
 // Async spätná väzba tlačidiel — disable + dočasný text počas behu

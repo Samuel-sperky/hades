@@ -2,7 +2,7 @@ import { certBadge } from './certainty.js';
 import { openNodeFromAnywhere, setScreen } from './screens.js';
 import { gotoDirective } from './screens/smernica.js';
 import { certTagMatch, parseQueryFilter } from './search.js';
-import { $, emptyHtml, esc, plainText, prettyProject, typeName } from './util.js';
+import { $, emptyHtml, esc, plainInline, plainText, prettyProject, typeName } from './util.js';
 
 /* ---------- Cmd-K paleta (zjednotené hľadanie + navigácia) ---------- */
 
@@ -16,17 +16,49 @@ export const CMDK_NAV = [
     { screen: 'smernica', label: 'Smernica', icon: 'assignment' },
 ];
 export let cmdkTimer = null, cmdkSeq = 0;
+// Kam sa vráti fokus po zavretí palety. Bez toho spadol na <body>, takže Tab po
+// zavretí začínal od začiatku dokumentu — a paletu otvára KLÁVESOVÁ skratka,
+// čiže presne ten používateľ, ktorému to vadí najviac.
+export let cmdkReturnFocus = null;
 
 export function openCmdk() {
     const overlay = $('cmdk');
+    if (!cmdkOpen()) cmdkReturnFocus = document.activeElement;
     overlay.classList.remove('hidden');
     const input = $('cmdk-input');
     input.value = '';
     renderCmdk('');
     setTimeout(() => input.focus(), 30);
 }
-export function closeCmdk() { $('cmdk').classList.add('hidden'); }
+export function closeCmdk() {
+    $('cmdk').classList.add('hidden');
+    const back = cmdkReturnFocus;
+    cmdkReturnFocus = null;
+    // <body> nie je „kam sa vrátiť" — paletu často otvorí skratka v okamihu, keď nemá
+    // fokus nič konkrétne, a vrátiť ho na body je to isté ako ho stratiť. Vtedy ho
+    // dostane spúšťač palety, teda prvok, ktorý o nej hovorí.
+    if (back && back !== document.body && back.isConnected && typeof back.focus === 'function') back.focus();
+    else { const t = $('cmdk-trigger'); if (t) t.focus(); }
+}
 export function cmdkOpen() { return !$('cmdk').classList.contains('hidden'); }
+
+export function cmdkItems() {
+    return [...$('cmdk-results').querySelectorAll('.cmdk-item')];
+}
+
+/* Šípky posúvajú SKUTOČNÝ fokus po položkách, nie vlastnú triedu „active":
+   .cmdk-item:focus-visible má v CSS presne to podsvietenie, ktoré vlastná trieda
+   potrebovala, a takto ho vidí aj čítač obrazovky (a Enter funguje nativne). */
+export function cmdkMove(delta) {
+    const items = cmdkItems();
+    if (!items.length) return;
+    const cur = items.indexOf(document.activeElement);
+    const next = cur < 0
+        ? (delta > 0 ? 0 : items.length - 1)
+        : (cur + delta + items.length) % items.length;
+    items[next].focus();
+    items[next].scrollIntoView({ block: 'nearest' });
+}
 
 export function setupCmdk() {
     $('cmdk-trigger').onclick = openCmdk;
@@ -34,10 +66,43 @@ export function setupCmdk() {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeCmdk(); });
     const input = $('cmdk-input');
     input.addEventListener('input', () => renderCmdk(input.value));
-    input.addEventListener('keydown', (e) => {
+
+    // Listener je na OVERLAY, nie na vstupe: keď fokus sedí na položke, vstup už
+    // žiadny keydown nedostane a šípky by prestali fungovať po prvom stlačení.
+    overlay.addEventListener('keydown', (e) => {
+        /* Paleta je modálny dialóg, takže si klávesy berie ona — von pustíme len Esc
+           (globálna kaskáda ju má zavrieť) a Tab. Bez tohto by po odšípkovaní na
+           položku (BUTTON, nie INPUT) prešlo „d" strážcom v setupShortcuts a appka by
+           pod otvorenou paletou preskočila na Denník. Ctrl+K si tiež berie window
+           handler — ten stojí nad strážcom a zavrie paletu, čo je správne. */
+        if (e.key !== 'Escape' && e.key !== 'Tab' && !((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K'))) {
+            e.stopPropagation();
+        }
+        if (e.key === 'ArrowDown') { e.preventDefault(); cmdkMove(1); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); cmdkMove(-1); return; }
         if (e.key === 'Enter') {
-            const first = overlay.querySelector('.cmdk-item');
+            // na položke si Enter obslúži prehliadač sám (je to <button>)
+            if (document.activeElement !== input) return;
+            const first = cmdkItems()[0];
             if (first) { e.preventDefault(); first.click(); }
+            return;
+        }
+        // Písanie po odšípkovaní musí ísť do dopytu, nie do prázdna. Hodnotu meníme
+        // ručne — spoliehať sa na to, že sa znak „dodoručí" novo zaostrenému vstupu,
+        // je závislé na prehliadači.
+        if (document.activeElement === input) return;
+        if (e.key === 'Backspace') {
+            e.preventDefault();
+            input.value = input.value.slice(0, -1);
+            input.focus();
+            renderCmdk(input.value);
+            return;
+        }
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            input.value += e.key;
+            input.focus();
+            renderCmdk(input.value);
         }
     });
 }
@@ -128,7 +193,7 @@ export function renderCmdk(q) {
                     + filtered.map((n) => '<button type="button" class="cmdk-item" data-id="' + n.id + '"'
                         + ' data-label="' + esc(n.label || '') + '" data-type="' + esc(n.type || 'skill') + '">'
                         + '<span class="ms" aria-hidden="true">' + (CMDK_TYPE_ICO[n.type] || 'circle') + '</span>'
-                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(prettyProject(n.label))
+                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(plainInline(prettyProject(n.label)))
                         + (n.certainty ? ' ' + certBadge(n.certainty, true) : '') + '</span>'
                         + '<span class="cmdk-sub">' + (n.snippet ? esc(plainText(n.snippet)) : esc(typeName(n.type))) + '</span>'
                         + '</span></button>').join('');
@@ -137,7 +202,7 @@ export function renderCmdk(q) {
                 h += cmdkGroup('Playbooky')
                     + books.map((b, i) => '<button type="button" class="cmdk-item" data-pb="' + i + '">'
                         + '<span class="ms" aria-hidden="true">menu_book</span>'
-                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(b.title || b.path || '') + '</span>'
+                        + '<span class="cmdk-text"><span class="cmdk-title">' + esc(plainInline(b.title || b.path || '')) + '</span>'
                         + (b.snippet ? '<span class="cmdk-sub">' + esc(plainText(b.snippet)) + '</span>' : '')
                         + '</span></button>').join('');
             }

@@ -3,15 +3,15 @@ import { dockOpen } from './dock.js';
 import { S } from './state.js';
 import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
-import { $, busy, emptyHtml, esc, markTreeActive, renderEmpty, setFocus, typeName } from './util.js';
+import { $, busy, emptyHtml, esc, getJson, markTreeActive, renderEmpty, renderLoading, setFocus, typeName } from './util.js';
 
 /* ---------- štruktúra (oblasti a oddelenia) ---------- */
 
 export async function renderStructure() {
     const wrap = $('structure-tree');
-    renderEmpty(wrap, 'hourglass_empty', 'Načítavam…');
+    renderLoading(wrap, 'Načítavam štruktúru…');
     try {
-        const data = await (await fetch('/api/structure')).json();
+        const data = await getJson('/api/structure');
         const cnt = (v) => (v && typeof v === 'object') ? (v.node_count || v.count || 0) : (v || 0);
 
         let html = '';
@@ -155,9 +155,9 @@ export async function deptRequest(deptId, method, body, okMsg) {
 
 export async function findDuplicates() {
     const wrap = $('dup-list');
-    renderEmpty(wrap, 'hourglass_empty', 'Načítavam…');
+    renderLoading(wrap, 'Hľadám duplicity…');
     try {
-        const data = await (await fetch('/api/duplicates')).json();
+        const data = await getJson('/api/duplicates');
         const pairs = data.pairs || [];
         if (!pairs.length) { renderEmpty(wrap, 'done_all', 'Žiadne duplicity'); return; }
 
