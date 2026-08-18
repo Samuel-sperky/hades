@@ -196,9 +196,87 @@ Dni v Denníku zostali štruktúrou (mriežka je vnútri dňa). 28 filtračných
 
 1. **`/api/tags` vracia 3622 značiek** → `tagfilter.js` z nich robí 3622 checkboxov. Zbalená sekcia to schová, nevyrieši.
 2. **Mŕtvy kód starší ako tento šprint**: `timeline.setupTimeline()`, `search.renderSearch`, `structure.findDuplicates`, `pack.addToPack`, `chat.addToChatContext`. Zámerne nedotknuté — pravidlo projektu je refaktorovať len dotknutý kód. Pozor: `#tl-range` nie je v blade vôbec a `render.js` číta `tlr.value`, takže timeline môže byť nedokončená funkcia, nie mŕtvy kód.
-3. **17 raw hex/rgba mimo `:root`** v `mind.css` (thumby slidrov, knob prepínača, tiene `#brand-core`, `.shimmer::after`) — porušuje pravidlo projektu, ale je to stav pred šprintom a prebarvenie nesie riziko vizuálnej zmeny.
+3. ~~**17 raw hex/rgba mimo `:root`** v `mind.css`~~ — **vyriešené** vlnou FONTY A JEDEN HLAS (nižšie): zostalo 0, hodnoty sú v tokenoch `--control-knob`, `--control-knob-shadow`, `--core-shadow`, `--core-glow-*`, `--shimmer-sheen`.
 4. **Testovateľnosť**: dva loading stavy (`.shimmer`, `Načítavam…`) a async fetchy `.dir-templates` / `.dir-saved` nemajú „settled" príznak, a klik na `.dest` občas obrazovku neprepne. Každý budúci vizuálny harness bude potrebovať tie isté obchádzky.
 
 ### Predchádzajúci priebežný stav (pred dokončením)
 
 **W0, W1, W2a, W2b boli hotové a beh sa zastavil na vyčerpaní stropu 1 M.** Používateľ následne schválil dokončenie. Pôvodný odhad na dokončenie (+300k) bol optimistický — reálne to bolo ~+1,2 M, pretože každý agentský beh vychádzal na 205–293k.
+
+## 9. Vlna FONTY A JEDEN HLAS + ČITATEĽNOSŤ PRE AI (18. 8. 2026)
+
+Zadanie: dotiahnuť dizajn a fonty, dať appke jednotný branding cez všetky časti,
+a **optimalizovať čitateľnosť informácií pre AI**. Dva agenti na oddelených súboroch;
+druhý dobehol, prvý padol na strope session až po dokončení práce (regresia, ktorú
+si sám našiel — záporné `word-spacing` presakujúce do popisku jednotky — je opravená
+a overená).
+
+### Fonty a jeden hlas — commit `648adf1`
+
+**Fonty sú self-hosted** (`public/fonts/`, 7 súborov, ~288 kB). Google Fonts CDN bol
+riziko za nič: pri jeho nedostupnosti sa každá ikona vykreslila ako svoj ligatúrový
+názov („wb_sunny") a rail sa rozpadol. Ikonový font je subset 215 glyfov zo 4271
+(132 kB namiesto 3 MB).
+
+**Overené s Googlom zablokovaným na sieťovej úrovni:** všetkých **39 ikon**, ktoré sa
+reálne vykreslia cez sedem obrazoviek, vyjde ako glyf; **0 requestov** ide na
+googleapis/gstatic; všetkých 7 lokálnych súborov odpovedá 200.
+
+Zjednotenie: `--fw-heading` / `--ls-heading` (660 / −.025em) ako kánon nadpisov namiesto
+štyroch ručne prepísaných párov; rem hodnoty nadpisov prózy zrušené (boli štvrtá,
+neviditeľná os v px škále); rolové mená `--fs-metric` a `--fs-h2` ukazujú na stupeň
+škály namiesto vlastnej kópie hodnoty; `typeName()` v `util.js` ako jediný zdroj
+slovenských názvov typov (bol skopírovaný 5×, Kontrola kópiu nemala a svietilo v nej
+anglické „memory"); strojové slugy idú všade cez `prettyProject()`; druhé hľadacie
+pole na Dnes zrušené (tú istú Cmd-K paletu otvára trvalý spúšťač v hlavičke);
+6 inline `style=""` blokov do CSS; **0 raw hex mimo `:root`** (bolo 9); prázdno vnútri
+karty je jeden tichý riadok, nie 28px ikona pod nadpisom; šírky čiar v legende sedia
+na podlahe 1,5 px, ktorú si projekt zmeral pri prstencoch.
+
+**Overené v prehliadači** (1600 aj 2560): bez chýb konzoly, graf plní 88–92 % viewportu,
+žiadny kreslený uzol nie je prekrytý popiskom, **0 padajúcich textových miest**
+v oboch témach (najhoršie 4,52:1 pri prahu 4,5).
+
+### Čitateľnosť pre AI — commit `51d78f8`
+
+Čitateľ `mind_recall` je Claude Code. Odpoveď preto nesie **`relevance`** (0–1, podiel
+konceptov dopytu + tretinová váha zhody v labeli), **`via`** (uzol nie je priamy zásah,
+pritiahla ho hrana — polovičná relevancia), **`related`** (labely najsilnejších spojení,
+teda štruktúra namiesto plochého zoznamu) a **`terms`** (ako bol dopyt pochopený).
+Prázdne polia sa neposielajú. Nový nástroj **`mind_read`** vracia uzol celý — presne to,
+čo `description_truncated: true` doteraz sľuboval a nemal ako dodať.
+
+Merané na tých istých troch dopytoch, obe polovice v tej istej minúte:
+
+| metrika | pred | po |
+|---|---|---|
+| bajty odpovede | 38 447 B | **33 733 B** (−12,3 %) |
+| prázdne polia | 2 052 B | **0 B** |
+| réžia na uzol | 182 B | **170 B** (−6,6 %) |
+| uzly s prepojením | 0 % | **100 %** |
+| uzly so skóre relevancie | 0 % | **100 %** |
+
+Odpadové uzly (`noiseOf()`: `markdown` / `raw-prompt` / `slug` / `stub`) recall
+**označí a zaradí za čisté uzly, nemaže** — skrytý odpad sa nikdy neopraví. Smernica
+je prompt, tam sa zahodí úplne (zo ôsmich „kľúčových faktov" boli štyri surové prompty).
+
+**228 testov zelených**, z toho 40 nových vrátane falošných poplachov heuristiky.
+
+**Nález, ktorý stojí za zapamätanie:** `php artisan test` vo worktree netestoval worktree
+— `vendor` je symlink na hlavný checkout, Composer si z jeho polohy počíta `$baseDir`
+a optimalizovaný classmap ukazoval `App\` aj `Tests\` na hlavnú vetvu. Zelená sada
+teda nehovorila o zmene nič. Preto `tests/worktree-autoload.php` +
+`tests/phpunit.worktree.xml`; postup je v `CLAUDE.md`.
+
+### Zostáva z tejto vlny
+
+1. **Schéma pre odpad**: `noiseOf()` sa počíta pri každom recalle. Stĺpec `nodes.noise`
+   by dovolil filtrovať v SQL, vyrobiť „úklidový" zoznam v UI a merať čistenie siete.
+2. **`edges.relation`** s kontrolovaným slovníkom („je súčasťou / nahrádza / protirečí") —
+   `related` dnes vracia len labely, teda zoznam susedov, nie model.
+3. **`edges` nemá index na `weight`** — `orderByDesc('weight')` je filesort. Pri 8 200
+   hranách nemerateľné, pri desiatkach tisíc áno.
+4. **`description` bez oddeleného jadra a histórie** — najväčší uzol má 25 kB, lebo sa
+   doň lepia AKTUALIZÁCIE. Krátke kanonické zhrnutie by dalo recallu čo posielať.
+5. **Tabulárny formát odpovede** (mená polí sú 18 % bajtov) — tvrdý zlom kontraktu pre
+   živé sessions, preto neurobené.

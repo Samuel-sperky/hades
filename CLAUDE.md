@@ -83,6 +83,26 @@ Mimo obrazovky Graf sa `requestAnimationFrame` **zastaví** (`graphActive()`).
 Keď pridávaš window listener, ktorý siaha na graf, daj mu `graphActive()` strážcu —
 inak beží nad 1000+ uzlami na obrazovkách, kde graf nikoho nezaujíma.
 
+### Fonty
+
+**Self-hosted v `public/fonts/`, Google Fonts CDN je zámerne preč.** Pri jeho
+nedostupnosti sa každá ikona vykreslila ako svoj ligatúrový názov („wb_sunny", „hub")
+v serif fallbacku a rail sa rozpadol. `@font-face` bloky sú na začiatku `mind.css`,
+Geist / Geist Mono / Playfair sú variabilné (jedna os `wght`), preto `font-weight`
+deklaruje rozsah. `latin-ext` nesie slovenskú diakritiku, načíta sa vždy.
+
+Material Symbols je **subset** (215 glyfov zo 4271, 132 kB namiesto 3 MB), vyrobený
+`pyftsubset --no-layout-closure` — bez toho flagu ligatúrová uzávera vtiahne všetky
+ikony späť. **Keď pridáš NOVÚ ikonu, subset ju nemá a vykreslí sa ako text —
+regeneruj.** Overiť sa to dá skriptom v scratchpade (`iconrender.js`): meria šírku
+textu v Material Symbols, vykreslený glyf zaberá jednu em, nevykreslená ligatúra
+padne na fallback a je násobne širšia. Ligatúry v subsete žijú v GSUB lookupe
+**typu 7 (Extension)** — bez rozbalenia `ExtSubTable` vyzerá font, akoby ligatúry
+nemal žiadne.
+
+`font-display: block` pre ikony (nie `swap`): krátky prázdny priestor je lepší než
+blik surových ligatúrových názvov, čo je presne tá porucha, ktorú tu riešime.
+
 ### CSS
 
 `public/css/mind.css`, ~3700 riadkov. Pravidlo: **žiadny raw hex/rgba mimo `:root`**,
@@ -130,8 +150,23 @@ cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na tealovej výplni).
 
 ## Testy
 
-`docker compose exec app php artisan test` — 95 testov, všetko PHP (backend, MCP,
+`docker compose exec app php artisan test` — 228 testov, všetko PHP (backend, MCP,
 API). Frontend testy nie sú; UI sa overuje prekliknutím v prehliadači.
+
+**Vo worktree tá istá sada netestuje worktree.** `vendor` je symlink na hlavný
+checkout, Composer si z jeho polohy počíta `$baseDir` a autoloader je optimalizovaný
+(classmap), takže `App\` aj `Tests\` ukazujú na **hlavnú vetvu** — nová metóda hlási
+„Call to undefined method" a zelená sada nehovorí o tvojej zmene nič. Vo worktree
+preto:
+
+```
+docker compose exec -w /var/www/html/.claude/worktrees/<vetva> app \
+  php vendor/bin/phpunit -c tests/phpunit.worktree.xml
+```
+
+`tests/worktree-autoload.php` prepíše classmap aj PSR-4 na worktree (cesty v classmape
+nie sú normalizované — na tom prvá verzia tichom padla). DB je `hades_test`; názov
+**musí** končiť na `_test`, `Tests\TestCase` to overuje a inak beh odmietne.
 
 ## Pasca: overuj IDENTITU preview servera
 
@@ -149,3 +184,26 @@ curl -s http://127.0.0.1:8091/ | grep -o 'src="/js/[^"]*"'
 
 Musí vypísať `/js/mind/main.js`. Ak vypíše niečo iné (alebo hlavička odpovede
 obsahuje `X-Powered-By: PHP`), meriaš cudziu appku a všetky čísla sú bezcenné.
+
+## MCP — odpoveď je pre AI, nie pre človeka
+
+`mind_recall` konzumuje Claude Code, takže tvar odpovede je súčasťou kontraktu:
+
+- `relevance` (0–1) je podiel konceptov dopytu, ktoré uzol trafil, plus tretinová
+  váha zhody v **labeli**. Bez tej druhej časti dostalo dvanásť uzlov rovnakých 0,5.
+- Uzol s `via` **nie je priamy zásah** — pritiahla ho hrana od toho suseda a má
+  polovičnú relevanciu. Susedia sa radia podľa relevancie, nie sily: AI kráti
+  kontext zdola.
+- `related` sú labely najsilnejších spojení. Prednosť majú uzly už v odpovedi
+  (ich label je raz zaplatený).
+- **Prázdne polia sa neposielajú** a význam vynechania je v popise nástroja
+  (`origin` chýba = `session`, `verified` chýba = neoverené). Nepridávaj polia
+  s `null` — je to 20 B za nulovú informáciu na každom uzle.
+- `mind_read` vracia jeden uzol celý (popis, všetky tagy, cesta k .md, spojenia).
+  Práve to `description_truncated: true` sľubuje.
+- `noiseOf()` v `MindService` klasifikuje odpad (`markdown` / `raw-prompt` / `slug` /
+  `stub`). Recall ho **označí a zaradí za čisté uzly, nemaže** — skrytý odpad sa
+  nikdy neopraví. Smernica (prompt) ho zahodí úplne.
+
+Zmeny tu drž **aditívne** — `mind_recall` volajú živé sessions. `recall()` vracia
+`Collection<Node>` pre ChatController; metadáta pre AI pridáva `recallWithMeta()`.
