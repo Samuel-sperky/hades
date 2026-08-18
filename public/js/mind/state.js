@@ -1,3 +1,8 @@
+/* KÁNON AKCENTU — jadro je jediná zlatá plocha na plátne.
+   Hodnota MUSÍ zostať zhodná s tokenom --gold v :root (mind.css), inak legenda
+   v paneli (panels.js kreslí jadro cez var(--gold)) hovorí inú farbu než plátno.
+   Interaktívny stav na plátne — hover, výber, žiara, zrod — je VŽDY teal cez
+   T.accent; zlatá nesmie nikdy označovať stav, len identitu jadra. */
 export const CORE_COLOR = '#b88a3a';
 
 // FÁZA HRANY: základné stlmenie hrán (~40 %) — uzly a popisky vyniknú nad sieťou.

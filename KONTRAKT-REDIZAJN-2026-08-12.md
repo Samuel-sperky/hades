@@ -194,7 +194,7 @@ Dni v Denníku zostali štruktúrou (mriežka je vnútri dňa). 28 filtračných
 
 ### Zostáva (samostatné úlohy)
 
-1. **`/api/tags` vracia 3622 značiek** → `tagfilter.js` z nich robí 3622 checkboxov. Zbalená sekcia to schová, nevyrieši.
+1. ~~**`/api/tags` vracia 3622 značiek** → `tagfilter.js` z nich robí 3622 checkboxov.~~ — **vyriešené** vlnou PREHLIADKA (§10): 18 395 DOM prvkov → 64, hľadanie + 12 najčastejších + vybrané nahor, zoznam v cache 60 s.
 2. **Mŕtvy kód starší ako tento šprint**: `timeline.setupTimeline()`, `search.renderSearch`, `structure.findDuplicates`, `pack.addToPack`, `chat.addToChatContext`. Zámerne nedotknuté — pravidlo projektu je refaktorovať len dotknutý kód. Pozor: `#tl-range` nie je v blade vôbec a `render.js` číta `tlr.value`, takže timeline môže byť nedokončená funkcia, nie mŕtvy kód.
 3. ~~**17 raw hex/rgba mimo `:root`** v `mind.css`~~ — **vyriešené** vlnou FONTY A JEDEN HLAS (nižšie): zostalo 0, hodnoty sú v tokenoch `--control-knob`, `--control-knob-shadow`, `--core-shadow`, `--core-glow-*`, `--shimmer-sheen`.
 4. **Testovateľnosť**: dva loading stavy (`.shimmer`, `Načítavam…`) a async fetchy `.dir-templates` / `.dir-saved` nemajú „settled" príznak, a klik na `.dest` občas obrazovku neprepne. Každý budúci vizuálny harness bude potrebovať tie isté obchádzky.

@@ -8,7 +8,7 @@ import { buildSim, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
 import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
-import { $, busy, emptyHtml, esc, nodeColor, plainBlock, prettyProject, renderEmpty, timeAgo, typeName, updateHeaderMetrics } from './util.js';
+import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, renderEmpty, timeAgo, typeName, updateHeaderMetrics } from './util.js';
 
 /* ---------- panely ---------- */
 export async function selectNode(n) {
@@ -28,7 +28,13 @@ export async function selectNode(n) {
     /* 21 projektových uzlov nemá vlastný názov a nesie strojový slug
        („adoring-driscoll-6e9398"). Denník na ten istý stav už hovorí „bez projektu";
        panel to teraz hovorí tiež, aby appka na jednu vec nemala dva jazyky. */
-    $('node-label').textContent = prettyProject(n.label);
+    /* plainInline() PRED prettyProject(): labely chodia z DB tak, ako ich zapísal
+       Claude Code, teda s `backtickami` okolo identifikátorov — v živých dátach ich
+       má päť uzlov (napr. „Bug: `dateOrNull()` in"). Poradie je zámerné, nie náhodné:
+       isMachineName() testuje vzor slugu bez interpunkcie, takže obalený slug by mu
+       unikol a v paneli by svietil „`adoring-driscoll-6e9398`" namiesto „bez projektu".
+       Taký uzol dnes v dátach nie je — je to obrana, nie oprava nálezu. */
+    $('node-label').textContent = prettyProject(plainInline(n.label));
     // Popis záznamu je markdown („**Čo:** … **Výsledok:** …"). Panel ho vykresľuje
     // ako text s pre-wrap, takže bez plainBlock() v ňom svietila surová syntax;
     // riadkovanie zostáva, lebo v ňom je štruktúra záznamu.
@@ -64,13 +70,13 @@ export async function selectNode(n) {
                 (x.source_id === n.id && x.target_id === m.id)
                 || (x.source_id === m.id && x.target_id === n.id));
             return '<div class="nb-row">'
-                + '<button type="button" class="chip" data-id="' + m.id + '">' + esc(prettyProject(m.label)) + '</button>'
+                + '<button type="button" class="chip" data-id="' + m.id + '">' + esc(prettyProject(plainInline(m.label))) + '</button>'
                 + (edge
                     ? '<button type="button" class="ghost ms nb-del" data-edge="' + edge.id
                         + '" title="Zrušiť spojenie" aria-label="Zrušiť spojenie">close</button>'
                     : '')
                 + '</div>';
-        }).join('') || emptyHtml('hub', 'Bez spojení');
+        }).join('') || emptyCardHtml('Bez spojení');
 
         $('node-neighbors').querySelectorAll('.chip').forEach((chip) => {
             chip.onclick = () => {
@@ -86,7 +92,7 @@ export async function selectNode(n) {
         $('node-history').innerHTML = data.activations.map((a) => {
             const kinds = { learn: 'naučené', activate: 'aktivované', merge: 'zlúčené', recall: 'spomenuté', seed: 'zasiate' };
             return '<div class="hist">' + (kinds[a.kind] || a.kind) + ' · ' + new Date(a.created_at).toLocaleString('sk') + '</div>';
-        }).join('') || emptyHtml('history', 'Zatiaľ žiadna aktivita');
+        }).join('') || emptyCardHtml('Zatiaľ žiadna aktivita');
     } catch (e) { /* offline detail nevadí */ }
 }
 
@@ -108,14 +114,15 @@ export async function renderSuggestions(n) {
 
     if (!S.selected || S.selected.id !== n.id) return; // medzitým iný výber
 
-    if (!list.length) { renderEmpty(wrap, 'hub', 'Žiadne návrhy'); return; }
+    // karta „Možno súvisí" už má nadpis — ikona pod ním hovorí to isté druhýkrát
+    if (!list.length) { wrap.innerHTML = emptyCardHtml('Žiadne návrhy'); return; }
 
     wrap.innerHTML = list.map((s) => {
         const area = S.areas.get(s.area_id);
         const color = area ? mutedColor(area.color) : 'var(--muted)';
         return '<div class="sug-row" data-id="' + s.id + '">'
             + '<span class="swatch" style="background:' + esc(color) + '" aria-hidden="true"></span>'
-            + '<span class="sug-label">' + esc(s.label) + '</span>'
+            + '<span class="sug-label">' + esc(prettyProject(plainInline(s.label))) + '</span>'
             + '<span class="sug-score">' + esc(Number(s.score).toFixed(2)) + '</span>'
             + '<button type="button" class="ghost ms sug-add" title="Prepojiť" aria-label="Prepojiť">add_link</button>'
             + '</div>';
@@ -249,10 +256,14 @@ export const TYPE_GLYPHS = {
 };
 
 export function buildLegend() {
-    const typeNames = { memory: 'Spomienka', skill: 'Skill', project: 'Projekt', core: 'Jadro' };
-
-    $('legend-types').innerHTML = Object.keys(typeNames).map(
-        (t) => '<div class="legend-row">' + TYPE_GLYPHS[t] + '<span>' + typeNames[t] + '</span></div>'
+    /* Názvy typov chodia z typeName() v util.js — JEDEN zdroj pravdy. Tu stála
+       siedma kópia toho istého objektu (a s vlastným pravopisom: „Spomienka" veľkým,
+       kým TYPE_NAMES má „spomienka"), takže legenda vedela ukázať iné slovo než čipy
+       v Kontrole. TYPE_NAMES je zámerne malým — je to vetná podoba pre čipy — takže
+       legenda si prvé písmeno zvýrazní sama; to je formátovanie, nie druhý slovník. */
+    const cap = (w) => w.charAt(0).toLocaleUpperCase('sk-SK') + w.slice(1);
+    $('legend-types').innerHTML = Object.keys(TYPE_GLYPHS).map(
+        (t) => '<div class="legend-row">' + TYPE_GLYPHS[t] + '<span>' + esc(cap(typeName(t))) + '</span></div>'
     ).join('');
 
     // oblasti sú klikateľné filtre — riadok prepína viditeľnosť oblasti na plátne
@@ -522,9 +533,9 @@ export async function refreshStats() {
     $('stats-recent').innerHTML = (st.recent_records || []).map((r) =>
         '<button type="button" class="mini-record" data-id="' + r.id + '">'
         + '<span class="ms" aria-hidden="true">article</span>'
-        + '<span class="mr-title">' + esc(prettyProject(r.label)) + '</span>'
+        + '<span class="mr-title">' + esc(prettyProject(plainInline(r.label))) + '</span>'
         + '<span class="mr-time">' + timeAgo(r.created_at) + '</span></button>'
-    ).join('') || emptyHtml('receipt_long', 'Zatiaľ žiadne záznamy');
+    ).join('') || emptyCardHtml('Zatiaľ žiadne záznamy');
 
     $('stats-recent').querySelectorAll('.mini-record').forEach((el) => {
         el.onclick = () => {
@@ -539,8 +550,8 @@ export async function refreshStats() {
     ).join('');
 
     $('stats-top').innerHTML = st.top_nodes.map(
-        (n) => row(esc(prettyProject(n.label)), n.strength.toFixed(0))
-    ).join('') || emptyHtml('leaderboard', 'Zatiaľ žiadne uzly');
+        (n) => row(esc(prettyProject(plainInline(n.label))), n.strength.toFixed(0))
+    ).join('') || emptyCardHtml('Zatiaľ žiadne uzly');
 
     const gc = $('growth-chart');
     const dpr = window.devicePixelRatio || 1;

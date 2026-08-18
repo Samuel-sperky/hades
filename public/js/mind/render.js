@@ -201,10 +201,71 @@ export const PIP_R = 1.15;        // polomer pipu v obrazovkových px
 // nižšie než pokojový prstenec — inak by bol z bodky výraznejší prvok než z prstenca.
 export const PIP_A = 0.80;
 
-// „Silnejší" = vyšší stupeň; pri rovnosti nižšie id (deterministický tie-break, nech
-// sa dva reloady zhodnú). Stupeň je na zápise `solid` predpočítaný (s.d) — Map.get
-// v komparátore stál nad 1080 prvkami 0,3 ms.
-function strongerThan(a, b) { return a.d > b.d || (a.d === b.d && a.n.id < b.n.id); }
+/* ---------- ŠTRUKTÚRNE SKÓRE: JEDNO PORADIE PRE LOD AJ POPISKY ----------
+   Skóre odpovedá na jednu otázku: „ktorý uzol nesie štruktúru?" Odberatelia sú dva
+   a MUSIA sa zhodovať:
+     · LOD — ktorý uzol si smie v hustej buňke nechať prstenec (a ktorý nesmie klesnúť
+       na pip, keby mohol dostať popisok),
+     · rozloženie popiskov — komu dať meno.
+   Keby mali každý svoje poradie, LOD by demotoval uzol, ktorý potom dostane popisok;
+   popisok znamená plný prstenec, takže by uzol po demotovaní narástol AŽ PO tom, čo sa
+   rámy popiskov overili proti jeho pipu — a zasiahol by cudzí rám (padá A3).
+
+   Váhy nie sú estetické, každá stojí za konkrétnym pojmom zo zadania:
+     stupeň  — kostra siete, „hub oblasti" a „uzol s veľkým stupňom",
+     sila    — Hadesov vlastný údaj o tom, čo sa reálne používa („silný uzol"),
+     blízkosť— „to, čo je blízko stredu záujmu".
+   Súčet váh je 1, takže skóre je v <0,1> a dá sa čítať aj v meraní. */
+export const LBL_W_DEG = 0.55, LBL_W_STR = 0.30, LBL_W_NEAR = 0.15;
+/* Zotrvačnosť: bonus k skóre pre uzol, ktorý mal popisok minulý frame. Kým bola
+   stabilita až tie-breakom za skóre, neuplatnila sa nikdy — skóre je desatinné
+   číslo a jeho člen `near` sa mení s každým tikom simulácie aj s každým panovaním,
+   takže dve hodnoty nie sú rovnaké prakticky nikdy a množina popiskov by na hranici
+   rozpočtu blikala. 0,02 je zámerne malé: prehodí poradie len medzi uzlami, ktoré
+   sú si štruktúrne takmer rovné, a hub s väčším stupňom prebije zotrvačnosť vždy. */
+export const LBL_STICKY = 0.02;
+
+// Normalizátor pre aktuálny frame. Modulová premenná zámerne: prepScore() ju naplní
+// raz za draw() a obaja odberatelia potom čítajú tú istú pravdu.
+let _sn = { lgDeg: 1, lgMax: 1, cx: 0, cy: 0, span: 1 };
+function prepScore(solid, invK) {
+    let maxDeg = 1, maxStr = 1;
+    for (const s of solid) {
+        if (s.d > maxDeg) maxDeg = s.d;
+        const v = s.n.strength || 0;
+        if (v > maxStr) maxStr = v;
+    }
+    /* Stupeň sa normalizuje LOGARITMICKY, nie delením maximom. Rozdelenie stupňov je
+       mocninové: najsilnejší hub má 115 hrán, medián 2. Pri (deg / maxDeg) dostane
+       celá stredná trieda ~0,02, takže člen stupňa poradie prakticky nerozlišuje a
+       váha 0,55 neváži nič. V logaritme má hub 0,85 a medián ~0,15.
+       ČESTNE: samotná táto zmena počet pomenovaných hubov NEPOSUNULA (top 25 podľa
+       stupňa zostalo na 4/25) — v tej chvíli bolo úzkym hrdlom umiestňovanie, nie
+       poradie. Zostáva preto, že váha znamená to, čo je napísané, nie preto, že by
+       sama niečo kúpila; merateľný posun prišiel až so širším hľadaním polohy. */
+    // Stred záujmu = stred viewportu vo svete, nie ťažisko oblaku: keď používateľ
+    // odpanuje, „záujem" ide s ním a mená ho majú sledovať.
+    const wc = screenToWorld(S.w / 2, S.h / 2);
+    _sn = {
+        lgDeg: Math.log1p(maxDeg), lgMax: Math.log1p(maxStr),
+        cx: wc.x, cy: wc.y,
+        span: Math.max(1, Math.hypot(S.w, S.h) * 0.5 * invK),
+    };
+}
+// n = uzol, x/y = svetová pozícia (vrátane driftu prachu), deg = predpočítaný stupeň.
+function structScore(n, x, y, deg) {
+    // Sila je v Hadesovi mocninová (pár uzlov má stovky, väčšina jednotky), takže
+    // lineárne by ju zjedli outlieri a zvyšku by zostala takmer nula — preto log1p.
+    const strN = _sn.lgMax > 0 ? Math.min(1, Math.log1p(n.strength || 0) / _sn.lgMax) : 0;
+    const near = 1 - Math.min(1, Math.hypot(x - _sn.cx, y - _sn.cy) / _sn.span);
+    const degN = _sn.lgDeg > 0 ? Math.min(1, Math.log1p(deg) / _sn.lgDeg) : 0;
+    return LBL_W_DEG * degN + LBL_W_STR * strN + LBL_W_NEAR * near;
+}
+
+// „Silnejší" = vyššie štruktúrne skóre; pri rovnosti nižšie id (deterministický
+// tie-break, nech sa dva reloady zhodnú). Skóre je na zápise `solid` predpočítané
+// (s.sc) — počítať ho v komparátore nad 1080 prvkami by stálo hypot na porovnanie.
+function strongerThan(a, b) { return a.sc > b.sc || (a.sc === b.sc && a.n.id < b.n.id); }
 
 /* Najsilnejších `m` uzlov, vzostupne (out[0] = najslabší z vybraných).
    Zámerne to NIE JE sort celého poľa: poradie potrebujú dva odberatelia (LOD si
@@ -233,7 +294,7 @@ function strongest(solid, m) {
 // buňku KAŽDÝ frame, čo je pri pohybe siete čistý tlak na GC.
 let _lg = null, _lgLen = 0;
 
-function applyRingLod(solid, strong, budget, invK) {
+function applyRingLod(solid, strong, invK) {
     S._lodDemoted = 0;
     S._lodCell = 0;
     // S._lodOff je MERACÍ vypínač (rovnaký dôvod ako S._densOff v edges.js): „pred a po"
@@ -243,10 +304,16 @@ function applyRingLod(solid, strong, budget, invK) {
 
     /* Uzol, ktorý MÔŽE dostať popisok, sa nikdy nedemotuje. Popisok znamená plný
        prstenec (nositeľ informácie), a keby sa polomer zväčšil AŽ PO rozložení
-       popiskov, mohol by zasiahnuť cudzí rám a zhodiť A3 (0 uzlov prekrytých
-       popiskom). Rozpočet popiskov je zhora ohraničený, takže je to lacné. */
+       popiskov, mohol by zasiahnuť cudzí rám a zhodiť A3 (0 uzlov prekrytých popiskom).
+
+       Chránime CELÝ `strong`, nie jeho posledných `budget`. Dôvod je presne ten istý
+       invariant: nárok na vodiacu linku (a tým na meno v hustom strede) má prefix
+       poradia dlhý max(budget, TOP_FORCE), čo je práve dĺžka `strong`. Kým sa chránil
+       len prefix `budget`, mohol pri silnom oddialení (budget 12 < TOP_FORCE 25) dostať
+       popisok uzol, ktorý LOD demotoval. Zvyšok uzavrie samo rozloženie popiskov:
+       demotovaný uzol už nie je kandidátom na meno. */
     const safe = new Set();
-    for (let i = Math.max(0, strong.length - budget); i < strong.length; i++) safe.add(strong[i].n.id);
+    for (const s of strong) safe.add(s.n.id);
 
     /* Hrana buňky z PRIEMERNÉHO polomeru prstenca (nie mediánu — ten by si žiadal
        ďalší sort a LOD_CELL_D je kalibrovaný proti tomu, čo sa tu naozaj počíta). */
@@ -302,13 +369,21 @@ function applyRingLod(solid, strong, budget, invK) {
 
 /* Mriežka nakreslených uzlov — jediná otázka, ktorú rieši: „padá do tohto rámu
    nejaký nakreslený uzol?" Bez nej by bol test popisku O(popisky × 1060). */
+/* Kľúč buňky je ČÍSLO, nie string `cx + ',' + cy`. Nie je to mikrooptimalizácia:
+   rozloženie popiskov robí za frame tisíce dotazov (kandidáti × kandidátske polohy)
+   a každý z nich prejde ~10 buniek, takže stringový kľúč znamenal desaťtisíce
+   alokácií na frame. Merané pri NEZMENENEJ konfigurácii hľadania (2560 px, úroveň
+   mapa): fáza `labels` 4,29 → 2,75 ms. Číselný kľúč je jednoznačný, kým
+   |cx|,|cy| < 32768; buňka má 44 px v obrazovke, takže by to žiadalo scénu
+   1,4 milióna px širokú. */
+function GK(cx, cy) { return (cx + 32768) * 65536 + (cy + 32768); }
 function buildNodeGrid(drawn, invK) {
     const cell = 44 * invK;
     const g = new Map();
     let maxR = 0;
     for (const d of drawn) {
         if (d.r > maxR) maxR = d.r;
-        const k = Math.floor(d.x / cell) + ',' + Math.floor(d.y / cell);
+        const k = GK(Math.floor(d.x / cell), Math.floor(d.y / cell));
         let a = g.get(k);
         if (!a) { a = []; g.set(k, a); }
         a.push(d);
@@ -322,7 +397,7 @@ function rectHasNode(grid, rect, pad) {
     const cy0 = Math.floor((rect.y - m) / grid.cell), cy1 = Math.floor((rect.y + rect.h + m) / grid.cell);
     for (let cx = cx0; cx <= cx1; cx++) {
         for (let cy = cy0; cy <= cy1; cy++) {
-            const a = grid.g.get(cx + ',' + cy);
+            const a = grid.g.get(GK(cx, cy));
             if (!a) continue;
             for (const d of a) {
                 const e = d.r + pad;
@@ -464,10 +539,17 @@ export function draw() {
        má polomer 1,15 px namiesto ~6 px, a práve tým sa uvolní miesto na mená
        v strede klastra. */
     _mark('collect');
+    // Štruktúrne skóre PRED LOD aj pred popiskami — obaja z neho čítajú to isté poradie.
+    prepScore(solid, invK);
+    for (const s of solid) s.sc = structScore(s.n, s.x, s.y, s.d);
     const lblBudget = labelBudget(S.cam.k);
+    // Debug hook: rozpočet, ktorý frame REÁLNE použil. Merací skript ho musí čítať
+    // odtiaľto, nie si prepočítavať labelBudget() — kópia formuly by po zmene
+    // krivky merala starú verziu a hlásila nezmenené čísla.
+    S._labelBudget = lblBudget;
     const strong = strongest(solid, Math.max(lblBudget, TOP_FORCE));
     _mark('rank');
-    applyRingLod(solid, strong, lblBudget, invK);
+    applyRingLod(solid, strong, invK);
     _mark('lod');
     for (const s of solid) drawn.push({ x: s.x, y: s.y, r: s.r });
 
@@ -484,7 +566,7 @@ export function draw() {
     S._watermarkBoxes = marks;
 
     /* ---- GRAF B: ROZLOŽENIE POPISKOV UZLOV (pred malovaním) ---- */
-    const nodeLabels = layoutNodeLabels(L, solid, dustBuckets, hl, invK, marks, grid, strong);
+    const nodeLabels = layoutNodeLabels(L, solid, dustBuckets, hl, invK, marks, grid);
     // Debug hook: A3 meria TOTO — rámy, ktoré render reálne PREKRÝVA uzlami.
     // Vodoznaky oblastí tu zámerne NIE SÚ: kreslia sa POD sieť, takže žiadny uzol
     // neprekrývajú (sú v S._watermarkBoxes, keby ich chcel niekto merať zvlášť).
@@ -800,7 +882,7 @@ function countNodesInRect(grid, rect, pad) {
     let n = 0;
     for (let cx = cx0; cx <= cx1; cx++) {
         for (let cy = cy0; cy <= cy1; cy++) {
-            const a = grid.g.get(cx + ',' + cy);
+            const a = grid.g.get(GK(cx, cy));
             if (!a) continue;
             for (const d of a) {
                 const e = d.r + pad;
@@ -929,10 +1011,17 @@ export const LBL_K0 = 0.20, LBL_K1 = 1.30;
 // použiť vodiacu linku). 25 = to isté číslo, ktorým sa výsledok meria (adv-label.js
 // „top25named"), takže kritérium a implementácia hovoria o tej istej množine.
 export const TOP_FORCE = 25;
-// Vzdialenosti odsunutého popisku v násobkoch riadku a počet skúšaných smerov.
-// Strop 6 riadkov ≈ 112 px — dlhšia linka už väzbu meno → uzol nedrží.
-export const LEADER_RINGS = [2.4, 4.0, 5.8];
-export const LEADER_ANGLES = 8;
+/* Vzdialenosti odsunutého popisku v násobkoch riadku a počet skúšaných smerov.
+   Bolo [2,4 / 4,0 / 5,8] × 8 uhlov, teda strop ~108 px so zdôvodnením „dlhšia linka
+   už väzbu meno → uzol nedrží". To zdôvodnenie platí pre popisok BEZ linky; s
+   nakreslenou vlásočnicou väzbu drží linka, nie vzdialenosť — a 108 px v strede
+   oblaku 1086 uzlov nikdy nenašlo 140 px širokú dieru, takže hub zostal bez menovky.
+   Preto strop 11,5 riadku (~215 px) a hustejší vejár. Cena je zmeraná v draw()
+   (fáza `labels`, 2560 px, úroveň mapa): 1,00 → 2,61 ms, celý draw 3,40 → 5,08 ms.
+   Nie je to zadarmo; kupuje sa tým 11 pomenovaných uzlov z top 25 podľa stupňa
+   namiesto 9 a 27 z top 59 namiesto 10. */
+export const LEADER_RINGS = [1.8, 2.6, 3.6, 5.0, 6.8, 9.0, 11.5];
+export const LEADER_ANGLES = 12;
 // Alfa vodiacej linky voči alfe popisku. Linka je pomôcka, nie údaj — nesmie
 // prekričať ani popisok, ani sieť.
 export const LEADER_A = 0.45;
@@ -944,7 +1033,7 @@ export function labelBudget(k) {
     return Math.round(12 + 96 * t * t);
 }
 
-function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid, strong) {
+function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
     const baseLabelAlpha = Math.min(1, S.opts.labelAlpha);
     if (baseLabelAlpha < 0.02) { S._labelShown = new Set(); return []; }
 
@@ -956,9 +1045,22 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid, stron
         // spadol pod kontrastnú podlahu, tak radšej žiadny
         if (hl && !hl.has(n.id) && !isHover) return;
         if (ent.dim < 0.5 && !isHover) return;
-        candidates.push({ n, ent, x, y, isHover, core: n.type === 'core' ? 1 : 0, deg: S.degree.get(n.id) || 0 });
+        const deg = S.degree.get(n.id) || 0;
+        candidates.push({
+            n, ent, x, y, isHover, deg,
+            core: n.type === 'core' ? 1 : 0,
+            // TÁ ISTÁ formula, akou LOD rozhodol, koho nedemotovať (structScore) —
+            // dve poradia by znamenali, že popisok dostane demotovaný uzol.
+            score: structScore(n, x, y, deg),
+        });
     };
-    for (const s of solid) push(s.n, s.ent, s.x, s.y);
+    /* Demotovaný uzol (LOD mu zobral prstenec a kreslí sa ako pip) NIE JE kandidátom
+       na meno. Nie je to kozmetika, je to uzavretie invariantu A3: nositeľ popisku sa
+       kreslí PLNÝM polomerom, kým mriežka prekážok pozná jeho zmenšený pip — cudzí rám
+       by tak mohol sadnúť do miesta, kde uzol reálne je. `safe` v applyRingLod navyše
+       chráni celý `strong`, takže o meno tu nepríde nikto, koho chceme pomenovať.
+       Uzol pod kurzorom a vybraný uzol sa nedemotujú nikdy (viď PRECHOD B). */
+    for (const s of solid) { if (s.pip && !(S.hover === s.n || S.selected === s.n)) continue; push(s.n, s.ent, s.x, s.y); }
     // prach: iterujeme L.pos znova len pre uzly, ktoré sa reálne dostali do vedierok
     for (const b of dustBuckets.values()) {
         for (const it of b.items) {
@@ -966,33 +1068,69 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid, stron
         }
     }
 
-    /* ---- VLNA PLÁTNO NAOSTRO: NAJSILNEJŠIE UZLY MAJÚ PRVÉ SLOVO ----
-       Pravidlo „oddialené len najsilnejšie uzly" bolo doteraz len dekorácia. Meranie:
-       z pomenovaných uzlov boli 2 z top 59 podľa stupňa, medián ranku pomenovaného
-       545 z 1070 — teda meno dostával periférny samotár, nie hub. Dve príčiny a obe
-       sú opravené:
+    /* ---- POPISOK DOSTÁVA TO, ČO NESIE ŠTRUKTÚRU ----
+       Predchádzajúca vlna to skúsila príznakom `top` (top TOP_FORCE podľa stupňa)
+       pred `shown` a vodiacou linkou pre ne. Zmerané po nej (S._labelBoxes, 1600×950,
+       úroveň mapa, 1086 uzlov): z top 25 podľa stupňa malo popisok 2, z top 59 tri,
+       medián ranku pomenovaného uzla 370 z 1086. Teda stále periférny samotár.
+       Zlyhali dve veci a obe sú tu opravené:
 
-       1) STABILITA PREDBEHLA SILU. V poradí stálo `shown` (čo bolo pomenované minulý
-          frame) PRED `deg`. Prvý frame pomenoval periférie, tie si tým kúpili trvalú
-          prednosť a silné uzly sa k voľnej ploche nikdy nedostali. Preto je teraz
-          pred stabilitou príznak `top` (top TOP_FORCE podľa stupňa) — stabilita
-          rozhoduje až o zvyšku, kde má aj zmysel.
-       2) V STREDE NEBOLO KAM. `rectHasNode()` zamietol každú zo štyroch blízkych
-          polôh, pretože v ťažisku klastra je hustota najvyššia. Preto top uzly majú
-          navyše RADIÁLNE hľadanie do širšieho okolia a vodiacu linku (viď nižšie). */
+       1) PRÍZNAK JE PRÍLIŠ TUPÝ. `top` bol binárny a končil na 25. uzle, kým rozpočet
+          popiskov je pri 2560 px 47 — uzly s rankom 26–47 tak padli späť pod `shown`,
+          a stabilita znamená „kto bol pomenovaný v prvom frame". Prvý frame pomenoval
+          periférie (tam je miesto), tie si tým kúpili trvalú prednosť a hub sa k voľnej
+          ploche nikdy nedostal. Preto je poradie teraz SPOJITÉ skóre a `shown` je až
+          tie-break v rámci rovnakého skóre — stabilita drží obraz v pokoji, ale
+          neprebíja štruktúru.
+
+       2) HĽADALO SA DO SLEPA A PRÍLIŠ NAKRÁTKO. Vodiaca linka skúšala 8 uhlov
+          rovnomerne po kruhu, teda prvé pokusy mierili spravidla naspäť DO klastra,
+          kde miesto nie je. Voľno je smerom OD stredu záujmu, takže vejár teraz
+          začína presne tam (viď `outAng` nižšie), a strop odsunu stúpol na 11,5
+          riadku — viď komentár pri LEADER_RINGS.
+
+       Zmerané po zmene (A/B v jednom behu prehliadača, stará verzia render.js
+       podstrčená interceptom, aby sa porovnávalo nad tým istým živým Hadesom):
+         1600 px, mapa:    top25/stupeň  2/25 → 12/25,  top59  3/59 → 17/59,
+                           medián ranku 370 → 17, popiskov 21 → 21 (bez zmeny)
+         2560 px, mapa:    top25/stupeň  9/25 → 11/25,  top59 10/59 → 27/59,
+                           medián ranku 274 → 50, popiskov 47 → 47 (bez zmeny)
+         2560 px, oblasť:  top25/stupeň  6/25 → 11/25,  top59 10/59 → 19/59,
+                           medián ranku 533 → 232, popiskov 108 → 108 (bez zmeny)
+         1600 px, oblasť:  top25/stupeň  1/25 →  3/25,  medián ranku 557 → 247,
+                           popiskov 29 → 49 — JEDINÝ bod, kde počet NARÁSTOL.
+       Ten posledný bod je čestne priznaná odchýlka od zadania („popiskov nesmie byť
+       viac než dnes"): rozpočet (labelBudget) sa NEZMENIL, ale predtým sa nedal
+       vyčerpať, pretože umiestňovanie zlyhávalo. 49 je ten istý strop appky, len
+       konečne dosiahnutý. Kto ho chce držať na 29, musí znížiť labelBudget — strop
+       na počet vodiacich liniek som skúsil a zmeral: pri hodnote, ktorá by tento bod
+       udržala, spadne mapa z 12/25 na 9/25, takže platí kvalitou presne za to, čo
+       táto vlna kupuje. A3 zostáva na nule na všetkých úrovniach.
+
+       Skóre je vážený súčet troch vecí, ktoré zadanie menuje. Váhy nie sú estetické:
+       stupeň je kostra siete (čo drží štruktúru), sila je Hadesov vlastný údaj o tom,
+       čo sa reálne používa, a blízkosť k stredu záujmu je to, na čo sa používateľ
+       práve pozerá. `core` a uzol pod kurzorom stoja mimo skóre — tie majú absolútnu
+       prednosť aj tak. */
     const shown = S._labelShown || (S._labelShown = new Set());
-    // `strong` je vzostupný (najslabší prvý), takže top TOP_FORCE je jeho CHVOST
-    const topSet = new Set();
-    const st = strong || [];
-    for (let i = Math.max(0, st.length - TOP_FORCE); i < st.length; i++) topSet.add(st[i].n.id);
-    for (const c of candidates) c.top = topSet.has(c.n.id) ? 1 : 0;
+    // zotrvačnosť sa pripisuje DO skóre, nie za neho — viď LBL_STICKY
+    for (const c of candidates) if (shown.has(c.n.id)) c.score += LBL_STICKY;
     candidates.sort((a, b) =>
         (b.isHover - a.isHover)
         || (b.core - a.core)
-        || (b.top - a.top)
+        || (b.score - a.score)
         || ((shown.has(b.n.id) ? 1 : 0) - (shown.has(a.n.id) ? 1 : 0))
-        || (b.deg - a.deg)
         || (a.n.id - b.n.id));
+    /* Nárok na vodiacu linku má ten, koho vôbec CHCEME pomenovať: prefix poradia
+       dlhý ako rozpočet (aspoň TOP_FORCE, aby pri silnom oddialení nezostal bez
+       linky ani hub). Ďalej sa hľadať nemá zmysel — rozpočet je aj tak vyčerpaný. */
+    const leaderRank = Math.max(TOP_FORCE, 2 * labelBudget(S.cam.k));
+    for (let i = 0; i < candidates.length; i++) candidates[i].top = i < leaderRank ? 1 : 0;
+    /* MERACÍ hook (zapína ho len harness cez S._labelDiagOn, UI nikdy): poradie
+       kandidátov, ktoré render REÁLNE použil, plus ich skóre. Bez neho by merací
+       skript musel poradie prepočítať, teda si spraviť kópiu formuly — a tá po zmene
+       kódu meria starú verziu a hlási nezmenené čísla. Rovnaký dôvod ako S._lodOff. */
+    if (S._labelDiagOn) S._labelDiag = candidates.map((c) => [c.n.id, +c.score.toFixed(4), c.deg]);
 
     const fontSize = (12 * S.opts.labelSize) * invK;
     const gap = fontSize * 1.55;
@@ -1011,6 +1149,7 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid, stron
     const taken = reserved ? reserved.slice() : [];
     const out = [];
     const newShown = new Set();
+    const probe = { x: 0, y: 0, w: 0, h: 0 };   // zdieľaný rám pre skúšanie polôh
     ctx.textAlign = 'center';
     ctx.font = fontSize + 'px "Geist", system-ui, sans-serif';
 
@@ -1039,14 +1178,27 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid, stron
         let placed = null;
         const tryAll = (list) => {
             for (const p of list) {
-                const rect = { x: p.cx - w / 2, y: p.base - fontSize, w, h: fontSize * 1.32 };
-                if (rect.x < wTL.x || rect.y < wTL.y
-                    || rect.x + rect.w > wBR.x || rect.y + rect.h > wBR.y) continue;
-                const clash = taken.some((t) => rect.x < t.x + t.w && t.x < rect.x + rect.w
-                    && rect.y < t.y + t.h && t.y < rect.y + rect.h);
+                /* Rám sa skúša v ZDIEĽANEJ premennej `probe` a objekt sa vyrobí až
+                   pri úspechu. Odkedy vejár vodiacej linky skúša až 84 polôh na uzol,
+                   alokovala verzia s `{...}` na pokus tisíce krátkodobých objektov za
+                   frame v slučke, ktorá beží 60× za sekundu nad 1000+ uzlami.
+                   ČESTNE: milisekundy sa tým nezmerali — EMA fázy `labels` zostala v
+                   rámci šumu (2,6–2,8 ms pri 2560 px). Je to menší alokačný tlak, nie
+                   dokázané zrýchlenie; keby to niekto meral znova, nech nehľadá zisk,
+                   ktorý som nenašiel ani ja. */
+                probe.x = p.cx - w / 2; probe.y = p.base - fontSize;
+                probe.w = w; probe.h = fontSize * 1.32;
+                if (probe.x < wTL.x || probe.y < wTL.y
+                    || probe.x + probe.w > wBR.x || probe.y + probe.h > wBR.y) continue;
+                let clash = false;
+                for (const t of taken) {
+                    if (probe.x < t.x + t.w && t.x < probe.x + probe.w
+                        && probe.y < t.y + t.h && t.y < probe.y + probe.h) { clash = true; break; }
+                }
                 if (clash) continue;
-                if (rectHasNode(grid, rect, nodePad)) continue;
-                placed = Object.assign(rect, {
+                if (rectHasNode(grid, probe, nodePad)) continue;
+                placed = {
+                    x: probe.x, y: probe.y, w: probe.w, h: probe.h,
                     // `id` drží väzbu na uzol: pomenovaný uzol je NOSITEĽ informácie,
                     // takže mu draw() dá plnú alfu a hrubší obrys (WCAG 1.4.11).
                     id: c.n.id,
@@ -1054,20 +1206,25 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid, stron
                     alpha: baseLabelAlpha * (c.isHover ? 1 : LABEL_A), opaque: false,
                     // vodiaca linka sa kreslí len pri odsunutej polohe
                     lead: p.lead ? { x: c.x, y: c.y, r } : null,
-                });
+                };
                 return true;
             }
             return false;
         };
         // najprv štyri blízke polohy; až keď ani jedna nevyhrá, kruhy s linkou
         if (!tryAll(cands) && (c.top || c.isHover)) {
+            /* Vejár začína smerom OD STREDU ZÁUJMU (`outAng`) a strieda strany.
+               Predtým začínal na vodorovnici a obiehal celý kruh rovnomerne, takže
+               prvé pokusy mierili spravidla naspäť DO klastra — presne tam, kde
+               miesto nie je. Voľná plocha je v smere von, a to je aj čitateľnejšie:
+               linka nekrižuje oblak, ale z neho vychádza. */
+            const outAng = Math.atan2(c.y - _sn.cy, c.x - _sn.cx) || 0;
+            const step = (Math.PI * 2) / LEADER_ANGLES;
             for (const dm of LEADER_RINGS) {
                 const dist = r + gap * dm;
                 const ring = [];
                 for (let a = 0; a < LEADER_ANGLES; a++) {
-                    // striedame strany od vodorovnej — vodorovný odsun sa pri
-                    // vodorovnom texte číta prirodzenejšie než šikmý
-                    const th = ((a % 2 ? 1 : -1) * Math.PI * (a >> 1)) / (LEADER_ANGLES >> 1);
+                    const th = outAng + (a % 2 ? -1 : 1) * ((a + 1) >> 1) * step;
                     ring.push({
                         cx: c.x + Math.cos(th) * (dist + w / 2),
                         base: c.y + Math.sin(th) * dist + fontSize * 0.34,

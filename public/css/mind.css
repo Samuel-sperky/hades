@@ -142,12 +142,22 @@
     --glow-accent: 0 1px 2px rgba(15, 40, 38, .05), 0 6px 18px -10px rgba(3, 121, 126, .30);
     --glow-accent-lg: 0 8px 24px -12px rgba(3, 121, 126, .28);
 
-    /* ---- reserved jewelry gold (brand/core ONLY) ---- */
-    --gold: #b88a3a;
-    --brand-gold: #d8b878;
-    --gold-text: #8a6417;
-    --gold-soft: #f3e7cf;
-    --glow-gold: 0 1px 2px rgba(138, 100, 23, .10), 0 8px 22px -12px rgba(184, 138, 58, .40);
+    /* ---- KÁNON AKCENTU: zlatá je VYHRADENÁ, teal je PRIMÁRNY ----
+       Teal (#05bcc4 / #03797e) nesie KAŽDÝ interaktívny stav — hover, fokus, aktívny
+       prvok, výber na plátne. Zlatá nesie IBA dve veci: znak značky a jadro vedomia.
+
+       Dôvod je kompozičný, nie estetický: jadro je na plátne jediný sýty PLNÝ prvok
+       (všetko ostatné sú priehľadné prstence) a je zlaté; koruna značky v raile je
+       zlatá. Je to jeden vyhradený význam. Keby zlatá nesla aj interaktívny stav,
+       rozdrobila by sa na desiatky miest a plátno by prestalo hovoriť jednoznačne —
+       oko by už nevedelo, či zlatá znamená „toto je Hades" alebo „toto je aktívne".
+
+       Preto tu NIE JE token pre zlatý glow ani zlatú výplň (--glow-gold / --gold-soft
+       boli mŕtve a boli by len nabitou zbraňou pre budúcu zlatú hover-výplň).
+       Zlaté tokeny sú tri a všetky tri sú značkové plochy. */
+    --gold: #b88a3a;                      /* jadro v legende (panels.js SVG) */
+    --brand-gold: #d8b878;                /* znak značky v raile */
+    --gold-text: #8a6417;                 /* značka ako písmo/obrys: avatar Hadesa, jadro spinnera */
 
     /* ---- semantic (read on paper) ---- */
     --success: #0f8c5a;                   /* --ok */
@@ -159,12 +169,13 @@
     --danger-border-hover: rgba(214, 69, 69, .60);
     --warn: #d97706;
 
-    /* ---- canvas identity colors (JS on #mind only; NOT chrome) ---- */
-    --node-core: #b88a3a;                 /* gold — brand core */
-    --node-skill: #03797e;                /* teal accent */
+    /* ---- canvas identity colors ----
+       Zostal JEDEN: --node-memory pre .dtl-dot[data-origin="brain"]. Ostatné štyri
+       (--node-core/skill/project/relation) boli mŕtve — plátno berie farbu uzla z
+       oblasti (util.paintColor) a jadro z CORE_COLOR v state.js, nie odtiaľto.
+       Boli navyše dvojnásobná pasca kánonu: --node-core duplikovalo zlatú a
+       --node-skill bolo PRESNE --accent, teda interaktívny teal v identitnej roli. */
     --node-memory: #2f6d8f;               /* steel-teal, distinct from accent */
-    --node-project: #c2761c;              /* warm amber, darker than --warn for fill legibility */
-    --node-relation: #05bcc4;             /* accent2 cyan */
 
     /* ---- radius set (Aura 8/10/14 ladder) ---- */
     --r-sm: 8px;
@@ -414,7 +425,7 @@
     --glow-accent: 0 1px 2px rgba(0, 0, 0, .30), 0 6px 18px -10px rgba(5, 188, 196, .35);
     --glow-accent-lg: 0 8px 24px -12px rgba(5, 188, 196, .30);
     --gold-text: #d8b878;
-    --gold-soft: rgba(184, 138, 58, .18);
+    /* --gold-soft tu nie je: zlatá VÝPLŇ neexistuje, viď kánon akcentu v :root */
     --success: #34d399;
     --success-soft: rgba(52, 211, 153, .18);
     --danger: #f07575;
@@ -435,6 +446,13 @@
 
     /* certainty ramp — lighter tints, read 5.7–9.2:1 on dark panel/surface */
     --cert-overene: #5cc48d;              /* 8.12 on panel */
+    /* POZNANÁ VÝNIMKA KÁNONU (nie nedopatrenie): na tmavej téme je táto hodnota
+       PRESNE --brand-gold. Rebrík istoty je TRETIA rola — semantická, nie interaktívna
+       ani značková — a jantár pre 🧪 hypotézu je v ňom správny tón (svetlá téma má
+       #8f5a12). Odsunúť ho od značkovej zlatej sa nedá bez toho, aby narazil do
+       --warn (#f59e0b, hue 70° vs 79°), teda by sa zamenila jedna kolízia za horšiu:
+       „hypotéza" by začala vyzerať ako „upozornenie". Zostáva, a je to zmeraných
+       9,21:1 na paneli. Interaktívne stavy chipu istoty sú tealové, tak ako všade. */
     --cert-hypoteza: #d8b878;             /* 9.21 on panel */
     --cert-pasca: #f07575;                /* 6.26 on panel */
     --cert-none: #9aa1ad;                 /* 6.73 on panel */
@@ -716,7 +734,14 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
    plus wordmark. VLNA CHRÓM: identita sa presunula z hlavičky sem, takže znak
    a slovo tvoria jeden zvislý lockup v šírke destinácií (60px), nie dva súperiace
    znaky na dvoch miestach. Zlatá zostáva len na znaku — slovo je v --text, inak by
-   z lockupu bola jedna zlatá škvrna a „jeden vyhradený zlatý moment" by padol. */
+   z lockupu bola jedna zlatá škvrna a „jeden vyhradený zlatý moment" by padol.
+
+   VÝNIMKA KÁNONU, POMENOVANÁ NAHLAS: #brand-core je <button> (klik vycentruje graf),
+   takže zlatá tu sedí na klikacom prvku. Nie je to porušenie: zlatá tu nesie IDENTITU
+   (znak), nie interaktívny STAV — a všetky jeho stavy sú tealové, viď
+   #brand-core:focus-visible s --focus-ring nižšie. Rovnako .asleep: stmavená zlatá
+   hlási „vedomie spí", teda stav ZNAČKY, nie stav ovládania. Keby sa naopak fokusový
+   ring urobil zlatým „aby ladil so znakom", kánon padne — teal musí vyhrať aj tu. */
 #brand-core {
     position: relative;
     color: var(--brand-gold);
@@ -1461,8 +1486,12 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     box-shadow: var(--elev-2), 0 0 0 4px rgba(var(--accent-rgb), .10);
 }
 
-/* spark echoes the gold core — --gold-text passes contrast in both themes */
-#prompt-form .spark { color: var(--gold-text); font-size: var(--icon-sm); flex-shrink: 0; }
+/* KÁNON AKCENTU: iskra bola zlatá („echoes the gold core"), a to je práve to
+   presakovanie, ktoré kánon zakazuje — sedí VNÚTRI interaktívneho ovládacieho prvku
+   (#prompt-form je pole, do ktorého sa píše), takže zlatá tam prestala znamenať
+   „toto je Hades" a začala znamenať „tu sa dá klikať". Teal, ako každý iný akcent
+   v chróme; --accent je ten istý token, aký nesú .toast .ms a .dir-tpl .ms. */
+#prompt-form .spark { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
 
 #prompt-input {
     flex: 1;
@@ -1535,7 +1564,9 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     color: var(--text-secondary);
 }
 
-/* Hades reply row — gold-ring avatar + bubble (user messages stay avatar-less, right) */
+/* Hades reply row — gold-ring avatar + bubble (user messages stay avatar-less, right)
+   Zlatá je tu v kánone: avatar JE znak značky v riadku — hovorí „toto povedal Hades".
+   Nie je to interaktívny prvok (nemá hover ani fokus, nedá sa naň klikať). */
 .msg-row {
     display: flex; align-items: flex-start; gap: var(--sp-1);
     align-self: flex-start;
@@ -1655,7 +1686,8 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     font-weight: var(--fw-medium);
     font-size: var(--fs-body);
 }
-.sc-head .ms { font-size: var(--icon-sm); color: var(--gold-text); }
+/* KÁNON AKCENTU: hlavička karty návrhu je chróm, nie značka — teal (bolo --gold-text). */
+.sc-head .ms { font-size: var(--icon-sm); color: var(--accent); }
 .suggest-card .sc-label {
     width: 100%;
     background: var(--field-bg);
@@ -2088,7 +2120,14 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     pointer-events: none;
     z-index: var(--z-chrome);
 }
-.empty.empty-network .ms { font-size: 48px; color: var(--gold); opacity: 1; }
+/* KÁNON AKCENTU: „Vedomie sa nepodarilo prebudiť" je CHYBA, nie značka. Zlatá tu
+   tvrdila „toto je Hades", pričom správa je „appka nenabehla" — a v tom istom bloku
+   už stojí pravidlo, že prázdny stav si nevymýšľa novú farbu. --danger ten význam
+   v appke už nesie (.toast.error .ms) a je to naviac jediná voľba, ktorá TU prejde
+   WCAG 1.4.11: na svetlom papieri dávala --gold 2,86:1 a --warn 2,92:1 (obe POD 3:1),
+   --danger dáva 4,02:1. Na tmavej 6,65:1 (predtým 5,97:1). Ikona je 48 px a stojí
+   nad vlastným titulkom, takže farbu netreba stlmovať do dekorácie. */
+.empty.empty-network .ms { font-size: 48px; color: var(--danger); opacity: 1; }
 .empty.empty-network .title {
     font-family: var(--serif);
     /* Kánon nadpisov: 660 / −.025em — to isté, čo .screen-head h1 (predtým tu bolo
@@ -2517,6 +2556,16 @@ body.ambient #toasts {
     color: var(--muted);
     margin: var(--sp-2) 0 var(--sp-1);
 }
+
+/* FILTER ZNAČIEK (#filter-tags) — odstupy patria sem, nie do JS.
+   Prepísaný filter (z 18 395 DOM prvkov na 64) si odstup vyhľadávacieho poľa a
+   tlačidla „Zrušiť výber" nesie zatiaľ v dvoch inline `style="margin-bottom"`
+   v tagfilter.js. Hodnoty sú tu ZHODNÉ (var(--sp-1)), takže kým inline štýly
+   existujú, tieto pravidlá sú nečinné (inline má vyššiu prioritu) a vzhľad sa
+   nemení ani o pixel; po ich odstránení preberajú odstup bez zmeny.
+   `.tag-n` tu zámerne NIE JE: je to mŕtvy selektor, počty idú cez `.chip-n`. */
+#filter-tags-search { margin-bottom: var(--sp-1); }
+#filter-tags-clear { margin-bottom: var(--sp-1); }
 
 label.check {
     display: flex; align-items: center; gap: 10px;

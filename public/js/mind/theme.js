@@ -48,6 +48,14 @@
 // kreslí NAD sieťou (predtým pod ňou, takže cez verzálky prechádzali stovky prstencov
 // a hrán a text bol nečitateľný). Halo maže ink len po obrysoch glyfov, nie v
 // obdĺžniku — sieť tak medzi písmenami zostane vidieť a text má lokálny odstup.
+/* KÁNON AKCENTU (zhoda s :root v mind.css — plátno a DOM musia hovoriť tú istú farbu):
+   `accent` je teal a je to JEDINÝ interaktívny akcent plátna — hover, výber, fokus,
+   žiara aktivity, zrod uzla, mriežka. Zlatá na plátne existuje jediná: CORE_COLOR
+   v state.js pre jadro (= token --gold). Keby akcent zozlatol, jadro by prestalo byť
+   jediný sýty plný prvok a plátno by prestalo hovoriť jednoznačne.
+     light accent 3,121,126  = --accent #03797e
+     dark  accent 5,188,196  = --accent #05bcc4
+   Keď meníš jedno, meň aj druhé. */
 export const THEMES = {
     light: {
         paper: '#f8f4f7', ink: '#101d1b', inkSoft: '#2d3a38', muted: '#566964',

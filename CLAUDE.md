@@ -113,10 +113,27 @@ Presvitanie utlčeného grafu pod obsahom je **len na tmavej téme** — na svet
 ostáva plátno mimo Grafu skryté, pretože pod poloprehľadnými chipmi tam kontrast
 textu závisel od obsahu grafu.
 
-Známy dlh: v súbore je ~46 dvojíc „selektor + vlastnosť" deklarovaných dvakrát
-s inou hodnotou (raz pri deklarácii, raz v override bloku na konci). Keď meníš
-vzhľad karty alebo mriežky, **grepni selektor na oba výskyty**, inak zmena nebude
-mať efekt.
+**Kánon akcentu: teal je interaktívny, zlatá je značková.** Teal (`--accent`) nesie
+hover, fokus, aktívny stav a primárne akcie. Zlatá (`--gold`) je vyhradená značke
+a jadru vedomia — jadro je na plátne jediný sýty plný prvok a je zlaté. Keby zlatá
+nesla aj interaktívny stav, ten jeden vyhradený význam by sa rozdrobil. Menované
+výnimky (a nič nad ne nepridávaj): `#brand-core` je síce `<button>`, ale zlatá tam
+nesie identitu a všetky jeho stavy sú teal; `.avatar` a `.empty-loading .load-mark`
+sú značkový znak. `--cert-hypoteza` je na tmavej téme tá istá hodnota ako
+`--brand-gold` — je to tretia, semantická rola a presun na `--warn` (70° vs 79°)
+by kolíziu len zhoršil, preto zostáva.
+
+Dvojité deklarácie (~46 dvojíc „selektor + vlastnosť" s inou hodnotou) boli
+**zaplatené v `c1a3a96`** a dnes je ich **0**. Čo v súbore ostáva, je zámerné:
+4 dvojice `--card-pad` (základ + varianta, 17 riadkov od seba) a 15 legitímnych
+prepisov (media queries, rovnako pomenované kroky rôznych `@keyframes`). Detektor
+je `w4dup.js` v scratchpade.
+
+**Keď meníš CSS, over, že zmena je inertná, výmenou stylesheetu nad TÝM ISTÝM DOM**
+(`w8/cssswap.js`) — nie dvoma načítaniami stránky, Hades je živý a medzi nimi sa
+naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva rámce
++ 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
+hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
 ## Overenie UI
 
