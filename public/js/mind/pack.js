@@ -96,9 +96,16 @@ export function renderPackList() {
     });
 }
 
+// Strop 50 je serverová validácia (/api/context/pack), nie rozmar — ale doteraz
+// sa nad ním mlčky odrezalo a používateľ skopíroval balík bez uzlov, o ktorých
+// si myslel, že v ňom sú. Pri exporte kontextu pre AI je tiché orezanie to
+// najhoršie, čo sa môže stať.
+export const PACK_LIMIT = 50;
+
 export async function copyPack() {
     if (!S.pack.size) { showToast('Balík je prázdny'); return; }
-    const ids = [...S.pack.keys()].slice(0, 50);
+    const ids = [...S.pack.keys()].slice(0, PACK_LIMIT);
+    const cut = S.pack.size - ids.length;
     try {
         const res = await fetch('/api/context/pack', {
             method: 'POST',
@@ -108,7 +115,9 @@ export async function copyPack() {
         if (!res.ok) { showToast('Kopírovanie zlyhalo'); return; }
         const data = await res.json();
         await navigator.clipboard.writeText(data.markdown || '');
-        showToast('Skopírované pre Claude Code');
+        showToast(cut > 0
+            ? 'Skopírované ' + ids.length + ' z ' + S.pack.size + ' — strop balíka je ' + PACK_LIMIT
+            : 'Skopírované pre Claude Code');
     } catch (e) {
         showToast('Kopírovanie zlyhalo');
     }

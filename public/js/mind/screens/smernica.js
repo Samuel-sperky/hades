@@ -17,6 +17,9 @@ export let directiveBuildSeq = 0;        // ochrana proti pretekaniu odpovedí
 
 export const DIR_SECTIONS = [
     { key: 'skills', title: 'Skilly', icon: 'bolt' },
+    // Pasca (certainty=pasca) má vlastnú sekciu: „neopakuj túto chybu" je pre
+    // Claude Code najsilnejší poznatok v smernici a medzi skillmi sa strácal.
+    { key: 'pitfalls', title: 'Pasce', icon: 'warning' },
     { key: 'projects', title: 'Projekty', icon: 'inventory_2' },
     { key: 'facts', title: 'Fakty', icon: 'psychology' },
     { key: 'rules', title: 'Pravidlá', icon: 'gavel' },
@@ -162,7 +165,7 @@ export function dirItem(key, it) {
     const id = +it.id;
     const on = directiveSel.has(id);
     let sub = '';
-    if (key === 'skills' && it.path) sub = '<code class="dir-path">' + esc(it.path) + '</code>';
+    if ((key === 'skills' || key === 'pitfalls') && it.path) sub = '<code class="dir-path">' + esc(it.path) + '</code>';
     else if (key === 'projects' && it.info) sub = '<span class="dir-sub">' + esc(it.info) + '</span>';
     // Náhľad položky = obyčajný text; markdown zostáva len vo VÝSTUPE smernice
     // (dirOneLine nižšie), ktorý číta Claude Code, nie človek na obrazovke.
@@ -194,32 +197,44 @@ export function renderDirectivePreview() {
     pv.innerHTML = mdToHtml(directiveMarkdown);
 }
 
-// Klientsky rebuild markdownu z vybraných položiek — zrkadlí DirectiveController::buildMarkdown.
+// Klientsky rebuild markdownu z vybraných položiek — zrkadlí
+// DirectiveController::buildMarkdown(). Keď meníš jedno, zmeň aj druhé:
+// používateľ kopíruje TENTO výstup, server ten svoj, a rozdiel by nikto nevidel.
 export function buildDirectiveMarkdown() {
     const task = (directiveData.task || '').trim();
     const taskLine = task !== '' ? task : 'Nešpecifikovaná úloha';
     const skills = dirSelected('skills');
+    const pitfalls = dirSelected('pitfalls');
     const projects = dirSelected('projects');
     const facts = dirSelected('facts');
     const rules = dirSelected('rules');
     const verified = skills.filter((s) => s.verified && s.path);
+    const others = skills.filter((s) => !(s.verified && s.path));
 
     const L = [];
     L.push('# Smernica: ' + taskLine, '');
-    L.push('## Kontext');
-    L.push(dirContextSentence(task, verified, projects), '');
+    L.push('## Zadanie', taskLine, '');
+    L.push('## Ako s tým pracovať');
+    for (const line of dirHowTo(verified, projects, pitfalls)) L.push('- ' + line);
+    L.push('');
 
     if (verified.length) {
         L.push('## Použi tieto skilly');
         for (const s of verified) L.push('- ' + s.label + ' — `' + s.path + '`');
         L.push('');
     }
+    if (pitfalls.length) {
+        L.push('## Pasce — čo nerobiť');
+        for (const t of pitfalls) {
+            const s = dirOneLine(t.snippet);
+            const path = t.path ? ' (`' + t.path + '`)' : '';
+            L.push('- ' + t.label + path + (s !== '' ? ': ' + s : ''));
+        }
+        L.push('');
+    }
     if (projects.length) {
         L.push('## Súvisiace projekty');
-        for (const p of projects) {
-            const info = String(p.info || '').trim();
-            L.push('- ' + p.label + (info !== '' ? ': ' + info : ''));
-        }
+        for (const p of projects) L.push('- ' + p.label + dirInfoSuffix(p.info));
         L.push('');
     }
     if (facts.length) {
@@ -238,14 +253,14 @@ export function buildDirectiveMarkdown() {
         }
         L.push('');
     }
-
-    const where = [];
-    for (const s of verified) where.push('- ' + s.label + ' → `' + s.path + '`');
-    for (const p of projects) {
-        const info = String(p.info || '').trim();
-        if (info !== '') where.push('- ' + p.label + ' → ' + info);
+    if (others.length) {
+        L.push('## Ďalšie relevantné skilly (bez .md v repo)');
+        for (const s of others) {
+            const sn = dirOneLine(s.snippet);
+            L.push('- ' + s.label + (sn !== '' ? ': ' + sn : ''));
+        }
+        L.push('');
     }
-    if (where.length) { L.push('## Kde nájdeš'); for (const w of where) L.push(w); L.push(''); }
 
     return L.join('\n').replace(/\n+$/, '') + '\n';
 }
@@ -254,14 +269,22 @@ export function dirSelected(key) {
     return (directiveData.suggested[key] || []).filter((it) => directiveSel.has(+it.id));
 }
 
-export function dirContextSentence(task, verified, projects) {
-    const subject = task !== '' ? '„' + task + '"' : 'túto úlohu';
-    const parts = [];
-    if (verified.length) parts.push(verified.length + '× skill');
-    if (projects.length) parts.push(projects.length + '× projekt');
-    const have = parts.length ? ' Zahŕňa ' + parts.join(' a ') + '.' : '';
-    return 'Táto smernica hovorí, kde v Hadese nájdeš relevantné znalosti pre '
-        + subject + '.' + have + ' Použi uvedené zdroje ako kontext skôr, než začneš.';
+// Pokyny „Ako s tým pracovať" — len tie, na ktoré v smernici naozaj niečo je.
+// Pokyn na sekciu, ktorá v dokumente nie je, je horší než žiadny: AI ju hľadá.
+export function dirHowTo(verified, projects, pitfalls) {
+    const out = ['Toto je kontext z Hadesa (trvalá pamäť Claude Code), nie zadanie samo o sebe.'];
+    if (verified.length) out.push('Skilly nižšie majú cestu k .md — prečítaj si ich pred prvým riadkom kódu.');
+    if (pitfalls.length) out.push('Pasce sú overené chyby z minulosti; neopakuj ich.');
+    if (projects.length) out.push('Pri projektoch je adresár alebo popis — over stav priamo v ňom.');
+    out.push('Keď niečo chýba, dotiahni si to MCP nástrojmi `mind_recall` a `mind_read`.');
+    return out;
+}
+
+// Adresár do backtickov, prózu nie — AI má vidieť, čo je cesta.
+export function dirInfoSuffix(info) {
+    const t = String(info || '').trim();
+    if (t === '') return '';
+    return /^([A-Za-z]:[\\/]|\/)/.test(t) ? ' — `' + t + '`' : ': ' + dirOneLine(t);
 }
 
 export function dirOneLine(text) {

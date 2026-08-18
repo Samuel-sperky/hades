@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Area;
 use App\Models\Decision;
+use App\Models\Edge;
 use App\Models\Node;
 use App\Services\Brain\SecretScanner;
 use App\Services\MindService;
@@ -180,7 +181,18 @@ class McpController extends Controller
                 'name' => 'mind_recall',
                 'description' => 'Search the mind for knowledge relevant to a topic. Call at the start '
                     .'of a session with the session topic, and any time earlier context about the user, '
-                    .'their projects or preferences would help.',
+                    .'their projects or preferences would help. How to read the answer: `relevance` is '
+                    .'0-1, the share of query concepts a node matched; a node with `via` is NOT a direct '
+                    .'hit — the graph pulled it in through that neighbour, at half relevance. `related` '
+                    .'names the strongest connections of each node, so you get structure, not a flat list. '
+                    .'Empty fields are omitted to save context: no `origin` means session, no `verified` '
+                    .'means unverified, no `tags`/`department`/`certainty` means none. `description` is '
+                    .'shortened (lower-ranked hits get the snippet around the match); when '
+                    .'`description_truncated` is true, read the whole node with mind_read. `noise` marks '
+                    .'a low-quality node (raw-prompt = a raw user sentence stored as a label, markdown = '
+                    .'markdown left in the label, slug = machine-generated name, stub = no description) — '
+                    .'do not trust it as a source, and consider fixing it with mind_rename or dropping '
+                    .'it with mind_delete.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -195,6 +207,22 @@ class McpController extends Controller
                         'session_key' => $sessionKey,
                     ],
                     'required' => ['query'],
+                ],
+            ],
+            [
+                'name' => 'mind_read',
+                'description' => 'Read one node in full: the complete description (mind_recall shortens '
+                    .'it), every tag, the source .md path if the knowledge came from a file, and the '
+                    .'strongest connections. Use it when mind_recall returned `description_truncated` '
+                    .'or when a `related`/`via` label looks worth opening. Identify the node by its '
+                    .'exact `label` from mind_recall, or by `id`.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'label' => ['type' => 'string', 'description' => 'Exact label of the node, as returned by mind_recall'],
+                        'id' => ['type' => 'integer', 'description' => 'Node id — use instead of label when you have it'],
+                        'type' => ['type' => 'string', 'enum' => ['skill', 'memory', 'project']],
+                    ],
                 ],
             ],
             [
@@ -308,6 +336,7 @@ class McpController extends Controller
             $data = match ($name) {
                 'mind_learn' => $this->toolLearn($args, $mind),
                 'mind_recall' => $this->toolRecall($args, $mind),
+                'mind_read' => $this->toolRead($args, $mind),
                 'mind_activate' => $this->toolActivate($args, $mind),
                 'mind_overview' => $this->toolOverview($mind),
                 'mind_decision' => $this->toolDecision($args),
@@ -398,8 +427,10 @@ class McpController extends Controller
             throw new \InvalidArgumentException('Missing required argument: query');
         }
 
-        $nodes = $mind->recall(
-            (string) $args['query'],
+        $query = (string) $args['query'];
+
+        $recall = $mind->recallWithMeta(
+            $query,
             max(1, min((int) ($args['limit'] ?? 12), 30)),
             isset($args['session_key']) ? (string) $args['session_key'] : null,
             // rozsah sa uplatní už v SQL — zúžiť výsledok až po prijatí by
@@ -409,40 +440,208 @@ class McpController extends Controller
 
         // A9: bez eager-loadu si každý uzol ťahal tagy vlastným dotazom (N+1,
         // pri limite 30 a susedoch až 45 dotazov navyše na jeden recall).
-        $nodes = EloquentCollection::make($nodes->all());
+        $nodes = EloquentCollection::make($recall['nodes']->all());
         $nodes->load('tags');
+        $meta = $recall['meta'];
 
         // A9: popisy sa už neposielajú celé. Rástli bez stropu (najväčší uzol
         // 25 389 B) a jeden recall na širokú tému vracal 77 493 znakov, z toho
         // 80 % boli popisy a tri uzly zabrali polovicu. Prvé uzly sú aj tie
         // najrelevantnejšie, tak dostanú väčší strop než zvyšok.
-        $topChars = (int) config('hades.recall_desc_top_chars', 1200);
+        $topChars = (int) config('hades.recall_desc_top_chars', 900);
         $restChars = (int) config('hades.recall_desc_chars', 300);
         $topCount = (int) config('hades.recall_desc_top_count', 3);
+        // Sused má polovičnú relevanciu, nech má aj polovičný strop — je to
+        // kontext, nie odpoveď.
+        $neighborChars = (int) config('hades.recall_desc_neighbor_chars', 200);
+        $tagCap = max(0, (int) config('hades.recall_tag_cap', 8));
 
-        return [
+        // Korene dopytu — podľa nich sa vyberá, KTORÉ tagy sa zmestia do stropu.
+        // Uzol s 38 tagmi platil 400 B za abecedu; teraz idú prvé tie, ktoré
+        // s dopytom naozaj súvisia.
+        $roots = $mind->queryRoots($query);
+
+        $out = [
             'found' => $nodes->count(),
-            'nodes' => $nodes->values()->map(function (Node $node, int $i) use ($topChars, $restChars, $topCount) {
-                $full = (string) $node->description;
-                $short = Str::limit($full, $i < $topCount ? $topChars : $restChars);
+            // ako bol dopyt pochopený (stemované korene) — keď recall vráti
+            // nezmysly, AI vidí prečo, namiesto hádania
+            'terms' => $recall['terms'],
+            'nodes' => $nodes->values()->map(function (Node $node, int $i) use (
+                $meta, $topChars, $restChars, $topCount, $neighborChars, $tagCap, $roots, $mind
+            ) {
+                $m = $meta[$node->id] ?? [];
+                $via = $m['via'] ?? null;
+                $full = trim((string) $node->description);
 
-                return [
+                $cap = $via !== null
+                    ? $neighborChars
+                    : ($i < $topCount ? $topChars : $restChars);
+
+                // Pod hranicou top uzlov je úryvok okolo zhody hodnotnejší než
+                // slepý začiatok popisu — rovnaké tokeny, viac signálu. Doteraz
+                // ho searchNodes počítal a recall zahadzoval.
+                //
+                // Len keď sa popis do stropu NEZMESTÍ. Inak by úryvok orezal
+                // začiatok textu, ktorý by sa bol vošiel celý — presne to sa
+                // stalo uzlu „Hades (AI-mind)": popis má 135 znakov, strop 300,
+                // a odpoveď aj tak začínala trojbodkou v polovici vety.
+                $text = $full;
+                if ($via === null && $i >= $topCount && ! empty($m['snippet']) && mb_strlen($full) > $cap) {
+                    $text = (string) $m['snippet'];
+                }
+                $text = (string) Str::limit($text, $cap);
+
+                $row = [
                     'label' => $node->label,
                     'type' => $node->type,
                     'area' => $node->area?->name,
                     'department' => $node->department?->name,
+                    'relevance' => $m['relevance'] ?? null,
+                    'via' => $via,
                     'strength' => (float) $node->strength,
                     'certainty' => $node->certainty,
-                    'tags' => $node->tags->pluck('name')->all(),
+                    'tags' => $this->rankTags($node->tags->pluck('name')->all(), $roots, $tagCap, $mind),
                     'verified' => $node->verified_at !== null,
-                    'origin' => $node->origin,
-                    'description' => $short,
-                    // klient vie, že za týmto uzlom je ešte text — vie si ho
-                    // dotiahnuť cielene cez mind_recall na konkrétnejší dopyt
-                    'description_truncated' => $short !== $full,
+                    // `session` je pôvod 95 % uzlov a teda default; vypisovať ho
+                    // na každom uzle je 20 B za nulovú informáciu
+                    'origin' => $node->origin === 'session' ? null : $node->origin,
+                    'noise' => $m['noise'] ?? null,
+                    'related' => $m['related'] ?? [],
+                    'description' => $text,
+                    // klient vie, že za týmto uzlom je ešte text — dotiahne si ho
+                    // celý cez mind_read
+                    'description_truncated' => $text !== $full,
                 ];
+
+                return $this->dropEmpty($row);
             })->all(),
         ];
+
+        if ($out['found'] === 0) {
+            $out['hint'] = 'Nothing matched. Try other words (the query is stemmed — see `terms`), '
+                .'drop the `areas` scope, or call mind_overview to see what the mind holds.';
+        }
+
+        return $out;
+    }
+
+    /**
+     * Prečíta jeden uzol celý — protiváha ku skracovaniu v recalle.
+     *
+     * `description_truncated: true` doteraz hlásilo, že za uzlom je ešte text,
+     * ale AI ho nemala ako dostať: recall na presnejší dopyt vracia ten istý
+     * skrátený popis. Toto je tá chýbajúca cesta.
+     */
+    protected function toolRead(array $args, MindService $mind): array
+    {
+        $node = null;
+
+        if (! blank($args['id'] ?? null) && ctype_digit((string) $args['id'])) {
+            $node = Node::query()->with(['area', 'department', 'tags'])->find((int) $args['id']);
+        }
+
+        if (! $node) {
+            if (blank($args['label'] ?? null)) {
+                throw new \InvalidArgumentException('Missing required argument: label (or id)');
+            }
+
+            // rovnaká tvrdá identifikácia ako pri rename/move/delete —
+            // „skoro ten správny uzol" je pri čítaní rovnako zlá odpoveď
+            $node = $this->requireNode($args, $mind);
+            $node->load(['area', 'department', 'tags']);
+        }
+
+        $cap = max(1, (int) config('hades.read_related_cap', 20));
+
+        $edges = Edge::query()
+            ->where('source_id', $node->id)
+            ->orWhere('target_id', $node->id)
+            ->orderByDesc('weight')
+            ->get(['source_id', 'target_id']);
+
+        $relatedIds = $edges
+            ->map(fn (Edge $e) => (int) $e->source_id === (int) $node->id ? $e->target_id : $e->source_id)
+            ->unique()
+            ->values();
+
+        // labely jedným dotazom, v poradí podľa váhy hrany
+        $labels = $relatedIds->isEmpty()
+            ? collect()
+            : Node::whereIn('id', $relatedIds->take($cap)->all())->pluck('label', 'id');
+
+        $related = $relatedIds->take($cap)
+            ->map(fn ($id) => $labels[$id] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+
+        return $this->dropEmpty([
+            'label' => $node->label,
+            'type' => $node->type,
+            'area' => $node->area?->name,
+            'department' => $node->department?->name,
+            'strength' => (float) $node->strength,
+            'certainty' => $node->certainty,
+            'origin' => $node->origin,
+            'verified' => $node->verified_at !== null,
+            'needs_review' => (bool) $node->needs_review,
+            'noise' => $mind->noiseOf($node),
+            'tags' => $node->tags->pluck('name')->all(),
+            'source' => $mind->sourcePathOf($node),
+            'created' => $node->created_at?->toDateString(),
+            'last_activated' => $node->last_activated_at?->toDateString(),
+            // celý popis, bez stropu — o to tu ide
+            'description' => trim((string) $node->description),
+            'related' => $related,
+            'related_total' => $relatedIds->count(),
+        ]);
+    }
+
+    /**
+     * Vyhodí polia, ktoré nenesú informáciu (`null`, `false`, `''`, `[]`).
+     *
+     * Na každom uzle recallu sedelo `certainty: null`, `department: null`,
+     * `tags: []`, `verified: false` — namerané 2 052 B z 38 362 B (5,3 %)
+     * zaplatených za prázdno. Nula a `0.0` ostávajú: nula je hodnota.
+     * Význam vynechania je v popise nástroja, aby si ho AI nemusela domýšľať.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    protected function dropEmpty(array $row): array
+    {
+        return array_filter(
+            $row,
+            fn ($value) => $value !== null && $value !== false && $value !== '' && $value !== [],
+        );
+    }
+
+    /**
+     * Tagy do stropu: najprv tie, ktoré trafil dopyt, potom ostatné.
+     *
+     * @param  array<int, string>  $tags
+     * @param  \Illuminate\Support\Collection<int, string>  $roots
+     * @return array<int, string>
+     */
+    protected function rankTags(array $tags, $roots, int $cap, MindService $mind): array
+    {
+        if ($cap <= 0 || count($tags) <= $cap) {
+            return $tags;
+        }
+
+        $hit = [];
+        $rest = [];
+        foreach ($tags as $tag) {
+            $folded = $mind->fold($tag);
+            $matches = $roots->contains(fn (string $root) => mb_strpos($folded, $root) !== false);
+            if ($matches) {
+                $hit[] = $tag;
+            } else {
+                $rest[] = $tag;
+            }
+        }
+
+        return array_slice(array_merge($hit, $rest), 0, $cap);
     }
 
     /**

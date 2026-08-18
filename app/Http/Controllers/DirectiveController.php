@@ -30,6 +30,12 @@ class DirectiveController extends Controller
 
     protected const CAP_RULES = 10;
 
+    /** Pasca je pre AI najcennejší uzol v smernici — dostane vlastnú sekciu. */
+    protected const CAP_PITFALLS = 8;
+
+    /** Skilly bez .md sú záchranná sieť, nie hlavný obsah — vlastný, nižší strop. */
+    protected const CAP_SKILLS_NO_FILE = 8;
+
     /**
      * POST /api/directive/build {task?: string, node_ids?: int[]}
      * Poskladá NÁVRH smernice: nájde relevantné uzly, roztriedi ich na skilly /
@@ -49,6 +55,7 @@ class DirectiveController extends Controller
 
         // 1) kandidáti z SK-aware hľadania (ak je zadaná úloha)
         $snippets = [];       // id => snippet z hľadania
+        $noise = [];          // id => kód odpadovosti (raw-prompt, markdown, slug, stub)
         $searchIds = [];
         if ($task !== '') {
             foreach ($mind->searchNodes($task, self::SEARCH_LIMIT) as $row) {
@@ -57,6 +64,9 @@ class DirectiveController extends Controller
                 $searchIds[] = $n->id;
                 if (! empty($row['snippet'])) {
                     $snippets[$n->id] = $row['snippet'];
+                }
+                if (! empty($row['noise'])) {
+                    $noise[$n->id] = $row['noise'];
                 }
             }
         }
@@ -69,6 +79,7 @@ class DirectiveController extends Controller
         $projects = [];
         $facts = [];
         $rules = [];
+        $pitfalls = [];
 
         if (! empty($allIds)) {
             $nodes = Node::with(['area', 'department'])
@@ -83,6 +94,16 @@ class DirectiveController extends Controller
                 }
 
                 $isManual = isset($manualSet[$id]);
+
+                // Odpadový uzol do promptu nepatrí. Namerané na tomto dopyte:
+                // zo ôsmich „kľúčových faktov" boli štyri surové prompty
+                // („Potrebujem vytvoriť aplikáciu ktorú nasadíme do dockeru a"),
+                // teda polovica sekcie bola šum. Ručný výber má prednosť —
+                // keď si uzol vybral človek, chce ho tam mať.
+                if (! $isManual && isset($noise[$id])) {
+                    continue;
+                }
+
                 $areaSlug = $node->area?->slug;
 
                 // pravidlá / preferencie — jadro alebo oblasť "osobne-preferencie"
@@ -90,6 +111,19 @@ class DirectiveController extends Controller
                     $rules[] = [
                         'id' => $node->id,
                         'label' => $node->label,
+                        'snippet' => $this->snippet($node, $snippets),
+                    ];
+
+                    continue;
+                }
+
+                // Pasca ide pred typ: „neopakuj túto chybu" je pre AI silnejší
+                // pokyn než „toto je skill" a v zozname skillov sa strácala.
+                if ($node->certainty === 'pasca') {
+                    $pitfalls[] = [
+                        'id' => $node->id,
+                        'label' => $node->label,
+                        'path' => $this->skillPath($node),
                         'snippet' => $this->snippet($node, $snippets),
                     ];
 
@@ -136,9 +170,15 @@ class DirectiveController extends Controller
         $projects = array_slice($projects, 0, self::CAP_PROJECTS);
         $facts = array_slice($facts, 0, self::CAP_FACTS);
         $rules = array_slice($rules, 0, self::CAP_RULES);
+        $pitfalls = array_slice($pitfalls, 0, self::CAP_PITFALLS);
+
+        // Skilly bez súboru sa už nezahadzujú, ale nesmú prompt zaplaviť: pri
+        // „reverb websockety docker nasadenie" ich hľadanie našlo trinásť.
+        $skills = $this->capSkillsWithoutFile($skills);
 
         $suggested = [
             'skills' => $skills,
+            'pitfalls' => $pitfalls,
             'projects' => $projects,
             'facts' => $facts,
             'rules' => $rules,
@@ -147,7 +187,7 @@ class DirectiveController extends Controller
         return response()->json([
             'task' => $task,
             'suggested' => $suggested,
-            'markdown' => $this->buildMarkdown($task, $skills, $projects, $facts, $rules),
+            'markdown' => $this->buildMarkdown($task, $skills, $projects, $facts, $rules, $pitfalls),
         ]);
     }
 
@@ -272,27 +312,56 @@ class DirectiveController extends Controller
     }
 
     /**
-     * Poskladá štruktúrovanú markdown smernicu. Do "Použi tieto skilly" a
-     * "Kde nájdeš" idú LEN overené cesty (file_exists na disku).
+     * Poskladá štruktúrovanú markdown smernicu.
+     *
+     * Toto je doslova prompt pre Claude Code, takže platia iné pravidlá než pre
+     * text pre človeka:
+     *
+     *  - Sekcia „Kde nájdeš" zmizla — bola to riadok po riadku kópia sekcií
+     *    „Použi tieto skilly" a „Súvisiace projekty", teda ~30 % promptu za nulovú
+     *    informáciu. Cesty sú pri skilloch tam, kde sa čítajú.
+     *  - Namiesto vety „táto smernica hovorí, kde nájdeš…" (opis sama seba) je
+     *    „Ako s tým pracovať" — konkrétne pokyny, a len tie, na ktoré v smernici
+     *    naozaj niečo je.
+     *  - Pasce dostali vlastnú sekciu. „Neopakuj túto chybu" je najsilnejší
+     *    poznatok, aký Hades má, a doteraz sa mlčky mieša medzi skilly.
+     *  - Neoverené skilly (bez .md na disku) sa už nezahadzujú. Uzol síce nemá
+     *    súbor, ale má popis — a to je viac než nič.
      *
      * @param  array<int, array{id:int,label:string,path:?string,verified:bool,snippet:?string}>  $skills
      * @param  array<int, array{id:int,label:string,info:string}>  $projects
      * @param  array<int, array{id:int,label:string,snippet:?string}>  $facts
      * @param  array<int, array{id:int,label:string,snippet:?string}>  $rules
+     * @param  array<int, array{id:int,label:string,path:?string,snippet:?string}>  $pitfalls
      */
-    protected function buildMarkdown(string $task, array $skills, array $projects, array $facts, array $rules): string
-    {
+    protected function buildMarkdown(
+        string $task,
+        array $skills,
+        array $projects,
+        array $facts,
+        array $rules,
+        array $pitfalls = [],
+    ): string {
         $taskLine = $task !== '' ? $task : 'Nešpecifikovaná úloha';
         $verifiedSkills = array_values(array_filter(
             $skills,
             fn ($s) => $s['verified'] && ! empty($s['path'])
         ));
+        $otherSkills = array_values(array_filter(
+            $skills,
+            fn ($s) => ! ($s['verified'] && ! empty($s['path']))
+        ));
 
         $lines = [];
         $lines[] = '# Smernica: '.$taskLine;
         $lines[] = '';
-        $lines[] = '## Kontext';
-        $lines[] = $this->contextSentence($task, $verifiedSkills, $projects);
+        $lines[] = '## Zadanie';
+        $lines[] = $taskLine;
+        $lines[] = '';
+        $lines[] = '## Ako s tým pracovať';
+        foreach ($this->howToLines($verifiedSkills, $projects, $pitfalls) as $line) {
+            $lines[] = '- '.$line;
+        }
         $lines[] = '';
 
         if (! empty($verifiedSkills)) {
@@ -303,11 +372,20 @@ class DirectiveController extends Controller
             $lines[] = '';
         }
 
+        if (! empty($pitfalls)) {
+            $lines[] = '## Pasce — čo nerobiť';
+            foreach ($pitfalls as $t) {
+                $snip = $this->oneLine($t['snippet']);
+                $path = ! empty($t['path']) ? ' (`'.$t['path'].'`)' : '';
+                $lines[] = '- '.$t['label'].$path.($snip !== '' ? ': '.$snip : '');
+            }
+            $lines[] = '';
+        }
+
         if (! empty($projects)) {
             $lines[] = '## Súvisiace projekty';
             foreach ($projects as $p) {
-                $info = trim((string) ($p['info'] ?? ''));
-                $lines[] = '- '.$p['label'].($info !== '' ? ': '.$info : '');
+                $lines[] = '- '.$p['label'].$this->infoSuffix($p['info'] ?? '');
             }
             $lines[] = '';
         }
@@ -330,41 +408,75 @@ class DirectiveController extends Controller
             $lines[] = '';
         }
 
-        // "Kde nájdeš" — tématické odkazy len na overené cesty a známe adresáre
-        $where = [];
-        foreach ($verifiedSkills as $s) {
-            $where[] = '- '.$s['label'].' → `'.$s['path'].'`';
-        }
-        foreach ($projects as $p) {
-            $info = trim((string) ($p['info'] ?? ''));
-            if ($info !== '') {
-                $where[] = '- '.$p['label'].' → '.$info;
+        if (! empty($otherSkills)) {
+            $lines[] = '## Ďalšie relevantné skilly (bez .md v repo)';
+            foreach ($otherSkills as $s) {
+                $snip = $this->oneLine($s['snippet']);
+                $lines[] = '- '.$s['label'].($snip !== '' ? ': '.$snip : '');
             }
-        }
-        if (! empty($where)) {
-            $lines[] = '## Kde nájdeš';
-            $lines = array_merge($lines, $where);
             $lines[] = '';
         }
 
         return rtrim(implode("\n", $lines))."\n";
     }
 
-    /** 1-2 vety kontextu podľa toho, čo sa do smernice dostalo. */
-    protected function contextSentence(string $task, array $verifiedSkills, array $projects): string
+    /**
+     * Skilly s overenou .md cestou ostávajú všetky, tie bez súboru len do stropu.
+     * Poradie sa nemení, takže ručný výber (vpredu) prežije.
+     *
+     * @param  array<int, array{id:int,label:string,path:?string,verified:bool,snippet:?string}>  $skills
+     * @return array<int, array{id:int,label:string,path:?string,verified:bool,snippet:?string}>
+     */
+    protected function capSkillsWithoutFile(array $skills): array
     {
-        $subject = $task !== '' ? '„'.$task.'"' : 'túto úlohu';
-        $parts = [];
+        $seen = 0;
+
+        return array_values(array_filter($skills, function (array $s) use (&$seen): bool {
+            if ($s['verified'] && ! empty($s['path'])) {
+                return true;
+            }
+
+            return ++$seen <= self::CAP_SKILLS_NO_FILE;
+        }));
+    }
+
+    /**
+     * Pokyny „Ako s tým pracovať" — len tie, na ktoré v smernici naozaj niečo je.
+     * Pokyn na sekciu, ktorá v dokumente nie je, je horší než žiadny: AI ju
+     * začne hľadať.
+     *
+     * @return array<int, string>
+     */
+    protected function howToLines(array $verifiedSkills, array $projects, array $pitfalls): array
+    {
+        $out = ['Toto je kontext z Hadesa (trvalá pamäť Claude Code), nie zadanie samo o sebe.'];
+
         if (! empty($verifiedSkills)) {
-            $parts[] = count($verifiedSkills).'× skill';
+            $out[] = 'Skilly nižšie majú cestu k .md — prečítaj si ich pred prvým riadkom kódu.';
+        }
+        if (! empty($pitfalls)) {
+            $out[] = 'Pasce sú overené chyby z minulosti; neopakuj ich.';
         }
         if (! empty($projects)) {
-            $parts[] = count($projects).'× projekt';
+            $out[] = 'Pri projektoch je adresár alebo popis — over stav priamo v ňom.';
         }
-        $have = ! empty($parts) ? ' Zahŕňa '.implode(' a ', $parts).'.' : '';
 
-        return 'Táto smernica hovorí, kde v Hadese nájdeš relevantné znalosti pre '
-            .$subject.'.'.$have.' Použi uvedené zdroje ako kontext skôr, než začneš.';
+        $out[] = 'Keď niečo chýba, dotiahni si to MCP nástrojmi `mind_recall` a `mind_read`.';
+
+        return $out;
+    }
+
+    /** Adresár do backtickov, prózu nie — AI má vidieť, čo je cesta. */
+    protected function infoSuffix(string $info): string
+    {
+        $info = trim($info);
+        if ($info === '') {
+            return '';
+        }
+
+        return preg_match('#^([A-Za-z]:[\\\\/]|/)#', $info) === 1
+            ? ' — `'.$info.'`'
+            : ': '.$this->oneLine($info);
     }
 
     /** Snippet uzla: z hľadania, inak skrátený popis. */
@@ -387,19 +499,10 @@ class DirectiveController extends Controller
         return $t === '' ? '' : Str::limit($t, 160);
     }
 
-    /** Cesta k .md skillu — z meta.path, inak odvodená z external_key. */
+    /** Cesta k .md skillu — jeden zdroj pravdy je {@see MindService::sourcePathOf}. */
     protected function skillPath(Node $node): ?string
     {
-        $meta = is_array($node->meta) ? $node->meta : [];
-        if (! empty($meta['path']) && is_string($meta['path'])) {
-            return $meta['path'];
-        }
-
-        if (is_string($node->external_key) && str_starts_with($node->external_key, 'skill:')) {
-            return 'skills/'.substr($node->external_key, strlen('skill:')).'.md';
-        }
-
-        return null;
+        return app(MindService::class)->sourcePathOf($node);
     }
 
     /** Existuje daná .md cesta v repo? Chránené proti path traversal. */

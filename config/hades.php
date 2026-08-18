@@ -22,8 +22,36 @@ return [
     // limitu a jeden recall na širokú tému vracal 77 493 znakov. Prvých
     // `top_count` uzlov (najrelevantnejších) dostane väčší strop.
     'recall_desc_top_count' => (int) env('HADES_RECALL_DESC_TOP_COUNT', 3),
-    'recall_desc_top_chars' => (int) env('HADES_RECALL_DESC_TOP_CHARS', 1200),
+    // 1200 znakov bolo z čias, keď skrátený popis znamenal, že text je nedostupný.
+    // Odkedy existuje mind_read, je to len súhrn a AI si zvyšok vie dotiahnuť —
+    // namerané: 1200 → 900 ubralo 2 515 B (6,6 %) z troch dopytov bez straty zmyslu.
+    'recall_desc_top_chars' => (int) env('HADES_RECALL_DESC_TOP_CHARS', 900),
     'recall_desc_chars' => (int) env('HADES_RECALL_DESC_CHARS', 300),
+
+    // Sused pritiahnutý hranou má polovičnú relevanciu, nech má aj polovičný
+    // strop — je to kontext, nie odpoveď.
+    'recall_desc_neighbor_chars' => (int) env('HADES_RECALL_DESC_NEIGHBOR_CHARS', 200),
+
+    // Strop na počet tagov v jednom uzle recallu. Najhorší uzol na živých dátach
+    // nesie 38 tagov — to je 400 B abecedy na jeden riadok odpovede. Do stropu
+    // idú najprv tagy, ktoré trafil dopyt.
+    'recall_tag_cap' => (int) env('HADES_RECALL_TAG_CAP', 8),
+
+    // Koľko labelov spojení pripojiť k uzlu v recalle. Toto je celá hodnota
+    // grafu v odpovedi — 0 vypne štruktúru a recall bude opäť plochý zoznam.
+    // Pokrytie štruktúrou je nasýtené už pri 2 (`via` pokrýva susedov), takže 3
+    // je kompromis: lokálna mapa okolo uzla za 4 977 B namiesto 6 384 B pri 4.
+    'recall_related_cap' => (int) env('HADES_RECALL_RELATED_CAP', 3),
+
+    // Koľko spojení vypísať v mind_read (tam si o uzol AI vyslovene povedala).
+    'read_related_cap' => (int) env('HADES_READ_RELATED_CAP', 20),
+
+    // Strop na tagy v markdownovom balíku pre Claude Code (uzol s 38 tagmi je
+    // pol kilobajtu abecedy). Zvyšok sa spočíta, nezmizne mlčky.
+    'pack_tag_cap' => (int) env('HADES_PACK_TAG_CAP', 12),
+
+    // Koľko najpoužívanejších tagov ponúknuť v mind_overview ako slovník.
+    'overview_top_tags' => (int) env('HADES_OVERVIEW_TOP_TAGS', 24),
 
     // Token pre /mcp (fail-closed). Prijíma sa ako `Authorization: Bearer` aj
     // ako `?token=` — connectory appky Claude nevedia poslať vlastnú hlavičku.

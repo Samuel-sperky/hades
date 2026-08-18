@@ -210,21 +210,70 @@ class MindService
     /**
      * Najde poznatky relevantne k dopytu. Nezvysuje silu, ale vysle
      * "spomienkovy" pulz do vizualizacie.
-     */
-    /**
+     *
      * @param  array<int, string>|null  $areas  Obmedzenie na oblasti (názvy alebo slugy).
      */
     public function recall(string $query, int $limit = 12, ?string $sessionKey = null, ?array $areas = null): Collection
     {
+        return $this->recallWithMeta($query, $limit, $sessionKey, $areas)['nodes'];
+    }
+
+    /**
+     * Recall + metadáta, ktoré potrebuje AI konzument (MCP `mind_recall`).
+     *
+     * Prečo samostatná metóda a nie zmena `recall()`: tá vracia `Collection<Node>`
+     * a číta ju ChatController aj testy — ten kontrakt sa lámať nesmie.
+     *
+     * `meta` je mapa `node_id => [...]`:
+     *   relevance  0..1 — podiel konceptov dopytu, ktoré uzol trafil. Sused
+     *              pritiahnutý hranou dostane polovicu relevancie primára,
+     *              ktorý ho pritiahol (to bol vždy zámer graph-walku, len to
+     *              doteraz nemal kto vyčísliť).
+     *   via        label primára, ktorý suseda pritiahol (len u susedov).
+     *   snippet    úryvok okolo zhody (searchNodes ho počítal a zahadzoval).
+     *   related    labely najsilnejších spojení uzla — bez nich je recall
+     *              plochý zoznam a hodnota grafu sa do odpovede nedostane.
+     *   noise      kód odpadovosti uzla ({@see noiseOf}), inak null.
+     *
+     * @param  array<int, string>|null  $areas  Obmedzenie na oblasti (názvy alebo slugy).
+     * @return array{nodes: Collection<int, Node>, meta: array<int, array<string, mixed>>, terms: array<int, string>}
+     */
+    public function recallWithMeta(
+        string $query,
+        int $limit = 12,
+        ?string $sessionKey = null,
+        ?array $areas = null,
+    ): array {
+        // Koncepty potrebujeme na menovateľa relevancie: „trafil 2 z 3 pojmov".
+        // searchNodes si ich počíta znova — sú cachované a je to jeden zdroj pravdy.
+        $concepts = $this->queryConcepts($query);
+        $terms = $concepts
+            ->map(fn (Collection $roots) => (string) $roots->first())
+            ->filter()->unique()->values()->all();
+
         // Jeden zdroj pravdy: stemovaný SK-aware engine s tvrdým prahom.
         // recall() pridáva navrch len graph-walk + „spomienkový" pulz.
         $matches = $this->searchNodes($query, $limit, $areas);
 
         if ($matches->isEmpty()) {
-            return collect();
+            return ['nodes' => collect(), 'meta' => [], 'terms' => $terms];
         }
 
         $scored = $matches->pluck('node')->values();
+        $conceptCount = max(1, $concepts->count());
+
+        $meta = [];
+        foreach ($matches as $row) {
+            /** @var Node $node */
+            $node = $row['node'];
+            $meta[$node->id] = [
+                'relevance' => $this->relevanceOf($row, $conceptCount),
+                'snippet' => $row['snippet'] ?? null,
+                'noise' => $this->noiseOf($node),
+                'related' => [],
+                'via' => null,
+            ];
+        }
 
         // Graph-walk hĺbky 1: k primárnym zásahom pridaj ich priamych susedov
         // (jeden skok po hranách) s polovičnou relevanciou. Primáre si držia
@@ -233,14 +282,20 @@ class MindService
         $overallCap = (int) ceil($limit * 1.5);
         $neighborSlots = max(0, $overallCap - $scored->count());
 
+        // Hrany okolo primárov. Ten istý JEDEN dotaz, čo tu bol vždy, len si
+        // konečne berie aj `weight` — bez neho by `related` vyberalo náhodné
+        // spojenia namiesto najsilnejších a susedia by nemali `via`.
+        $edges = Edge::query()
+            ->where(function ($q) use ($primaryIds) {
+                $q->whereIn('source_id', $primaryIds)
+                    ->orWhereIn('target_id', $primaryIds);
+            })
+            ->orderByDesc('weight')
+            ->get(['source_id', 'target_id', 'weight']);
+
         $neighbors = collect();
-        if ($neighborSlots > 0) {
-            $neighborIds = Edge::query()
-                ->where(function ($q) use ($primaryIds) {
-                    $q->whereIn('source_id', $primaryIds)
-                        ->orWhereIn('target_id', $primaryIds);
-                })
-                ->get(['source_id', 'target_id'])
+        if ($neighborSlots > 0 && $edges->isNotEmpty()) {
+            $neighborIds = $edges
                 ->flatMap(fn (Edge $e) => [$e->source_id, $e->target_id])
                 ->reject(fn ($id) => in_array($id, $primaryIds, true))
                 ->unique()
@@ -262,6 +317,41 @@ class MindService
             }
         }
 
+        $result = $scored->concat($neighbors)->values();
+        $resultIds = $result->pluck('id')->all();
+
+        // Hrany medzi susedmi navzájom — prvý dotaz videl len okolie primárov,
+        // takže sused-sused spojenie by v odpovedi chýbalo. Obe strany sú v `IN`,
+        // takže je to malý indexovaný dotaz, nie sken.
+        if ($neighbors->isNotEmpty()) {
+            $edges = $edges->concat(
+                Edge::query()
+                    ->whereIn('source_id', $neighbors->pluck('id')->all())
+                    ->whereIn('target_id', $resultIds)
+                    ->orderByDesc('weight')
+                    ->get(['source_id', 'target_id', 'weight'])
+            );
+        }
+
+        [$meta, $related] = $this->relationMeta($edges, $result, $meta);
+
+        foreach ($resultIds as $id) {
+            $meta[$id]['related'] = $related[$id] ?? [];
+        }
+
+        // Susedia prišli v poradí podľa sily, nie relevancie. AI ale číta zhora
+        // dolu a keď odpoveď kráti, kráti ju zdola — poradie preto musí klesať
+        // v relevancii, inak si odreže relevantnejší uzol než ten, čo nechá.
+        if ($neighbors->count() > 1) {
+            $neighbors = $neighbors->sortByDesc(
+                fn (Node $n) => ($meta[$n->id]['relevance'] ?? 0) * 10000
+                    + min((float) $n->strength, 999)
+            )->values();
+
+            $result = $scored->concat($neighbors)->values();
+            $resultIds = $result->pluck('id')->all();
+        }
+
         // session_key sa uloží k aktiváciám — neskoršie learn/activate v tej istej
         // session sa cez coActivate prepoja aj s vybavenými uzlami
         foreach ($scored as $node) {
@@ -272,11 +362,190 @@ class MindService
             Activation::record($node, 'recall-neighbor', $sessionKey);
         }
 
-        $result = $scored->concat($neighbors)->values();
+        MindPulse::dispatch('recall', ['node_ids' => $resultIds]);
 
-        MindPulse::dispatch('recall', ['node_ids' => $result->pluck('id')->all()]);
+        return ['nodes' => $result, 'meta' => $meta, 'terms' => $terms];
+    }
 
-        return $result;
+    /**
+     * Z hrán poskladá `via` susedov a labely `related` pre každý vrátený uzol.
+     *
+     * Labely spojení mimo výsledku sa doťahujú JEDNÝM dotazom až po výbere
+     * stropu — nie po uzloch. Práve tá N+1 bola dôvod, prečo recall susedov
+     * nikdy nevracal, a s jedným `whereIn` cez `id` padá.
+     *
+     * @param  Collection<int, Edge>  $edges
+     * @param  Collection<int, Node>  $result
+     * @param  array<int, array<string, mixed>>  $meta
+     * @return array{0: array<int, array<string, mixed>>, 1: array<int, array<int, string>>}
+     */
+    protected function relationMeta(Collection $edges, Collection $result, array $meta): array
+    {
+        $inResult = array_flip($result->pluck('id')->all());
+        $known = [];
+        foreach ($result as $node) {
+            $known[(int) $node->id] = (string) $node->label;
+        }
+
+        /** @var array<int, array<int, float>> $adj */
+        $adj = [];
+        foreach ($edges as $edge) {
+            $pairs = [
+                [(int) $edge->source_id, (int) $edge->target_id],
+                [(int) $edge->target_id, (int) $edge->source_id],
+            ];
+            foreach ($pairs as [$a, $b]) {
+                if (! isset($inResult[$a])) {
+                    continue;
+                }
+                $adj[$a][$b] = max($adj[$a][$b] ?? 0.0, (float) $edge->weight);
+            }
+        }
+
+        // Sused: kto ho pritiahol (najrelevantnejší primár na hrane) a teda aj
+        // jeho polovičná relevancia. Bez toho AI nevie, prečo uzol v odpovedi je.
+        foreach ($result as $node) {
+            $id = (int) $node->id;
+            if (isset($meta[$id])) {
+                continue;
+            }
+
+            $bestId = null;
+            $bestRel = 0.0;
+            foreach ($adj[$id] ?? [] as $other => $weight) {
+                if (! isset($meta[$other]['relevance'])) {
+                    continue;
+                }
+                $rel = (float) $meta[$other]['relevance'];
+                if ($bestId === null || $rel > $bestRel) {
+                    $bestId = (int) $other;
+                    $bestRel = $rel;
+                }
+            }
+
+            $meta[$id] = [
+                'relevance' => round($bestRel / 2, 2),
+                'snippet' => null,
+                'noise' => $this->noiseOf($node),
+                'related' => [],
+                'via' => $bestId !== null ? ($known[$bestId] ?? null) : null,
+            ];
+        }
+
+        // Výber spojení: najprv tie, ktoré sú aj tak v odpovedi (ich label je už
+        // raz zaplatený), potom najsilnejšie mimo nej — tie dávajú AI meno, ktoré
+        // si vie dotiahnuť cez mind_read.
+        $cap = max(0, (int) config('hades.recall_related_cap', 3));
+        $picked = [];
+        $needLabels = [];
+        foreach ($result as $node) {
+            $id = (int) $node->id;
+            $picked[$id] = collect($adj[$id] ?? [])
+                ->map(fn (float $weight, int $other) => ['id' => $other, 'weight' => $weight])
+                ->sortByDesc(fn (array $c) => (isset($inResult[$c['id']]) ? 1e6 : 0.0) + $c['weight'])
+                ->take($cap)
+                ->pluck('id')
+                ->all();
+
+            foreach ($picked[$id] as $other) {
+                if (! isset($known[$other])) {
+                    $needLabels[$other] = true;
+                }
+            }
+        }
+
+        if ($needLabels !== []) {
+            foreach (Node::whereIn('id', array_keys($needLabels))->pluck('label', 'id') as $id => $label) {
+                $known[(int) $id] = (string) $label;
+            }
+        }
+
+        $related = [];
+        foreach ($picked as $id => $others) {
+            $via = $meta[$id]['via'] ?? null;
+            $related[$id] = collect($others)
+                ->map(fn (int $other) => $known[$other] ?? null)
+                ->filter()
+                // `via` nesie to isté spojenie — dvakrát ten istý label je len token navyše
+                ->reject(fn (string $label) => $label === $via)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        return [$meta, $related];
+    }
+
+    /**
+     * Kód „odpadovosti" uzla, alebo null keď je uzol v poriadku.
+     *
+     * Audit siete našiel štyri opakované vzory a pre AI konzumenta je každý
+     * z nich čistý šum: uzol vyzerá ako poznatok, ale nič nehovorí. Recall ich
+     * preto radí za čisté uzly a označí ich, aby AI vedela, že im nemá veriť
+     * ako zdroju — a mohla ich opraviť (`mind_rename`) alebo zahodiť
+     * (`mind_delete`). Nemazať automaticky: to rozhodnutie je na človeku.
+     *
+     *   markdown    label nesie markdown („# Smernica: …", „**tučné**")
+     *   raw-prompt  label je surová veta používateľa, nie meno poznatku
+     *   slug        strojový slug generátora („charming-chaum-da6141")
+     *   stub        uzol bez popisu — nenesie žiadnu znalosť
+     */
+    public function noiseOf(Node $node): ?string
+    {
+        $label = trim((string) $node->label);
+
+        if ($label === '') {
+            return 'stub';
+        }
+
+        if (preg_match('/^#{1,6}\s|^[-*+]\s|^>\s|\*\*|`/u', $label)) {
+            return 'markdown';
+        }
+
+        // generátor mien typu „charming-chaum-da6141" — dve až štyri slová a hex chvost
+        if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+){1,3}-[0-9a-f]{6}$/', $label) === 1) {
+            return 'slug';
+        }
+
+        // Dvojbodka na konci je useknutá veta, nie meno — a to platí bez ohľadu
+        // na dĺžku („Projekt C:\Aura\ovl-da-zliav, aktuálna vetva:").
+        if (str_ends_with($label, ':')) {
+            return 'raw-prompt';
+        }
+
+        $words = preg_split('/\s+/u', $label) ?: [];
+        $first = mb_substr($label, 0, 1);
+        $lowercaseStart = preg_match('/\pL/u', $first) === 1 && mb_strtolower($first) === $first;
+        $imperative = '/^(použi|urob|sprav|vypracuj|napíš|napis|oprav|pozri|chcem|chcel'
+            .'|potrebuj|potreboval|môžeš|mozes|doplň|dopln|pridaj|vytvor|skús|skus'
+            .'|analyzuj|zisti|ako )/ui';
+
+        // Posledné slovo, na ktoré sa veta nikdy nekončí. Presne takto vypadá
+        // prompt useknutý na N znakov: „…nasadíme do dockeru a", „…tak aby".
+        $dangling = ['a', 'aj', 'ale', 'aby', 'tak', 'že', 'ze', 'ktorý', 'ktorá', 'ktoré',
+            'ktorú', 'ktorom', 's', 'so', 'v', 'vo', 'na', 'do', 'pre', 'po', 'za', 'od',
+            'z', 'zo', 'k', 'ku', 'i', 'či', 'keď', 'lebo', 'mi', 'si', 'sa', 'to', 'aj'];
+        $last = mb_strtolower((string) end($words));
+
+        // surová veta: dlhá a začína malým písmenom, rozkazom, končí otázkou
+        // alebo visí na spojke — meno poznatku takto nevyzerá nikdy
+        if (count($words) >= 5 && in_array($last, $dangling, true)) {
+            return 'raw-prompt';
+        }
+
+        if (count($words) >= 7 && (
+            $lowercaseStart
+            || str_ends_with($label, '?')
+            || preg_match($imperative, $label) === 1
+        )) {
+            return 'raw-prompt';
+        }
+
+        if (mb_strlen(trim((string) $node->description)) < 15) {
+            return 'stub';
+        }
+
+        return null;
     }
 
     /**
@@ -391,16 +660,74 @@ class MindService
                     )
                 )->count();
 
+                // To isté, ale LEN v labeli. Uzol pomenovaný podľa dopytu je
+                // takmer vždy to, čo hľadáš; uzol, ktorý ten pojem raz zmieni
+                // v 3 000-znakovom popise, nie. Bez tohto rozlíšenia dostalo
+                // dvanásť uzlov v jednom skórovacom pásme rovnakú relevanciu
+                // (namerané: 12× 0,5) a AI nemala ako oddeliť prvý od dvanásteho.
+                $hayLabel = ' '.$this->fold(trim((string) $node->label)).' ';
+                $labelScore = $concepts->filter(
+                    fn (Collection $conceptRoots) => $conceptRoots->contains(
+                        fn ($root) => mb_strpos($hayLabel, $root) !== false
+                    )
+                )->count();
+
                 return [
                     'node' => $node,
                     'score' => $score,
+                    'label_score' => $labelScore,
                     'snippet' => $this->snippetFor((string) $node->description, $roots),
+                    // odpadovosť sa počíta tu, nie u konzumenta — rozhoduje o poradí
+                    'noise' => $this->noiseOf($node),
                 ];
             })
             ->filter(fn ($row) => $row['score'] > 0)   // tvrdý prah — 0 zhodných konceptov = von
-            ->sortByDesc(fn ($row) => $row['score'] * 1000 + min((float) $row['node']->strength, 999))
+            // Štyri nepremiešateľné pásma, od najsilnejšieho:
+            //   1. počet zhodných konceptov (to bolo vždy),
+            //   2. čistota — odpadový uzol (surový prompt, markdown v labeli,
+            //      strojový slug, stub) ide ZA čistý uzol s tou istou zhodou,
+            //      takže silný odpad nepredbehne slabý, ale skutočný poznatok,
+            //   3. zhoda v LABELI (uzol pomenovaný podľa dopytu je to, čo hľadáš),
+            //   4. sila uzla ako posledný tie-break.
+            // Prah relevancie sa nemení — nič sa nezahadzuje, len sa odpad
+            // prestane tlačiť na začiatok kontextu.
+            ->sortByDesc(fn ($row) => $row['score'] * 10000
+                + ($row['noise'] === null ? 5000 : 0)
+                + $this->labelShare($row) * 2000
+                + min((float) $row['node']->strength, 999))
             ->take($limit)
             ->values();
+    }
+
+    /**
+     * Podiel konceptov dopytu, ktoré uzol trafil priamo v labeli (0..1).
+     *
+     * @param  array{score:int, label_score?:int}  $row
+     */
+    protected function labelShare(array $row): float
+    {
+        $score = max(1, (int) $row['score']);
+
+        return min(1.0, ((int) ($row['label_score'] ?? 0)) / $score);
+    }
+
+    /**
+     * Relevancia uzla pre AI konzumenta (0..1).
+     *
+     * Dve tretiny nesie pokrytie dopytu (koľko z pojmov uzol vôbec trafil),
+     * jednu tretinu to, či ich trafil v labeli. Samotné pokrytie nestačilo:
+     * pri dopyte so štyrmi pojmami padne celé okno dvanástich uzlov do jedného
+     * pásma a všetky dostanú tú istú hodnotu.
+     *
+     * @param  array{score:int, label_score?:int}  $row
+     */
+    protected function relevanceOf(array $row, int $conceptCount): float
+    {
+        $conceptCount = max(1, $conceptCount);
+        $coverage = min(1.0, ((int) $row['score']) / $conceptCount);
+        $label = min(1.0, ((int) ($row['label_score'] ?? 0)) / $conceptCount);
+
+        return round((2 * $coverage + $label) / 3, 2);
     }
 
     /**
@@ -666,11 +993,48 @@ class MindService
             'name' => config('hades.name'),
             'areas' => $areas->all(),
             'node_types' => ['skill', 'memory', 'project'],
+            // mind_learn berie `certainty`, ale doteraz sa hodnoty dali zistiť len
+            // z tools/list — AI, ktorá si štruktúru ťahá z overview, ich nemala odkiaľ vedieť
+            'certainty_levels' => ['overene', 'hypoteza', 'pasca'],
+            // Slovník najpoužívanejších tagov. Tag je v Hadese zámerný alias a
+            // recall ho skóruje ako label; bez tohto zoznamu si ho každá session
+            // vymyslí nanovo a z „docker" sa stane „Docker", „dockeru", „containers".
+            'top_tags' => Tag::query()
+                ->withCount('nodes')
+                ->orderByDesc('nodes_count')
+                ->orderBy('slug')
+                ->limit((int) config('hades.overview_top_tags', 24))
+                ->pluck('name')
+                ->all(),
             'totals' => [
                 'nodes' => Node::count(),
                 'edges' => Edge::count(),
             ],
         ];
+    }
+
+    /**
+     * Cesta k zdrojovému .md, ak uzol nejaký má (skill / session súmar /
+     * claude-memory). Jediný zdroj pravdy — tá istá úvaha bola predtým dvakrát
+     * skopírovaná (ContextController pre balík, DirectiveController pre skilly)
+     * a MCP `mind_read` by bol tretí. Cesta je to najcennejšie, čo vieme AI
+     * dať: znamená „toto si prečítaj celé sám".
+     */
+    public function sourcePathOf(Node $node): ?string
+    {
+        $meta = is_array($node->meta) ? $node->meta : [];
+
+        foreach (['path', 'summary_path'] as $key) {
+            if (! empty($meta[$key]) && is_string($meta[$key])) {
+                return $meta[$key];
+            }
+        }
+
+        if (is_string($node->external_key) && str_starts_with($node->external_key, 'skill:')) {
+            return 'skills/'.substr($node->external_key, strlen('skill:')).'.md';
+        }
+
+        return null;
     }
 
     public function findByLabel(string $label, ?string $type = null): ?Node

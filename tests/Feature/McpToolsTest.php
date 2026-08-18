@@ -124,9 +124,9 @@ class McpToolsTest extends TestCase
         $this->assertSame([], $data['node']['tags']);
     }
 
-    // ---- mind_recall vracia certainty/tags/verified/origin -----------------
+    // ---- mind_recall: čo nesie informáciu, ostáva; prázdno sa neposiela ----
 
-    public function test_recall_returns_certainty_tags_verified_origin(): void
+    public function test_recall_returns_the_fields_that_carry_information(): void
     {
         // MindService::searchNodes používa MariaDB-only `COLLATE utf8mb4_unicode_ci`
         // (accent-insensitive LIKE), ktoré sqlite nepozná → recall sa reálne overuje
@@ -151,8 +151,13 @@ class McpToolsTest extends TestCase
         $this->assertNotNull($hit);
         $this->assertSame('hypoteza', $hit['certainty']);
         $this->assertContains('redis', $hit['tags']);
-        $this->assertFalse($hit['verified']);
-        $this->assertArrayHasKey('origin', $hit);
+        // relevancia je nová a je to jediné, čím AI rozlíši prvý uzol od dvanásteho
+        $this->assertGreaterThan(0, $hit['relevance']);
+
+        // `verified: false` a `origin: session` sú defaulty — 20 B za nulovú
+        // informáciu na každom uzle, tak sa už neposielajú (viď RecallForAiTest)
+        $this->assertArrayNotHasKey('verified', $hit);
+        $this->assertArrayNotHasKey('origin', $hit);
     }
 
     // ---- mind_overview +needs_review ---------------------------------------
@@ -167,6 +172,67 @@ class McpToolsTest extends TestCase
 
         $this->assertArrayHasKey('needs_review', $data['totals']);
         $this->assertSame(1, $data['totals']['needs_review']);
+    }
+
+    public function test_overview_tells_the_ai_how_to_file_a_node(): void
+    {
+        // mind_learn berie `certainty` a tagy, ale overview o nich mlčalo —
+        // AI, ktorá si štruktúru ťahá odtiaľ, ich nemala odkiaľ vedieť
+        $areaId = Area::where('slug', 'vyvoj-kod')->value('id');
+        $node = Node::create([
+            'type' => 'skill', 'area_id' => $areaId, 'label' => 'Docker Compose',
+            'strength' => 1, 'last_activated_at' => now(),
+        ]);
+        $node->tags()->attach(\App\Models\Tag::forName('docker'));
+
+        $data = $this->callTool('mind_overview');
+
+        $this->assertSame(['overene', 'hypoteza', 'pasca'], $data['certainty_levels']);
+        $this->assertContains('docker', $data['top_tags']);
+    }
+
+    // ---- mind_read: cesta k celému uzlu ------------------------------------
+
+    public function test_read_returns_the_whole_description_and_the_neighbours(): void
+    {
+        $areaId = Area::where('slug', 'vyvoj-kod')->value('id');
+        $long = str_repeat('Podrobný popis, ktorý recall skracuje. ', 40);
+
+        $node = Node::create([
+            'type' => 'skill', 'area_id' => $areaId, 'label' => 'Reverb websockety',
+            'description' => $long, 'strength' => 1, 'last_activated_at' => now(),
+        ]);
+        $neighbour = Node::create([
+            'type' => 'skill', 'area_id' => $areaId, 'label' => 'Redis fronta',
+            'description' => 'Queue driver.', 'strength' => 1, 'last_activated_at' => now(),
+        ]);
+        app(\App\Services\MindService::class)->connect($node, $neighbour, 'manual', false, 2.0);
+
+        $data = $this->callTool('mind_read', ['label' => 'Reverb websockety']);
+
+        // `description_truncated: true` doteraz hlásilo, že je viac textu, ale
+        // AI ho nemala ako dostať — toto je tá chýbajúca cesta
+        $this->assertSame(trim($long), $data['description']);
+        $this->assertContains('Redis fronta', $data['related']);
+        $this->assertSame(1, $data['related_total']);
+    }
+
+    public function test_read_refuses_an_unknown_label_instead_of_guessing(): void
+    {
+        $res = $this->rpc('tools/call', [
+            'name' => 'mind_read',
+            'arguments' => ['label' => 'Uzol, ktorý neexistuje'],
+        ])->assertOk();
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertStringContainsString('mind_recall', (string) $res->json('result.content.0.text'));
+    }
+
+    public function test_tools_list_exposes_mind_read(): void
+    {
+        $tools = $this->rpc('tools/list')->assertOk()->json('result.tools');
+
+        $this->assertContains('mind_read', collect($tools)->pluck('name')->all());
     }
 
     // ---- mind_decision (DB origin=session, guard OFF) ----------------------
