@@ -23,22 +23,47 @@
 // rezerva sa tu vymieňa za vzduch: 0,74 / 0,66 posadí medián pokojového prstenca
 // tesne NAD 3:1. Témy majú iné číslo, lebo miešanie k svetlému papieru padá inak
 // než k tmavému — rovnaká hodnota by dala rôzny výsledok, nie rovnaký dojem.
+//
+/* ---------- VLNA PLÁTNO NAOSTRO: PRAH 3:1 SA NA POKOJOVÝ PRSTENEC NEUPLATŇUJE ----------
+   Toto je vedomé, zmerané rozhodnutie používateľa, nie nedopatrenie — a keďže tri
+   predchádzajúce vlny sa oň potkli, je tu napísané s číslami.
+
+   Pokojový prstenec je TEXTÚRA. Informáciu nesie tvar a hustota oblaku, nie jeden
+   obrys — presne ten istý argument, ktorým tento projekt už drží 2905 vláskov siete
+   na alfe 0,075–0,225 (jedna vláska má ~1,1:1 a nikomu to nechýba). Kým sa na každý
+   z 1075 prstencov uplatňoval WCAG 1.4.11 (3:1), bola priehľadnosť zastropovaná:
+   medián pokojového prstenca sedel na 3,3:1 a nižšie sa ísť „nesmelo".
+
+   Prah 3:1 preto MUSIA držať len nositelia významu: uzol pod kurzorom, vybraný uzol,
+   uzol s popiskom, jadro a hub ako klikacia plocha (render.js: opts.strong /
+   S._carriers). Text drží ≥ 4,5:1 VŽDY — text nie je textúra.
+
+   Merané pri devicePixelRatio 1 (najhorší prípad antialiasingu), scratchpad/aircontrast.js.
+   Je to osobný dashboard jedného používateľa, ktorý si priehľadnosť výslovne a
+   opakovane vyžiadal; nie verejný produkt. Nezvyšuj ringRest späť „kvôli WCAG". */
+//
+// markA je alfa VODOZNAKU oblasti. Zdvihnutá z 0,42 / 0,50: vodoznak je TEXT, takže
+// mu prah 4,5:1 platí bez výnimky (merané 3,76:1 dark / 3,27:1 light — pod prahom).
+// markHaloA je alfa papierového obrysu POD písmenami. Vodoznak sa od tejto vlny
+// kreslí NAD sieťou (predtým pod ňou, takže cez verzálky prechádzali stovky prstencov
+// a hrán a text bol nečitateľný). Halo maže ink len po obrysoch glyfov, nie v
+// obdĺžniku — sieť tak medzi písmenami zostane vidieť a text má lokálny odstup.
 export const THEMES = {
     light: {
         paper: '#f8f4f7', ink: '#101d1b', inkSoft: '#2d3a38', muted: '#566964',
         labelHalo: 'rgba(248,244,247,0.92)', edge: '45,58,56', gridColor: '3,121,126',
         accent: '3,121,126', outline: 'rgba(16,29,27,0.35)',
         gridAlpha: 0.028, nodeFloor: 0.30, edgeFloor: 0.20,
-        meshA0: 0.070, meshA1: 0.210, ringA: 0.86, ringRest: 0.76,
-        muteL: 0.525, markA: 0.50, hotA: 0.80, dark: false,
+        meshA0: 0.070, meshA1: 0.210, ringA: 0.86, ringRest: 0.66,
+        muteL: 0.525, markA: 0.62, markHaloA: 0.72, hotA: 0.80, dark: false,
     },
     dark: {
         paper: '#0e1413', ink: '#eaf3f1', inkSoft: '#c3d1ce', muted: '#8a9b98',
         labelHalo: 'rgba(14,20,19,0.92)', edge: '195,209,206', gridColor: '5,188,196',
         accent: '5,188,196', outline: 'rgba(234,243,241,0.30)',
         gridAlpha: 0.045, nodeFloor: 0.35, edgeFloor: 0.25,
-        meshA0: 0.075, meshA1: 0.225, ringA: 0.82, ringRest: 0.74,
-        muteL: 0.600, markA: 0.42, hotA: 0.66, dark: true,
+        meshA0: 0.075, meshA1: 0.225, ringA: 0.82, ringRest: 0.64,
+        muteL: 0.600, markA: 0.50, markHaloA: 0.70, hotA: 0.66, dark: true,
     },
 };
 export let T = THEMES.dark;

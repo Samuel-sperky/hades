@@ -29,6 +29,40 @@ export const SCENE_RY = 520;                       // polovýška referenčného
 export const GOLD = Math.PI * (3 - Math.sqrt(5));  // zlatý uhol — rozsev pod-kotiev oddelení
 export const AREA_RADIUS_FALLBACK = 640;           // fallback kotvy pred prvým layoutom (WS zrod)
 
+/* ---------- ROZOSTUP KLASTROV ----------
+   Predtým sedeli ťažiská všetkých oblastí na JEDNOM venci s rovnakým polomerom
+   (ring = sumR/π × 1,15 ≈ 432) a uhly boli z dát, teda rovnomerne po 72°. Dôsledok
+   bol geometrický, nie estetický: Biznis má 451 uzlov, teda polomer klastra 372 —
+   jeho vnútorný okraj ležal 60 jednotiek od stredu. To isté robili Marketing (162)
+   a Vývoj (190), takže tri najväčšie oblaky sa v strede prekrývali práve tam, kde
+   stojí zlaté jadro. Dizajn s 13 uzlami dostal na venci rovnaký výsek ako Biznis.
+
+   Teraz sa veniec počíta z veľkostí klastrov:
+     • uhol je proporcionálny polomeru klastra (poradie oblastí a ich farby držia),
+     • vzdialenosť ťažiska = prázdna zóna + polomer klastra, takže vnútorný okraj
+       KAŽDEJ oblasti dosadne na okraj tej istej zóny a stred zostane jadru,
+     • ak si susedia na venci aj tak liezli do seba, veniec sa raz roztiahne
+       (uniformne — jednotlivé oblasti nehýbeme, pokazil by sa pomer strán scény).
+   Prázdna zóna je vyjadrená v podiele PRIEMERNÉHO polomeru klastra, takže rastie
+   spolu so sieťou a nie je to zadrôtovaná svetová súradnica. */
+export const RING = {
+    hole: 0.62,      // prázdna zóna okolo jadra = hole × priemerný polomer klastra
+    // Miešanie „spoločný veniec" ↔ „každý podľa svojej veľkosti". Pri 1 sedí každé
+    // ťažisko presne na (zóna + vlastný polomer), takže Dizajn s 13 uzlami skončí
+    // najbližšie k stredu — a tam sa medzi veľkými oblasťami stratí. Pri 0 sedia
+    // všetky na jednom venci, ktorý vyčistí zónu tej najväčšej. 0,55 je kompromis:
+    // veniec sa dá čítať ako veniec a malé oblasti nespadnú do stredu.
+    inset: 0.55,
+    sep: 1.35,       // susedia: tetiva medzi ťažiskami ≥ sep × (r_i + r_j)
+    maxScale: 2.6,   // strop roztiahnutia — scéna nemá vybuchnúť pri divných dátach
+    // Rozsev pod-kotiev oddelení v podiele polomeru oblasti. Skutočnú veľkosť oblaku
+    // určuje TOTO, nie gravitácia: uzly sedia na svojich oddeleniach a tie sú rozsiate
+    // po celom nominálnom polomere. Zmerané: grav 0,030 → 0,055 nechala σ/r na 0,74.
+    // Stiahnutím rozsevu sa klaster zmenší bez toho, aby scéna musela narásť — a
+    // narastať nesmie, lebo fit by zmenšil uzly (pri 1600 px sú prstence 3–8 px).
+    deptSpread: 0.50,
+};
+
 /* ---------- ladenie fyziky ----------
    Jedno miesto na všetky konštanty simulácie. squashPow: gravitácia v Y je
    (ar^squashPow)-krát silnejšia než v X. V rovnováhe platí, že oblak má pomer
@@ -38,14 +72,36 @@ export const AREA_RADIUS_FALLBACK = 640;           // fallback kotvy pred prvým
 export const PHYS = {
     charge: -58, chargeMax: 470,
     linkDist: 46, linkPer: 0.028, linkCap: 0.10,
-    grav: 0.030, coreGrav: 0.30,
-    collidePad: 3.2, velocityDecay: 0.34,
+    // Hrana k jadru je dlhá, nie krátka. Jadro má 43 susedov a pri linkDist 46 sa
+    // všetkých 47 uzlov (4 jadrá + halo) tlačilo do disku o ploche 6 600 jednotiek,
+    // hoci s collide potrebujú ~21 000 — collide ich potom zomlel do jedného
+    // nepriehľadného venca a práve to bola tá kaša v strede (dlaždica jadra mala
+    // 75 % pokrytia uzlami, kým na okraji scény 8 %). Pri dlhej hrane halo dosadne
+    // na okraj prázdnej zóny a jadro stojí v nej samo, so špicami ku svojim susedom.
+    coreLinkDist: 170,
+    // Silnejšia gravitácia k oblasti = kompaktnejší oblak. Rovnovážny polomer klastra
+    // ide s 1/√grav, takže z 0,030 na 0,055 sa oblak stiahne o ~26 % — a práve to je
+    // ten vzduch MEDZI oblasťami, ktorý z piatich prelievajúcich sa oblakov urobí päť
+    // čitateľných klastrov. Bez toho nepomôže ani širší veniec: klastre sa nafúknu
+    // spolu so scénou a po fite vyzerajú presne ako predtým (zmerané: sep 1,12 → 1,12).
+    grav: 0.055, coreGrav: 0.30,
+    collidePad: 5.0, velocityDecay: 0.34,
+    holePush: 0.10,        // sila, ktorou prázdna zóna vytláča uzly von (0 = zóna vypnutá)
     alphaDecay: 0.026, alphaMin: 0.004, alphaWarm: 0.32, alphaCold: 0.95,
     burst: 26,             // tichých tikov pred prvým framom (štart nie je chaos)
-    squashPow: 2,
+    // Anizotropia gravitácie plnila viewport tým, že KAŽDÝ klaster rozliala do
+    // vodorovnej elipsy 2,35:1 — päť takých elips na venci sa nutne prelievalo jedna
+    // do druhej a scéna sa čítala ako jedno pole, nie ako päť oblastí. Šírku dnes
+    // nesie predovšetkým elipsovitosť VENCA (ringX/ringY = ar) a dotiahne ju
+    // normalizeAspect(); klaster preto stačí zľahka sploštiť. Na nulu to nedávaj —
+    // pri okrúhlych klastroch a plnom venci scéna prestane sadnúť na obe osi naraz.
+    squashPow: 1.1,
     // Vrstvy: y drží pás (plus tvrdý clamp v pumpe), x drží barycentrové poradie,
     // odpudzovanie je slabé — pás sa má čítať ako vrstva, nie ako guľa.
-    layerSpacing: 26, layerGravX: 0.075, layerGravY: 0.55,
+    // Rozstup v páse musí pokryť collide (2 × (polomer + collidePad) ≈ 30), inak
+    // collide tlačí uzly do seba a tvrdý clamp pásu im nedovolí uhnúť: pri 26 sa
+    // prekrývalo 24 % uzlov, po zväčšení collidePadu 33 %.
+    layerSpacing: 34, layerGravX: 0.075, layerGravY: 0.55,
     layerCharge: -15, layerChargeMax: 130, layerLinkDist: 40, layerLinkStr: 0.02,
 };
 
@@ -352,9 +408,59 @@ function anchorSig() {
         Math.round(targetAspect() * 20), Math.round((S._netStretch || 1) * 100)].join('|');
 }
 
+/* Uhly na venci proporcionálne polomeru klastra. Rovnomerné delenie 360° dávalo
+   Dizajnu (13 uzlov) rovnaký výsek ako Biznisu (451) — a keďže potrebné miesto na
+   venci rastie s polomerom klastra, veľké oblasti sa tlačili do seba a ich vnútorné
+   okraje sa stretli v strede. Poradie oblastí zostáva (orderedAreas triedi podľa
+   `angle`), takže farby na venci idú v tom istom smere ako doteraz. Otočenie venca
+   držíme na prvej oblasti — inak by sa celá scéna pretočila po každom zrode uzla. */
+function ringAngles(areas, radii, sumR) {
+    const out = new Map();
+    if (!areas.length || !(sumR > 0)) return out;
+    const first = areas[0];
+    let acc = (radii.get(first.id) / sumR) * 180;      // stred prvého výseku = jej pôvodný uhol
+    const start = first.angle - acc;
+    acc = 0;
+    for (const a of areas) {
+        const w = (radii.get(a.id) / sumR) * 360;
+        out.set(a.id, start + acc + w / 2);
+        acc += w;
+    }
+    return out;
+}
+
+/* Vzdialenosť ťažiska od stredu = prázdna zóna + polomer klastra. Tým dosadne
+   vnútorný okraj každej oblasti na okraj tej istej zóny (stred zostane jadru) a
+   veľká oblasť si svoje miesto vezme smerom VON, nie do stredu. Ak si susedia na
+   venci aj tak liezli do seba, veniec sa raz uniformne roztiahne. */
+function ringDistances(areas, radii, sumR, ang) {
+    const n = areas.length;
+    const hole0 = RING.hole * (sumR / Math.max(1, n));
+    const rMax = Math.max(120, ...areas.map((a) => radii.get(a.id) || 0));
+    const dist = new Map();
+    for (const a of areas) {
+        const r = radii.get(a.id) || 120;
+        dist.set(a.id, hole0 + rMax * (1 - RING.inset) + r * RING.inset);
+    }
+
+    let need = 1;
+    for (let i = 0; i < n && n > 1; i++) {
+        const a = areas[i], b = areas[(i + 1) % n];
+        if (a === b) continue;
+        const da = dist.get(a.id), db = dist.get(b.id);
+        const th = rad(ang.get(b.id) - ang.get(a.id));
+        const chord = Math.hypot(db * Math.cos(th) - da, db * Math.sin(th));
+        const want = RING.sep * ((radii.get(a.id) || 0) + (radii.get(b.id) || 0));
+        if (chord > 1) need = Math.max(need, want / chord);
+    }
+    const scale = Math.min(RING.maxScale, Math.max(1, need));
+    for (const a of areas) dist.set(a.id, dist.get(a.id) * scale);
+    return { dist, hole: Math.max(120, hole0 * scale) };
+}
+
 // Ťažiská oblastí (Sieť) alebo pásy (Vrstvy). Polomer klastra vychádza z počtu
-// uzlov (SPACING² plochy na uzol), veniec z ich súčtu — veľké oblasti dostanú
-// viac miesta a klastre sa práve tak prelievajú do seba.
+// uzlov (SPACING² plochy na uzol), rozostup z porovnania klastrov medzi sebou —
+// veľká oblasť si berie miesto smerom von, nie do stredu scény.
 export function anchors() {
     const sig = anchorSig();
     if (S._anchors && S._anchors.sig === sig) return S._anchors;
@@ -381,19 +487,21 @@ export function anchors() {
         radii.set(a.id, r);
         sumR += r;
     }
-    // obvod venca ≈ 2,3 × súčet polomerov → susedné klastre sa dotýkajú a mierne prelievajú
-    const ring = Math.max(180, (sumR / Math.PI) * 1.15);
+    const ang = ringAngles(areas, radii, sumR);
+    const { dist, hole } = ringDistances(areas, radii, sumR, ang);
     const sq = Math.sqrt(ar);
     const stretch = S._netStretch || 1;
-    const ringX = ring * sq * stretch, ringY = ring / sq;
 
     const areaCenters = new Map();
+    let extX = 0, extY = 0;
     for (const a of areas) {
-        const dir = rad(a.angle);
-        areaCenters.set(a.id, {
-            x: Math.cos(dir) * ringX, y: Math.sin(dir) * ringY,
-            r: radii.get(a.id) || 120, count: counts.get(a.id) || 0,
-        });
+        const dir = rad(ang.get(a.id));
+        const d = dist.get(a.id);
+        const r = radii.get(a.id) || 120;
+        const x = Math.cos(dir) * d * sq * stretch, y = Math.sin(dir) * d / sq;
+        areaCenters.set(a.id, { x, y, r, count: counts.get(a.id) || 0 });
+        extX = Math.max(extX, Math.abs(x) + r);
+        extY = Math.max(extY, Math.abs(y) + r);
     }
 
     // Pod-kotvy oddelení. Bez nich má oblasť jedno ťažisko a 449 uzlov sa v nej
@@ -409,7 +517,7 @@ export function anchors() {
         const maxC = Math.max(1, ...list.map((d) => d.count));
         list.forEach(({ dept, count }, i) => {
             const t = (i + 0.5) / N;
-            const rr = c.r * 0.66 * Math.pow(t, 0.62) * (0.86 + 0.28 * hash01(dept.id));
+            const rr = c.r * RING.deptSpread * Math.pow(t, 0.62) * (0.86 + 0.28 * hash01(dept.id));
             const th = i * GOLD + hash01(a.id) * 6.2831853;
             deptCenters.set(dept.id, {
                 x: c.x + Math.cos(th) * rr * sq,
@@ -421,7 +529,10 @@ export function anchors() {
 
     S._anchors = {
         sig, mode: 'net', of: null, bands: null, areaCenters, deptCenters,
-        frame: { W: 2 * (ringX + sumR / areas.length), H: 2 * (ringY + sumR / areas.length) },
+        frame: { W: 2 * extX, H: 2 * extY },
+        // Prázdna zóna okolo jadra v svetových jednotkách. Nesie ju anizotropia
+        // scény, takže je to elipsa — čítajú ju hole force v sim.js aj merače.
+        hole: { rx: hole * sq * stretch, ry: hole / sq, r: hole },
         squash: Math.min(8, Math.pow(ar, PHYS.squashPow)),
     };
     return S._anchors;

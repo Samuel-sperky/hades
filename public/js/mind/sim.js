@@ -106,6 +106,45 @@ function d3ok() {
     return typeof window !== 'undefined' && window.d3 && typeof window.d3.forceSimulation === 'function';
 }
 
+/* ROZOSTUP: prázdna zóna okolo jadra.
+
+   Nie je to kozmetika. Uzol sa v strede scény ocitne z dvoch dôvodov, ktoré kotvy
+   samy neriešia: (1) hranou k jadru, (2) hranami do inej oblasti, ktoré ho z jeho
+   klastra vytiahnu na spojnicu — a spojnica dvoch bodov na venci vedie stredom.
+   Meranie hovorilo jasne: dlaždica 100 × 100 px okolo jadra mala 75 % pokrytia
+   uzlami, kým na okraji scény 8 %, teda deväťnásobok. Táto sila tlačí VON len uzly
+   vnútri zóny a jej veľkosť ide s hĺbkou zanorenia — na okraji zóny je nulová,
+   takže sa scéna nemá o čo rozkmitať a alpha dosadne rovnako ako predtým.
+
+   Zóna je elipsa (nesie ju anizotropia scény), preto sa tlačí po gradiente elipsy,
+   nie radiálne — inak by uzly nad jadrom vyliezli ďalej než tie po jeho boku.
+   `anchors()` sa volá RAZ na tik (číta getComputedStyle), nie pre každý uzol. */
+function holeForce() {
+    let nodes = [];
+    function force(alpha) {
+        const A = anchors();
+        if (A.mode !== 'net' || !A.hole) return;
+        const { rx, ry } = A.hole;
+        if (!(rx > 1 && ry > 1)) return;
+        const mag0 = PHYS.holePush * alpha * ((rx + ry) / 2);
+        for (const n of nodes) {
+            if (n.type === 'core') continue;
+            if (n.fx != null || n.fy != null) continue;      // ťahaný uzol si drží miesto
+            const ux = n.x / rx, uy = n.y / ry;
+            const rho = Math.hypot(ux, uy);
+            if (!(rho < 1)) continue;
+            const gx = n.x / (rx * rx), gy = n.y / (ry * ry);
+            const g = Math.hypot(gx, gy);
+            if (!(g > 1e-9)) continue;
+            const mag = (1 - rho) * mag0;
+            n.vx += (gx / g) * mag;
+            n.vy += (gy / g) * mag;
+        }
+    }
+    force.initialize = (ns) => { nodes = ns; };
+    return force;
+}
+
 function makeForces(sim) {
     const d3 = window.d3;
     const layers = S.gview === 'layers';
@@ -117,10 +156,17 @@ function makeForces(sim) {
     sim.force('collide', d3.forceCollide((d) => nodeRadius(d) + PHYS.collidePad));
     sim.force('link', d3.forceLink(S.edges)
         .id((d) => d.id)
-        .distance(layers ? PHYS.layerLinkDist : PHYS.linkDist)
+        // Hrana k jadru je dlhá (PHYS.coreLinkDist): 43 susedov jadra sa pri dĺžke 46
+        // nemá kam vojsť a collide z nich urobil nepriehľadný veniec presne tam, kde
+        // má byť najviac vzduchu. Ostatné hrany držia svoju krátku dĺžku.
+        .distance(layers ? PHYS.layerLinkDist
+            : (e) => ((e.source && e.source.type === 'core') || (e.target && e.target.type === 'core')
+                ? PHYS.coreLinkDist : PHYS.linkDist))
         .strength(layers
             ? PHYS.layerLinkStr
             : (e) => Math.min(PHYS.linkCap, PHYS.linkPer * (e.weight || 1))));
+    if (layers) sim.force('hole', null);
+    else sim.force('hole', holeForce());
 }
 
 // Kotvy sa d3 zapekajú pri initialize, nie pri každom tiku — po normalizeAspect()

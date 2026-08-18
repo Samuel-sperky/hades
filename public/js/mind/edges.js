@@ -71,6 +71,45 @@ function meshFade(k) {
     return 0.72 + 0.28 * t;
 }
 
+/* ---------- VLNA PLÁTNO NAOSTRO: TLMENIE PODĽA LOKÁLNEJ HUSTOTY ----------
+   Toto je najväčšia páka na priehľadnosť celého plátna a tri predchádzajúce vlny ju
+   minuli, pretože ladili prstence. Rozpočet inku na výreze 1:1 (2560 × 1400, 1075
+   uzlov, 2905 hrán) hovorí jasne: prstence pokrývajú ~2 % plochy, sieť ~11 %. Závoj
+   v strede nie je alfa prstenca — je to pár stoviek vláskov, ktoré sa v ťažisku
+   klastra kryžujú a ich alfy sa sčítajú.
+
+   Riešenie je dôsledok toho istého pravidla, na ktorom sieť stojí: „význam nesie
+   HUSTOTA, nie jednotlivé vlákno". Ak je vláskov na jednotku plochy N-krát viac,
+   stačí im ~1/√N alfy na ten istý nazbieraný dojem. Preto sa alfa hrany delí podľa
+   toho, koľko hrán prechádza jej okolím:
+
+     - hustý stred sa PREJASNÍ (tam, kde bola kaša, je teraz sieť),
+     - riedka periféria zostáva NEDOTKNUTÁ (faktor 1), takže bbox nakreslených
+       pixelov sa nehýbe a kritérium graphInk.wPct ≥ 70 je konštrukčne v bezpečí,
+     - žiadna hrana sa NESKRÝVA — len sa tlmí, presne ako žiada CLAUDE.md.
+
+   Faktor sa berie ako MINIMUM z troch bodov hrany (oba konce + stred): hrana, ktorá
+   stredom len prechádza, doňho tiež pridáva ink, takže sa musí tlmiť s ním. */
+export const DENS_CELL = 64;      // hrana meracej mriežky v OBRAZOVKOVÝCH px
+export const DENS_REF = 9;        // koľko hrán v buňke je „normálna" hustota (faktor 1)
+export const DENS_FLOOR = 0.34;   // najsilnejšie možné stlmenie
+export const DENS_POW = 0.58;     // 0,5 = presná odmocnina; mierne nad ňou = jemnejšie
+
+// Mriežka hustoty a jej rozmery — držíme ju medzi framami, aby sa Float32Array
+// nealokovalo 60× za sekundu. Prealokuje sa len pri zmene viewportu.
+let _dg = null, _dgx = 0, _dgy = 0;
+
+// Skrytá hrana? Jeden zdroj pravdy pre OBA prechody (meranie hustoty + kreslenie).
+// Keby to boli dve kópie podmienok, merala by sa iná sieť, než sa kreslí.
+function edgeHidden(e, loc) {
+    if (!e.source || !e.target) return true;
+    if ((e.weight || 1) < S.minWeight) return true;
+    if (edgeCategoryHidden(e)) return true;
+    if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) return true;
+    if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) return true;
+    return false;
+}
+
 export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
     // O režime NEROZHODUJE L.edgeMode — vlna A ho zjednotila na 'real' pre všetky
     // úrovne — ale HUSTOTA scény. Nad ~140 uzlami je jedna hrana beztak nečitateľná
@@ -78,6 +117,11 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
     // nesie informáciu sama za seba.
     const dense = !loc && L.pos.size > 140;
     const real = !dense;
+    /* S._densOff je MERACÍ vypínač tlmenia podľa hustoty, nie nastavenie. Existuje
+       preto, že „pred a po" sa v tomto projekte nedá odfotiť dvoma načítaniami — Hades
+       sa medzitým naučí nové uzly a čísla by sa líšili aj bez zmeny kódu. S ním sa
+       obe verzie zmerajú nad tým istým DOM v tom istom okamihu. UI ho nenastavuje. */
+    const damp = dense && !S._densOff;
     const invK = 1 / S.cam.k;
     const dash = [1.5 * invK, 3 * invK];
     const buckets = new Map();
@@ -87,21 +131,66 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
     const qStep = real ? 0.05 : 0.012;          // mesh potrebuje jemnejšie kvantovanie
     const minA = real ? 0.03 : 0.006;
 
+    /* ---- PRECHOD 1: viditeľnosť + mriežka hustoty ----
+       Beží VŽDY, aj keď sa netlmí: výsledok viditeľnosti si odloží na `e._vis`, takže
+       druhý prechod nemusí filtre počítať znova. Dvojité `edgeHidden()` nad 2953
+       hranami stálo ~0,3 ms, a v 4 ms rozpočte draw() je to poznať.
+       Mriežka sa plní len v mesh režime: pri < 140 uzloch je hrán málo, každá nesie
+       informáciu sama za sebou a tlmiť ju podľa okolia by bola chyba. */
+    const k = S.cam.k;
+    const ox = S.w / 2 + S.cam.x, oy = S.h / 2 + S.cam.y;
+    const gx = Math.max(1, Math.ceil(S.w / DENS_CELL)), gy = Math.max(1, Math.ceil(S.h / DENS_CELL));
+    if (damp) {
+        if (!_dg || _dgx !== gx || _dgy !== gy) { _dg = new Float32Array(gx * gy); _dgx = gx; _dgy = gy; }
+        else _dg.fill(0);
+    }
+    const g = _dg;
+    let mx = 0;
+    // Aritmetika buňky je tu ROZPÍSANÁ zámerne: ako closure `cellOf(x,y)` volaná
+    // v najvnútornejšej slučke stála draw() ~1,5 ms pri 2900 hranách.
     for (const e of S.edges) {
-        if (!e.source || !e.target) continue;
+        const vis = !edgeHidden(e, loc)
+            && L.pos.has(e.source.id) && L.pos.has(e.target.id)
+            && edgeInView(e.source, e.target);
+        e._vis = vis ? 1 : 0;
+        if (!vis || !damp) continue;
+        // Celú hranu stopujeme po buňkách — inak by dlhá hrana pridala ink
+        // do stredu, ale v mriežke by o sebe nechala záznam len na koncoch.
+        const ax = ox + e.source.x * k, ay = oy + e.source.y * k;
+        const bx = ox + e.target.x * k, by = oy + e.target.y * k;
+        const dx = bx - ax, dy = by - ay;
+        const steps = Math.min(24, 1 + (((Math.abs(dx) + Math.abs(dy)) / DENS_CELL) | 0));
+        let last = -1;
+        for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const cx = ((ax + dx * t) / DENS_CELL) | 0, cy = ((ay + dy * t) / DENS_CELL) | 0;
+            if (cx < 0 || cy < 0 || cx >= gx || cy >= gy) continue;
+            const ci = cy * gx + cx;
+            if (ci === last) continue;
+            last = ci;
+            const v = g[ci] + 1;
+            g[ci] = v;
+            if (v > mx) mx = v;      // debug hook, zadarmo — kalibrácia DENS_REF ho číta
+        }
+    }
+    S._densMax = mx;
+    const densAt = !damp ? null : (sx, sy) => {
+        const cx = (sx / DENS_CELL) | 0, cy = (sy / DENS_CELL) | 0;
+        if (cx < 0 || cy < 0 || cx >= gx || cy >= gy) return 1;
+        const c = g[cy * gx + cx];
+        if (c <= DENS_REF) return 1;
+        return Math.max(DENS_FLOOR, Math.pow(DENS_REF / c, DENS_POW));
+    };
+
+    for (const e of S.edges) {
+        if (!e._vis) continue;
         const pa = L.pos.get(e.source.id), pb = L.pos.get(e.target.id);
-        if (!pa || !pb) continue;                          // aspoň jeden konec nie je v layoute
         // Kontextová hrana sa STLMÍ, nezmizne. Kým bolo zanorenie prepínanie scén,
         // stmavnutý zvyšok grafu v layoute vôbec nebol a `continue` bol správny. Teraz
         // je zanorenie FILTER: fokus zostane plný, zvyšok siete klesne na DIM_CTX —
         // a `continue` by mu zobral všetky hrany, takže by z kontextu zostali holé
         // prstence. To je presne to „zmiznutie siete", ktoré používateľ kritizoval.
         const dimCtx = Math.min(pa.dim == null ? 1 : pa.dim, pb.dim == null ? 1 : pb.dim);
-        if ((e.weight || 1) < S.minWeight) continue;
-        if (edgeCategoryHidden(e)) continue;
-        if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) continue;
-        if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) continue;
-        if (!edgeInView(e.source, e.target)) continue;
 
         // v mesh režime nekreslíme prerušované vzory — pri 0,7 px a ~8 % alfy sa dash
         // číta ako šum a rozbije dojem spojitej siete
@@ -151,6 +240,13 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
 
         if (real && !showAllBg && !edgeSkeletal(e)) continue;
         if (softHoverActive) alpha *= real ? 0.82 : 0.90;
+        // Tlmenie podľa hustoty platí LEN pre pozadovú sieť. Incidentná hrana (vyššie,
+        // s `continue`) je jediná, ktorá musí sama držať 3:1, takže sa jej nedotýka.
+        if (densAt) {
+            const ax = ox + e.source.x * k, ay = oy + e.source.y * k;
+            const bx = ox + e.target.x * k, by = oy + e.target.y * k;
+            alpha *= Math.min(densAt(ax, ay), densAt(bx, by), densAt((ax + bx) / 2, (ay + by) / 2));
+        }
         if (alpha < minA) continue;
         const q = Math.max(1, Math.round(alpha / qStep));
         const key = (dashed ? 1000 : 0) + q;
