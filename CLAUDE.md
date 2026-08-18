@@ -132,3 +132,20 @@ cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na tealovej výplni).
 
 `docker compose exec app php artisan test` — 95 testov, všetko PHP (backend, MCP,
 API). Frontend testy nie sú; UI sa overuje prekliknutím v prehliadači.
+
+## Pasca: overuj IDENTITU preview servera
+
+Harness beží na `127.0.0.1:8091` (predtým 8099 — ten zabral kontejner
+`zapis_porady_app`). Keď preview server zhasne, port prevezme **cudzia appka** a
+harness potom meria ju: `verify.js` vráti „VERDICT: OK", `rvsweep.js` nahlási
+neexistujúcu kontrastnú regresiu a `a3-check.js` sa nedočká `window.HADES`.
+Naletel som na to.
+
+**Pred každým meraním over, že server je náš:**
+
+```
+curl -s http://127.0.0.1:8091/ | grep -o 'src="/js/[^"]*"'
+```
+
+Musí vypísať `/js/mind/main.js`. Ak vypíše niečo iné (alebo hlavička odpovede
+obsahuje `X-Powered-By: PHP`), meriaš cudziu appku a všetky čísla sú bezcenné.
