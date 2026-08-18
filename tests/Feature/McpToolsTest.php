@@ -263,4 +263,33 @@ class McpToolsTest extends TestCase
 
         $this->assertTrue($res->json('result.isError'));
     }
+
+    /**
+     * Neznáma oblasť sa nesmie ticho zahodiť. Predtým sa rozhodnutie uložilo
+     * s area_id = null a odpoveď vyzerala rovnako úspešne ako správny zápis,
+     * takže volajúci nemal ako zistiť, že o zaradenie prišiel — dva rozhodnutia
+     * v ostrej sieti tak zostali osirené.
+     */
+    public function test_decision_rejects_unknown_area_instead_of_dropping_it(): void
+    {
+        $res = $this->rpc('tools/call', ['name' => 'mind_decision', 'arguments' => [
+            'text' => 'Rozhodnutie s pokazeným názvom oblasti.',
+            'area' => 'Vývoj &amp; kód',
+        ]])->assertOk();
+
+        $this->assertTrue($res->json('result.isError'));
+        // Chyba menuje platné oblasti, aby AI vedela dopyt opraviť
+        $this->assertStringContainsString('Vývoj / kód', $res->json('result.content.0.text'));
+        $this->assertSame(0, Decision::count());
+    }
+
+    public function test_decision_without_area_still_works(): void
+    {
+        $data = $this->callTool('mind_decision', [
+            'text' => 'Rozhodnutie bez oblasti je legitímne.',
+        ]);
+
+        $this->assertSame('decided', $data['action']);
+        $this->assertNull(Decision::first()->area_id);
+    }
 }

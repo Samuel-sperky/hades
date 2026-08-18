@@ -783,7 +783,23 @@ class McpController extends Controller
         }
 
         $decidedOn = ! empty($args['decided_on']) ? (string) $args['decided_on'] : now()->toDateString();
-        $areaId = ! empty($args['area']) ? $this->resolveAreaId((string) $args['area']) : null;
+
+        // Neznáma oblasť sa TICHO nezahadzuje. Predtým sa rozhodnutie uložilo
+        // s area_id = null a odpoveď vyzerala rovnako úspešne, takže volajúci
+        // nemal ako zistiť, že o zaradenie prišel — dva takto osirené záznamy
+        // (id 40 a 46) vznikli tým, že v názve prišlo „&amp;" namiesto „&"
+        // a slug potom nesedel. Chyba menuje platné oblasti, aby AI vedela
+        // dopyt opraviť namiesto hádania.
+        $areaId = null;
+        if (! empty($args['area'])) {
+            $areaId = $this->resolveAreaId((string) $args['area']);
+            if ($areaId === null) {
+                throw new \InvalidArgumentException(
+                    'Unknown area: '.trim((string) $args['area'])
+                    .'. Known areas: '.Area::orderBy('id')->pluck('name')->implode(', ')
+                );
+            }
+        }
 
         $decision = Decision::create([
             'area_id' => $areaId,
