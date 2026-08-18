@@ -280,3 +280,94 @@ teda nehovorila o zmene nič. Preto `tests/worktree-autoload.php` +
    doň lepia AKTUALIZÁCIE. Krátke kanonické zhrnutie by dalo recallu čo posielať.
 5. **Tabulárny formát odpovede** (mená polí sú 18 % bajtov) — tvrdý zlom kontraktu pre
    živé sessions, preto neurobené.
+
+## 10. Vlna PREHLIADKA — každá časť, popisky a kánon akcentu (18. 8. 2026)
+
+Zadanie: „orchestruj a dokonči". Dva agenti na oddelených súboroch, obaja dobehli.
+
+### Filter značiek — jediný reálne nepoužiteľný prvok appky
+
+`/api/tags` vracia **3 679 značiek** (2 260 z nich s počtom 1) a `tagfilter.js` z nich
+robil checkboxy. Zbalená sekcia to schovala, nevyriešila.
+
+| meranie | pred | po |
+|---|---|---|
+| DOM prvky vo `#filter-tags` | 18 395 | **64** |
+| HTML filtra | 607 kB | ~2 kB |
+| DOM prvky celého dokumentu (Graf) | 42 070 | **23 741** |
+| `/api/tags` (152 kB) pri otvorení Nastavení | pri každom | max raz za 60 s |
+
+### Appka prestala tvrdiť nepravdu
+
+Deväť endpointov × abort/500 → **9/9 priznajú chybu**, 0 nekonečných skeletonov. Dva
+skutočné prípady: Smernica nekontrolovala `res.ok`, takže serverová chyba vyšla ako
+„Nič relevantné sa nenašlo" (človek potom preformuluje úlohu, ktorá bola v poriadku);
+a keď padlo len `/api/dashboard`, Dnes ticho zhodilo hero, KPI aj štyri karty a
+vyzeralo to ako prázdne vedomie. Jeden zdroj pravdy je `getJson()` — `(await fetch()).json()`
+pri 500 s JSON telom prejde a obrazovka povie „nič tu nie je" o dátach, ktoré existujú.
+
+Ďalej: fokus po akcii padal na `<body>` (Kontrola, paleta, zásuvka balíka); Cmd-K paleta
+**nemala šípky vôbec**, len Enter na prvú položku; surový markdown v UI 7 → **0**
+(`plainInline()` maže len párové zvýraznenie — `plainText` by zo skillu o `__Host-`
+cookie prefixe urobil vecnú chybu v mene veci, ktorú učí).
+
+### Popisky padajú na uzly, ktoré nesú štruktúru
+
+Jedno štruktúrne skóre (stupeň 0,55 + sila 0,30 + blízkosť stredu 0,15, prvé dve
+log-normalizované, lebo rozdelenie je power-law) slúži LOD aj popiskom.
+
+| bod | popiskov | z top 25 podľa stupňa | mediánová pozícia popisku |
+|---|---|---|---|
+| 1600, mapa | 21 → **21** | 4 → **13** | 323 → **16** z 1089 |
+| 2560, mapa | 46 → **46** | 8 → **11** | 283 → **52** |
+| 2560, oblasť | 108 → **108** | 6 → **12** | 497 → **207** |
+| 1600, oblasť | 27 → **44** | 2 → **3** | 708 → **239** |
+
+A3 (žiadny kreslený uzol prekrytý popiskom) zostáva **0** na každej dosiahnuteľnej
+úrovni. Cena: +0,45 ms na rámec pri 1600, +2,1 ms pri 2560.
+
+**Priznaná odchýlka:** na úrovni oblasti pri 1600 pribudlo popiskov (27 → 44). Budget
+sa nemenil — bol len doteraz nedosiahnuteľný, lebo umiestňovanie padalo. Strop na
+popisky s vodičom sa zmeral a zamietol: držal by počet, ale mapa spadne z 13/25 na
+9/25, teda zaplatí presne tým, čo táto vlna kupuje.
+
+### Kánon akcentu
+
+**Teal je interaktívny, zlatá je značková.** Zapísané v `CLAUDE.md`, v `:root` aj v
+`theme.js`, rozhodnutie aj s dôvodom je v Hadesovi (id 46).
+
+**Čestne:** zlatá v interaktívnej role bola **0 pred aj 0 po** — kánon už držal.
+Reálne sa zmenilo: dve ikony zlaté mimo značky a jadra, ikona zlyhaného zrodu na
+`--danger` (je to chyba, `--danger` to už znamená, a je to jediná možnosť nad 3:1 na
+svetlom papieri), a **6 mŕtvych tokenov zmazaných** — `--node-skill` bol doslova
+`--accent`, teda interaktívny teal v identitnej role, a `--glow-gold` bola nabitá
+zbraň pre budúci zlatý hover. Zlatá mimo značky a jadra: tmavá 11 → 8, svetlá 9 → 6.
+
+### Čo sa NEROBILO a prečo
+
+- **Dvojité CSS deklarácie sa nerobili — už boli zaplatené** v `c1a3a96` (detektor
+  hlási 0). `CLAUDE.md` o nich ale ešte tvrdil, že ich je ~46, čo je pasca samo o sebe;
+  opravené. Namiesto toho sa dokázalo, že nové CSS je inertné: výmena stylesheetu nad
+  tým istým DOM, 4 šírky × 2 témy × 7 obrazoviek, **53,8 M vypočítaných hodnôt,
+  12 unikátnych rozdielov a každý z nich je tá zamýšľaná ikona**.
+- **Knižnica má 21 432 DOM prvkov**, ale prekreslenie trvá 23 ms a hľadanie funguje.
+  Nie je to defekt, len objem; orezanie zoznamu je rozhodnutie o browsovaní.
+- **Nastavenia zostávajú otvorené pri prepnutí obrazovky** a prekryjú polovicu obsahu,
+  hoci väčšina panela riadí len Graf. Dizajnové rozhodnutie pre používateľa.
+- **`--cert-hypoteza` je na tmavej téme tá istá hodnota ako `--brand-gold`** — tretia,
+  semantická rola; presun na `--warn` (70° vs 79°) by kolíziu zhoršil.
+- Mŕtvy kód starší ako šprint (`timeline.js`, `search.js`, `findDuplicates`) — pravidlo
+  projektu je refaktorovať len dotknutý kód.
+
+### Nález mimo zadania: `mind_decision` ticho zahadzovalo oblasť
+
+Nástroj preložil názov oblasti na id a keď nič nesedelo, uložil rozhodnutie s
+`area_id = NULL` a vrátil odpoveď, ktorá vyzerala ako úspech. V ostrej sieti je takto
+osirených **osem rozhodnutí**. Teraz to skončí chybou, ktorá vymenuje platné oblasti.
+Dve rozhodnutia z tejto session sú doplnené (so zálohou `backups/decisions-2026-08-18.sql`),
+**šesť starších čaká na človeka** — zaradiť cudzie rozhodnutie je jeho vec.
+
+**Overené na konci vlny:** `missing.js` bez chýbajúcich exportov, `verify.js` VERDICT OK
+bez chýb konzoly, `a3-check.js` 0 prekrytí, `rvsweep both` **0 padajúcich textových miest**
+v oboch témach, `iconrender.js` 39/39 ikon ako glyf s Googlom zablokovaným,
+**230 PHP testov zelených**.
