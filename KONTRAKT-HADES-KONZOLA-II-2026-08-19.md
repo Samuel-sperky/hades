@@ -182,6 +182,28 @@ routy tejto vetvy tam nie sú, a pokus spustiť vlastný kontejner z toho istéh
 testami a čítaním kódu, **nie na obrazovke**. Electron okno sa z toho istého dôvodu tiež
 nespúšťalo — overený je len toolchain (`electron --version`) a syntax.
 
+### Čo našla kvalitná brána (a je opravené)
+
+Dva agenti s `effort: high` — jeden na správnosť proti kontraktu, jeden adversariálne
+na bezpečnosť. Nálezy neboli dojmy: každý bol podložený **spustením**.
+
+| Závažnosť | Nález | Ako sa prejavil |
+|---|---|---|
+| **bloker** | `cat ".env"` **prešlo** | Deny vzor chcel `.env` na hranici (začiatok/medzera/lomka) a úvodzovka ňou nie je — shell ju pri behu strhne. Overené spustením: 2237 B vrátane `APP_KEY`, `DB_PASSWORD` a všetkých tokenov, teda **všetky štyri autentifikačné okruhy naraz** |
+| **bloker** | plošné `auto_accept` zakrylo úzke povolenie | „Povoliť vždy" na `mind_learn` zapne `auto_accept` a od tej chvíle by **každý** príkaz shellu bežal bez potvrdenia. Diera, ktorú do kódu priniesla prvá verzia zúženia; dosiahnuteľná aj programovo cez `PATCH` na vlákno |
+| major | `git log -p`, `git show <ref>:<cesta>` | Vypíšu obsah z **histórie**, kde podľa `docs/BEZPECNOST.md` žije kompromitovaný bcrypt hash basic-auth hesla. Súborové tooly do histórie nevidia — plocha, ktorú pridal výlučne shell |
+| major | `sort -o <súbor>` zapisuje | Tá istá trieda ako `sed -n '1w …'`; `sort` bol v bielom zozname s kľúčom `sort` |
+| major | `write_report` chýbal v headless sade | `isWrite()` neznamená „mení dáta", ale „čaká na človeka". Plánovaný beh preto nemal ako vyrobiť report — jeho jediný zmysluplný výstup. Vyriešené značkou `SafeUnattended` |
+| major | **Electron by ani nenabehol** | Tray ikona, ktorá v repe nie je (výnimka v `ready`, takže sa nezaregistrovala ani globálna skratka), `require()` v ESM module, a ESM preload v sandboxe = notifikácia napísaná a mŕtva |
+| major | okruh bol z hosta **nepoužiteľný** | Appka beží v kontejneri a request z hosta prichádza SNAT-nutý z brány mostu (zmerané: `172.19.0.1`). Kontrola len na `127.0.0.1` by terminálovému klientovi vracala 403 — a testy to nezachytili, lebo Symfony klient chodí z loopbacku |
+| minor | `npm install <balík>` | `postinstall` je spustenie cudzieho kódu v kontejneri; kľúč `npm install` by to po jednom „vždy" povolil natrvalo |
+| minor | prefixová kontrola originu v Electrone | `http://localhost:8080.evil.com/` prefix spĺňa |
+| minor | `xlink:href` v sanitizácii | `<svg><a xlink:href="javascript:…">` prešlo prvou vrstvou (CSP ho dnes zastaví, ale vrstva má tvrdiť len to, čo robí) |
+| minor | dva klienty, dva názvy kľúča | `token` vs `ui_token` v `~/.hades/config.json` |
+
+Všetko opravené v `77b9cf1` a `83dff5e`, každý bloker má test, ktorý by ho bol zachytil.
+Sada: **462 PHP testov + 45 Node testov zelených**.
+
 ### Spend
 
 Agenti: **1 099 k** tokenov (W6 425 k · W9 307 k · W11 367 k) + brána W13. Proti odhadu
