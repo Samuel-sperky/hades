@@ -116,6 +116,42 @@ class ConsoleAllowanceTest extends TestCase
         $this->assertSame('php artisan test', $cage->pattern('php artisan test --filter Whatever'));
     }
 
+    /**
+     * Plošné `auto_accept` NESMIE zakryť tool, ktorý si vyžaduje úzky kľúč.
+     *
+     * Toto je diera, ktorú sem priniesla prvá verzia zúženia a našlo ju review:
+     * stačilo kliknúť „Povoliť vždy" na `mind_learn` (čím sa `auto_accept` zapne na
+     * celé vlákno) a od tej chvíle by sa vykonal KAŽDÝ príkaz shellu bez jediného
+     * potvrdenia. Presne ten scenár, proti ktorému zúženie vzniklo, len opačným
+     * smerom — a dosiahnuteľný aj programovo, lebo PATCH na vlákno `auto_accept`
+     * prijíma.
+     */
+    public function test_blanket_auto_accept_does_not_cover_a_narrowing_tool(): void
+    {
+        $thread = ConsoleThread::create(['title' => 'test', 'auto_accept' => true]);
+        $registry = app(ToolRegistry::class);
+        $runner = app(AgentRunner::class);
+
+        $preapproved = new \ReflectionMethod($runner, 'preapproved');
+
+        $bash = $this->pendingCall($thread, 'bash', ['command' => 'php artisan mind:prune-tags']);
+        $write = $this->pendingCall($thread, 'write_file', ['path' => 'a.txt', 'content' => 'x']);
+
+        $this->assertFalse(
+            $preapproved->invoke($runner, $thread, $bash),
+            'auto_accept nesmie povoliť shell — ten sa potvrdzuje po vzore'
+        );
+
+        // A plošné povolenie ostatných zápisov zostáva, ako bolo.
+        $this->assertTrue($preapproved->invoke($runner, $thread, $write));
+
+        // Keď je vzor povolený menovite, shell prejde aj tak.
+        $thread->allowTool('bash', $registry->allowanceKey('bash', $bash->arguments));
+        $thread->save();
+
+        $this->assertTrue($preapproved->invoke($runner, $thread->refresh(), $bash));
+    }
+
     public function test_allowances_survive_a_reload_of_the_thread(): void
     {
         $thread = ConsoleThread::create(['title' => 'test']);

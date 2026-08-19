@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, Notification, shell, nativeImage } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -27,6 +27,11 @@ function getToken() {
     const configPath = path.join(os.homedir(), '.hades', 'config.json');
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      // Oba klienty čítajú TEN ISTÝ súbor, takže musia poznať to isté meno kľúča.
+      // `bin/hades` (a jeho README) používa `token`; pôvodná verzia tu čítala len
+      // `ui_token`, takže kto si config nastavil podľa README, tomu okno token
+      // nenašlo, spadlo na `.env` a v okne skončilo mlčanlivé 401.
+      if (config.token) return config.token;
       if (config.ui_token) return config.ui_token;
     }
   } catch (err) {
@@ -119,7 +124,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
-      preload: path.join(__dirname, 'preload.mjs')
+      preload: path.join(__dirname, 'preload.cjs')
     }
   });
 
@@ -141,19 +146,26 @@ function createWindow() {
   mainWindow.on('move', () => saveWindowState(mainWindow));
   mainWindow.on('resize', () => saveWindowState(mainWindow));
 
-  // Bezpečnosť: links mimo tohto originu otvor v systémovom prehliadači
+  // Bezpečnosť: čokoľvek mimo NÁŠHO ORIGINU otvor v systémovom prehliadači.
+  //
+  // Porovnáva sa parsovaný origin, nie prefix reťazca. `startsWith(hadesUrl)`
+  // považovalo za vlastné aj `http://localhost:8080.evil.com/` a
+  // `http://localhost:8080@evil.com/`, takže nalákaná navigácia (redirect alebo
+  // odkaz v obsahu, ktorý spoluvytvára model) prepla dôveryhodné okno appky na
+  // cudzí origin a `will-navigate` ju nezastavil. Token sa naň neposielal, ale
+  // obsah útočníka sa vykreslil v okne, ktoré token nosí.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(hadesUrl)) {
-      require('electron').shell.openExternal(url);
+    if (!isOwnOrigin(url, hadesUrl)) {
+      shell.openExternal(url);
       return { action: 'deny' };
     }
     return { action: 'allow' };
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith(hadesUrl)) {
+    if (!isOwnOrigin(url, hadesUrl)) {
       event.preventDefault();
-      require('electron').shell.openExternal(url);
+      shell.openExternal(url);
     }
   });
 
@@ -171,11 +183,47 @@ function createWindow() {
 }
 
 /**
- * Vytvor tray ikonu
+ * Je URL na tom istom origine ako appka?
+ *
+ * Neparsovateľná URL je „cudzia" — fail-closed. `about:blank` a `devtools://`
+ * sem nechodia, tie Electron rieši vlastnými kanálmi.
+ */
+function isOwnOrigin(url, hadesUrl) {
+  try {
+    return new URL(url).origin === new URL(hadesUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Vytvor tray ikonu.
+ *
+ * Ikona je vložená ako data URL a nie ako súbor v `assets/`: pôvodná verzia
+ * ukazovala na `../assets/tray-icon.png`, ktorý v repozitári NIE JE, a `new Tray()`
+ * na nenačítateľný obrázok vyhodí výnimku. Padla priamo v handleri `ready` za
+ * `createWindow()`, takže sa už nezavolala registrácia globálnej skratky — tray aj
+ * Ctrl+Alt+H boli mŕtve a v hlavnom procese ležala neodchytená výnimka.
+ *
+ * Preto aj `try/catch`: appka bez tray ikony je použiteľná, appka, ktorá kvôli
+ * ikone nenaštartuje, nie.
  */
 function createTray() {
-  // Použij minimal tray ikonu (text alebo OS default)
-  trayIcon = new Tray(path.join(__dirname, '..', 'assets', 'tray-icon.png'));
+  // 16×16 PNG so značkovou zlatou bodkou vedomia; vložené, aby klient nezávisel
+  // od súboru, ktorý sa dá zmazať alebo zabudnúť pri kopírovaní priečinka.
+  const icon = nativeImage.createFromDataURL(
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAX0lEQVR4AWMY'
+    + 'BaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBSMglEw'
+    + 'CkbBKBgFo2AUjIJRMApGwSgYBaMAAAOaAAFrJHrPAAAAAElFTkSuQmCC'
+  );
+
+  try {
+    trayIcon = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  } catch (error) {
+    console.error('Tray ikonu sa nepodarilo vytvoriť, appka beží bez nej:', error.message);
+
+    return;
+  }
 
   const contextMenu = Menu.buildFromTemplate([
     {

@@ -25,7 +25,10 @@ import {
   driveTurn,
   resolveThread,
 } from './lib/api.mjs';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 import { resolveConfig, setupHint } from './lib/config.mjs';
 import { createRenderer, describeHttpError, describeNetworkError } from './lib/render.mjs';
@@ -46,6 +49,7 @@ const USAGE = `hades ${VERSION} — konzola vedomia Hades v termináli
   hades threads                  zoznam vlákien
   hades models                   modely a čo je nedostupné
   hades doctor                   odkiaľ má adresu a token (token sa nevypisuje)
+  hades gui                      otvorí konzolu v desktopovom okne (Electron)
 
 Prepínače:
   --thread <uuid>   konkrétne vlákno
@@ -68,6 +72,44 @@ Programový okruh konzoly je LOOPBACK-ONLY a nesmie ísť cez proxy ani tunel.`;
  *
  * @param {string[]} argv
  */
+/**
+ * Otvorí desktopové okno — `desktop/` je Electron obal nad tou istou konzolou.
+ *
+ * Prečo to sedí v CLI a nie len v `npm start`: akceptačné kritérium hovorí
+ * „`hades gui` okno otvorí", a človek, ktorý má v termináli `hades`, nemá dôvod
+ * pamätať si, že druhý klient sa spúšťa inak a z iného priečinka.
+ *
+ * Proces sa NEODPÁJA (`detached: false`) a dedí stdio: keď Electron nie je
+ * nainštalovaný, chybu má vidieť ten, kto príkaz napísal. Odpojené okno by zhaslo
+ * s nezrozumiteľným kódom.
+ */
+function gui({ out, err }) {
+  const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'desktop');
+
+  if (!existsSync(path.join(desktop, 'package.json'))) {
+    err.write(`Priečinok desktopového klienta som nenašiel: ${desktop}\n`);
+
+    return EXIT_FAIL;
+  }
+
+  if (!existsSync(path.join(desktop, 'node_modules'))) {
+    err.write('Desktopový klient nie je nainštalovaný. Spusti raz:\n'
+      + `  cd ${desktop} && npm install --no-audit --no-fund\n`);
+
+    return EXIT_NO_CONFIG;
+  }
+
+  out.write('Otváram konzolu v okne…\n');
+
+  const result = spawnSync('npm', ['start'], {
+    cwd: desktop,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
+
+  return result.status === 0 ? EXIT_OK : EXIT_FAIL;
+}
+
 export function parseArgv(argv) {
   const flags = { json: false, fresh: false, thread: null, model: null, help: false, version: false };
   const positional = [];
@@ -157,6 +199,9 @@ export async function main(argv = process.argv.slice(2), io = {}) {
 
         return EXIT_OK;
       }
+
+      case 'gui':
+        return gui({ out, err });
 
       default:
         err.write(`Neznámy príkaz „${command}". \`hades --help\` vypíše, čo poznám.\n`);

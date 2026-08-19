@@ -154,6 +154,15 @@ return [
         'read_cap' => (int) env('HADES_CONSOLE_READ_CAP', 60000),
         'grep_cap' => (int) env('HADES_CONSOLE_GREP_CAP', 20000),
 
+        // Z ktorých adries smie prísť programový beh (`auth.console`). Prázdne =
+        // loopback + adresa default gateway kontejnera, teda host. Vypĺňa sa len
+        // pri neštandardnej sieti; celú podsieť mostu tu NEUVÁDZAJ — na tom istom
+        // moste žijú cudzie kontejnery iných appiek.
+        'allow_from' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('HADES_CONSOLE_ALLOW_FROM', '')),
+        ))),
+
         // -----------------------------------------------------------------
         // Klietka pre shell (tool `bash`).
         //
@@ -202,10 +211,26 @@ return [
                 '/^php\s+artisan\s+(route:list|about|env)(\s.*)?$/',
                 '/^php\s+artisan\s+mind:[a-z:-]+(\s.*)?$/',
                 '/^php\s+vendor\/bin\/(phpunit|pint)(\s.*)?$/',
-                '/^composer\s+(install|show|audit|dump-autoload)(\s.*)?$/',
-                '/^npm\s+(install|ci|audit|ls|run\s+[a-z][a-z0-9:-]*)(\s.*)?$/',
-                '/^git\s+(status|diff|log|show|branch|remote|blame|shortlog)(\s.*)?$/',
-                '/^(ls|cat|head|tail|wc|file|stat|sort|uniq|cut|tr)(\s.*)?$/',
+                // Inštalácia balíkov je VON: `npm install <čokoľvek>` stiahne balík z
+                // registry a jeho `postinstall` je spustenie cudzieho kódu v kontejneri
+                // appky. `npm ci` a `composer install` spúšťajú lifecycle skripty
+                // rovnako, len z lockfile. Nastavenie prostredia patrí človeku.
+                '/^composer\s+(show|audit|dump-autoload)(\s.*)?$/',
+                '/^npm\s+(audit|ls|run\s+[a-z][a-z0-9:-]*)(\s.*)?$/',
+                // Git BEZ histórie súborov. `git log -p` aj `git show <ref>:<cesta>`
+                // vypíšu obsah z minulosti — a podľa docs/BEZPECNOST.md v tejto
+                // histórii žije natvrdo zapísaný bcrypt hash basic-auth hesla a starý
+                // MCP token. Súborové tooly do histórie nevidia, takže je to plocha,
+                // ktorú by pridal výlučne shell. `git diff` bez revízií je v poriadku:
+                // ukazuje pracovný strom, teda to, čo `read_file` vidí aj tak.
+                '/^git\s+(status|branch|remote|shortlog)(\s+--?[a-z-]+)*$/',
+                '/^git\s+blame\s+\S+$/',
+                '/^git\s+diff(\s+(--stat|--name-only|--cached|--staged))*(\s+--\s+\S+)?$/',
+                '/^git\s+log(\s+(--oneline|--stat|--name-only|-\d+|-n\s+\d+))*$/',
+                // `sort` je VON: `sort -o <súbor>` zapisuje. Usporiadanie výstupu
+                // konzola nepotrebuje a `-o` je jediné, čo tam navyše pridáva —
+                // presne ten istý nález ako pri `sed -n '1w …'`.
+                '/^(ls|cat|head|tail|wc|file|stat|uniq|cut|tr)(\s.*)?$/',
                 '/^(rg|grep)(\s.*)?$/',
                 '/^curl\s+-s\s+https?:\/\/(localhost|127\.0\.0\.1):(8080|8092)(\/\S*)?$/',
                 '/^(php|node|npm|composer)\s+--version$/',
@@ -223,8 +248,18 @@ return [
                 '/\b(drop|truncate)\s+(database|table)\b/i',
                 '/\bnpm\s+(publish|login|token|config\s+set)\b/',
                 '/\b(composer\s+(global|config)|npx)\b/',
-                // .env je čitateľné pre appku, nie pre model v chate
-                '/(^|\s|\/)\.env(\.|\s|$)/',
+                // Obsah súborov z HISTÓRIE repa. Súborové tooly do nej nevidia a
+                // podľa docs/BEZPECNOST.md v nej žijú kompromitované tajomstvá.
+                '/\bgit\s+(show|cat-file|rev-list|archive|bundle)\b/',
+                '/\bgit\b.*(\s-p\b|--patch\b|-U\d|--unified)/',
+                // .env je čitateľné pre appku, nie pre model v chate.
+                //
+                // Vzor je zámerne ŠIROKÝ (`.env` kdekoľvek v príkaze), nie ukotvený na
+                // hranicu slova: predchádzajúca verzia `(^|\s|\/)\.env(\.|\s|$)` sa dala
+                // obísť úvodzovkou (`cat ".env"` — znak pred bodkou bola `"`). Overené
+                // spustením 19. 8. 2026: prešlo a vypísalo celý .env. `.env.example`
+                // padne tiež a je to v poriadku — nie je dôvod ho čítať shellom.
+                '/\.env/i',
             ],
         ],
 

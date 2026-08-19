@@ -116,18 +116,49 @@ class ConsoleProgrammaticTest extends TestCase
      * Počíta sa to z `isWrite()`, nie zo zoznamu mien — inak by test prešiel aj
      * po tom, čo do `ToolRegistry::TOOLS` pribudne nový zápisový tool.
      */
-    public function test_headless_registry_offers_no_write_tools(): void
+    /**
+     * V headless sade nesmie byť tool, ktorý by ťah ZAPARKOVAL — teda zápisový
+     * tool okrem tých, čo sú výslovne označené ako bezpečné bez dozoru
+     * ({@see \App\Services\Console\Tools\SafeUnattended}: dnes `write_report`,
+     * ktorý píše len do `storage/app/reports`).
+     *
+     * Prečo tá výnimka existuje: `isWrite()` v tomto projekte neznamená „mení dáta",
+     * ale „čaká na človeka". Bez nej z plánovaného behu vypadol práve report — jeho
+     * jediný zmysluplný výstup — a model, ktorý si ho vyžiadal, dostal „unknown tool".
+     */
+    public function test_headless_registry_offers_no_tool_that_would_park_the_turn(): void
     {
         $registry = app(HeadlessRunner::class)->registry();
 
         $this->assertNotEmpty($registry->names(), 'Headless beh bez toolov by bol len chat.');
 
         foreach ($registry->names() as $name) {
-            $this->assertFalse($registry->isWrite($name), "Tool {$name} zapisuje a v headless sade nemá čo robiť.");
+            if ($registry->isWrite($name)) {
+                $this->assertTrue(
+                    app(ToolRegistry::class)->safeUnattended($name),
+                    "Tool {$name} zapisuje, nie je označený ako bezpečný bez dozoru a v headless sade by beh zaparkoval."
+                );
+            }
         }
 
         // sada je naozaj PODMNOŽINA kánonu, nie jeho kópia
         $this->assertLessThan(count(ToolRegistry::TOOLS), count($registry->names()));
+    }
+
+    /** Report sa v plánovanom behu vyrobiť MÁ — kontrakt §4 to sľubuje. */
+    public function test_headless_can_still_write_a_report(): void
+    {
+        $this->assertContains('write_report', app(HeadlessRunner::class)->registry()->names());
+    }
+
+    /** Ale nič, čo mení kód alebo pamäť, tam byť nesmie. */
+    public function test_headless_cannot_touch_code_or_memory(): void
+    {
+        $names = app(HeadlessRunner::class)->registry()->names();
+
+        foreach (['write_file', 'edit_file', 'bash', 'mind_learn', 'mind_delete', 'mind_rename', 'mind_move'] as $forbidden) {
+            $this->assertNotContains($forbidden, $names);
+        }
     }
 
     public function test_headless_run_returns_text_tokens_and_a_reusable_thread(): void

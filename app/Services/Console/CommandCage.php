@@ -44,7 +44,12 @@ final class CommandCage
      * Rúra (`|`) v zozname NIE JE — je to jediná povolená spojka a jej segmenty
      * sa validujú každý zvlášť.
      */
-    private const FORBIDDEN_SEQUENCES = ['&&', '||', '>>', '$(', '${', ';', '&', '`', '>', '<'];
+    /**
+     * `$'` je tu preto, že ANSI-C quoting vie zapísať znak číslom: `$'\x2eenv'` je
+     * `.env` a žiadny deny vzor na `.env` by ho nevidel. Legitímny príkaz konzoly ho
+     * nepotrebuje, takže je jednoduchšie ho zakázať než dekódovať.
+     */
+    private const FORBIDDEN_SEQUENCES = ['&&', '||', '>>', '$(', '${', "$'", ';', '&', '`', '>', '<'];
 
     /**
      * Verdikt klietky: `null` = príkaz smie bežať, inak veta PRE MODEL o tom, čo
@@ -85,8 +90,21 @@ final class CommandCage
 
         // Nad celým príkazom, teda aj nad segmentmi rúry a aj nad tým, čo by
         // `allow` pustilo. Toto je jediné pravidlo, ktoré sa nedá prehlasovať.
+        //
+        // Testuje sa nad ODÚVODZOVKOVANOU podobou, a to je bezpečnostná oprava, nie
+        // kozmetika: `cat ".env"` prešlo, pretože znak pred `.env` bola úvodzovka,
+        // nie začiatok/medzera/lomka — a shell úvodzovky pri behu strhne a prečíta
+        // reálny `.env`. Overené 19. 8. 2026 spustením: príkaz vrátil 2237 B vrátane
+        // APP_KEY, DB_PASSWORD a všetkých tokenov, teda naraz rozbil všetky štyri
+        // autentifikačné okruhy appky.
+        //
+        // Falošné pozitíva tým vzniknúť môžu (`rg "rm -rf" docs` narazí na deny vzor
+        // pre `rm`), ale to je smer, ktorým klietka smie zlyhať: odmietnutý užitočný
+        // príkaz je otrava, prepustený `cat .env` je únik tajomstiev.
+        $dequoted = $this->dequote($command);
+
         foreach ((array) config('hades.console.bash.deny', []) as $pattern) {
-            if (preg_match((string) $pattern, $command) === 1) {
+            if (preg_match((string) $pattern, $command) === 1 || preg_match((string) $pattern, $dequoted) === 1) {
                 return 'Refused: this command is on the shell deny list and cannot be enabled by anyone. '
                     .'Destructive commands, shells, `sudo`, docker, writing git operations and `.env` are '
                     .'permanently out of reach — pick a different way to get the information.';
@@ -193,6 +211,17 @@ final class CommandCage
         $segments[] = $current;
 
         return $segments;
+    }
+
+    /**
+     * Podoba príkazu bez úvodzovkových znakov — LEN pre porovnanie s deny zoznamom.
+     *
+     * Nespúšťa sa; je to druhý pohľad na ten istý reťazec, aby sa vzor nedal
+     * schovať za úvodzovky (`cat ".env"`, `cat '.env'`, `cat ".e""nv"`).
+     */
+    private function dequote(string $command): string
+    {
+        return str_replace(['"', "'"], '', $command);
     }
 
     /** Nezavretá úvodzovka: shell by na ňu čakal, takže príkaz odmietame vopred. */

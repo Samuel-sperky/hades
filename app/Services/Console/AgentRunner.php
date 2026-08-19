@@ -429,7 +429,18 @@ final class AgentRunner
      */
     private function preapproved(ConsoleThread $thread, ConsoleToolCall $call): bool
     {
-        if ($thread->auto_accept) {
+        $narrow = $this->registry->narrowsAllowance($call->name);
+
+        // Plošné `auto_accept` NEPLATÍ na tool, ktorý si vyžaduje úzky kľúč.
+        //
+        // Bez tejto podmienky sa celé zúženie dalo vypnúť z druhej strany: človek
+        // klikne „Povoliť vždy" na `mind_learn`, tým sa zapne `auto_accept` na
+        // vlákno, a od tej chvíle by sa v ňom vykonal KAŽDÝ príkaz shellu bez
+        // jediného potvrdenia. Presne ten scenár, proti ktorému
+        // {@see Tools\NarrowsAllowance} vznikla, len opačným smerom — a dosiahnuteľný
+        // aj programovo, lebo `PATCH /api/console/cli/threads/{uuid}` prijíma
+        // `auto_accept`. Našiel to review 19. 8. 2026 a overil reflexiou.
+        if ($thread->auto_accept && ! $narrow) {
             return true;
         }
 

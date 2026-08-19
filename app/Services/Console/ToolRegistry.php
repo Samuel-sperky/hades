@@ -15,6 +15,7 @@ use App\Services\Console\Tools\MindRecallTool;
 use App\Services\Console\Tools\MindRenameTool;
 use App\Services\Console\Tools\NarrowsAllowance;
 use App\Services\Console\Tools\ReadFileTool;
+use App\Services\Console\Tools\SafeUnattended;
 use App\Services\Console\Tools\BashTool;
 use App\Services\Console\Tools\ToolRefusal;
 use App\Services\Console\Tools\WriteFileTool;
@@ -147,6 +148,17 @@ class ToolRegistry
     public function narrowsAllowance(string $name): bool
     {
         return $this->has($name) && $this->tools[$name] instanceof NarrowsAllowance;
+    }
+
+    /**
+     * Smie sa tento zápisový tool vykonať aj bez človeka pri behu?
+     *
+     * Používa to {@see HeadlessRunner} pri skladaní sady pre programové a plánované
+     * behy. Neznámy tool nesmie — fail-closed.
+     */
+    public function safeUnattended(string $name): bool
+    {
+        return $this->has($name) && $this->tools[$name] instanceof SafeUnattended;
     }
 
     /**

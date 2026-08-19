@@ -16,7 +16,7 @@ use App\Services\Console\ToolResult;
  * Náhľad je jediné miesto v tomto tooli, ktoré je po slovensky: číta ho človek,
  * nie model.
  */
-final class WriteReportTool extends BaseTool
+final class WriteReportTool extends BaseTool implements SafeUnattended
 {
     /** Koľko obsahu ukázať v náhľade — na rozhodnutie „áno/nie" stačí začiatok. */
     private const PREVIEW_CHARS = 400;

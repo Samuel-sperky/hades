@@ -363,4 +363,88 @@ class ConsoleBashToolTest extends TestCase
         $this->assertSame('npm run build', $this->cage()->pattern('npm run build'));
         $this->assertSame('npm run watch', $this->cage()->pattern('npm run watch'));
     }
+
+    // ---- 9. čo našla bezpečnostná prehliadka 19. 8. 2026 ---------------------
+
+    /**
+     * `.env` sa nesmie dať prečítať ani v úvodzovkách.
+     *
+     * Toto je najvážnejší nález celého šprintu: `cat ".env"` PREŠLO, pretože znak
+     * pred bodkou bola úvodzovka, nie začiatok/medzera/lomka — a shell úvodzovky pri
+     * behu strhne. Overené spustením: príkaz vrátil 2237 B vrátane APP_KEY,
+     * DB_PASSWORD a všetkých tokenov, čím naraz padli všetky štyri autentifikačné
+     * okruhy appky (APP_KEY → falšovanie session cookie → odomknutý dashboard).
+     */
+    public function test_env_cannot_be_read_through_quotes(): void
+    {
+        foreach ([
+            'cat .env',
+            'cat ".env"',
+            "cat '.env'",
+            'head ".env"',
+            'grep -rn APP_KEY ".env"',
+            'cat ".e""nv"',
+            'tail -5 "/var/www/html/.env"',
+        ] as $command) {
+            $this->assertNotNull(
+                $this->cage()->refusalFor($command),
+                "Príkaz `{$command}` sa nesmie dostať k .env"
+            );
+        }
+    }
+
+    /** ANSI-C quoting (`$'…'`) vie zapísať znak číslom, teda schovať `.env`. */
+    public function test_ansi_c_quoting_is_refused(): void
+    {
+        $this->assertNotNull($this->cage()->refusalFor("cat $'\\x2eenv'"));
+    }
+
+    /**
+     * Git smie ukázať pracovný strom, nie históriu súborov.
+     *
+     * `docs/BEZPECNOST.md` hovorí, že v histórii tohto repa žije natvrdo zapísaný
+     * bcrypt hash basic-auth hesla a starý MCP token, a že ich treba považovať za
+     * kompromitované. Súborové tooly do histórie nevidia, takže je to plocha, ktorú
+     * by pridal výlučne shell.
+     */
+    public function test_git_cannot_dump_file_history(): void
+    {
+        $this->assertNull($this->cage()->refusalFor('git status'));
+        $this->assertNull($this->cage()->refusalFor('git diff'));
+        $this->assertNull($this->cage()->refusalFor('git diff --stat'));
+        $this->assertNull($this->cage()->refusalFor('git log --oneline'));
+
+        foreach ([
+            'git log -p',
+            'git log -p -- docker/Caddyfile',
+            'git show HEAD:composer.json',
+            'git show HEAD',
+            'git cat-file -p HEAD',
+            'git archive HEAD',
+        ] as $command) {
+            $this->assertNotNull(
+                $this->cage()->refusalFor($command),
+                "Príkaz `{$command}` vie vypísať obsah z histórie a nesmie prejsť"
+            );
+        }
+    }
+
+    /** `sort -o <súbor>` zapisuje — a `sort` mal kľúč iba `sort`. */
+    public function test_sort_is_not_on_the_allowlist_because_dash_o_writes(): void
+    {
+        $this->assertNotNull($this->cage()->refusalFor('sort -o app/Models/Node.php storage/logs/laravel.log'));
+        $this->assertNotNull($this->cage()->refusalFor('sort -k2 storage/logs/laravel.log'));
+    }
+
+    /** Inštalácia balíka je spustenie cudzieho kódu (`postinstall`). */
+    public function test_package_installation_is_refused(): void
+    {
+        $this->assertNotNull($this->cage()->refusalFor('npm install evil-pkg'));
+        $this->assertNotNull($this->cage()->refusalFor('npm ci'));
+        $this->assertNotNull($this->cage()->refusalFor('composer install'));
+
+        // čítanie o balíkoch zostáva
+        $this->assertNull($this->cage()->refusalFor('npm ls --depth=0'));
+        $this->assertNull($this->cage()->refusalFor('composer show'));
+    }
 }

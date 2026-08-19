@@ -43,5 +43,5 @@ Vyžaduje:
 ## Súbory
 
 - `main.mjs` — hlavný proces
-- `preload.mjs` — most do DOM s contextBridge
+- `preload.cjs` — most do DOM s contextBridge (CJS zámerne: ESM preload sa v sandboxe nenačíta)
 - `package.json` — dependencies a metadata

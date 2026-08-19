@@ -5,6 +5,7 @@ namespace App\Services\Console;
 use App\Http\Controllers\Console\RunController;
 use App\Models\ConsoleThread;
 use App\Services\Console\Tools\ConsoleTool;
+use App\Services\Console\Tools\SafeUnattended;
 use App\Services\Llm\ProviderFactory;
 
 /**
@@ -115,7 +116,13 @@ final class HeadlessRunner
     {
         return $this->readOnly ??= new ToolRegistry(array_values(array_filter(
             array_map(static fn (string $class): ConsoleTool => app($class), ToolRegistry::TOOLS),
-            static fn (ConsoleTool $tool): bool => ! $tool->isWrite(),
+            // `isWrite()` neznamená „mení dáta", ale „ťah sa zaparkuje a čaká na
+            // človeka" — a to je presne to, čo tu nesmie nastať. Tool označený
+            // {@see SafeUnattended} zapisuje len do svojho vlastného miesta
+            // (`storage/app/reports`), takže sa vykonať smie: bez neho by nočný
+            // rozvrh nemal ako vyrobiť report, čo je jeho jediný zmysluplný výstup,
+            // a kontrakt §4 to sľubuje.
+            static fn (ConsoleTool $tool): bool => ! $tool->isWrite() || $tool instanceof SafeUnattended,
         )));
     }
 

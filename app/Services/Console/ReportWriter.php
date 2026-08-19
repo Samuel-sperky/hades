@@ -39,7 +39,14 @@ final class ReportWriter
     private const FORBIDDEN_TAGS = ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'];
 
     /** Atribúty, v ktorých môže byť schéma spúšťajúca kód. */
-    private const URL_ATTRIBUTES = ['href', 'src'];
+    /**
+     * `xlink:href` je tu preto, že SVG odkaz ho používa namiesto `href`, takže
+     * `<svg><a xlink:href="javascript:…">` prešiel pôvodným zoznamom nedotknutý.
+     * Dnes to CSP v {@see \App\Http\Controllers\Console\ReportController} zastaví,
+     * ale táto vrstva existuje presne pre prípad, že CSP vypadne (prepisujúca proxy,
+     * staršie WebView) — takže nesmie tvrdiť viac, než robí.
+     */
+    private const URL_ATTRIBUTES = ['href', 'src', 'xlink:href', 'srcset', 'poster', 'formaction'];
 
     /**
      * Vytvorí report a vráti jeho riadok.
