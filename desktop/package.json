@@ -1,0 +1,17 @@
+{
+  "name": "hades-console",
+  "version": "1.0.0",
+  "description": "Desktop console for Hades AI-mind",
+  "private": true,
+  "main": "main.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "marketing@sperky-eshop.sk",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^32.0.0"
+  }
+}
