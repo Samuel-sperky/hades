@@ -135,6 +135,86 @@ naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva r�
 + 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
 hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
+## Konzola vedomia
+
+Samostatné rozhranie na `/console` (vlákno na `/console/<uuid>`), nie obrazovka v raile grafu.
+Frontend je opäť **natívne ES moduly bez build stepu** (`public/js/console/*`), backend je
+`app/Services/Console/`. Model beží lokálne (Ollama, CPU ~9 tok/s) alebo na Anthropicu, keď je
+v `.env` kľúč — prepínač v hlavičke berie len **dostupných** poskytovateľov a chýbajúceho
+pomenuje aj s premennou, ktorá mu chýba (`missingProviders()` v `models.js`).
+
+**Protokol behu je NDJSON, nie SSE**, a to zámerne: `EventSource` nevie poslať CSRF hlavičku,
+takže by endpoint musel opustiť chránený okruh. Dve pravidlá, na ktorých stojí klient aj TUI:
+ťah končí **presne jedným** rámcom `end` alebo `error`, a rámec `permission` ťah ukončí **bez
+`end`** — beh je zaparkovaný a dostreamuje ho `/decide`. Neznámy typ rámca sa **musí ticho
+ignorovať**, inak sa protokol nedá rozširovať.
+
+### Tooly a povolenia
+
+Register je `ToolRegistry::TOOLS` a jeho **poradie nie je abeceda**: slabý model siaha po tom,
+čo je vyššie, takže čítanie je vpredu a `bash` je úplne posledný. `isWrite() === true` znamená
+„beh sa zaparkuje a čaká na človeka"; neznámy tool je zápisový (fail-closed).
+
+`bash` beží v **klietke** (`CommandCage`): najprv gramatika (reťazenie, presmerovanie a
+substitúcia sú odmietnuté — `ls; rm -rf x` je „ls plus čokoľvek"), potom `deny` nad celým
+príkazom, potom **biely zoznam** nad každým segmentom rúry zvlášť. Zoznamy sú v
+`config/hades.php` → `hades.console.bash`. Biely, nie čierny: čierny sa obíde čímkoľvek, na čo
+autor nepomyslel.
+
+**„Povoliť vždy" sa pri shelle zúži na vzor príkazu, nie na celé vlákno.** Pôvodne
+`allow_always` zapínalo `auto_accept`, takže jedno kliknutie pri `php artisan test` by v tom
+vlákne povolilo aj `mind_delete`. Tool, ktorý je na plošné povolenie priširoký, implementuje
+`NarrowsAllowance` a povolenie sa uloží do `console_threads.allowances` len na jeho kľúč.
+Marker interface a nie metóda v `ConsoleTool`: fake tooly v `ConsoleRunTest` implementujú
+kontrakt priamo, takže nová metóda by ich rozbila.
+
+`write_report` píše HTML do `storage/app/reports/<uuid>.html` a servuje ho
+`/console/reports/<uuid>` za `auth.ui`. Obsah píše **model** a stránka žije v tom istom
+origine ako session, takže obrana je **dvojitá**: sanitizácia pri zápise (DOMDocument, nie
+regex — `Str::markdown()` blokový `<script>` zaescapuje, ale `<div onclick>` prepustí) a CSP
+pri servovaní, ktorá nepustí žiadny skript.
+
+### Dva okruhy, a ten rozdiel je zámer
+
+| Okruh | Kto | Ochrana | Tooly |
+|---|---|---|---|
+| `/api/console/*` | prehliadač | `auth.ui` + session + CSRF | plný register |
+| `/api/console/cli/*` | terminál, desktop | `auth.console`, **loopback-only**, bez session/CSRF | plný register |
+| `/api/console/headless` | skript, MCP, scheduler | `auth.console` | **len čítacie** |
+
+`auth.console` odmieta všetko, čo prišlo cez proxy (`X-Forwarded-*`), a **to je jeho podstata**:
+Caddy na verejnej ceste hlavičku s UI tokenom do requestov vkladá, takže bez tej kontroly by
+bol ngrok tunel plne autentizovaný vstup **bez CSRF** k tooolom, čo spúšťajú príkazy.
+`ConsoleGuardTest` prechádza router a nepustí routu konzoly, ktorá nie je ani v jednom okruhu
+— ani programovú routu, ktorá by si niesla session.
+
+Headless má register **len na čítanie** a nie je to opatrnosť: zápis ťah zaparkuje a čaká na
+človeka, ktorý v skriptovanom behu nie je, takže vlákno by zostalo trvalo zablokované.
+
+### Klienti
+
+`bin/hades/` je terminálový klient — **žiadna npm závislosť**, čisté Node ESM. `hades` je
+interaktívny, `hades run "…"` jeden ťah, `hades run "…" --json` ide cez headless a na stdout
+vypíše **iba JSON** (dá sa to piecť do `jq`), `hades doctor` povie, odkiaľ vzal adresu a token
+(token nikdy nevypisuje). Token hľadá: env → `~/.hades/config.json` → **`.env` projektu**
+(stúpa nahor po priečinok s `artisan` aj `.env`) — tretia cesta je hlavná, aby ho používateľ
+nemusel kopírovať do druhého súboru.
+
+Dve pasce, ktoré tam už sú vyriešené a netreba na ne naletieť znova: `readline` prepne stdin na
+utf8, takže klávesy prichádzajú ako **string, nie Buffer** (porovnanie `chunk[0] === 27` by
+netrafilo nikdy a „Esc zamietne" by bolo napísané a mŕtve), a `readline.pause()` zastaví aj
+podkladový stream, takže pripojenie druhého `data` listenera ho **nerozbehne** — stdin musí mať
+v každom okamihu presne jedného vlastníka.
+
+`desktop/` je Electron obal nad `/console`, nie druhá appka. Token vkladá **ako hlavičku
+scopovanú na jeden origin**, nie do URL — v URL by prežil v histórii okna a v access logu.
+
+### Plánované behy
+
+`console_schedules` + `php artisan mind:console-schedules` (v scheduleri každú minútu,
+`withoutOverlapping`). Rozvrh vytvorený programovo je **vždy vypnutý** — rozvrh, ktorý sa sám
+rozbehne každú minútu, je spálené CPU, o ktorom človek nevie. Zapína sa `--enable=<uuid>`.
+
 ## Overenie UI
 
 Docker servuje repo z jeho koreňa, takže **worktree na 8080 neuvidíš**. Postup,
@@ -185,6 +265,26 @@ docker compose exec -w /var/www/html/.claude/worktrees/<vetva> app \
 nie sú normalizované — na tom prvá verzia tichom padla). DB je `hades_test`; názov
 **musí** končiť na `_test`, `Tests\TestCase` to overuje a inak beh odmietne.
 
+**Prepísaný autoloader je len POLOVICA opravy.** Aplikácia sa aj tak bootovala z hlavného
+checkoutu: `Illuminate\Foundation\Testing\TestCase::createApplication()` robí
+`require Application::inferBasePath().'/bootstrap/app.php'` a `inferBasePath()` odvodí koreň
+z polohy autoloadera — teda z vendor symlinku, teda z **hlavnej vetvy**. Config, views, routy
+ani migrácie preto neboli tvoje. Prejaví sa to tak, že sada je zelená alebo červená podľa
+toho, čo práve robí **iná session**: 19. 8. 2026 padol `ConsoleGuardTest` na
+`assertSee('Konzola vedomia')`, hoci ten titulok vo worktree je — prepísala ho druhá vetva
+u seba. Tá istá slepota skryla celý `hades.console.bash` blok z configu.
+`worktree-autoload.php` preto nastaví `$_ENV['APP_BASE_PATH']` na worktree.
+
+**Dve sessions naraz nesmú testovať tú istú DB.** `RefreshDatabase` tabuľky zahadzuje, takže
+dva paralelné behy nad `hades_test` si truncujú tabuľky pod sebou a padne to ako chyba kódu.
+Preto sú v repe aj `tests/phpunit.klient.xml`, `.klient2.xml`, `.klient3.xml` — tri scratch
+databázy (`hades_klient_test`, `hades_klient2_test`, `hades_klient3_test`), jedna na agenta.
+Nová DB sa zakladá rootom (appka `CREATE DATABASE` nemá): `docker exec hades-mariadb-1 …`.
+
+Testy CLI klienta sú v Node: `cd bin/hades && node --test --test-timeout=20000` (45 testov).
+`node --test bin/hades/test/` na Node 24 vo Windows **nefunguje** — argument-priečinok
+vyhodnotí ako súbor; buď glob, alebo `node --test` bez argumentu z `bin/hades`.
+
 ## Pasca: overuj IDENTITU preview servera
 
 Harness beží na `127.0.0.1:8091` (predtým 8099 — ten zabral kontejner
@@ -224,3 +324,9 @@ obsahuje `X-Powered-By: PHP`), meriaš cudziu appku a všetky čísla sú bezcen
 
 Zmeny tu drž **aditívne** — `mind_recall` volajú živé sessions. `recall()` vracia
 `Collection<Node>` pre ChatController; metadáta pre AI pridáva `recallWithMeta()`.
+
+Od 19. 8. 2026 sú v `/mcp` aj tooly, ktorými **iná AI ovláda konzolu**: `console_run` (jeden ťah
+agenta, read-only tooly, vracia `thread`, ktorým sa dá pokračovať), `console_threads`,
+`console_result` a `console_schedules`. Sú to jediné mind tooly, ktoré niečo *spúšťajú*, takže
+majú vlastný strop a `console_result` nevracia rolu `system` — tá istá smernica na každom vlákne
+by v jednom čítaní bola väčšia než celá konverzácia.

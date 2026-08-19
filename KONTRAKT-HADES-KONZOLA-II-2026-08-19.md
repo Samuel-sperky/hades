@@ -145,4 +145,44 @@ Electron), review agent (`effort: high`) vrátane security prehliadky, dokument�
 
 ## 9. Výsledok
 
-_(dopíše sa po dobehnutí šprintu)_
+**Stav 19. 8. 2026:** vetva `feat/hades-klient` (worktree), 5 commitov nad `9eeaf28`,
+pushnutá na origin. **448 PHP testov zelených** (baseline 369, teda +79) a **45 Node
+testov** klienta. Sada worktree od tohto šprintu naozaj testuje worktree.
+
+| Vlna | Stav | Čo z toho vzniklo |
+|---|---|---|
+| W5 | hotové, nie mnou | konzolu commitla druhá session ako `9eeaf28` |
+| W6 | **hotové** | `CommandCage` + `BashTool` (16 testov), `ReportWriter` + `write_report` + `/console/reports/<uuid>` (14 testov), karty v UI, úzke povolenia (`NarrowsAllowance`, 6 testov) |
+| W7 | vypustené | vlastní iná vetva (orchestrácia cez `claude.exe`) |
+| W8 | **hotové, menšie než odhad** | prepínač providera už existoval; doplnené len pomenovanie nedostupného providera. Bench ďalších modelov sa nerobil |
+| W9 | **hotové** | `auth.console` (loopback-only, bez CSRF), `HeadlessRunner` (read-only register), `/api/console/headless`, `/api/console/cli/*`, MCP `console_run`/`console_threads`/`console_result`/`console_schedules`, plánované behy (17 + 8 testov) |
+| W10 | odložené | patrí do bridgeu druhej vetvy |
+| W11 | **hotové** | `bin/hades/` (TUI + headless, bez závislostí, 45 testov), `desktop/` (Electron obal) |
+| W12 | **otvorené** | z pôvodnej vlny 4 už bežalo všetko okrem jedného: `mind:rewire` páruje uzly **TF-IDF kosínusom, nie embeddingmi**, hoci 2672 vektorov v DB je |
+| W13 | **hotové** | review + adversariálna bezpečnostná prehliadka, dokumentácia, zápis do Hadesa |
+
+### Čo sa počas behu ukázalo inak, než kontrakt čakal
+
+1. **Kolízia dvoch sessions.** Druhá session pracovala v tom istom pracovnom priečinku na
+   tej istej vetve a jej schválený kontrakt už vlastnil orchestráciu, bridge a redizajn UI.
+   Preto worktree a preto W7/W10 vypadli (rozhodnutie #16).
+2. **W8 a W12 boli z väčšiny hotové.** Prepínač providera fungoval a `mind:decay`,
+   `mind:rewire`, `mind:rollup`, `mind:digest`, `mind:automerge` bežia nočne od skorších vĺn.
+   Odhad preto klesol z 2,4 M na ~1,2 M ešte pred stavbou.
+3. **Sada worktree netestovala worktree.** Viď `tests/worktree-autoload.php` — bez
+   `APP_BASE_PATH` boli config, views, routy a migrácie z cudzej vetvy.
+4. **Bezpečnostné zúženie, ktoré kontrakt nepredpisoval.** Plošné „povoliť vždy" by po
+   pridaní shellu znamenalo, že súhlas s `php artisan test` povolí aj `mind_delete`.
+
+### Čo NIE JE overené
+
+**Preklik konzoly v prehliadači sa nestal.** Docker servuje hlavnú vetvu na `:8080`, takže
+routy tejto vetvy tam nie sú, a pokus spustiť vlastný kontejner z toho istého obrazu na
+`:8092` zamietol klasifikátor. Karty toolov, diff a permission prompt sú teda overené
+testami a čítaním kódu, **nie na obrazovke**. Electron okno sa z toho istého dôvodu tiež
+nespúšťalo — overený je len toolchain (`electron --version`) a syntax.
+
+### Spend
+
+Agenti: **1 099 k** tokenov (W6 425 k · W9 307 k · W11 367 k) + brána W13. Proti odhadu
+520 k pre W6+W9 je to +40 %; celkovo pod schváleným stropom 2,4 M, nad revidovaným 1,2 M.
