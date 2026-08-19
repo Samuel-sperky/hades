@@ -2,7 +2,7 @@
    HADES — AI mind design system · AURA-LIGHT
    "A precision loupe over a living network on warm paper."
    Light theme (default) · Geist / Geist Mono / Playfair · Material Symbols Rounded
-   ONE teal accent = interactive chrome · gold = reserved brand/core moment only
+   ONE amethyst accent = interactive chrome · gold = reserved brand/core moment only
    Retheme of token VALUES + canvas literals — all IDs/classes/JS hooks preserved.
    ============================================================================ */
 
@@ -113,7 +113,7 @@
     --line-soft: #f0e9ee;                 /* --line-soft */
     --top-rim: rgba(255, 255, 255, .7);   /* faint white inset highlight for raised white panels */
     --hover-fill: rgba(16, 29, 27, .05);  /* ink @5% neutral hover wash */
-    --surface-subtle: #eef9f9;            /* --accent-tint for chips/badges/track */
+    --surface-subtle: #f4eefc;            /* --accent-tint for chips/badges/track */
     --scroll-thumb: rgba(86, 105, 100, .32); /* --muted @32% */
 
     /* ---- text roles (Aura ink ramp) ---- */
@@ -121,29 +121,29 @@
     --text-secondary: #2d3a38;            /* --ink-soft (11.3:1) */
     --muted: #566964;                     /* --muted (5.3:1, passes AA) */
     --muted-strong: #2d3a38;
-    --on-accent: #ffffff;                 /* white on #03797e, passes AA at 13px/600 */
+    --on-accent: #ffffff;                 /* white on #6d3fb5, 6,93:1, passes AA at 13px/600 */
 
-    /* ---- Aura teal accent ramp (ONE ramp, chrome only) ---- */
-    --accent-300: #05bcc4;                /* --accent2, light hover ink */
-    --accent-400: #05bcc4;
-    --accent: #03797e;                    /* --accent */
-    --accent-600: #05666a;                /* pressed/darker accent FILL */
-    --accent-ink: var(--accent-600);      /* TEXT na akcentovom tinte (5.8:1 na --accent-soft) */
-    --accent-rgb: 3, 121, 126;            /* JS-facing triplet: slider fill, msg.me, rings */
-    --accent-soft: #d6f5f6;               /* --accent-soft, solid tint for active pills */
-    --accent-softer: #eef9f9;             /* --accent-tint */
-    --accent-press: #a9dedf;              /* --accent-line, pressed */
-    --border-accent: #a9dedf;             /* --accent-line */
+    /* ---- amethyst accent ramp (ONE ramp, chrome only) ---- */
+    --accent-300: #a97ded;                /* svetlý amethyst, hover ink */
+    --accent-400: #a97ded;
+    --accent: #6d3fb5;                    /* amethyst — 6,36:1 na paperi (teal dával 4,77) */
+    --accent-600: #58309a;                /* pressed/darker accent FILL */
+    --accent-ink: var(--accent-600);      /* TEXT na akcentovom tinte (6,98:1 na --accent-soft) */
+    --accent-rgb: 109, 63, 181;            /* JS-facing triplet: slider fill, msg.me, rings */
+    --accent-soft: #e9dcfa;               /* --accent-soft, solid tint for active pills */
+    --accent-softer: #f4eefc;             /* --accent-tint */
+    --accent-press: #c9b0ee;              /* --accent-line, pressed */
+    --border-accent: #c9b0ee;             /* --accent-line */
     /* Alfa .28 dávala voči --surface-2 len 1,48:1, WCAG 2.4.11 žiada 3:1 pre
        indikátor fokusu. Nie je to regresia redizajnu (token bol taký aj predtým),
        ale pribudli fokusovateľné prvky, takže na ňom teraz záleží. */
-    --focus-ring: 0 0 0 3px rgba(3, 121, 126, .85);
-    /* glows are now soft teal-tinted RINGS/SHADOWS, never additive blooms */
-    --glow-accent: 0 1px 2px rgba(15, 40, 38, .05), 0 6px 18px -10px rgba(3, 121, 126, .30);
-    --glow-accent-lg: 0 8px 24px -12px rgba(3, 121, 126, .28);
+    --focus-ring: 0 0 0 3px rgba(109, 63, 181, .85);
+    /* glows are now soft amethyst-tinted RINGS/SHADOWS, never additive blooms */
+    --glow-accent: 0 1px 2px rgba(15, 40, 38, .05), 0 6px 18px -10px rgba(109, 63, 181, .30);
+    --glow-accent-lg: 0 8px 24px -12px rgba(109, 63, 181, .28);
 
-    /* ---- KÁNON AKCENTU: zlatá je VYHRADENÁ, teal je PRIMÁRNY ----
-       Teal (#05bcc4 / #03797e) nesie KAŽDÝ interaktívny stav — hover, fokus, aktívny
+    /* ---- KÁNON AKCENTU: zlatá je VYHRADENÁ, amethyst je PRIMÁRNY ----
+       Amethyst (#c4a2f5 / #6d3fb5) nesie KAŽDÝ interaktívny stav — hover, fokus, aktívny
        prvok, výber na plátne. Zlatá nesie IBA dve veci: znak značky a jadro vedomia.
 
        Dôvod je kompozičný, nie estetický: jadro je na plátne jediný sýty PLNÝ prvok
@@ -270,7 +270,7 @@
     --mono: "Geist Mono", ui-monospace, "SFMono-Regular", "Cascadia Code", monospace;
     --serif: "Playfair Display", Georgia, serif;
 
-    /* ---- elevation ladder — soft teal-tinted, low-opacity, negative-spread ---- */
+    /* ---- elevation ladder — soft ink-tinted, low-opacity, negative-spread ---- */
     --elev-1: 0 1px 2px rgba(15, 40, 38, .05), inset 0 1px 0 var(--top-rim);
     --elev-2: 0 1px 2px rgba(15, 40, 38, .05), 0 8px 24px -14px rgba(15, 40, 38, .12), inset 0 1px 0 var(--top-rim);
     --elev-3: 0 2px 4px rgba(15, 40, 38, .06), 0 24px 56px -22px rgba(15, 40, 38, .20), inset 0 1px 0 var(--top-rim);
@@ -327,13 +327,13 @@
 
     /* ======================================================================
        APOLLO INTEGRATION — brain-indexer tokens (Apollo discipline, Aura hue).
-       Layered neutral surfaces, certainty ramp, teal heat ramp, dashboard type.
+       Layered neutral surfaces, certainty ramp, amethyst heat ramp, dashboard type.
        Light values here; dark override mirrors them in :root[data-theme="dark"].
        ====================================================================== */
 
     /* ---- layered neutral surfaces (one step above paper/white) ---- */
     --surface-raised: #f1ebef;            /* fill above white panels: kpi inner, shimmer base */
-    --track: #ece4ea;                     /* inset track for dbar / progress (neutral, de-tealed) */
+    --track: #ece4ea;                     /* inset track for dbar / progress (neutral, bez akcentu) */
 
     /* ---- certainty ramp (semantic, reads >=4.5:1 on paper AND white)
            overene 4.88 · hypoteza 5.30 · pasca 4.98 · none 5.35 on paper ---- */
@@ -347,12 +347,14 @@
     --cert-pasca-soft: rgba(192, 57, 47, .12);
     --cert-none-soft: rgba(86, 105, 100, .10);
 
-    /* ---- activity heat ramp (0 = empty neutral, 1..4 = teal saturation climb) ---- */
-    --heat-0: #e9f1f1;                    /* empty cell — neutral-teal whisper */
-    --heat-1: #b6e0e1;
-    --heat-2: #6fc3c5;
-    --heat-3: #189aa0;
-    --heat-4: #036d72;                    /* densest — deep accent teal (5.61:1 on paper) */
+    /* ---- activity heat ramp (0 = empty neutral, 1..4 = amethyst saturation climb)
+       Luminancia každého stupňa je zhodná s pôvodnou tealovou rampou (odchýlka
+       < 0,002), takže heatmapa nesie presne tú istú hustotu — mení sa len tón. */
+    --heat-0: #f2eef5;                    /* empty cell — neutral-amethyst whisper */
+    --heat-1: #e1d3ee;
+    --heat-2: #caa9e6;
+    --heat-3: #ab72dc;
+    --heat-4: #8734cf;                    /* densest — deep accent amethyst (5,63:1 on paper) */
 
     /* ---- dashboard type scale ----
        Tri stupne odpočtu, aby dashboard mal hierarchiu a nie šesť rovnako veľkých
@@ -406,24 +408,24 @@
     --muted: #8a9b98;
     --muted-strong: #b9c7c4;
     --on-accent: #0e1413;
-    --accent-300: #05bcc4;
-    --accent-400: #05bcc4;
-    --accent: #05bcc4;
-    /* VLNA W3b: --accent-600 je (po prepnutí textových miest na --accent-ink) už
-       LEN hover/active VÝPLŇ. Ako #03797e bola tmavšia než --accent, čo je na
-       tmavej téme obrátený hover — a --on-accent na nej merané 3,58:1 (< 4,5).
-       Hover na tmavej preto rozsvecuje: --on-accent na tejto výplni = 9,2:1. */
-    --accent-600: #2fcbd2;
-    /* na tmavej by teal ako TEXT dal ~3.5:1, preto text svieti cez --accent-300 */
-    --accent-ink: var(--accent-300);      /* 5.7:1 na --accent-soft nad tmavým panelom */
-    --accent-rgb: 5, 188, 196;
-    --accent-soft: rgba(5, 188, 196, .16);
-    --accent-softer: rgba(5, 188, 196, .10);
-    --accent-press: rgba(5, 188, 196, .24);
-    --border-accent: rgba(5, 188, 196, .45);
-    --focus-ring: 0 0 0 3px rgba(5, 188, 196, .62);   /* .32 dávalo 2,02:1, viď svetlú tému */
-    --glow-accent: 0 1px 2px rgba(0, 0, 0, .30), 0 6px 18px -10px rgba(5, 188, 196, .35);
-    --glow-accent-lg: 0 8px 24px -12px rgba(5, 188, 196, .30);
+    --accent-300: #d0b8f8;
+    --accent-400: #d0b8f8;
+    --accent: #c4a2f5;
+    /* --accent-600 je (po prepnutí textových miest na --accent-ink) už LEN
+       hover/active VÝPLŇ. Na tmavej téme preto ROZSVECUJE, nie stmavuje: tmavšia
+       výplň by bola obrátený hover a --on-accent by na nej spadol pod 4,5:1.
+       Namerané na tejto výplni: --on-accent = 11,89:1. */
+    --accent-600: #d9c6fa;
+    /* text na tmavej svieti cez --accent-300, aby držal odstup od výplne --accent */
+    --accent-ink: var(--accent-300);      /* 7,17:1 na --accent-soft nad tmavým panelom */
+    --accent-rgb: 196, 162, 245;
+    --accent-soft: rgba(196, 162, 245, .16);
+    --accent-softer: rgba(196, 162, 245, .10);
+    --accent-press: rgba(196, 162, 245, .24);
+    --border-accent: rgba(196, 162, 245, .45);
+    --focus-ring: 0 0 0 3px rgba(196, 162, 245, .62);   /* .32 dávalo 2,02:1, viď svetlú tému */
+    --glow-accent: 0 1px 2px rgba(0, 0, 0, .30), 0 6px 18px -10px rgba(196, 162, 245, .35);
+    --glow-accent-lg: 0 8px 24px -12px rgba(196, 162, 245, .30);
     --gold-text: #d8b878;
     /* --gold-soft tu nie je: zlatá VÝPLŇ neexistuje, viď kánon akcentu v :root */
     --success: #34d399;
@@ -452,7 +454,7 @@
        #8f5a12). Odsunúť ho od značkovej zlatej sa nedá bez toho, aby narazil do
        --warn (#f59e0b, hue 70° vs 79°), teda by sa zamenila jedna kolízia za horšiu:
        „hypotéza" by začala vyzerať ako „upozornenie". Zostáva, a je to zmeraných
-       9,21:1 na paneli. Interaktívne stavy chipu istoty sú tealové, tak ako všade. */
+       9,21:1 na paneli. Interaktívne stavy chipu istoty sú amethystové, tak ako všade. */
     --cert-hypoteza: #d8b878;             /* 9.21 on panel */
     --cert-pasca: #f07575;                /* 6.26 on panel */
     --cert-none: #9aa1ad;                 /* 6.73 on panel */
@@ -461,12 +463,12 @@
     --cert-pasca-soft: rgba(240, 117, 117, .16);
     --cert-none-soft: rgba(154, 161, 173, .14);
 
-    /* heat ramp — dark cells climb from a low neutral to bright accent cyan */
-    --heat-0: #1c2726;
-    --heat-1: #26504f;
-    --heat-2: #2f7d7f;
-    --heat-3: #3aa7ab;
-    --heat-4: #4fd0d4;                    /* 9.43 on panel */
+    /* heat ramp — dark cells climb from a low neutral to bright accent amethyst */
+    --heat-0: #28232c;
+    --heat-1: #593d72;
+    --heat-2: #8e5abc;
+    --heat-3: #b385dc;
+    --heat-4: #d3b0f2;                    /* 9,20:1 on panel */
 }
 
 /* ---------------------------------------------------------------------------
@@ -713,7 +715,7 @@ button.close:active { background: var(--accent-soft); }
 button.close:focus-visible { box-shadow: var(--focus-ring); }
 
 /* ---------------------------------------------------------------------------
-   LEFT RAIL (#rail) — crisp white slab, gold breathing core, teal active-pill
+   LEFT RAIL (#rail) — crisp white slab, gold breathing core, amethyst active-pill
    --------------------------------------------------------------------------- */
 #rail {
     position: fixed;
@@ -738,10 +740,11 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 
    VÝNIMKA KÁNONU, POMENOVANÁ NAHLAS: #brand-core je <button> (klik vycentruje graf),
    takže zlatá tu sedí na klikacom prvku. Nie je to porušenie: zlatá tu nesie IDENTITU
-   (znak), nie interaktívny STAV — a všetky jeho stavy sú tealové, viď
+   (jadro znaku; prstenec okolo neho je amethyst, tak ako v public/brand/), nie
+   interaktívny STAV — a všetky jeho stavy sú amethystové, viď
    #brand-core:focus-visible s --focus-ring nižšie. Rovnako .asleep: stmavená zlatá
    hlási „vedomie spí", teda stav ZNAČKY, nie stav ovládania. Keby sa naopak fokusový
-   ring urobil zlatým „aby ladil so znakom", kánon padne — teal musí vyhrať aj tu. */
+   ring urobil zlatým „aby ladil so znakom", kánon padne — amethyst musí vyhrať aj tu. */
 #brand-core {
     position: relative;
     color: var(--brand-gold);
@@ -848,7 +851,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     overflow: hidden;
     text-overflow: ellipsis;
 }
-/* denník unread dot — small teal marker on the destination */
+/* denník unread dot — small amethyst marker on the destination */
 #rail .rail-group button.dest .dot {
     position: absolute;
     top: 6px; right: 10px;
@@ -1055,7 +1058,7 @@ label {
 
 /* ---------------------------------------------------------------------------
    SLIDER — one shared custom treatment (#tl-range + settings sliders)
-   JS sets --pct on the element for the teal fill.
+   JS sets --pct on the element for the amethyst fill.
    --------------------------------------------------------------------------- */
 input[type="range"] {
     -webkit-appearance: none;
@@ -1153,7 +1156,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---------------------------------------------------------------------------
-   BADGE + SWATCH (node-type identity via colored dot, never teal chrome)
+   BADGE + SWATCH (node-type identity via colored dot, never amethyst chrome)
    --------------------------------------------------------------------------- */
 /* Mono readout ako ostatné technické popisky, ale VERZÁLKAMI — preto vlastné
    --ls-mono-caps namiesto --ls-mono zo spoločnej skupiny vyššie; .badge preto
@@ -1454,7 +1457,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #zoomctl button:disabled { opacity: .4; pointer-events: none; }
 
 /* ---------------------------------------------------------------------------
-   PROMPT BAR (#prompt) — owns bottom-center; white glass, teal focus ring
+   PROMPT BAR (#prompt) — owns bottom-center; white glass, amethyst focus ring
    --------------------------------------------------------------------------- */
 #prompt {
     position: fixed;
@@ -1480,7 +1483,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     border-color: var(--border-accent);
     box-shadow: var(--elev-2), 0 0 0 3px rgba(var(--accent-rgb), .16);
 }
-/* Open prompt emits a soft teal ring echoing node rings */
+/* Open prompt emits a soft amethyst ring echoing node rings */
 #prompt.open #prompt-form {
     border-color: var(--border-accent);
     box-shadow: var(--elev-2), 0 0 0 4px rgba(var(--accent-rgb), .10);
@@ -1489,7 +1492,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* KÁNON AKCENTU: iskra bola zlatá („echoes the gold core"), a to je práve to
    presakovanie, ktoré kánon zakazuje — sedí VNÚTRI interaktívneho ovládacieho prvku
    (#prompt-form je pole, do ktorého sa píše), takže zlatá tam prestala znamenať
-   „toto je Hades" a začala znamenať „tu sa dá klikať". Teal, ako každý iný akcent
+   „toto je Hades" a začala znamenať „tu sa dá klikať". Amethyst, ako každý iný akcent
    v chróme; --accent je ten istý token, aký nesú .toast .ms a .dir-tpl .ms. */
 #prompt-form .spark { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
 
@@ -1504,7 +1507,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #prompt-input::placeholder { color: var(--muted); }
 #prompt-input:focus { outline: none; }
 
-/* Send button: muted teal-tint at rest, promoted to solid accent when input has text */
+/* Send button: muted amethyst-tint at rest, promoted to solid accent when input has text */
 #prompt-form button {
     border: 1px solid transparent;
     background: var(--accent-softer);
@@ -1686,7 +1689,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     font-weight: var(--fw-medium);
     font-size: var(--fs-body);
 }
-/* KÁNON AKCENTU: hlavička karty návrhu je chróm, nie značka — teal (bolo --gold-text). */
+/* KÁNON AKCENTU: hlavička karty návrhu je chróm, nie značka — amethyst (bolo --gold-text). */
 .sc-head .ms { font-size: var(--icon-sm); color: var(--accent); }
 .suggest-card .sc-label {
     width: 100%;
@@ -1716,7 +1719,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .sc-actions button { flex: 1; }
 
 /* ---------------------------------------------------------------------------
-   TOASTS (#toasts) — white glass, inset teal bar, pause-on-hover
+   TOASTS (#toasts) — white glass, inset amethyst bar, pause-on-hover
    --------------------------------------------------------------------------- */
 #toasts {
     position: fixed;
@@ -2062,7 +2065,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     color: var(--muted);
 }
 
-/* Načítavanie — súosé kruhy značky (tealový prstenec + zlaté jadro), ktoré dýchajú.
+/* Načítavanie — súosé kruhy značky (amethystový prstenec + zlaté jadro), ktoré dýchajú.
    Ten istý motív nesie favicon aj #brand-core, takže čakanie vyzerá ako Hades,
    nie ako generický spinner. Prstenec drží 3:1 voči papieru v oboch témach,
    pretože je kreslený tokenmi akcentu, nie priehľadnou šedou. */
@@ -2244,7 +2247,7 @@ body.ambient #toasts {
 .record-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
 .record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: 6px; }
 
-/* .tag — NEUTRAL at rest (business-clean); teal only as --accent / active.
+/* .tag — NEUTRAL at rest (business-clean); amethyst only as --accent / active.
    Contract §4.5: .tag / .tag--accent own tag styling (aliases .tag-chip NOT used). */
 .tag {
     display: inline-flex; align-items: center;
@@ -2254,7 +2257,7 @@ body.ambient #toasts {
     background: var(--surface-2); color: var(--text-secondary);
     border: 1px solid var(--border);
 }
-/* Teal accent variant — active filter / selected tag */
+/* Amethyst accent variant — active filter / selected tag */
 .tag--accent, .tag.active {
     background: var(--accent-soft); color: var(--accent-ink);
     border-color: var(--border-accent);
@@ -2427,7 +2430,7 @@ body.ambient #toasts {
     color: var(--muted);
     flex-shrink: 0;
 }
-/* Active row — teal left accent-line like .record */
+/* Active row — amethyst left accent-line like .record */
 .tree-row.active {
     background: var(--accent-softer);
     color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,90:1 */
@@ -2544,7 +2547,7 @@ body.ambient #toasts {
 }
 
 /* ---------------------------------------------------------------------------
-   SIEŤ — FILTER (label.check + .check-cap) — vlastný 18px checkbox, teal check
+   SIEŤ — FILTER (label.check + .check-cap) — vlastný 18px checkbox, amethyst check
    --------------------------------------------------------------------------- */
 .check-cap {
     font-family: var(--mono);
@@ -2739,7 +2742,7 @@ body[data-screen="graf"] #screens { display: none; }
     letter-spacing: var(--ls-heading);
     color: var(--text); line-height: 1.2;
 }
-/* Akcentované slovo v nadpise = teal (kánon). Zatiaľ ho nič nepoužíva — názvy
+/* Akcentované slovo v nadpise = amethyst (kánon). Zatiaľ ho nič nepoužíva — názvy
    obrazoviek sú jednoslovné — ale pravidlo má byť v systéme, nie v hlave. */
 .screen-head h1 em {
     font-style: normal;
@@ -3160,7 +3163,7 @@ body[data-screen="graf"] #screens { display: none; }
 .dir-group-head .ms { font-size: var(--icon-sm); color: var(--accent); }
 .dir-group-n { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
 
-/* Položka návrhu — reuse label.check (18px teal box), vlastný text layout */
+/* Položka návrhu — reuse label.check (18px amethyst box), vlastný text layout */
 label.check.dir-check {
     align-items: flex-start; gap: 10px;
     padding: var(--sp-1);
@@ -3242,7 +3245,7 @@ label.check.dir-check.off { opacity: .5; }
 
 /* ###########################################################################
    APOLLO INTEGRATION — component library (Agent D1)
-   Business-clean: layered neutral surfaces, flat resting cards, one teal accent.
+   Business-clean: layered neutral surfaces, flat resting cards, one amethyst accent.
    Consumed by charts.js (F1), renderToday (F2), Rozhodnutia/Kontrola (F3),
    canvas + library + panel (F4). Contract §4.5 class names are binding.
    ########################################################################### */
@@ -3433,7 +3436,7 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
 }
 
 /* ---------------------------------------------------------------------------
-   HEATMAP (.heat*) — 365-day activity grid, teal ramp, horizontal scroll
+   HEATMAP (.heat*) — 365-day activity grid, amethyst ramp, horizontal scroll
    DOM (built by charts.js): .heat > .heat-grid > .heat-cell[.l1..l4|.out]
    .heat is the overflow viewport so the page body never scrolls sideways.
    --------------------------------------------------------------------------- */
@@ -3702,7 +3705,7 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
                 box-shadow var(--dur-fast) var(--ease);
 }
 .queue-item:hover { background: var(--surface-2); }
-/* keyboard cursor (j/k) — teal left edge + ring, no layout shift */
+/* keyboard cursor (j/k) — amethyst left edge + ring, no layout shift */
 .queue-item.selected {
     border-left-color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--border-accent);
@@ -3986,7 +3989,7 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
 }
 
 /* ---------------------------------------------------------------------------
-   6) KONTRASTNÝ DLH — `color: var(--accent-600)` je na tmavej téme tmavý teal
+   6) KONTRASTNÝ DLH — `color: var(--accent-600)` je na tmavej téme tmavý amethyst
       a ako TEXT dáva 2,5–3,3:1 (merané na --accent-soft/--accent-softer nad
       panelom). --accent-ink na to existuje: 6,4:1.
 

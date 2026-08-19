@@ -64,7 +64,7 @@ class ConsoleGuardTest extends TestCase
 
     public function test_console_page_opens_when_unlocked(): void
     {
-        $this->get('/console')->assertOk()->assertSee('Konzola vedomia');
+        $this->get('/console')->assertOk()->assertSee('Charón');
     }
 
     // ---- API konzoly -------------------------------------------------------

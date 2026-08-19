@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — composer (písanie a odoslanie).
+   Charón — composer (písanie a odoslanie).
 
    Enter posiela, Shift+Enter zalomí. Textarea rastie s obsahom do stropu, potom
    začne skrolovať — dlhá úloha sa má dať prečítať pred odoslaním, ale nesmie

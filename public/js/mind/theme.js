@@ -49,26 +49,26 @@
 // a hrán a text bol nečitateľný). Halo maže ink len po obrysoch glyfov, nie v
 // obdĺžniku — sieť tak medzi písmenami zostane vidieť a text má lokálny odstup.
 /* KÁNON AKCENTU (zhoda s :root v mind.css — plátno a DOM musia hovoriť tú istú farbu):
-   `accent` je teal a je to JEDINÝ interaktívny akcent plátna — hover, výber, fokus,
+   `accent` je amethyst a je to JEDINÝ interaktívny akcent plátna — hover, výber, fokus,
    žiara aktivity, zrod uzla, mriežka. Zlatá na plátne existuje jediná: CORE_COLOR
    v state.js pre jadro (= token --gold). Keby akcent zozlatol, jadro by prestalo byť
    jediný sýty plný prvok a plátno by prestalo hovoriť jednoznačne.
-     light accent 3,121,126  = --accent #03797e
-     dark  accent 5,188,196  = --accent #05bcc4
+     light accent 109,63,181  = --accent #6d3fb5
+     dark  accent 196,162,245 = --accent #c4a2f5
    Keď meníš jedno, meň aj druhé. */
 export const THEMES = {
     light: {
         paper: '#f8f4f7', ink: '#101d1b', inkSoft: '#2d3a38', muted: '#566964',
-        labelHalo: 'rgba(248,244,247,0.92)', edge: '45,58,56', gridColor: '3,121,126',
-        accent: '3,121,126', outline: 'rgba(16,29,27,0.35)',
+        labelHalo: 'rgba(248,244,247,0.92)', edge: '45,58,56', gridColor: '109,63,181',
+        accent: '109,63,181', outline: 'rgba(16,29,27,0.35)',
         gridAlpha: 0.028, nodeFloor: 0.30, edgeFloor: 0.20,
         meshA0: 0.070, meshA1: 0.210, ringA: 0.86, ringRest: 0.66,
         muteL: 0.525, markA: 0.62, markHaloA: 0.72, hotA: 0.80, dark: false,
     },
     dark: {
         paper: '#0e1413', ink: '#eaf3f1', inkSoft: '#c3d1ce', muted: '#8a9b98',
-        labelHalo: 'rgba(14,20,19,0.92)', edge: '195,209,206', gridColor: '5,188,196',
-        accent: '5,188,196', outline: 'rgba(234,243,241,0.30)',
+        labelHalo: 'rgba(14,20,19,0.92)', edge: '195,209,206', gridColor: '196,162,245',
+        accent: '196,162,245', outline: 'rgba(234,243,241,0.30)',
         gridAlpha: 0.045, nodeFloor: 0.35, edgeFloor: 0.25,
         meshA0: 0.075, meshA1: 0.225, ringA: 0.82, ringRest: 0.64,
         muteL: 0.600, markA: 0.50, markHaloA: 0.70, hotA: 0.66, dark: true,

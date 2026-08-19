@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — kreslenie toku správ.
+   Charón — kreslenie toku správ.
 
    Tok je PLOCHÝ zoznam blokov v poradí, v akom veci naozaj nastali:
    `.msg.user` → `.msg.assistant` → `.tool-call` → ďalšia `.msg.assistant` →
@@ -32,9 +32,9 @@ export function renderEmpty() {
     stream.innerHTML = '';
 
     const box = el('div', 'empty-state');
-    box.append(el('h2', null, 'Konzola vedomia'));
+    box.append(el('h2', null, 'Charón'));
     box.append(el('p', null,
-        'Napíš úlohu. Konzola vidí celú pamäť Hadesa aj súbory projektu — '
+        'Napíš úlohu. Charón vidí celú pamäť Hadesa aj súbory projektu — '
         + 'a čo chce zmeniť, ukáže dopredu.'));
 
     const list = el('ul', 'empty-can');
@@ -145,7 +145,7 @@ export function pushSystem(title, html) {
 
 export function pushNotice(text) {
     const box = el('div', 'msg system');
-    box.append(el('span', 'who', 'Hades'));
+    box.append(el('span', 'who', 'Charón'));
     box.append(el('div', 'bubble', text));
 
     return appendBlock(box);
@@ -169,7 +169,7 @@ function assistantShell(meta = {}) {
     if (mid) box.dataset.mid = mid;
 
     const who = el('span', 'who');
-    who.append(el('span', null, 'Hades'));
+    who.append(el('span', null, 'Charón'));
     if (meta.model) who.append(el('span', 'who-model', meta.model));
     box.append(who);
     box.append(el('div', 'bubble md'));

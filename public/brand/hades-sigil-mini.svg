@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Hades">
+  <title>Hades</title>
+  <style>
+    svg { --acc: #6d3fb5; --gold: #b88a3a; }
+    @media (prefers-color-scheme: dark) { svg { --acc: #c4a2f5; --gold: #d8b878; } }
+  </style>
+  <circle cx="50" cy="50" r="36" fill="none" stroke="var(--acc)" stroke-width="9"/>
+  <circle cx="50" cy="50" r="15" fill="var(--gold)"/>
+</svg>

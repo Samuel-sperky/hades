@@ -256,7 +256,7 @@
         const xAt = (i) => (n === 1 ? W / 2 : pad + (i / (n - 1)) * (W - pad * 2));
         const yAt = (v) => H - pad - (v / max) * innerH;
 
-        const accent = cssVar('--accent', '#03797e');
+        const accent = cssVar('--accent', '#6d3fb5');
 
         const svg = svgEl('svg', {
             viewBox: '0 0 ' + W + ' ' + H,

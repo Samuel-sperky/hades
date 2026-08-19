@@ -6,13 +6,14 @@
     {{-- CSRF token pre zápisy na interné /api/* — mind.js ho pripája do každého
          non-GET fetchu (ValidateCsrfToken, §3.5 docs/BEZPECNOST.md). --}}
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Hades — AI mind</title>
+    <title>Hades — Vedomie</title>
     {{-- Favicon = súosé kruhy značky (tmavý papier / tealový prstenec / zlaté jadro).
          Predtým to bol zlatý disk s tenkým prstencom na 40 % alfy — pri 16 px prstenec
          zmizol a v karte ostala len zlatá škvrna bez identity. Teraz: nepriehľadný
          tmavý podklad (čitateľné na svetlej aj tmavej liste prehliadača), plný
-         tealový prstenec a zlaté jadro. Farby sú kánonové (#0e1413 / #05bcc4 / #d8b878). --}}
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='33' fill='none' stroke='%2305bcc4' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
+         amethystový prstenec a zlaté jadro — geometria je zhodná s public/brand/hades-sigil-mini.svg.
+         Farby sú kánonové (#0e1413 / #c4a2f5 / #d8b878). --}}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
     {{-- Fonty sú self-hosted v public/fonts/ (@font-face na začiatku mind.css).
          Google Fonts CDN je zámerne PREČ: pri jeho nedostupnosti sa každá ikona
          vykreslila ako svoj ligatúrový názov a chróm sa rozpadol. Preload len na
@@ -72,10 +73,13 @@
              spí (trieda .asleep). Slovo pod znakom drží identitu bez toho, aby
              súťažilo s hlavičkou. Klik naďalej vycentruje graf — logo, ktoré vracia
              pohľad domov, je zaužívané a nesúperí so žiadnou inou funkciou. --}}
-        <button id="brand-core" type="button" title="Hades — Šperky Aura · živé vedomie (klik vycentruje graf)" aria-label="Hades — vycentrovať graf">
+        <button id="brand-core" type="button" title="Hades — Hierarchical Associative Data Embedding System (klik vycentruje graf)" aria-label="Hades — vycentrovať graf">
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                {{-- Geometria je zmenšenina public/brand/hades-sigil-mini.svg (prstenec
+                     r .36, hrúbka .09, jadro r .15 z hrany viewBoxu). Prstenec je
+                     amethyst, jadro zlaté — presne ako znak. --}}
+                <circle cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
                 <circle cx="12" cy="12" r="3.6" fill="currentColor"/>
-                <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-width="1.6"/>
             </svg>
             <span class="bc-word">Hades</span>
         </button>

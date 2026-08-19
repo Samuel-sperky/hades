@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — prepínač modelu.
+   Charón — prepínač modelu.
 
    Zoznam si konzola VYPÝTA na `/api/console/models`, ale nespoľahne sa na to, že
    endpoint existuje: patrí inej vlne a klient nemá dôvod padnúť, keď ešte nie je

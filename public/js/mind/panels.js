@@ -6,7 +6,7 @@ import { updatePackUi } from './pack.js';
 import { draw, focusNode, requestDraw } from './render.js';
 import { buildSim, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
-import { mutedColor } from './theme.js';
+import { T, mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
 import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, renderEmpty, timeAgo, typeName, updateHeaderMetrics } from './util.js';
 
@@ -566,7 +566,9 @@ export async function refreshStats() {
         const bw = gc.width / Math.max(st.growth.length, 10);
         st.growth.forEach((g, i) => {
             const h = (g.count / max) * (gc.height - 6 * dpr);
-            gctx.fillStyle = '#03797e';
+            // akcent z témy, nie zadrôtovaný hex — inak sparkline zostane pri starej
+            // farbe a na tmavej téme stmavne do nečitateľna
+            gctx.fillStyle = `rgb(${T.accent})`;
             gctx.globalAlpha = 0.9;
             gctx.fillRect(i * bw + dpr, gc.height - h, Math.max(bw - 2 * dpr, 2), h);
         });

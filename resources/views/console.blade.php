@@ -9,8 +9,8 @@
     {{-- Vlákno z URL: /console/<uuid>. Prázdne = nové vlákno. Číta ho main.js pri
          starte, aby sa odkaz na konkrétnu konverzáciu dal poslať a otvoriť. --}}
     <meta name="console-thread" content="{{ request()->route('uuid') ?? '' }}">
-    <title>Konzola — Hades</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='33' fill='none' stroke='%2305bcc4' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
+    <title>Hades — Charón</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
     {{-- Tie isté self-hosted fonty ako graf (Google Fonts CDN je zámerne preč,
          inak sa ikony vykreslia ako ligatúrové názvy). --}}
     <link rel="preload" href="/fonts/material-symbols-rounded-subset.woff2" as="font" type="font/woff2" crossorigin>
@@ -27,8 +27,13 @@
         {{-- Bočný panel vlákien --}}
         <aside id="thread-rail" aria-label="Vlákna konzoly">
             <div class="rail-top">
-                <a href="/" id="back-to-graph" title="Späť do grafu" aria-label="Späť do grafu">
-                    <span class="ms" aria-hidden="true">hub</span>
+                {{-- Značka, nie ikona: Charón je obrazovka Hadesa, tak sem patrí znak. Klik
+                     vracia do grafu — logo, ktoré vedie domov, je zaužívané. --}}
+                <a href="/" id="back-to-graph" title="Hades — späť do grafu" aria-label="Hades — späť do grafu">
+                    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                        <circle cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
+                    </svg>
                 </a>
                 <button id="new-thread" type="button" title="Nové vlákno (Ctrl+N)">
                     <span class="ms" aria-hidden="true">add</span><span class="lbl">Nové vlákno</span>
@@ -45,7 +50,7 @@
                     <button id="rail-toggle" type="button" title="Vlákna" aria-label="Vlákna">
                         <span class="ms" aria-hidden="true">list</span>
                     </button>
-                    <h1 id="thread-title">Konzola vedomia</h1>
+                    <h1 id="thread-title">Charón</h1>
                 </div>
                 <div class="ch-right">
                     {{-- Prepínač modelu: lokálny Qwen vs Claude. Napĺňa ho models.js
@@ -87,7 +92,7 @@
                 </button>
                 <div class="composer-row">
                     <textarea id="prompt" rows="1" placeholder="Napíš úlohu pre vedomie… (/ pre príkazy, Enter pošle)"
-                              aria-label="Správa pre konzolu"></textarea>
+                              aria-label="Správa pre Charóna"></textarea>
                     <button type="submit" id="send" title="Poslať (Enter)" aria-label="Poslať">
                         <span class="ms" aria-hidden="true">arrow_upward</span>
                     </button>

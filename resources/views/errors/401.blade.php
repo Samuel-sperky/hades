@@ -9,7 +9,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hades — zamknuté</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%23b88a3a'/><circle cx='50' cy='50' r='45' fill='none' stroke='%2303797e' stroke-opacity='.4' stroke-width='4'/></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%23b88a3a'/><circle cx='50' cy='50' r='45' fill='none' stroke='%236d3fb5' stroke-opacity='.4' stroke-width='4'/></svg>">
     <style>
         :root { color-scheme: light dark; }
         body {
@@ -22,17 +22,17 @@
         p { margin: 0 0 1rem; color: #566964; }
         code {
             display: inline-block; padding: .35rem .6rem; border-radius: .4rem;
-            background: rgba(3, 121, 126, .08); color: #03797e;
+            background: rgba(109, 63, 181, .08); color: #6d3fb5;
             font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .85em;
         }
         .ring {
             width: 44px; height: 44px; margin: 0 auto 1.25rem; border-radius: 50%;
-            border: 3px solid rgba(3, 121, 126, .35); background: #b88a3a;
+            border: 3px solid rgba(109, 63, 181, .35); background: #b88a3a;
         }
         @media (prefers-color-scheme: dark) {
             body { background: #0e1413; color: #eaf3f1; }
             p { color: #8a9b98; }
-            code { background: rgba(5, 188, 196, .12); color: #05bcc4; }
+            code { background: rgba(196, 162, 245, .12); color: #c4a2f5; }
         }
     </style>
 </head>

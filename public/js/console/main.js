@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — bootstrap.
+   Charón — bootstrap.
 
    Natívne ES moduly bez build stepu, rovnako ako graf (vite sa v tomto projekte
    na frontend nikdy nepúšťal). Pravidlo projektu platí: exportuj hoistované
