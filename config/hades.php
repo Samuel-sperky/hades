@@ -114,8 +114,12 @@ return [
         'provider' => env('HADES_CONSOLE_PROVIDER', 'ollama'),
 
         'ollama' => [
-            // v docker sieti je to názov služby, nie localhost
-            'host' => env('OLLAMA_HOST', 'http://ollama:11434'),
+            // Default mieri na Ollamu BEŽIACU NA STROJI (host.docker.internal),
+            // nie na `http://ollama:11434` — služba `ollama` v compose je
+            // profilová a bez `--profile ollama` ten názov z app kontejnera
+            // nerezolvuje. Mŕtvy default by znamenal, že konzola po čerstvom
+            // klone mlčí a nie je z čoho uhádnuť prečo.
+            'host' => env('OLLAMA_HOST', 'http://host.docker.internal:11434'),
             // agentový model (tool use), rýchly model (krátke odpovede), embeddingy
             'model' => env('HADES_OLLAMA_MODEL', 'qwen3-coder:30b-a3b-q4_K_M'),
             'fast_model' => env('HADES_OLLAMA_FAST_MODEL', 'qwen3:8b'),
@@ -141,6 +145,43 @@ return [
         // Strop na jeden prečítaný súbor a na výstup ripgrepu (znaky).
         'read_cap' => (int) env('HADES_CONSOLE_READ_CAP', 60000),
         'grep_cap' => (int) env('HADES_CONSOLE_GREP_CAP', 20000),
+    ],
+
+    // ---------------------------------------------------------------------
+    // Semantický recall — vektory uzlov.
+    //
+    // Doteraz recall stál na kľúčových slovách (FULLTEXT / LIKE + skóre tagov),
+    // takže poznatok formulovaný inými slovami než dopyt sa nenašiel. Vektory to
+    // dopĺňajú, nenahrádzajú: kľúčové slová trafia presné mená (labely, tagy,
+    // cesty), vektory trafia zmysel. Preto sa výsledky fúzujú (RRF), nie
+    // vyberá jeden zdroj.
+    //
+    // Uloženie: BLOB + kosínus v PHP. MariaDB 11.4 natívny VECTOR nemá (až
+    // 11.7+) a pri ~2700 uzloch je brute-force nad 1024-rozmernými vektormi
+    // rýchlejší než riziko upgradu databázy pod živou pamäťou.
+    // ---------------------------------------------------------------------
+    'embeddings' => [
+        'enabled' => (bool) env('HADES_EMBEDDINGS', true),
+
+        // bge-m3 je multilingválny a 1024-rozmerný — pamäť je písaná po slovensky,
+        // takže anglicky trénovaný model (nomic-embed-text) by tu strácal zmysel.
+        // Dimenzia sa neverí konfigurácii, číta sa z prvej odpovede modelu.
+        'model' => env('HADES_OLLAMA_EMBED_MODEL', 'bge-m3'),
+
+        // Koľko uzlov vektorizovať v jednej dávke (CPU inferencia, nie GPU).
+        'batch' => (int) env('HADES_EMBED_BATCH', 16),
+
+        // Fúzia RRF: skóre = Σ 1/(k + poradie). k=60 je hodnota z pôvodnej práce
+        // o RRF a znamená „prvé miesta rozhodujú, chvost dolaďuje".
+        'rrf_k' => (int) env('HADES_RRF_K', 60),
+
+        // Koľko kandidátov vytiahnuť z vektorovej vetvy pred fúziou. Viac než
+        // trojnásobok výsledného limitu už poradie nemení, len platí CPU.
+        'candidates' => (int) env('HADES_EMBED_CANDIDATES', 40),
+
+        // Pod touto podobnosťou sa kandidát zahodí — bez podlahy vektorová vetva
+        // vždy niečo „najde" a recall na neznámu tému vracia náhodné uzly.
+        'min_similarity' => (float) env('HADES_EMBED_MIN_SIM', 0.35),
     ],
 
     // WebSocket adresa tak, ako ju vidi prehliadac (nie docker siet)

@@ -506,6 +506,10 @@ class McpController extends Controller
                     // na každom uzle je 20 B za nulovú informáciu
                     'origin' => $node->origin === 'session' ? null : $node->origin,
                     'noise' => $m['noise'] ?? null,
+                    // Uzol, ktorý dopyt trafil VÝZNAMOM, nie slovom (vektorová vetva).
+                    // AI to potrebuje vedieť: pri semantickom zásahu nemá v uzle
+                    // hľadať slová z dopytu, lebo tam nie sú. Prázdne sa neposiela.
+                    'semantic' => $m['semantic'] ?? null,
                     'related' => $m['related'] ?? [],
                     'description' => $text,
                     // klient vie, že za týmto uzlom je ešte text — dotiahne si ho

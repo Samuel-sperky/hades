@@ -14,6 +14,7 @@ use App\Models\Tombstone;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class MindService
@@ -172,7 +173,7 @@ class MindService
             if ($name === '') {
                 continue;
             }
-            if ($tag = \App\Models\Tag::forName($name)) {
+            if ($tag = Tag::forName($name)) {
                 $ids[] = $tag->id;
             }
         }
@@ -234,6 +235,15 @@ class MindService
      *   related    labely najsilnejších spojení uzla — bez nich je recall
      *              plochý zoznam a hodnota grafu sa do odpovede nedostane.
      *   noise      kód odpadovosti uzla ({@see noiseOf}), inak null.
+     *   semantic   true LEN u uzla, ktorý netrafil ani jedno slovo dopytu a
+     *              prišiel z vektorovej vetvy. Kľúč sa inak VYNECHÁVA (nie
+     *              `false`) — omissia nesie význam, rovnako ako pri `origin`.
+     *
+     * Hľadá sa dvoma vetvami — kľúčové slová ({@see searchNodes}) a vektory
+     * ({@see fuseRecall}) — ale len keď je vektorová vetva k dispozícii. Keď je
+     * vypnutá, nedostupná alebo je korpus nevektorizovaný, táto metóda vracia
+     * PRESNE to, čo vracala pred fúziou: rovnaké uzly, rovnaké poradie, rovnaké
+     * relevancie, žiaden kľúč navyše.
      *
      * @param  array<int, string>|null  $areas  Obmedzenie na oblasti (názvy alebo slugy).
      * @return array{nodes: Collection<int, Node>, meta: array<int, array<string, mixed>>, terms: array<int, string>}
@@ -251,9 +261,28 @@ class MindService
             ->map(fn (Collection $roots) => (string) $roots->first())
             ->filter()->unique()->values()->all();
 
+        // Neznámy rozsah nesmie ticho vrátiť celú sieť — a musí zavrieť OBE vetvy.
+        // Vektorová vetva o oblastiach nevie, takže keby sa rozsah vyhodnocoval
+        // len v searchNodes, semantika by ho obišla bokom.
+        $areaIds = $this->resolveAreaIds($areas);
+
+        if ($areaIds === []) {
+            return ['nodes' => collect(), 'meta' => [], 'terms' => $terms];
+        }
+
         // Jeden zdroj pravdy: stemovaný SK-aware engine s tvrdým prahom.
         // recall() pridáva navrch len graph-walk + „spomienkový" pulz.
         $matches = $this->searchNodes($query, $limit, $areas);
+
+        // Druhá vetva: vektory. Keď je vypnutá, nedostupná alebo je korpus
+        // nevektorizovaný, `$hits` je prázdne, fúzia sa NEVOLÁ a všetko pod tým
+        // beží po starom. Toto je tvrdá podmienka, nie optimalizácia: mind_recall
+        // volajú živé sessions a spadnutý model nesmie urobiť z pamäte prázdno.
+        $hits = $this->vectorHits($query);
+
+        if ($hits !== []) {
+            $matches = $this->fuseRecall($matches, $hits, $concepts, $limit, $areaIds);
+        }
 
         if ($matches->isEmpty()) {
             return ['nodes' => collect(), 'meta' => [], 'terms' => $terms];
@@ -261,18 +290,34 @@ class MindService
 
         $scored = $matches->pluck('node')->values();
         $conceptCount = max(1, $concepts->count());
+        $floor = (float) config('hades.embeddings.min_similarity', 0.35);
 
         $meta = [];
         foreach ($matches as $row) {
             /** @var Node $node */
             $node = $row['node'];
+            $relevance = $this->relevanceOf($row, $conceptCount);
+
+            // Podobnosť relevanciu len ZVYŠUJE, a to zhora ohraničene
+            // ({@see vectorRelevance}) — nikdy neprepíše to, čo uzol o sebe
+            // dokázal slovami dopytu.
+            if (isset($row['similarity'])) {
+                $relevance = max($relevance, $this->vectorRelevance((float) $row['similarity'], $floor));
+            }
+
             $meta[$node->id] = [
-                'relevance' => $this->relevanceOf($row, $conceptCount),
+                'relevance' => $relevance,
                 'snippet' => $row['snippet'] ?? null,
                 'noise' => $this->noiseOf($node),
                 'related' => [],
                 'via' => null,
             ];
+
+            // Čisto semantický zásah: nula trafených pojmov. AI tak vie, že v uzle
+            // nemá hľadať slová dopytu — a že zhoda je v zmysle, nie v texte.
+            if ((int) ($row['score'] ?? 0) === 0) {
+                $meta[$node->id]['semantic'] = true;
+            }
         }
 
         // Graph-walk hĺbky 1: k primárnym zásahom pridaj ich priamych susedov
@@ -595,19 +640,11 @@ class MindService
 
         // Rozsah projektu (memory_scope v sesterskej chat appke): obmedzí hľadanie
         // na vybrané oblasti. Prázdne pole = bez obmedzenia.
-        $areaIds = null;
-        if ($areas !== null && $areas !== []) {
-            $wanted = collect($areas)->map(fn ($a) => mb_strtolower(trim((string) $a)))->filter();
+        $areaIds = $this->resolveAreaIds($areas);
 
-            $areaIds = Area::all()
-                ->filter(fn (Area $a) => $wanted->contains(mb_strtolower($a->name)) || $wanted->contains($a->slug))
-                ->pluck('id')
-                ->all();
-
-            // Neznámy rozsah nesmie ticho vrátiť celú sieť — radšej nič.
-            if ($areaIds === []) {
-                return collect();
-            }
+        // Neznámy rozsah nesmie ticho vrátiť celú sieť — radšej nič.
+        if ($areaIds === []) {
+            return collect();
         }
 
         // A10: rýchla cesta cez FULLTEXT index. LIKE '%koreň%' nevie použiť
@@ -642,45 +679,7 @@ class MindService
             ->unique(fn (Node $node) => $node->id);
 
         return $nodes
-            ->map(function (Node $node) use ($concepts, $roots) {
-                // Tagy patria do haystacku: tag je ZÁMERNÝ alias, teda silnejší
-                // signál než náhodné slovo v popise. Skóre počíta zhodné
-                // koncepty, takže zhoda cez tag váži rovnako ako cez label —
-                // presne tak, ako to má byť.
-                $tags = $node->relationLoaded('tags') ? $node->tags->pluck('name')->implode(' ') : '';
-
-                // fold haystack — korene sú už foldnuté v queryConcepts, takže
-                // tvrdý prah je tiež necitlivý na diakritiku
-                $hay = ' '.$this->fold(trim($node->label.' '.(string) $node->description.' '.$tags)).' ';
-
-                // koncept je zhoda, ak ho trafí aspoň jeden jeho koreň
-                $score = $concepts->filter(
-                    fn (Collection $conceptRoots) => $conceptRoots->contains(
-                        fn ($root) => mb_strpos($hay, $root) !== false
-                    )
-                )->count();
-
-                // To isté, ale LEN v labeli. Uzol pomenovaný podľa dopytu je
-                // takmer vždy to, čo hľadáš; uzol, ktorý ten pojem raz zmieni
-                // v 3 000-znakovom popise, nie. Bez tohto rozlíšenia dostalo
-                // dvanásť uzlov v jednom skórovacom pásme rovnakú relevanciu
-                // (namerané: 12× 0,5) a AI nemala ako oddeliť prvý od dvanásteho.
-                $hayLabel = ' '.$this->fold(trim((string) $node->label)).' ';
-                $labelScore = $concepts->filter(
-                    fn (Collection $conceptRoots) => $conceptRoots->contains(
-                        fn ($root) => mb_strpos($hayLabel, $root) !== false
-                    )
-                )->count();
-
-                return [
-                    'node' => $node,
-                    'score' => $score,
-                    'label_score' => $labelScore,
-                    'snippet' => $this->snippetFor((string) $node->description, $roots),
-                    // odpadovosť sa počíta tu, nie u konzumenta — rozhoduje o poradí
-                    'noise' => $this->noiseOf($node),
-                ];
-            })
+            ->map(fn (Node $node) => $this->scoreRow($node, $concepts, $roots))
             ->filter(fn ($row) => $row['score'] > 0)   // tvrdý prah — 0 zhodných konceptov = von
             // Štyri nepremiešateľné pásma, od najsilnejšieho:
             //   1. počet zhodných konceptov (to bolo vždy),
@@ -728,6 +727,272 @@ class MindService
         $label = min(1.0, ((int) ($row['label_score'] ?? 0)) / $conceptCount);
 
         return round((2 * $coverage + $label) / 3, 2);
+    }
+
+    /**
+     * Ohodnotí JEDEN uzol proti konceptom dopytu — riadok, s akým pracuje
+     * `searchNodes` aj fúzia.
+     *
+     * Prečo samostatná metóda: vektorová vetva prináša uzly, ktoré kľúčová vetva
+     * nikdy nevidela, a tie sa musia merať TÝM ISTÝM pravítkom. Dve kópie tohto
+     * skórovania by znamenali dvojaký meter na relevanciu v jednej odpovedi.
+     *
+     * @param  Collection<int, Collection<int, string>>  $concepts
+     * @param  Collection<int, string>  $roots
+     * @return array{node: Node, score: int, label_score: int, snippet: ?string, noise: ?string}
+     */
+    protected function scoreRow(Node $node, Collection $concepts, Collection $roots): array
+    {
+        // Tagy patria do haystacku: tag je ZÁMERNÝ alias, teda silnejší
+        // signál než náhodné slovo v popise. Skóre počíta zhodné
+        // koncepty, takže zhoda cez tag váži rovnako ako cez label —
+        // presne tak, ako to má byť.
+        $tags = $node->relationLoaded('tags') ? $node->tags->pluck('name')->implode(' ') : '';
+
+        // fold haystack — korene sú už foldnuté v queryConcepts, takže
+        // tvrdý prah je tiež necitlivý na diakritiku
+        $hay = ' '.$this->fold(trim($node->label.' '.(string) $node->description.' '.$tags)).' ';
+
+        // koncept je zhoda, ak ho trafí aspoň jeden jeho koreň
+        $score = $concepts->filter(
+            fn (Collection $conceptRoots) => $conceptRoots->contains(
+                fn ($root) => mb_strpos($hay, $root) !== false
+            )
+        )->count();
+
+        // To isté, ale LEN v labeli. Uzol pomenovaný podľa dopytu je
+        // takmer vždy to, čo hľadáš; uzol, ktorý ten pojem raz zmieni
+        // v 3 000-znakovom popise, nie. Bez tohto rozlíšenia dostalo
+        // dvanásť uzlov v jednom skórovacom pásme rovnakú relevanciu
+        // (namerané: 12× 0,5) a AI nemala ako oddeliť prvý od dvanásteho.
+        $hayLabel = ' '.$this->fold(trim((string) $node->label)).' ';
+        $labelScore = $concepts->filter(
+            fn (Collection $conceptRoots) => $conceptRoots->contains(
+                fn ($root) => mb_strpos($hayLabel, $root) !== false
+            )
+        )->count();
+
+        return [
+            'node' => $node,
+            'score' => $score,
+            'label_score' => $labelScore,
+            'snippet' => $this->snippetFor((string) $node->description, $roots),
+            // odpadovosť sa počíta tu, nie u konzumenta — rozhoduje o poradí
+            'noise' => $this->noiseOf($node),
+        ];
+    }
+
+    /**
+     * Názvy/slugy oblastí → ich `id`.
+     *
+     * `null` = bez obmedzenia, `[]` = rozsah bol zadaný, ale ani jedna oblasť
+     * neexistuje. To druhé MUSÍ volajúci vyhodnotiť ako „nič", nie ako „všetko";
+     * ticho zahodený rozsah je bočný kanál z cudzieho projektu.
+     *
+     * @param  array<int, string>|null  $areas
+     * @return array<int, int>|null
+     */
+    protected function resolveAreaIds(?array $areas): ?array
+    {
+        if ($areas === null || $areas === []) {
+            return null;
+        }
+
+        $wanted = collect($areas)->map(fn ($a) => mb_strtolower(trim((string) $a)))->filter();
+
+        return Area::all()
+            ->filter(fn (Area $a) => $wanted->contains(mb_strtolower($a->name)) || $wanted->contains($a->slug))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /**
+     * Vektorová vetva recallu. Vracia `[]` VŽDY, keď sa nedá spoľahnúť na
+     * výsledok — vypnutá konfigurácia, prázdny korpus, nedostupný model, chýbajúca
+     * tabuľka.
+     *
+     * Prečo `Throwable` a nie `RuntimeException`: nedostupný model je len jedna
+     * z ciest, ako sem môže priletieť výnimka (nemigrovaná tabuľka, zmenená
+     * odpoveď Ollamy, timeout HTTP klienta). Recall je čítacia cesta živých
+     * sessions a žiadna z tých príčin nesmie z pamäte urobiť prázdno — degradácia
+     * na kľúčové slová je vždy lepšia odpoveď než 500.
+     *
+     * @return array<int, array{node_id: int, similarity: float}>
+     */
+    protected function vectorHits(string $query): array
+    {
+        if (trim($query) === '') {
+            return [];
+        }
+
+        $embeddings = app(EmbeddingService::class);
+
+        if (! $embeddings->enabled()) {
+            return [];
+        }
+
+        try {
+            return $embeddings->search($query);
+        } catch (\Throwable $e) {
+            // Log, nie výnimka — inak by pád modelu vyzeral ako prázdna pamäť
+            // a nikto by sa nedozvedel, že bežala len polovica hľadania.
+            Log::warning('Recall beží len na kľúčových slovách: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Fúzia kľúčovej a vektorovej vetvy — Reciprocal Rank Fusion.
+     *
+     * `skóre = Σ 1/(k + poradie)`, k z `hades.embeddings.rrf_k`. RRF fúzuje
+     * PORADIA, nie skóre: kosínusová podobnosť (0,35–0,95) a počet trafených
+     * pojmov (0–12) nemajú spoločnú stupnicu a každé ich priame miešanie je
+     * zamaskovaná voľba váhy.
+     *
+     * Dve veci, ktoré fúzia drží z pôvodného poradia:
+     *
+     *  - **Odpad ide za čistý uzol.** Kľúčová vetva to má v poradí zabudované
+     *    (pásmo v `searchNodes`), vektorová o tom nevie — tak sa to isté pásmo
+     *    aplikuje aj na jej poradie. Bez toho by stub s vysokou podobnosťou
+     *    dostal vektorové poradie 1 a semantika by vytiahla odpad na začiatok
+     *    kontextu, teda presne to, čo `noiseOf` rieši.
+     *  - **Pri rovnakom RRF rozhodujú tie isté pásma ako doteraz** — čistota,
+     *    zhoda v labeli, sila. Rovnaké RRF je bežné, nie hypotetické: uzol na
+     *    1. mieste kľúčovej vetvy a uzol na 1. mieste vektorovej majú presne
+     *    to isté skóre.
+     *
+     * Pri prázdnej vektorovej vetve sa táto metóda NEVOLÁ (a keby aj: RRF je
+     * pri jednom zdroji striktne klesajúce v poradí, takže by poradie nezmenila).
+     *
+     * @param  Collection<int, array{node: Node, score: int, label_score: int, snippet: ?string, noise: ?string}>  $keyword
+     * @param  array<int, array{node_id: int, similarity: float}>  $hits
+     * @param  Collection<int, Collection<int, string>>  $concepts
+     * @param  array<int, int>|null  $areaIds
+     * @return Collection<int, array<string, mixed>>
+     */
+    protected function fuseRecall(
+        Collection $keyword,
+        array $hits,
+        Collection $concepts,
+        int $limit,
+        ?array $areaIds,
+    ): Collection {
+        $k = max(1, (int) config('hades.embeddings.rrf_k', 60));
+        $roots = $concepts->flatten()->unique()->values();
+
+        $similarity = [];
+        foreach ($hits as $hit) {
+            $similarity[(int) $hit['node_id']] = (float) $hit['similarity'];
+        }
+
+        /** @var array<int, array<string, mixed>> $rows */
+        $rows = [];
+        $keywordRank = [];
+        $rank = 0;
+        foreach ($keyword as $row) {
+            $id = (int) $row['node']->id;
+            $rows[$id] = $row;
+            $keywordRank[$id] = ++$rank;
+        }
+
+        // Uzly, ktoré prišli len z vektorov. Rozsah oblastí platí aj na ne —
+        // EmbeddingService o oblastiach nevie a filtrovať sa musí tu.
+        $unseen = array_values(array_diff(array_keys($similarity), array_keys($rows)));
+
+        if ($unseen !== []) {
+            Node::query()
+                ->with(['area', 'department', 'tags'])
+                ->whereIn('id', $unseen)
+                ->when($areaIds, fn ($q) => $q->whereIn('area_id', $areaIds))
+                ->get()
+                ->each(function (Node $node) use (&$rows, $concepts, $roots) {
+                    // Tým istým pravítkom ako kľúčová vetva: uzol môže mať zhodu
+                    // v texte a len sa nezmestil do jej okna. Označiť ho ako čisto
+                    // semantický by bola lož a relevanciu by počítal iný meter.
+                    $rows[(int) $node->id] = $this->scoreRow($node, $concepts, $roots);
+                });
+        }
+
+        $vectorRank = [];
+        $ordered = array_values(array_filter(
+            array_keys($similarity),
+            fn (int $id) => isset($rows[$id]),
+        ));
+
+        usort($ordered, fn (int $a, int $b) => $this->cleanFlag($rows[$b]) <=> $this->cleanFlag($rows[$a])
+            ?: $similarity[$b] <=> $similarity[$a]
+            ?: $a <=> $b);
+
+        $rank = 0;
+        foreach ($ordered as $id) {
+            $vectorRank[$id] = ++$rank;
+        }
+
+        $fused = [];
+        foreach ($rows as $id => $row) {
+            $score = 0.0;
+
+            if (isset($keywordRank[$id])) {
+                $score += 1 / ($k + $keywordRank[$id]);
+            }
+
+            if (isset($vectorRank[$id])) {
+                $score += 1 / ($k + $vectorRank[$id]);
+            }
+
+            $row['rrf'] = $score;
+            $row['similarity'] = $similarity[$id] ?? null;
+
+            // Úryvok má ukázať, KDE sa zhoda našla. Pri nulovej zhode by ukázal
+            // len začiatok popisu a v odpovedi by nahradil dlhší (a teda
+            // informatívnejší) prefix, ktorý by tam bol býval aj tak.
+            if ($row['score'] === 0) {
+                $row['snippet'] = null;
+            }
+
+            $fused[] = $row;
+        }
+
+        usort($fused, fn (array $a, array $b) => $b['rrf'] <=> $a['rrf']
+            ?: $this->cleanFlag($b) <=> $this->cleanFlag($a)
+            ?: $this->labelShare($b) <=> $this->labelShare($a)
+            ?: (float) $b['node']->strength <=> (float) $a['node']->strength);
+
+        return collect(array_slice($fused, 0, max(1, $limit)));
+    }
+
+    /** 1 = čistý uzol, 0 = odpad. Pásmo poradia, nie vlastnosť uzla. */
+    protected function cleanFlag(array $row): int
+    {
+        return ($row['noise'] ?? null) === null ? 1 : 0;
+    }
+
+    /**
+     * Relevancia zásahu, ktorý má len vektor (0..0,66).
+     *
+     * Podobnosť sa normalizuje NAD PODLAHOU (`min_similarity`), nie od nuly:
+     * kandidát tesne nad prahom je „práve pripustený", nie „na tretinu
+     * relevantný", a bez normalizácie by celá vektorová vetva žila v pásme
+     * 0,35–0,95, kde sa nedá nič odlíšiť.
+     *
+     * Výsledok vstupuje do toho istého vzorca ako kľúčová relevancia
+     * ({@see relevanceOf}), len v role pokrytia: `(2 × podobnosť + 0) / 3`.
+     * Tretina za zhodu v LABELI je pre čisto semantický zásah nedosiahnuteľná
+     * z definície — netrafil ani jedno slovo dopytu, teda ani v labeli.
+     *
+     * Pasca: zaokrúhľuje sa DOLU. Nahor by `2/3` dalo 0,67, čo je presne minimum
+     * uzla, ktorý trafil VŠETKY pojmy dopytu — a tým by sa stratila vlastnosť,
+     * na ktorej relevancia stojí: plné pokrytie dopytu je vždy nad čímkoľvek,
+     * čo pokrylo len časť.
+     */
+    protected function vectorRelevance(float $similarity, float $floor): float
+    {
+        $span = 1.0 - min(max($floor, 0.0), 0.99);
+        $normalised = max(0.0, min(1.0, ($similarity - $floor) / $span));
+
+        return floor(2 * $normalised / 3 * 100) / 100;
     }
 
     /**
