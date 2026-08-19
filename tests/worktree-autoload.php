@@ -67,4 +67,24 @@ $loader->setPsr4('Tests\\', [$worktree.'/tests']);
 $loader->setPsr4('Database\\Factories\\', [$worktree.'/database/factories']);
 $loader->setPsr4('Database\\Seeders\\', [$worktree.'/database/seeders']);
 
+// Druhá polovica tej istej pasce, a nájdená až 19. 8. 2026 — prepísaný autoloader
+// zariadi, že sa testuje KÓD worktree, ale všetko ostatné sa aj tak berie z
+// hlavného checkoutu: `Illuminate\Foundation\Testing\TestCase::createApplication()`
+// robí `require Application::inferBasePath().'/bootstrap/app.php'`, a bez tohto
+// riadku `inferBasePath()` odvodí koreň z polohy autoloadera — teda z vendoru,
+// teda z HLAVNEJ vetvy. Config, views, routes ani migrácie potom nie sú tvoje.
+//
+// Ako sa to prejaví: sada je zelená alebo červená podľa toho, čo práve robí INÁ
+// session. Konkrétne 19. 8. 2026 padol `ConsoleGuardTest::test_console_page_opens_when_unlocked`
+// na `assertSee('Konzola vedomia')` — nie preto, že by v tomto worktree ten
+// titulok chýbal (je tam), ale preto, že ho medzitým prepísala druhá vetva vo
+// svojom `resources/views/console.blade.php`. Tá istá slepota skryla aj celý
+// `hades.console.bash` blok z config/hades.php.
+//
+// `inferBasePath()` číta `$_ENV['APP_BASE_PATH']` a bootstrap/app.php worktree si
+// potom nastaví basePath sám (`dirname(__DIR__)`). V hlavnom checkoute je to tá
+// istá cesta, takže tam je tento riadok naďalej no-op.
+$_ENV['APP_BASE_PATH'] = $worktree;
+$_SERVER['APP_BASE_PATH'] = $worktree;
+
 return $loader;

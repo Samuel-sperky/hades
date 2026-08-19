@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+     Sada worktree feat/hades-klient — vlastná scratch DB hades_klient3_test, aby dve
+     paralelné sessions netruncovali tú istú databázu pod sebou navzájom.
+
+     `vendor` je vo worktree symlink na hlavný checkout, takže predvolená sada
+     (phpunit.xml / phpunit.mariadb.xml) beží proti kódu hlavnej vetvy — viď
+     tests/worktree-autoload.php. Tento config len prepne bootstrap a inak je
+     to phpunit.mariadb.xml: MariaDB scratch databáza `hades_test`, pretože
+     searchNodes stojí na COLLATE utf8mb4_unicode_ci a FULLTEXT.
+
+     Databáza MUSÍ končiť na `_test` — Tests\TestCase to overuje a inak beh
+     odmietne (RefreshDatabase tabuľky zahadzuje a preklep by zmazal ostrého
+     Hadesa).
+
+     Spustenie z korena worktree:
+       php vendor/bin/phpunit -c tests/phpunit.worktree.xml
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="../vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="worktree-autoload.php"
+         colors="true">
+    <testsuites>
+        <testsuite name="Worktree">
+            <directory>Feature</directory>
+            <directory>Unit</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>../app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="DB_CONNECTION" value="mysql"/>
+        <env name="DB_DATABASE" value="hades_klient3_test"/>
+        <env name="DB_URL" value=""/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+    </php>
+</phpunit>
