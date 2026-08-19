@@ -6,6 +6,7 @@ use App\Http\Middleware\AuthenticateUi;
 use App\Models\ConsoleThread;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Session\Middleware\StartSession;
 use Tests\TestCase;
 
 /**
@@ -97,24 +98,71 @@ class ConsoleGuardTest extends TestCase
     }
 
     /**
-     * Každá routa pod `/api/console/` musí nesť guard aj CSRF.
+     * Každá routa pod `/api/console/` musí sedieť v JEDNOM z dvoch okruhov —
+     * a v žiadnom prípade v nijakom.
      *
-     * Toto je ten test, ktorý zachytí budúci pridaný endpoint — nezoznamuje
-     * ručne, ale prejde router a overí, čo na routách reálne visí.
+     * Toto je ten test, ktorý zachytí budúci pridaný endpoint: nezoznamuje ručne,
+     * ale prejde router a overí, čo na routách reálne visí.
+     *
+     * Do 19. 8. 2026 tu bola jedna podmienka („auth.ui + CSRF") a bola správna,
+     * lebo konzolu volal len prehliadač. Odvtedy má konzola aj programový vstup
+     * pre klienta, ktorý prehliadač NIE JE (terminálový `hades`, desktopové okno,
+     * skript, iná AI cez MCP) — a ten session ani CSRF token nemá ako získať.
+     *
+     * Zoslabenie to nie je, je to iný obchod: `auth.console` je fail-closed na tom
+     * istom tajomstve, ale navyše LOOPBACK-ONLY a odmieta všetko, čo prišlo cez
+     * proxy (viď AuthenticateConsoleToken). CSRF tam nechýba — v okruhu bez
+     * session nemá čo chrániť, pretože niet ambientnej autority, ktorú by cudzia
+     * stránka mohla zneužiť.
+     *
+     * Čo tento test naďalej NEPUSTÍ: routu konzoly bez guardu, a routu v
+     * programovom okruhu, ktorá by si zároveň niesla session.
      */
-    public function test_every_console_route_carries_guard_and_csrf(): void
+    public function test_every_console_route_sits_in_one_of_the_two_circuits(): void
     {
         $routes = collect(app('router')->getRoutes()->getRoutes())
             ->filter(fn ($route) => str_starts_with($route->uri(), 'api/console'));
 
         $this->assertGreaterThan(0, $routes->count(), 'Konzola nemá žiadne API routy — test by inak prešiel naprázdno.');
 
-        $routes->each(function ($route) {
+        $ui = 0;
+        $programmatic = 0;
+
+        $routes->each(function ($route) use (&$ui, &$programmatic) {
             $middleware = $route->gatherMiddleware();
+
+            if (in_array('auth.console', $middleware, true)) {
+                $programmatic++;
+
+                // Programový okruh stojí na tom, že session neexistuje. Keby ju
+                // routa mala, mala by ambientnú autoritu bez CSRF — teda presne
+                // tú kombináciu, ktorú CSRF vznikol riešiť.
+                $this->assertNotContains(
+                    StartSession::class,
+                    $middleware,
+                    "Routa {$route->uri()} je v programovom okruhu, ale nesie session."
+                );
+
+                return;
+            }
+
+            $ui++;
 
             $this->assertContains('auth.ui', $middleware, "Routa {$route->uri()} nie je za UI guardom.");
             $this->assertContains(ValidateCsrfToken::class, $middleware, "Routa {$route->uri()} nemá CSRF.");
         });
+
+        // Oba okruhy musia byť neprázdne: keby jeden zmizol, tento test by
+        // prešel a tvrdil, že je všetko v poriadku.
+        $this->assertGreaterThan(0, $ui, 'UI okruh konzoly nemá ani jednu routu.');
+        $this->assertGreaterThan(0, $programmatic, 'Programový okruh konzoly nemá ani jednu routu.');
+    }
+
+    /** Programová routa musí byť bez tokenu zamknutá rovnako ako UI okruh. */
+    public function test_the_programmatic_circuit_is_locked_too(): void
+    {
+        $this->locked()->postJson('/api/console/headless', ['message' => 'ahoj'])->assertStatus(401);
+        $this->locked()->postJson('/api/console/cli/run', [])->assertStatus(401);
     }
 
     /** Zápis bez CSRF tokenu neprejde ani s odomknutou session. */

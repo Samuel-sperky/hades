@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\SearchController as ApiSearchController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\Console\HeadlessController as ConsoleHeadlessController;
 use App\Http\Controllers\Console\ModelController as ConsoleModelController;
 use App\Http\Controllers\Console\RunController as ConsoleRunController;
 use App\Http\Controllers\Console\ThreadController as ConsoleThreadController;
@@ -130,6 +131,43 @@ Route::middleware([
     // by znamenalo, že sa v dlhom vlákne nedá dopovoliť vlastný zápis.
     Route::post('/console/run', [ConsoleRunController::class, 'run'])->middleware('throttle:20,1');
     Route::post('/console/decide', [ConsoleRunController::class, 'decide']);
+});
+
+// ---------------------------------------------------------------------------
+// Programový okruh konzoly — pre klienta, ktorý NIE JE prehliadač: terminálový
+// `hades`, desktopové okno, skript, alebo iná AI cez MCP.
+//
+// Prečo vlastný okruh a nie tie isté routy vyššie: tie stoja na session a CSRF,
+// a CLI nemá ani jedno. Tento okruh drží token v hlavičke a je LOOPBACK-ONLY
+// (viď AuthenticateConsoleToken) — a to je jeho podstata, nie detail. Caddy na
+// verejnej ceste hlavičku s UI tokenom do requestov vkladá, takže bez kontroly
+// prenosu by tunel bol automaticky autentizovaný vstup BEZ CSRF k tooolom, ktoré
+// zapisujú do pamäte, do súborov a spúšťajú príkazy.
+//
+// Dve triedy endpointov a ten rozdiel je zámerný:
+//  • `/console/headless` — jedna odpoveď, JSON, register LEN NA ČÍTANIE. Pre
+//    skripty, MCP a plánované behy, kde nikto nepotvrdzuje zápisy: zaparkovaný
+//    ťah by tam zostal visieť navždy, takže sa zápisové tooly ani nenaložia.
+//  • `/console/cli/*` — ten istý NDJSON prúd ako pre prehliadač, s plným
+//    registrom. Pri ňom človek pri termináli JE, takže potvrdenie má komu prísť
+//    a `permission` rámec vie klient obslúžiť rovnako ako webová konzola.
+// ---------------------------------------------------------------------------
+Route::middleware('auth.console')->group(function (): void {
+    Route::post('/console/headless', [ConsoleHeadlessController::class, 'run'])
+        ->middleware('throttle:20,1');
+
+    Route::prefix('console/cli')->group(function (): void {
+        Route::get('/models', [ConsoleModelController::class, 'index']);
+
+        Route::get('/threads', [ConsoleThreadController::class, 'index']);
+        Route::post('/threads', [ConsoleThreadController::class, 'store']);
+        Route::get('/threads/{thread:uuid}', [ConsoleThreadController::class, 'show']);
+        Route::patch('/threads/{thread:uuid}', [ConsoleThreadController::class, 'update']);
+        Route::delete('/threads/{thread:uuid}', [ConsoleThreadController::class, 'destroy']);
+
+        Route::post('/run', [ConsoleRunController::class, 'run'])->middleware('throttle:20,1');
+        Route::post('/decide', [ConsoleRunController::class, 'decide']);
+    });
 });
 
 // ---------------------------------------------------------------------------

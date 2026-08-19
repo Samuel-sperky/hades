@@ -28,6 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.token' => App\Http\Middleware\AuthenticateApiToken::class,
             'auth.ui' => App\Http\Middleware\AuthenticateUi::class,
+            // Programový okruh konzoly (CLI, desktop, skript): ten istý UI token
+            // v hlavičke, ale LOOPBACK-ONLY a bez session aj bez CSRF. Viď
+            // AuthenticateConsoleToken — a routes/api.php, kde je popísané, prečo
+            // tento okruh vôbec existuje.
+            'auth.console' => App\Http\Middleware\AuthenticateConsoleToken::class,
         ]);
 
         // UI guard musí bežať PRED route model bindingom. Inak SubstituteBindings
@@ -37,6 +42,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             before: Illuminate\Routing\Middleware\SubstituteBindings::class,
             prepend: App\Http\Middleware\AuthenticateUi::class,
+        );
+
+        // Ten istý dôvod pre programový okruh: `/console/cli/threads/{thread:uuid}`
+        // by inak vrátilo 404 na neexistujúce vlákno ešte pred 401, a nezamknutý
+        // klient by tým zistil, ktoré vlákna existujú.
+        $middleware->prependToPriorityList(
+            before: Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: App\Http\Middleware\AuthenticateConsoleToken::class,
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -3,10 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\Area;
+use App\Models\ConsoleMessage;
+use App\Models\ConsoleSchedule;
+use App\Models\ConsoleThread;
+use App\Models\ConsoleToolCall;
 use App\Models\Decision;
 use App\Models\Edge;
 use App\Models\Node;
 use App\Services\Brain\SecretScanner;
+use App\Services\Console\HeadlessRunner;
 use App\Services\MindService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
@@ -324,6 +329,90 @@ class McpController extends Controller
                     'required' => ['label'],
                 ],
             ],
+            [
+                'name' => 'console_run',
+                'description' => 'Drive the Hades console agent: send it a message and get back what it '
+                    .'answered, which tools it used and what the turn cost. The run is READ-ONLY — '
+                    .'memory and files are read, never written, because a write would park the turn '
+                    .'waiting for a human click and no human is watching a programmatic run. The '
+                    .'response carries a `thread` uuid; pass it back in `thread` to continue the same '
+                    .'conversation instead of starting a new one.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'message' => ['type' => 'string', 'description' => 'What to ask the console agent'],
+                        'thread' => [
+                            'type' => 'string',
+                            'description' => 'Thread uuid returned by an earlier console_run; omit to start a new thread',
+                        ],
+                        'model' => [
+                            'type' => 'string',
+                            'description' => 'Model tag to run this turn on; omit to keep the thread\'s own choice',
+                        ],
+                    ],
+                    'required' => ['message'],
+                ],
+            ],
+            [
+                'name' => 'console_threads',
+                'description' => 'List the most recent console threads (newest first) with their uuid, '
+                    .'title, last activity and message count. Use it to find the thread you want to '
+                    .'continue with console_run or to read with console_result.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'How many threads to return, 1–50 (default 10); values outside the range are clamped',
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'console_result',
+                'description' => 'Read the tail of one console thread: its last messages and the tool '
+                    .'calls that belong to them. Long message bodies are cut and the cut is admitted '
+                    .'with `content_truncated`. The system directive is never returned — it is the '
+                    .'same text on every thread.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'thread' => ['type' => 'string', 'description' => 'Thread uuid, from console_run or console_threads'],
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'How many of the last messages to return, 1–50 (default 10); values outside the range are clamped',
+                        ],
+                    ],
+                    'required' => ['thread'],
+                ],
+            ],
+            [
+                'name' => 'console_schedules',
+                'description' => 'List the console schedules, or create a new one that will run a '
+                    .'prompt on a cron expression. A created schedule is ALWAYS disabled: it would '
+                    .'otherwise start burning CPU on a local model without anyone knowing, so '
+                    .'switching it on is a human decision made from the terminal with '
+                    .'`php artisan mind:console-schedules --enable=<uuid>`. Scheduled runs are '
+                    .'read-only, exactly like console_run.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'action' => [
+                            'type' => 'string',
+                            'enum' => ['list', 'create'],
+                            'description' => 'list returns the existing schedules; create adds a new disabled one',
+                        ],
+                        'label' => ['type' => 'string', 'description' => 'Short name of the schedule (create)'],
+                        'prompt' => ['type' => 'string', 'description' => 'The message the agent will be sent on every run (create)'],
+                        'cron' => [
+                            'type' => 'string',
+                            'description' => 'Five-field cron expression, e.g. "0 6 * * 1" for Mondays at 06:00 (create); '
+                                .'an invalid expression is refused here, not at run time',
+                        ],
+                    ],
+                    'required' => ['action'],
+                ],
+            ],
         ];
     }
 
@@ -343,6 +432,10 @@ class McpController extends Controller
                 'mind_rename' => $this->toolRename($args, $mind),
                 'mind_move' => $this->toolMove($args, $mind),
                 'mind_delete' => $this->toolDelete($args, $mind),
+                'console_run' => $this->toolConsoleRun($args),
+                'console_threads' => $this->toolConsoleThreads($args),
+                'console_result' => $this->toolConsoleResult($args),
+                'console_schedules' => $this->toolConsoleSchedules($args),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {
@@ -814,6 +907,215 @@ class McpController extends Controller
         ]);
 
         return ['action' => 'decided', 'decision' => $decision->toApi()];
+    }
+
+    // ---- konzola: programový vstup pre AI ----------------------------------
+
+    /**
+     * Strop na dĺžku jednej správy v odpovedi `console_result`. Odpoveď agenta
+     * je bežne niekoľko kB a tool výsledok aj 20 kB; desať takých správ by z
+     * jedného čítania vlákna urobilo väčší payload než celý recall. Rez sa
+     * priznáva (`content_truncated`), aby si AI nemyslela, že vidí celý text.
+     */
+    protected const CONSOLE_CONTENT_CAP = 1500;
+
+    /** Default a strop pre `limit` v konzolových tooloch. */
+    protected const CONSOLE_LIMIT_DEFAULT = 10;
+
+    protected const CONSOLE_LIMIT_MAX = 50;
+
+    /**
+     * Spustí agenta konzoly bez človeka a vráti kompaktný výsledok ťahu.
+     *
+     * Read-only sada toolov je vlastnosťou {@see HeadlessRunner}, nie tohto
+     * miesta — MCP klient si ju nevie prepnúť ani argumentom.
+     */
+    protected function toolConsoleRun(array $args): array
+    {
+        if (blank($args['message'] ?? null)) {
+            throw new \InvalidArgumentException('Missing required argument: message');
+        }
+
+        $result = app(HeadlessRunner::class)->run(
+            trim((string) $args['message']),
+            ! blank($args['thread'] ?? null) ? trim((string) $args['thread']) : null,
+            ['model' => ! blank($args['model'] ?? null) ? trim((string) $args['model']) : null],
+        );
+
+        return $this->dropEmpty($result);
+    }
+
+    /**
+     * Posledné vlákna konzoly. Bez správ — na obsah je `console_result`, a zoznam
+     * s telom správ by bol pri desiatich vláknach nečitateľne veľký.
+     */
+    protected function toolConsoleThreads(array $args): array
+    {
+        $limit = $this->consoleLimit($args['limit'] ?? null);
+
+        $threads = ConsoleThread::query()
+            ->withCount('messages')
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (ConsoleThread $thread) => $this->dropEmpty([
+                'uuid' => $thread->uuid,
+                'title' => $thread->title,
+                'last_message_at' => $thread->last_message_at?->toIso8601String(),
+                'messages' => (int) $thread->messages_count,
+            ]))
+            ->all();
+
+        // `total` je tu preto, aby AI vedela, či strop niečo odrezal — inak by
+        // desať vlákien vyzeralo rovnako ako „všetky vlákna, ktoré existujú".
+        return $this->dropEmpty(['threads' => $threads, 'total' => ConsoleThread::count()]);
+    }
+
+    /**
+     * Chvost jedného vlákna: posledné repliky a tool cally, ktoré na nich visia.
+     *
+     * Rola `system` sa nevracia zámerne — je to tá istá smernica na každom vlákne
+     * a v jednom čítaní by zabrala viac než celá konverzácia.
+     *
+     * Tool cally sa scopujú na vrátené správy, nie na celé vlákno: inak by `limit`
+     * strážil dĺžku odpovede len na polovicu a dlhý tool chain by ju pretiekol.
+     */
+    protected function toolConsoleResult(array $args): array
+    {
+        if (blank($args['thread'] ?? null)) {
+            throw new \InvalidArgumentException('Missing required argument: thread');
+        }
+
+        $uuid = trim((string) $args['thread']);
+        $thread = ConsoleThread::where('uuid', $uuid)->first();
+
+        if ($thread === null) {
+            throw new \InvalidArgumentException("Unknown console thread: {$uuid}");
+        }
+
+        $limit = $this->consoleLimit($args['limit'] ?? null);
+
+        $rows = $thread->messages()
+            ->whereIn('role', ['user', 'assistant'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $calls = ConsoleToolCall::query()
+            ->where('thread_id', $thread->id)
+            ->whereIn('message_id', $rows->pluck('id')->all())
+            ->orderBy('id')
+            ->get()
+            ->map(fn (ConsoleToolCall $call) => $this->dropEmpty([
+                'name' => $call->name,
+                'status' => $call->status,
+                'duration_ms' => $call->duration_ms,
+            ]))
+            ->all();
+
+        return $this->dropEmpty([
+            'thread' => $thread->uuid,
+            'title' => $thread->title,
+            'awaiting_decision' => $thread->pendingToolCall() !== null,
+            'messages' => $rows->map(fn (ConsoleMessage $message) => $this->dropEmpty([
+                'role' => $message->role,
+                'content' => $this->clipContent((string) $message->content),
+                'content_truncated' => mb_strlen((string) $message->content) > self::CONSOLE_CONTENT_CAP,
+                'model' => $message->model,
+                'created_at' => $message->created_at?->toIso8601String(),
+            ]))->all(),
+            'tools' => $calls,
+        ]);
+    }
+
+    /**
+     * Rozvrhy plánovaných behov: zoznam, alebo vytvorenie nového.
+     *
+     * Vytvorený rozvrh je VŽDY vypnutý a odpoveď to hovorí nahlas vrátane príkazu,
+     * ktorým sa zapína. AI má na rozvrh dosah, ale nie na jeho spustenie: rozvrh,
+     * ktorý sa sám rozbehne, je spálené CPU (lokálny model beží na CPU aj minúty)
+     * bez toho, aby o tom človek vedel.
+     *
+     * `enabled` sa vedome nefiltruje cez {@see self::dropEmpty()} — `false` je tu
+     * HODNOTA, a to práve tá, ktorú si má AI z odpovede odniesť.
+     */
+    protected function toolConsoleSchedules(array $args): array
+    {
+        $action = strtolower(trim((string) ($args['action'] ?? '')));
+
+        if ($action === 'list') {
+            return [
+                'schedules' => ConsoleSchedule::orderBy('id')->get()
+                    ->map(fn (ConsoleSchedule $schedule) => $this->scheduleRow($schedule))
+                    ->all(),
+            ];
+        }
+
+        if ($action !== 'create') {
+            throw new \InvalidArgumentException("Unknown action: {$action}. Allowed: list, create");
+        }
+
+        foreach (['label', 'prompt', 'cron'] as $field) {
+            if (blank($args[$field] ?? null)) {
+                throw new \InvalidArgumentException("Missing required argument for create: {$field}");
+            }
+        }
+
+        // Neplatný cron sa odmietne PRED zápisom, aby po chybe nezostal v tabuľke
+        // rozvrh, ktorý sa nedá vyhodnotiť. Model to potom opraví jedným volaním.
+        ConsoleSchedule::assertValidCron((string) $args['cron']);
+
+        $schedule = ConsoleSchedule::create([
+            'label' => trim((string) $args['label']),
+            'prompt' => trim((string) $args['prompt']),
+            'cron' => trim((string) $args['cron']),
+            'enabled' => false,
+        ]);
+
+        return [
+            'action' => 'created',
+            'schedule' => $this->scheduleRow($schedule),
+            'note' => 'The schedule was created DISABLED and will not run. Enabling it is a human '
+                .'decision: php artisan mind:console-schedules --enable='.$schedule->uuid,
+        ];
+    }
+
+    /**
+     * Jeden rozvrh pre AI. `enabled` sedí mimo `dropEmpty()`, pretože `false` je
+     * pri rozvrhu informácia, nie prázdno.
+     *
+     * @return array<string, mixed>
+     */
+    protected function scheduleRow(ConsoleSchedule $schedule): array
+    {
+        return [
+            'uuid' => $schedule->uuid,
+            'label' => $schedule->label,
+            'cron' => $schedule->cron,
+            'enabled' => $schedule->enabled,
+        ] + $this->dropEmpty([
+            'last_run_at' => $schedule->last_run_at?->toIso8601String(),
+            // uuid vlákna posledného behu — s ním sa výsledok dočíta cez console_result
+            'last_thread' => $schedule->last_thread_id,
+        ]);
+    }
+
+    /** Strop `limit` drží server, nie klient — MCP argument je vstup od modelu. */
+    protected function consoleLimit(mixed $raw): int
+    {
+        $limit = is_numeric($raw) ? (int) $raw : self::CONSOLE_LIMIT_DEFAULT;
+
+        return max(1, min(self::CONSOLE_LIMIT_MAX, $limit));
+    }
+
+    protected function clipContent(string $text): string
+    {
+        return mb_strlen($text) > self::CONSOLE_CONTENT_CAP
+            ? mb_substr($text, 0, self::CONSOLE_CONTENT_CAP)
+            : $text;
     }
 
     /** Oblasť podľa id (numerické) alebo slug/mena → area_id alebo null. */

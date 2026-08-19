@@ -85,3 +85,17 @@ Schedule::command('mind:rollup')
     ->weeklyOn(0, '05:15')
     ->timezone('Europe/Bratislava')
     ->withoutOverlapping(60);
+
+// Plánované behy konzoly (tabuľka console_schedules). Príkaz sa pýta každú minútu,
+// pretože cron výraz rozvrhu môže byť ľubovoľne hustý — granularitu určuje rozvrh,
+// nie táto registrácia; príkaz sám vyhodnotí, čo na túto minútu vychádza.
+//
+// withoutOverlapping je podmienka, nie opatrnosť: rozvrh beží cez HeadlessRunner na
+// lokálnom modeli, ktorý na CPU generuje aj niekoľko minút. Bez zámku by minútový
+// tik naskladal ďalší proces na ešte bežiaci a stroj by sa zadusil na inferencii,
+// ktorú nikto nečaká.
+Schedule::command('mind:console-schedules')
+    ->everyMinute()
+    ->name('console-schedules')
+    ->withoutOverlapping(30)
+    ->createMutexNameUsing(fn () => 'console-schedules');
