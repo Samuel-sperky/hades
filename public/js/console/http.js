@@ -3,9 +3,9 @@
    Prečo vlastná kópia a nie import z /js/mind/http.js: ten modul ťahá toasts.js
    a cez neho ďalšie moduly grafu. Konzola je iná stránka a nemá dôvod načítať
    graf, aby vedela poslať fetch. Rozdiel proti grafu je zámerný: konzola nemá
-   toasty, hlásenie ide do toku správ, kde ho používateľ naozaj čítá.
+   toasty, hlásenie ide do toku správ, kde ho používateľ naozaj číta.
 
-   Interné /api/* sedia za UI guardom a ValidateCsrfToken (§3.5 docs/BEZPECNOST.md),
+   Interné /api/* sedia za UI guardom a ValidateCsrfToken (§3.3 docs/BEZPECNOST.md),
    takže každý non-GET request musí priniesť token z <meta>. */
 
 const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -18,7 +18,7 @@ export function setLockedHandler(fn) {
 }
 
 /**
- * Fetch s CSRF hlavičkou. Vracia Response — stream behu si telo čítá sám,
+ * Fetch s CSRF hlavičkou. Vracia Response — stream behu si telo číta sám,
  * preto sa tu odpoveď zámerne neparsuje na JSON.
  */
 export async function request(url, { method = 'GET', body, signal } = {}) {

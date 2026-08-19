@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\SearchController as ApiSearchController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\Console\ModelController as ConsoleModelController;
+use App\Http\Controllers\Console\RunController as ConsoleRunController;
 use App\Http\Controllers\Console\ThreadController as ConsoleThreadController;
 use App\Http\Controllers\ContextController;
 use App\Http\Controllers\DirectiveController;
@@ -112,11 +114,22 @@ Route::middleware([
     // EventSource nevie poslať CSRF hlavičku a GET stream by musel z okruhu
     // vypadnúť. `fetch` so čítaním tela to zvládne s CSRF aj so `stop`.
     // -----------------------------------------------------------------------
+    // Ponuka modelov pre prepínač. GET a bez throttle: číta sa raz pri načítaní
+    // konzoly a je to len zoznam mien od poskytovateľa.
+    Route::get('/console/models', [ConsoleModelController::class, 'index']);
+
     Route::get('/console/threads', [ConsoleThreadController::class, 'index']);
     Route::post('/console/threads', [ConsoleThreadController::class, 'store']);
     Route::get('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'show']);
     Route::patch('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'update']);
     Route::delete('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'destroy']);
+
+    // Beh agenta. Throttle je na `run`, nie na `decide`: jeden ťah drží spojenie
+    // minúty a dvadsať za minútu je strop, ktorý §8.9 docs/BEZPECNOST.md už
+    // sľubuje. `decide` je klik človeka v rozbehnutom behu — obmedziť ho na 20
+    // by znamenalo, že sa v dlhom vlákne nedá dopovoliť vlastný zápis.
+    Route::post('/console/run', [ConsoleRunController::class, 'run'])->middleware('throttle:20,1');
+    Route::post('/console/decide', [ConsoleRunController::class, 'decide']);
 });
 
 // ---------------------------------------------------------------------------

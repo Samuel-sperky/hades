@@ -134,6 +134,14 @@ return [
         // zacykliť dvojicu „hľadaj → prečítaj" a spáliť hodinu CPU.
         'max_steps' => (int) env('HADES_CONSOLE_MAX_STEPS', 12),
 
+        // Nechať model „myslieť nahlas"? Default NIE. Qwen3 je hybridný a svoj
+        // reasoning posiela v `message.thinking`, ktoré sa do odpovede nedostane —
+        // zmerané: 231 z 309 tokenov do koša a 25 s ticha pred prvým znakom, kým
+        // ten istý správny tool call s think=false stál 34 tokenov. Na CPU pri
+        // ~8 tok/s to nie je optimalizácia, ale podmienka použiteľnosti.
+        // Cloudové modely (Anthropic) tento prepínač ignorujú.
+        'think' => (bool) env('HADES_CONSOLE_THINK', false),
+
         // Koľko posledných správ vlákna poslať modelu. História žije v DB celá,
         // ale na CPU sa každý token kontextu prepočíta pri každom kole.
         'history_window' => (int) env('HADES_CONSOLE_HISTORY', 20),

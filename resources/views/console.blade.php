@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     {{-- CSRF token pre zápisy na interné /api/* — console.js ho pripája do každého
-         non-GET fetchu vrátane streamovaného behu (§3.5 docs/BEZPECNOST.md). --}}
+         non-GET fetchu vrátane streamovaného behu (§3.3 docs/BEZPECNOST.md). --}}
     <meta name="csrf-token" content="{{ csrf_token() }}">
     {{-- Vlákno z URL: /console/<uuid>. Prázdne = nové vlákno. Číta ho main.js pri
          starte, aby sa odkaz na konkrétnu konverzáciu dal poslať a otvoriť. --}}
@@ -40,31 +40,51 @@
         <main id="console-main">
             <header id="console-header">
                 <div class="ch-left">
+                    {{-- Pod 860 px je panel skrytý; bez tohto prepínača by sa na úzkom
+                         okne k histórii vlákien nedalo dostať vôbec. --}}
+                    <button id="rail-toggle" type="button" title="Vlákna" aria-label="Vlákna">
+                        <span class="ms" aria-hidden="true">list</span>
+                    </button>
                     <h1 id="thread-title">Konzola vedomia</h1>
                 </div>
                 <div class="ch-right">
-                    {{-- Prepínač modelu: lokálny Qwen vs Claude. Napĺňa ho main.js
+                    {{-- Prepínač modelu: lokálny Qwen vs Claude. Napĺňa ho models.js
                          z /api/console/models — zoznam závisí od toho, čo je
-                         reálne stiahnuté v Ollame. --}}
+                         reálne stiahnuté v Ollame. Keď endpoint nie je, zhasne a
+                         ukáže model vlákna. --}}
                     <label class="model-pick">
                         <span class="ms" aria-hidden="true">memory</span>
                         <select id="model-select" aria-label="Model"></select>
                     </label>
                     {{-- Auto-accept: povolí zápisové tooly bez pýtania sa. Default
                          vypnuté — slabší lokálny model dokáže do pamäte napísať odpad. --}}
-                    <label class="auto-accept">
-                        <input type="checkbox" id="auto-accept">
-                        <span>Auto-povoliť zápisy</span>
+                    {{-- aria-label je tu POVINNÝ, nie zdvojenie: pod 860 px sa `.lbl`
+                         skrýva cez `display: none`, čím zmizne aj z prístupného mena,
+                         a políčko by na úzkom okne bolo bezmenné. --}}
+                    <label class="auto-accept" title="Auto-povoliť zápisy">
+                        <input type="checkbox" id="auto-accept" aria-label="Auto-povoliť zápisy">
+                        <span class="lbl">Auto-povoliť zápisy</span>
                     </label>
-                    <span id="run-stats" aria-live="polite"></span>
+                    {{-- Stav behu (sekundy, krok, tokeny) sa mení každú sekundu, takže
+                         aria-live tu NIE JE: čítačka by tikala do rečí. Hotový ťah
+                         ohlási jedna veta v #run-announce. --}}
+                    <span id="run-stats"></span>
                 </div>
             </header>
 
             {{-- Tok správ: používateľ, odpovede modelu, karty tool callov, diffy,
-                 potvrdzovacie prompty. Všetko kreslí console/render.js. --}}
-            <div id="stream" role="log" aria-live="polite" aria-relevant="additions"></div>
+                 potvrdzovacie prompty. Všetko kreslí console/render.js.
+                 aria-busy drží render.js počas streamu — inak by čítačka hlásila
+                 každý prílet tokenu, teda pri 9 tok/s deväťkrát za sekundu. --}}
+            <div id="stream" role="log" aria-live="polite" aria-relevant="additions" aria-busy="false"></div>
 
             <form id="composer" autocomplete="off">
+                {{-- Späť na spodok — ukáže sa len keď človek odskroluje nahor a tok
+                     ho prestane sledovať. Ikona `arrow_downward` v subsete NIE JE,
+                     preto je to `arrow_upward` prevrátená v CSS. --}}
+                <button type="button" id="to-bottom" class="hidden" title="Na spodok" aria-label="Skočiť na spodok">
+                    <span class="ms flip" aria-hidden="true">arrow_upward</span>
+                </button>
                 <div class="composer-row">
                     <textarea id="prompt" rows="1" placeholder="Napíš úlohu pre vedomie… (/ pre príkazy, Enter pošle)"
                               aria-label="Správa pre konzolu"></textarea>
@@ -75,9 +95,16 @@
                         <span class="ms" aria-hidden="true">stop</span>
                     </button>
                 </div>
-                {{-- Paleta slash príkazov — /recall, /learn, /model, /clear, /help --}}
+                <p id="composer-hint">
+                    <kbd>Enter</kbd> pošle · <kbd>Shift</kbd>+<kbd>Enter</kbd> nový riadok ·
+                    <kbd>/</kbd> príkazy · <kbd>Esc</kbd> zastaví beh
+                </p>
+                {{-- Paleta slash príkazov — /recall, /read, /model, /clear, /new, /help --}}
                 <div id="slash-palette" class="hidden" role="listbox" aria-label="Príkazy"></div>
             </form>
+
+            {{-- Jedna veta pre čítačku, keď ťah dobehne alebo si žiada rozhodnutie. --}}
+            <p id="run-announce" class="sr-only" aria-live="polite"></p>
         </main>
     </div>
 
