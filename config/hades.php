@@ -97,6 +97,52 @@ return [
     'anthropic_api_key' => env('ANTHROPIC_API_KEY'),
     'chat_model' => env('HADES_CHAT_MODEL', 'claude-opus-4-8'),
 
+    // ---------------------------------------------------------------------
+    // Konzola vedomia (/console) — agentový beh s toolmi nad vlastnou pamäťou.
+    //
+    // Default poskytovateľ je `ollama`, teda lokálny model v Dockeri: stroj má
+    // 24 CPU jadier, 47 GB RAM a ŽIADNU použiteľnú GPU (AMD iGPU, ktorú Docker
+    // na Windows do kontejnera nepustí), takže inferencia beží na CPU. Preto je
+    // default MoE model — 30B parametrov s ~3B aktívnymi beží na CPU rýchlejšie
+    // než obsluhovaný hustý 8B.
+    //
+    // `anthropic` je ten istý kontrakt cez cloud a zapne sa doplnením kľúča.
+    // Vrstva je pluggable zámerne: keby konzola volala jedno SDK priamo, výmena
+    // modelu by znamenala prepisovať agentovú smyčku.
+    // ---------------------------------------------------------------------
+    'console' => [
+        'provider' => env('HADES_CONSOLE_PROVIDER', 'ollama'),
+
+        'ollama' => [
+            // v docker sieti je to názov služby, nie localhost
+            'host' => env('OLLAMA_HOST', 'http://ollama:11434'),
+            // agentový model (tool use), rýchly model (krátke odpovede), embeddingy
+            'model' => env('HADES_OLLAMA_MODEL', 'qwen3-coder:30b-a3b-q4_K_M'),
+            'fast_model' => env('HADES_OLLAMA_FAST_MODEL', 'qwen3:8b'),
+            'embed_model' => env('HADES_OLLAMA_EMBED_MODEL', 'qwen3-embedding:0.6b'),
+            // CPU inferencia je pomalá; timeout musí uniesť dlhý prvý token
+            'timeout' => (int) env('HADES_OLLAMA_TIMEOUT', 900),
+            // koľko tokenov kontextu poslať modelu (na CPU je kontext hlavná cena)
+            'context' => (int) env('HADES_OLLAMA_CONTEXT', 16384),
+        ],
+
+        // Strop na počet kôl agentovej smyčky v jednom ťahu. Bez neho vie model
+        // zacykliť dvojicu „hľadaj → prečítaj" a spáliť hodinu CPU.
+        'max_steps' => (int) env('HADES_CONSOLE_MAX_STEPS', 12),
+
+        // Koľko posledných správ vlákna poslať modelu. História žije v DB celá,
+        // ale na CPU sa každý token kontextu prepočíta pri každom kole.
+        'history_window' => (int) env('HADES_CONSOLE_HISTORY', 20),
+
+        // Koreň, z ktorého smú súborové tooly čítať a doňho zapisovať. Cesta mimo
+        // koreňa je odmietnutá — nie sanitizovaná, odmietnutá.
+        'files_root' => env('HADES_CONSOLE_FILES_ROOT', base_path()),
+
+        // Strop na jeden prečítaný súbor a na výstup ripgrepu (znaky).
+        'read_cap' => (int) env('HADES_CONSOLE_READ_CAP', 60000),
+        'grep_cap' => (int) env('HADES_CONSOLE_GREP_CAP', 20000),
+    ],
+
     // WebSocket adresa tak, ako ju vidi prehliadac (nie docker siet)
     'public_ws_host' => env('HADES_PUBLIC_WS_HOST', 'localhost'),
     'public_ws_port' => (int) env('HADES_PUBLIC_WS_PORT', 8081),

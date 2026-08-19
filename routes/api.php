@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\SearchController as ApiSearchController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\Console\ThreadController as ConsoleThreadController;
 use App\Http\Controllers\ContextController;
 use App\Http\Controllers\DirectiveController;
 use App\Http\Controllers\EdgeController;
@@ -99,6 +100,23 @@ Route::middleware([
     Route::get('/review/queue', [ReviewController::class, 'queue']);
     Route::post('/nodes/{node}/verify', [ReviewController::class, 'verify']);
     Route::post('/nodes/{node}/resolve-review', [ReviewController::class, 'resolveReview']);
+
+    // -----------------------------------------------------------------------
+    // Konzola vedomia — vlákna a agentový beh. Zámerne v TOM ISTOM guardovanom
+    // okruhu ako zvyšok interného API: tooly konzoly vedia zapisovať do pamäte
+    // aj do súborov, takže vlastný, voľnejší okruh by bol obchádzka guardu.
+    //
+    // Beh je dvojfázový a všetko ide POST-om: `run` vráti stream a skončí buď
+    // hotovou odpoveďou, alebo stavom „čakám na povolenie"; `decide` rozhodne o
+    // jednom tool calle a beh pokračuje. Preto tu nie je GET SSE endpoint —
+    // EventSource nevie poslať CSRF hlavičku a GET stream by musel z okruhu
+    // vypadnúť. `fetch` so čítaním tela to zvládne s CSRF aj so `stop`.
+    // -----------------------------------------------------------------------
+    Route::get('/console/threads', [ConsoleThreadController::class, 'index']);
+    Route::post('/console/threads', [ConsoleThreadController::class, 'store']);
+    Route::get('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'show']);
+    Route::patch('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'update']);
+    Route::delete('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'destroy']);
 });
 
 // ---------------------------------------------------------------------------

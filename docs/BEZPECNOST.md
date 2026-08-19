@@ -327,10 +327,33 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
    kľúčov; heslo typu `Mojemeno1985` neodhalí. Blacklist je poistka, nie
    garancia — pravidlo „tajomstvá do Hadesa nepatria" musí primárne držať
    volajúci.
-9. **Rate limit má len `/api/chat`.** Recall, graf ani zápisy throttle nemajú
-   (lokálny model, ale platí to aj pre verejnú cestu za basic-auth).
-10. **Chat posiela obsah pamäte do Anthropic API.** Je to zámer a účel, ale
-    treba to vedieť: recallnuté uzly + pripnutý kontext odchádzajú von.
+9. **Rate limit má len `/api/chat` a `/api/console/run`.** Recall, graf ani
+   zápisy throttle nemajú (lokálny model, ale platí to aj pre verejnú cestu za
+   basic-auth).
+10. **Chat a konzola posielajú obsah pamäte modelu.** Pri `provider=anthropic`
+    odchádzajú recallnuté uzly a pripnutý kontext do Anthropic API. Pri
+    `provider=ollama` (default konzoly) neodchádza nič — model beží v kontejneri
+    na tom istom stroji. Rozdiel je vidno v UI (prepínač modelu) a je to jediná
+    vec, ktorá určuje, či pamäť opustí počítač.
+11. **Konzola vedomia (`/console`) je najsilnejší vstup do appky.** Jej tooly
+    vedia pamäť čítať aj prepisovať a siahajú na súbory v `hades.console.files_root`.
+    Čo ju drží:
+    - Celý okruh `/console` + `/api/console/*` je za `AuthenticateUi` + CSRF
+      (§3.3) a `ConsoleGuardTest` to overuje **na celom prefixe**, nie na
+      vymenovaných routách — nový endpoint pridaný mimo skupinu zhodí test.
+    - **Bash/shell tool zámerne neexistuje.** Bola to vedomá voľba pri zadaní:
+      appka je verejne tunelovaná cez ngrok a shell za HTTP endpointom je iná
+      kategória rizika než zápis do súboru.
+    - Zápisové tooly (`mind_learn`, `mind_rename`, `mind_delete`, `edit_file`,
+      `write_file`) sa **nevykonajú bez rozhodnutia človeka** — beh je dvojfázový
+      a tool call čaká v stave `pending` s náhľadom zmeny. `auto_accept` je
+      per-vlákno a default vypnutý.
+    - Cesta mimo `files_root` je **odmietnutá, nie sanitizovaná** — sanitizácia
+      by ticho zapísala niekam inam.
+
+    Čo tým *nie je* vyriešené: kto má odomknutú session, má cez konzolu zápis do
+    súborov projektu. To je zámer (je to nástroj vlastníka), ale je to väčšia
+    plocha než mal dashboard — odomknutá session na 30 dní (bod 1) teraz váži viac.
 
 ---
 
