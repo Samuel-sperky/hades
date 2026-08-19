@@ -3,7 +3,7 @@ title: "Banner Gennerator"
 type: project-rollup
 sessions: 2
 range: 15.7.2026
-updated: 2026-07-19T05:15:12+02:00
+updated: 2026-08-16T05:15:15+02:00
 ---
 
 # Banner Gennerator
