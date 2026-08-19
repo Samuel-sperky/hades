@@ -96,11 +96,49 @@ function entAlpha(n, ent, hl) {
 
 /* ---------- GRAF B: VIZUÁLNY JAZYK ---------- */
 
-// Farba, ktorou sa uzol reálne kreslí. Jadro je JEDINÝ sýty prvok kompozície
-// (zlato), všetko ostatné ide cez utlmenú paletu (theme.mutedColor).
+/* Farba, ktorou sa uzol reálne kreslí. Jadro je JEDINÝ sýty prvok kompozície
+   (zlato), všetko ostatné ide cez utlmenú paletu (theme.mutedColor).
+
+   Cache nie je na uzle, ale na OBLASTI — presne to je celý vstup funkcie (typ jadra
+   plus area_id). Reťaz nodeColor → darkAreaColor → mutedColor má vlastné memoizácie,
+   ale aj tak to bolo na uzol 2 vyhľadania v Mape a jedno zlepenie stringového kľúča,
+   a beží pre každý z 2672 uzlov v troch slučkách za frame (prach, pipy, tvary).
+   Platnosť: téma (T) a identita S.areas — pri reloade dát vzniká nová Mapa oblastí,
+   takže sa cache zahodí sama a farba sa nemôže „zaseknúť" na starej palete. */
+const _paintCache = new Map();       // area_id (číslo) → hex
+const _colorIds = new Map();         // hex → malé celé číslo (kľúče vedierok)
+let _paintForT = null, _paintForAreas = null;
 function paintColor(n) {
-    const c = nodeColor(n);
-    return n.type === 'core' ? c : mutedColor(c);
+    if (_paintForT !== T || _paintForAreas !== S.areas) {
+        _paintForT = T; _paintForAreas = S.areas;
+        _paintCache.clear();
+    }
+    const key = n.type === 'core' ? -1 : (n.area_id == null ? -2 : n.area_id);
+    let c = _paintCache.get(key);
+    if (c === undefined) {
+        c = nodeColor(n);
+        if (n.type !== 'core') c = mutedColor(c);
+        _paintCache.set(key, c);
+    }
+    return c;
+}
+
+// Malé celé číslo pre farbu — aby sa kľúč vedierka dal poskladať aritmetikou a nie
+// zlepením reťazca. Farieb je rádovo tucet (počet oblastí), takže Mapa nerastie.
+function colorId(col) {
+    let i = _colorIds.get(col);
+    if (i === undefined) { i = _colorIds.size + 1; _colorIds.set(col, i); }
+    return i;
+}
+
+/* Generácia fontov pre cache šírok textu (viď `n._tw` v layoutNodeLabels).
+   Geist je self-hosted a načítava sa asynchrónne, takže prvé framy môžu merať
+   FALLBACK. Kým sa šírka merala každý frame, opravilo sa to samo; s cache by
+   popisky zostali rozložené podľa cudzích metrík navždy — a je to chyba, ktorá sa
+   ukáže len na studenej cache, teda presne raz, u používateľa. */
+let _fontGen = 0;
+if (typeof document !== 'undefined' && document.fonts && document.fonts.addEventListener) {
+    document.fonts.addEventListener('loadingdone', () => { _fontGen++; requestDraw(); });
 }
 
 // Polomer prstenca. Pre uzly s tvarom ho dáva layout (nodeRadius × mul — už rastie so
@@ -368,46 +406,106 @@ function applyRingLod(solid, strong, invK) {
 }
 
 /* Mriežka nakreslených uzlov — jediná otázka, ktorú rieši: „padá do tohto rámu
-   nejaký nakreslený uzol?" Bez nej by bol test popisku O(popisky × 1060). */
-/* Kľúč buňky je ČÍSLO, nie string `cx + ',' + cy`. Nie je to mikrooptimalizácia:
-   rozloženie popiskov robí za frame tisíce dotazov (kandidáti × kandidátske polohy)
-   a každý z nich prejde ~10 buniek, takže stringový kľúč znamenal desaťtisíce
-   alokácií na frame. Merané pri NEZMENENEJ konfigurácii hľadania (2560 px, úroveň
-   mapa): fáza `labels` 4,29 → 2,75 ms. Číselný kľúč je jednoznačný, kým
-   |cx|,|cy| < 32768; buňka má 44 px v obrazovke, takže by to žiadalo scénu
-   1,4 milióna px širokú. */
-function GK(cx, cy) { return (cx + 32768) * 65536 + (cy + 32768); }
-function buildNodeGrid(drawn, invK) {
-    const cell = 44 * invK;
-    const g = new Map();
-    let maxR = 0;
-    for (const d of drawn) {
-        if (d.r > maxR) maxR = d.r;
-        const k = GK(Math.floor(d.x / cell), Math.floor(d.y / cell));
-        let a = g.get(k);
-        if (!a) { a = []; g.set(k, a); }
-        a.push(d);
-    }
-    return { g, cell, maxR };
+   nejaký nakreslený uzol?" Bez nej by bol test popisku O(popisky × 2672). */
+/* ---------- MRIEŽKA JE PLOCHÁ (CSR), NIE Map<číslo, Array> ----------
+   Predchádzajúca verzia už mala číselný kľúč namiesto `cx + ',' + cy` a zaplatila
+   tým fázu `labels` 4,29 → 2,75 ms (pri 1060 uzloch). Pri 2672 uzloch sa ukázalo
+   druhé dno tej istej štruktúry: `Map.get()` na buňku a `Array.push()` na uzol.
+   Rozloženie popiskov robí tisíce dotazov (kandidáti × až 84 kandidátskych polôh)
+   a každý prejde ~10 buniek, takže to bolo ~30 000 hashovaní Mapy za frame plus
+   ~700 polí, ktoré vzniknú a zomrú v každom frame.
+
+   Teraz je to CSR: `start` (offsety buniek) + `idx` (indexy uzlov po buňkách), oboje
+   Int32Array držané medzi framami. Dotaz je indexová aritmetika bez hashovania a bez
+   alokácie. Geometria testu sa NEZMENILA — porovnávajú sa tie isté čísla, takže
+   výsledná množina popiskov je bit za bit tá istá.
+
+   Rozsah mriežky sa odvádza z dát (min/max buňky), nie z viewportu: uzly sú aj za
+   jeho hranou (culling púšťa 140 px navyše) a popisok sa im musí vyhnúť rovnako. */
+let _gs = null, _gi = null, _gc = null;
+// Súradnice a polomery nakreslených uzlov — držané medzi framami (viď `dX` v draw()).
+let _dnX = new Float64Array(0), _dnY = new Float64Array(0), _dnR = new Float64Array(0);
+function ensureDrawnBuf(n) {
+    if (_dnX.length >= n) return;
+    const m = n + 512;
+    _dnX = new Float64Array(m); _dnY = new Float64Array(m); _dnR = new Float64Array(m);
 }
-// Zasahuje do rámu disk niektorého nakresleného uzla? (polomer uzla + pad)
-function rectHasNode(grid, rect, pad) {
+function buildNodeGrid(xs, ys, rs, cnt, invK) {
+    const cell = 44 * invK;
+    if (!cnt) return { cnt: 0, cell, maxR: 0, gx: 0, gy: 0, cx0: 0, cy0: 0, start: null, idx: null, xs, ys, rs };
+    let maxR = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < cnt; i++) {
+        if (rs[i] > maxR) maxR = rs[i];
+        if (xs[i] < minX) minX = xs[i];
+        if (xs[i] > maxX) maxX = xs[i];
+        if (ys[i] < minY) minY = ys[i];
+        if (ys[i] > maxY) maxY = ys[i];
+    }
+    /* Poistka proti odletenému uzlu: keby jeden uzol sedel tisíce buniek od zvyšku,
+       gx × gy by narástlo do miliónov a samotná mriežka by bola drahšia než hrubá
+       sila. V takom prípade sa buňka zhrubne — test zostáva správny, len menej
+       presne triedi (dotaz aj tak končí porovnaním skutočnej geometrie). */
+    let cw = cell, cx0 = 0, cy0 = 0, gx = 0, gy = 0;
+    for (;;) {
+        cx0 = Math.floor(minX / cw); cy0 = Math.floor(minY / cw);
+        gx = Math.floor(maxX / cw) - cx0 + 1; gy = Math.floor(maxY / cw) - cy0 + 1;
+        if (gx * gy <= 262144) break;
+        cw *= 2;
+    }
+    const cells = gx * gy;
+    if (!_gs || _gs.length < cells + 2) _gs = new Int32Array(cells + 2 + 4096);
+    if (!_gi || _gi.length < cnt) _gi = new Int32Array(cnt + 1024);
+    if (!_gc || _gc.length < cnt) _gc = new Int32Array(cnt + 1024);
+    const start = _gs, idx = _gi, cellOf = _gc;
+    start.fill(0, 0, cells + 2);
+    for (let i = 0; i < cnt; i++) {
+        const c = (Math.floor(ys[i] / cw) - cy0) * gx + (Math.floor(xs[i] / cw) - cx0);
+        cellOf[i] = c;
+        start[c + 1]++;
+    }
+    for (let c = 0; c < cells; c++) start[c + 1] += start[c];
+    // Plnenie posúva start[c] na konec buňky; poradie sa potom vráti posunom o jedno
+    // vpravo (klasický counting sort). Bez toho by tu musel vzniknúť ďalší Int32Array
+    // na kurzory — teda presne tá alokácia za frame, ktorej sa celá zmena vyhýba.
+    for (let i = 0; i < cnt; i++) idx[start[cellOf[i]]++] = i;
+    for (let c = cells; c > 0; c--) start[c] = start[c - 1];
+    start[0] = 0;
+    return { cnt, cell: cw, maxR, gx, gy, cx0, cy0, start, idx, xs, ys, rs };
+}
+
+// Koľko nakreslených uzlov zasahuje do rámu? `stopAtFirst` robí z toho test áno/nie
+// (rectHasNode) — jedna slučka pre oba odberatele, aby sa geometria nedala rozjesť.
+function scanRect(grid, rect, pad, stopAtFirst) {
+    if (!grid.cnt) return 0;
     const m = grid.maxR + pad;
-    const cx0 = Math.floor((rect.x - m) / grid.cell), cx1 = Math.floor((rect.x + rect.w + m) / grid.cell);
-    const cy0 = Math.floor((rect.y - m) / grid.cell), cy1 = Math.floor((rect.y + rect.h + m) / grid.cell);
-    for (let cx = cx0; cx <= cx1; cx++) {
-        for (let cy = cy0; cy <= cy1; cy++) {
-            const a = grid.g.get(GK(cx, cy));
-            if (!a) continue;
-            for (const d of a) {
-                const e = d.r + pad;
-                if (d.x > rect.x - e && d.x < rect.x + rect.w + e
-                    && d.y > rect.y - e && d.y < rect.y + rect.h + e) return true;
+    const cw = grid.cell, gx = grid.gx, gy = grid.gy;
+    let ax = Math.floor((rect.x - m) / cw) - grid.cx0, bx = Math.floor((rect.x + rect.w + m) / cw) - grid.cx0;
+    let ay = Math.floor((rect.y - m) / cw) - grid.cy0, by = Math.floor((rect.y + rect.h + m) / cw) - grid.cy0;
+    if (ax < 0) ax = 0;
+    if (ay < 0) ay = 0;
+    if (bx > gx - 1) bx = gx - 1;
+    if (by > gy - 1) by = gy - 1;
+    const xs = grid.xs, ys = grid.ys, rs = grid.rs, start = grid.start, idx = grid.idx;
+    const x0 = rect.x, x1 = rect.x + rect.w, y0 = rect.y, y1 = rect.y + rect.h;
+    let n = 0;
+    for (let cy = ay; cy <= by; cy++) {
+        const row = cy * gx;
+        for (let cx = ax; cx <= bx; cx++) {
+            const c = row + cx;
+            for (let p = start[c], q = start[c + 1]; p < q; p++) {
+                const i = idx[p];
+                const e = rs[i] + pad;
+                if (xs[i] > x0 - e && xs[i] < x1 + e && ys[i] > y0 - e && ys[i] < y1 + e) {
+                    if (stopAtFirst) return 1;
+                    n++;
+                }
             }
         }
     }
-    return false;
+    return n;
 }
+// Zasahuje do rámu disk niektorého nakresleného uzla? (polomer uzla + pad)
+function rectHasNode(grid, rect, pad) { return scanRect(grid, rect, pad, true) > 0; }
 
 // API stavového stroja pre konzolu a testy. Publikuje sa z main.js na konci init(),
 // nie z draw() — tam to fungovalo len vďaka poradiu: keby draw() prebehol prvý,
@@ -478,6 +576,21 @@ export function draw() {
     const loc = localSet();
     const softHoverActive = S.opts.edgeSoftHover && !hlAnchor && !loc;
 
+    /* ---- VIDITEĽNOSŤ UZLA: JEDNA ODPOVEĎ NA FRAME ----
+       Filtre (replay, typ/zdroj/oblasť/značky, lokálny graf) dávajú pre daný uzol
+       v jednom frame vždy tú istú odpoveď, ale pýtali sa na ňu tri miesta nezávisle:
+       zberná slučka (2672×) a drawEdges pre oba konce každej hrany (2 × 8271×).
+       Uzol má v priemere 6 hrán, takže filterPass bežal ~19 000× za frame nad
+       2672 rôznymi vstupmi. Teraz sa odpoveď zapíše raz na uzol (`n._vd`) a obaja
+       odberatelia ju čítajú. Platnosť je JEDEN frame — kto ju číta mimo draw(),
+       čítá staré dáta, preto sa `_vd` nikde inde nepoužíva. */
+    // `_ent` je to isté pre zápis uzla v L.pos: nuluje sa tu, plní ho zberná slučka
+    // nižšie a číta drawEdges (kde nahradí 4 vyhľadania v Mape na hranu).
+    for (const n of S.nodes) {
+        n._vd = (visibleInReplay(n) && nodeVisible(n, loc)) ? 1 : 0;
+        n._ent = null;
+    }
+
     /* ---- pozadie: jemná technická mriežka ---- */
     const bgLevel = S.opts.bg * (level === 'map' ? 0.7 : 1);
     if (bgLevel > 0.01) {
@@ -499,22 +612,33 @@ export function draw() {
        naopak maska pod nepriehľadnými popiskami rozhoduje, ktorý prach sa vynechá.
        Predtým sa prach maľoval hneď v zbernej slučke, takže popisky uzlov nemali
        ako o uzloch vedieť — a preto ani nemohli byť na mape. */
-    const dustBuckets = new Map();   // color → { col, items, alpha }
+    const dustBuckets = new Map();   // kľúč (číslo) → { col, items, alpha }
     const solid = [];                // uzly s tvarom (kind node/center/core)
-    const drawn = [];                // VŠETKO nakreslené — vstup pre mriežku popiskov
+    /* VŠETKO nakreslené — vstup pre mriežku prekážok popiskov. Sú to tri polia ČÍSEL,
+       nie pole objektov: mriežka z nich potrebuje len x/y/r a `{x,y,r}` na uzol
+       znamenalo 2672 krátkodobých objektov za frame (pri 60 fps 160 000/s), teda
+       čistý tlak na GC v slučke, ktorá má rozpočet 6 ms. */
+    ensureDrawnBuf(L.pos.size + 8);
+    const dX = _dnX, dY = _dnY, dR = _dnR;
+    let dN = 0;
     for (const [id, ent] of L.pos) {
         const n = S.byId.get(id);
-        if (!n) continue;
-        if (!visibleInReplay(n) || !nodeVisible(n, loc)) continue;
+        if (!n || n._vd !== 1) continue;
+        n._ent = ent;
         const isDust = ent.kind === 'dust' || ent.kind === 'ctx';
+        // dustDrift vracia ZDIEĽANÝ objekt (jeden na appku) — čítame ho hneď
         const dr = isDust ? dustDrift(id, invK) : null;
-        const x = n.x + (dr ? dr.x : 0), y = n.y + (dr ? dr.y : 0);
-        n._ox = dr ? dr.x : 0; n._oy = dr ? dr.y : 0;
+        const ddx = dr ? dr.x : 0, ddy = dr ? dr.y : 0;
+        const x = n.x + ddx, y = n.y + ddy;
+        n._ox = ddx; n._oy = ddy;
         if (!inView(x, y)) continue;
         if (isDust && n !== S.hover && n !== S.selected) {
             const r = ringRadius(n, ent, invK);
             const col = paintColor(n);
-            const key = col + '|' + (ent.kind === 'ctx' ? 'c' : 'd') + Math.round((ent.dim || 1) * 20);
+            // Kľúč vedierka je ČÍSLO (id farby × kvantovaný dim × druh prachu), nie
+            // `col + '|' + …`: stringový kľúč znamenal ~1400 alokácií reťazca za frame
+            // presne v tej slučke, ktorá má byť najlacnejšia. Granularita je zhodná.
+            const key = (colorId(col) * 64 + Math.round((ent.dim || 1) * 20)) * 2 + (ent.kind === 'ctx' ? 1 : 0);
             let b = dustBuckets.get(key);
             if (!b) {
                 b = {
@@ -524,15 +648,20 @@ export function draw() {
                 dustBuckets.set(key, b);
             }
             b.items.push({ x, y, r, n, ent });
-            drawn.push({ x, y, r });
+            dX[dN] = x; dY[dN] = y; dR[dN] = r; dN++;
             continue;
         }
         solid.push({
             n, ent, x, y, r: ringRadius(n, ent, invK), pip: false,
+            // r0 = polomer PRSTENCA. `r` z neho môže LOD zraziť na pip, ale maľovanie
+            // tvarov aj rozloženie popiskov potrebujú plný polomer — a ringRadius()
+            // (drawRadius + stupeň + log2) sa inak počítal na uzol 3× za frame.
+            r0: 0,
             d: S.degree.get(id) || 0,   // predpočítaný stupeň — komparátory ho čítajú v slučkách
             c: -1,                      // index buňky v LOD mriežke (plní applyRingLod)
         });
     }
+    for (const s of solid) s.r0 = s.r;
 
     /* ---- LOD: v hustých buňkách klesnú slabšie uzly na pip ----
        Musí byť PRED mriežkou prekážok aj pred rozložením popiskov — demotovaný uzol
@@ -551,7 +680,7 @@ export function draw() {
     _mark('rank');
     applyRingLod(solid, strong, invK);
     _mark('lod');
-    for (const s of solid) drawn.push({ x: s.x, y: s.y, r: s.r });
+    for (const s of solid) { dX[dN] = s.x; dY[dN] = s.y; dR[dN] = s.r; dN++; }
 
     /* ---- vodoznaky oblastí: ROZLOŽENIE (malovanie je nižšie) ----
        Musí byť PRED rozložením popiskov uzlov, aby si ich popisky mohli
@@ -559,7 +688,7 @@ export function draw() {
        layoutNodeLabels() šlo `reserved = null`, takže meno uzla mohlo sadnúť
        priamo na verzálky vodoznaku (merané: Vrstvy 3 kolízie, Sieť 1–2 —
        ink na inku, teda najhoršie čitateľná kombinácia). */
-    const grid = buildNodeGrid(drawn, invK);
+    const grid = buildNodeGrid(dX, dY, dR, dN, invK);
     _mark('grid');
     const marks = layoutHubMarks(L, invK, grid);
     _mark('marks');
@@ -662,7 +791,7 @@ export function draw() {
     for (const s of solid) {
         if (!s.pip || carriers.has(s.n.id) || s.n.type === 'core') continue;
         const col = paintColor(s.n);
-        const key = col + '|' + Math.round((s.ent.dim || 1) * 20);
+        const key = colorId(col) * 64 + Math.round((s.ent.dim || 1) * 20);   // číselný kľúč, viď prach
         let b = pipBuckets.get(key);
         if (!b) { b = { col, path: new Path2D(), alpha: (s.ent.dim || 1) }; pipBuckets.set(key, b); }
         b.path.moveTo(s.x + s.r, s.y);
@@ -678,12 +807,12 @@ export function draw() {
     _mark('pips');
     /* ---- UZLY S TVAROM — dual-channel: farba = oblasť, tvar = typ ---- */
     const showCert = level === 'dept' || level === 'node';
-    for (const { n, ent, x, y, pip } of solid) {
+    for (const { n, ent, x, y, pip, r0 } of solid) {
         if (pip && !carriers.has(n.id) && n.type !== 'core') {
             if (n.flash) n.flash = Math.max(0, n.flash - 0.02);
             continue;
         }
-        let r = ringRadius(n, ent, invK);
+        let r = r0;   // ten istý ringRadius, aký spočítala zberná slučka (viď s.r0)
         if (S.hover === n) r *= 1.18;
         r *= breatheFactor(n) * birthScale(n);
         if (n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
@@ -875,24 +1004,7 @@ export const MARK_MIN = 19, MARK_MAX = 116;
 
 // Koľko nakreslených uzlov padá do rámu? (rectHasNode odpovedá áno/nie, dodge
 // vodoznaku potrebuje počet, aby vedel vybrať najprázdnejšiu z ponúknutých polôh)
-function countNodesInRect(grid, rect, pad) {
-    const m = grid.maxR + pad;
-    const cx0 = Math.floor((rect.x - m) / grid.cell), cx1 = Math.floor((rect.x + rect.w + m) / grid.cell);
-    const cy0 = Math.floor((rect.y - m) / grid.cell), cy1 = Math.floor((rect.y + rect.h + m) / grid.cell);
-    let n = 0;
-    for (let cx = cx0; cx <= cx1; cx++) {
-        for (let cy = cy0; cy <= cy1; cy++) {
-            const a = grid.g.get(GK(cx, cy));
-            if (!a) continue;
-            for (const d of a) {
-                const e = d.r + pad;
-                if (d.x > rect.x - e && d.x < rect.x + rect.w + e
-                    && d.y > rect.y - e && d.y < rect.y + rect.h + e) n++;
-            }
-        }
-    }
-    return n;
-}
+function countNodesInRect(grid, rect, pad) { return scanRect(grid, rect, pad, false); }
 
 function layoutHubMarks(L, invK, grid) {
     let strong = L.hubs.filter((h) => h.dim >= 0.5 && (h.count > 0 || h.kind === 'layer'));
@@ -1039,7 +1151,7 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
 
     // kandidáti: tvarové uzly + prach (prach nesie label až teraz)
     const candidates = [];
-    const push = (n, ent, x, y) => {
+    const push = (n, ent, x, y, r0) => {
         const isHover = S.hover === n || S.selected === n;
         // pri aktívnom zvýraznení pomenúvame len okolie kotvy — utlmený popisok by
         // spadol pod kontrastnú podlahu, tak radšej žiadny
@@ -1047,7 +1159,7 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
         if (ent.dim < 0.5 && !isHover) return;
         const deg = S.degree.get(n.id) || 0;
         candidates.push({
-            n, ent, x, y, isHover, deg,
+            n, ent, x, y, isHover, deg, r0,
             core: n.type === 'core' ? 1 : 0,
             // TÁ ISTÁ formula, akou LOD rozhodol, koho nedemotovať (structScore) —
             // dve poradia by znamenali, že popisok dostane demotovaný uzol.
@@ -1060,11 +1172,11 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
        by tak mohol sadnúť do miesta, kde uzol reálne je. `safe` v applyRingLod navyše
        chráni celý `strong`, takže o meno tu nepríde nikto, koho chceme pomenovať.
        Uzol pod kurzorom a vybraný uzol sa nedemotujú nikdy (viď PRECHOD B). */
-    for (const s of solid) { if (s.pip && !(S.hover === s.n || S.selected === s.n)) continue; push(s.n, s.ent, s.x, s.y); }
+    for (const s of solid) { if (s.pip && !(S.hover === s.n || S.selected === s.n)) continue; push(s.n, s.ent, s.x, s.y, s.r0); }
     // prach: iterujeme L.pos znova len pre uzly, ktoré sa reálne dostali do vedierok
     for (const b of dustBuckets.values()) {
         for (const it of b.items) {
-            if (it.n) push(it.n, it.ent, it.x, it.y);
+            if (it.n) push(it.n, it.ent, it.x, it.y, it.r);
         }
     }
 
@@ -1155,10 +1267,27 @@ function layoutNodeLabels(L, solid, dustBuckets, hl, invK, reserved, grid) {
 
     for (const c of candidates) {
         if (out.length >= budget && !c.isHover) continue;
-        const label = truncLabel(c.n.label);
-        const w = ctx.measureText(label).width;
+        /* ---- SKRÁTENIE A ŠÍRKA TEXTU SA CACHUJÚ NA UZLE ----
+           Toto bola najdrahšia jednotlivá vec v draw() pri 2672 uzloch a nebolo to
+           vidieť, pretože sa to skrývalo za `measureText` v profile prehliadača:
+           truncLabel() (prettyProject + Array.from nad každým labelom) a measureText()
+           bežali pre KAŽDÉHO kandidáta v KAŽDOM frame, hoci ani label, ani font sa
+           medzi framami nemenia — 53 ms measureText + 21 ms truncLabel na 60 framov,
+           teda ~1,2 ms z rozpočtu 6 ms.
+           Cache šírky má JEDEN slot na uzol a jej kľúčom je fontSize: v rámci framu
+           je fontSize pre všetkých kandidátov rovnaká, takže slot trafí vždy, a pri
+           zoome (kde sa fontSize mení) sa prepočíta — teda presne ako predtým.
+           Meria sa tá istá funkcia s tým istým fontom, takže šírky sú identické. */
+        const n = c.n;
+        if (n._tlFor !== n.label) { n._tlFor = n.label; n._tl = truncLabel(n.label); n._twFs = -1; }
+        const label = n._tl;
+        if (n._twFs !== fontSize || n._twGen !== _fontGen) {
+            n._twFs = fontSize; n._twGen = _fontGen;
+            n._tw = ctx.measureText(label).width;
+        }
+        const w = n._tw;
         if (!(w > 0)) continue;
-        const r = ringRadius(c.n, c.ent, invK) * (S.hover === c.n ? 1.18 : 1);
+        const r = c.r0 * (S.hover === c.n ? 1.18 : 1);
         // pod / nad / vpravo / vľavo — prvá poloha bez kolízie vyhráva
         const cands = [
             { cx: c.x, base: c.y + r + gap },

@@ -50,8 +50,24 @@ decay/teplota, automatické sumáre a prewiring, rozšírené MCP tooly).
   pulzy vedomia. (Dve úlohy, dva kanály — WS by tu pridal stav bez úžitku.)
 - **Vektory:** `BLOB` + kosínus v PHP, MariaDB zostáva na 11.4. Pri 2667 uzloch
   je brute-force rýchlejší než riziko upgradu na 11.8.
-- **Embedding model:** vyberiem po benchmarku (kandidáti `qwen3-embedding:0.6b`,
-  `nomic-embed-text`), rozhodne kvalita recallu na reálnych dopytoch.
+- **Embedding model:** `bge-m3` — už bol na stroji, je multilingválny a
+  1024-rozmerný. Pamäť je písaná po slovensky, takže anglicky trénovaný
+  `nomic-embed-text` by tu strácal zmysel.
+
+- **Agentový model: `qwen3:8b`, nie 30B MoE.** Zmerané 19. 8. 2026
+  (`scratchpad/bench.js`, CPU, `num_ctx=8192`, temperature 0):
+
+  | model | tok/s | tool-use | poznámka |
+  |---|---|---|---|
+  | `qwen3:8b` | **9,3** | OK (`query="Docker"`) | čistá slovenská odpoveď, 93 tokenov, 10 s |
+  | `qwen3:4b` | 17,1 | OK | ale na dvojvetovú otázku vygeneroval **2626 tokenov** (myslenie presakuje do odpovede), 167 s |
+  | `qwen3-coder:30b` | — | — | **nedal prvý token ani za 300 s**; 18,6 GB modelu v 22,9 GB VM swapuje |
+
+  30B zostáva stiahnutý (disk je zadarmo) a je vybrateľný v UI, ale defaultom
+  byť nemôže. Aby bol použiteľný, musel by dostať viac RAM v Docker VM
+  (`C:\Users\Ucet\.wslconfig` → `memory=34GB` + `wsl --shutdown`) — to je
+  **rozhodnutie používateľa**, pretože reštart WSL zhodí všetky jeho kontejnery
+  vo všetkých projektoch, nielen Hadesa.
 - **Perzistencia vlákien:** tri nové tabuľky (`console_threads`,
   `console_messages`, `console_tool_calls`), migrácia so `mysqldump` zálohou.
 - **Hygiena dát:** čistenie beží ako `--dry-run` report; zlučovanie a
@@ -117,7 +133,22 @@ decay/teplota, automatické sumáre a prewiring, rozšírené MCP tooly).
 3. Každý zápisový tool si vyžiada potvrdenie a `deny` ho reálne zastaví (test).
 4. Semantický recall nájde poznatok, ktorý dnešný kľúčový nenájde — na
    dokumentovanej sade dopytov, s číslami pred/po.
-5. Merateľné zlepšenie latencie `/api/journal` a `/api/dashboard` (uvediem ms).
+5. Merateľné zlepšenie latencie tam, kde meranie ukázalo problém — **nie tam, kde
+   som ho tipoval**. Baseline (19. 8. 2026, `storage/app/profile-endpoints.php`,
+   celý endpoint vrátane middleware, druhý beh = teplý):
+
+   | endpoint | studený | teplý | dopytov | payload |
+   |---|---|---|---|---|
+   | `GET /api/mind` | 2742 ms | 1092 ms | **2196** | 933 kB |
+   | `GET /api/library` | 385 ms | 342 ms | 36 | 519 kB |
+   | `GET /api/search?q=docker` | 1703 ms | 79 ms | 126 | 7 kB |
+   | `GET /api/dashboard` | 69 ms | 33 ms | 96 | 17 kB |
+   | `GET /api/journal` | 31 ms | 18 ms | 18 | 143 kB |
+
+   Cieľ: `/api/mind` pod 2196 dopytov a pod 300 ms teplý (N+1), `/api/library`
+   payload dole, `/mcp` recall zmeraný zvlášť (keyword-only vs hybridný).
+   `/api/journal` a `/api/dashboard` sú už rýchle — kontrakt ich menoval mylne,
+   optimalizovať ich nie je čo.
 6. Graf pri 2667/8240 uzloch/hranách plynulý, mimo obrazovky Graf rAF stojí.
 7. Celý balík (dnes 228 testov) zelený, nové testy na konzolu, tooly a embeddings.
 8. `auth.ui` chráni aj konzolu — bez session 401, bez CSRF 419 (testy).

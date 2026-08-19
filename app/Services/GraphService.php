@@ -30,28 +30,40 @@ class GraphService
     {
         $scope = $scope === 'all' ? 'all' : 'live';
 
-        if ($scope === 'all') {
-            $nodes = Node::all();
-        } else {
+        // `with('tags')` je tu POVINNÉ, nie kozmetika: Node::toApi() si tagy pri
+        // nenaloženej relácii dotiahne sám, čiže mapovanie 2200 uzlov znamenalo
+        // 2200 SELECTov (merané: 1093 dopytov / 499 ms len na tagy). Poradie tagov
+        // to nemení — o to sa stará explicitné radenie v toApi().
+        $query = Node::query()->with('tags');
+
+        if ($scope === 'live') {
             $usedSkillIds = Activation::query()
                 ->whereIn('kind', ['activate', 'skill-used'])
                 ->distinct()
                 ->pluck('node_id')
                 ->all();
 
-            $nodes = Node::query()
-                ->where(function ($q) use ($usedSkillIds) {
-                    $q->where('type', '!=', 'skill')
-                        ->orWhereIn('id', $usedSkillIds);
-                })
-                ->get();
+            $query->where(function ($q) use ($usedSkillIds) {
+                $q->where('type', '!=', 'skill')
+                    ->orWhereIn('id', $usedSkillIds);
+            });
         }
 
-        $nodeIds = $nodes->pluck('id')->flip();
+        $nodes = $query->get();
 
-        $edges = Edge::all()->filter(
-            fn (Edge $e) => $nodeIds->has($e->source_id) && $nodeIds->has($e->target_id)
-        )->values();
+        // Filtrovanie hrán patrí do SQL, nie do PHP: Edge::all() zhydratovalo
+        // všetkých 8271 modelov a 5303 z nich vzápätí zahodilo (scope 'live'
+        // vracia 2968). Merané na živých dátach: 77 ms → 45 ms, výstup bajtovo
+        // rovnaký. `orderBy('id')` je tam preto, aby poradie hrán nezáviselo od
+        // toho, ktorý index si optimalizátor vyberie pre whereIn — doteraz ho
+        // dával PK sken a payload je bit-za-bit kontrakt.
+        $nodeIds = $nodes->modelKeys();
+
+        $edges = Edge::query()
+            ->whereIn('source_id', $nodeIds)
+            ->whereIn('target_id', $nodeIds)
+            ->orderBy('id')
+            ->get();
 
         $hiddenSplit = $this->deriveHiddenSplit($nodes, $edges);
 
@@ -103,7 +115,7 @@ class GraphService
      *
      * @param  Collection<int, Node>  $nodes
      * @param  Collection<int, Edge>  $edges
-     * @return array<int, string>  node_id → 'hidden_in' | 'hidden_out'
+     * @return array<int, string> node_id → 'hidden_in' | 'hidden_out'
      */
     private function deriveHiddenSplit(Collection $nodes, Collection $edges): array
     {

@@ -172,13 +172,17 @@ export function breatheFactor(n) {
 
 // W2a — prach sa unáša veľmi pomaly. Deterministická fáza z hashu id (žiadny random),
 // amplitúda v obrazovkových pixeloch (invK), perióda ~26 s → takmer nepostrehnuteľný pohyb.
+/* Vracia ZDIEĽANÝ objekt, nie nový. Volá sa raz na každý prachový uzol v každom
+   frame (~1400× pri 2672 uzloch, teda ~84 000 krátkodobých objektov za sekundu) a
+   jediný odberateľ z neho hneď prečíta x/y a zabudne ho. Kto by si ho chcel odložiť,
+   dostane hodnoty ďalšieho uzla — preto sa výsledok čítá okamžite (render.js). */
+const _drift = { x: 0, y: 0 };
 export function dustDrift(id, invK) {
     if (S._life <= 0 || S._interacting || S._lifeTier >= 2) return null;
     const life = Math.min(1.2, S._life);
     const ph = hash01(id) * 6.2831853;
     const a = 2.2 * life * invK;
-    return {
-        x: Math.sin(S._clock * 0.24 + ph) * a,
-        y: Math.cos(S._clock * 0.19 + ph * 1.7) * a,
-    };
+    _drift.x = Math.sin(S._clock * 0.24 + ph) * a;
+    _drift.y = Math.cos(S._clock * 0.19 + ph * 1.7) * a;
+    return _drift;
 }

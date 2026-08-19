@@ -159,9 +159,16 @@ class Node extends Model
             'needs_review' => (bool) $this->needs_review,
             'verified_at' => $this->verified_at?->toIso8601String(),
             'source_file' => $this->source_file,
+            // Obe vetvy MUSIA radiť rovnako. Bez explicitného poradia dá lazy vetva
+            // to, čo vráti index pivotu (PK node_id, tag_id), a eager vetva to, čo
+            // optimalizátor vyberie pre jeden veľký whereIn — dnes to na MariaDB
+            // vyjde rovnako, ale zavedenie eager-loadu by inak vedelo TICHO
+            // preusporiadať `tags` v odpovedi, a /api/v1/* je bit-za-bit kontrakt.
+            // Radíme podľa tags.id (= poradie, v ktorom to endpointy vracali doteraz),
+            // nie podľa mena, aby sa bajty nezmenili.
             'tags' => $this->relationLoaded('tags')
-                ? $this->tags->pluck('name')->values()->all()
-                : $this->tags()->pluck('name')->all(),
+                ? $this->tags->sortBy('id')->pluck('name')->values()->all()
+                : $this->tags()->orderBy('tags.id')->pluck('name')->all(),
             'strength' => (float) $this->strength,
             'pinned' => (bool) $this->pinned,
             'heat' => $this->heat(),

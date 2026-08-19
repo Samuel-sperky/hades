@@ -1,16 +1,21 @@
-import { nodeVisible } from './filters.js';
-import { visibleInReplay } from './render.js';
 import { EDGE_DIM, S, ctx } from './state.js';
 import { T } from './theme.js';
 
 // FÁZA HRANY: kategória hrany — relation má prednosť pred kind.
 // manual + skill_mention (bez relation) = štruktúra → 'core' (vždy viditeľné, kostra).
+/* Kategória je NEMENNÁ vlastnosť hrany (relation ani kind sa za života hrany
+   neprepisujú — jediné, čo sa mutuje, je weight), takže sa cachuje na hrane.
+   Pri 8271 hranách ju draw() pýtal cez edgeCategoryHidden, edgeDashed,
+   edgeKindDim a edgeSkeletal, teda ~4× za frame na hranu = 33 000 porovnaní
+   stringov za frame. Nová hrana z WS je nový objekt, takže cache nemá ako zostarnúť. */
 export function edgeCategory(e) {
-    if (e.relation === 'part_of') return 'part_of';
-    if (e.relation === 'uses') return 'uses';
-    if (e.kind === 'co_activation') return 'co_activation';
-    if (e.kind === 'similarity') return 'similarity';
-    return 'core';
+    const c = e._cat;
+    if (c !== undefined) return c;
+    return (e._cat = e.relation === 'part_of' ? 'part_of'
+        : e.relation === 'uses' ? 'uses'
+            : e.kind === 'co_activation' ? 'co_activation'
+                : e.kind === 'similarity' ? 'similarity'
+                    : 'core');
 }
 
 // FÁZA HRANY: skrytá hrana? Filter kategórií vzťahov + režim kostry (len 'core' + 'part_of').
@@ -31,17 +36,12 @@ export function edgeSkeletal(e) {
 
 // Jednotný štýl čiar — max 2 vzory (plná / jemná bodkovaná).
 export const EMPTY_DASH = [];
-export function edgeDashed(e) {
-    if (e.relation === 'part_of') return false;
-    if (e.relation === 'uses') return true;
-    return e.kind === 'co_activation' || e.kind === 'similarity';
-}
-export function edgeKindDim(e) {
-    if (e.relation === 'part_of' || e.relation === 'uses') return 1;
-    if (e.kind === 'co_activation') return 0.6;
-    if (e.kind === 'similarity') return 0.4;
-    return 1;
-}
+// Obe tabuľky sú prepis pôvodných vetiev jedna k jednej — kategória je ich úplný
+// vstup, takže z reťazca podmienok je jedno vyhľadanie v objekte.
+const CAT_DASHED = { core: false, part_of: false, uses: true, co_activation: true, similarity: true };
+const CAT_DIM = { core: 1, part_of: 1, uses: 1, co_activation: 0.6, similarity: 0.4 };
+export function edgeDashed(e) { return CAT_DASHED[edgeCategory(e)]; }
+export function edgeKindDim(e) { return CAT_DIM[edgeCategory(e)]; }
 
 /* ---------- GRAF B: SIEŤ HRÁN NA VŠETKÝCH ÚROVNIACH ----------
    Predtým sa reálne hrany kreslili len na úrovni dept/node; na mape ich zastupovalo
@@ -99,14 +99,50 @@ export const DENS_POW = 0.58;     // 0,5 = presná odmocnina; mierne nad ňou = 
 // nealokovalo 60× za sekundu. Prealokuje sa len pri zmene viewportu.
 let _dg = null, _dgx = 0, _dgy = 0;
 
-// Skrytá hrana? Jeden zdroj pravdy pre OBA prechody (meranie hustoty + kreslenie).
-// Keby to boli dve kópie podmienok, merala by sa iná sieť, než sa kreslí.
-function edgeHidden(e, loc) {
-    if (!e.source || !e.target) return true;
+/* Faktor tlmenia podľa počtu hrán v buňke ako TABUĽKA, nie Math.pow na volanie.
+   Počet v buňke je celé číslo, takže tabuľka dáva bit za bit tie isté hodnoty ako
+   pôvodná formula — len ich nepočíta 3× na hranu. Pri 8271 hranách to bolo ~24 000
+   volaní Math.pow za frame (fáza `edges` bez toho nešla pod 2,4 ms). */
+let _df = null;
+function densFactors(maxCount) {
+    if (_df && _df.length > maxCount) return _df;
+    const t = new Float32Array(maxCount + 64);
+    for (let c = 0; c < t.length; c++) {
+        t[c] = c <= DENS_REF ? 1 : Math.max(DENS_FLOOR, Math.pow(DENS_REF / c, DENS_POW));
+    }
+    _df = t;
+    return t;
+}
+
+/* Váhové odvodeniny hrany. `weight` sa MUTUJE (posilnenie hrany z WS, panels.js),
+   takže cache nesmie byť „raz a navždy" — kľúčom je samotná váha. Bez toho stál
+   log2 na hranu 2× za frame, teda ~16 500 volaní. */
+function edgeWeights(e) {
+    const w = e.weight || 1;
+    if (e._wFor !== w) {
+        e._wFor = w;
+        e._lg2 = Math.log2(1 + w);
+        e._wt = Math.min(1, e._lg2 / MESH_W_REF);
+    }
+}
+
+/* Skrytá hrana? Jeden zdroj pravdy pre OBA prechody (meranie hustoty + kreslenie).
+   Keby to boli dve kópie podmienok, merala by sa iná sieť, než sa kreslí.
+
+   Viditeľnosť UZLA sa tu už nepočíta — číta sa z `n._vd`, ktoré draw() naplní raz
+   za frame pre všetkých 2672 uzlov. Predtým sa na každú z 8271 hrán volali
+   visibleInReplay() + nodeVisible() pre oba konce, teda ~16 500 volaní filterPass
+   za frame nad tou istou odpoveďou (uzol má v priemere 6 hrán). */
+function edgeHidden(e) {
+    const a = e.source, b = e.target;
+    if (!a || !b) return true;
+    if (a._vd !== 1 || b._vd !== 1) return true;
+    // `_ent` je zápis uzla v L.pos pre tento frame (plní ho zberná slučka draw()).
+    // Nahrádza dvojicu L.pos.has() — na 8271 hrán v dvoch prechodoch to boli
+    // ~33 000 vyhľadaní v Mape za frame nad odpoveďou, ktorú už niekto vedel.
+    if (!a._ent || !b._ent) return true;
     if ((e.weight || 1) < S.minWeight) return true;
     if (edgeCategoryHidden(e)) return true;
-    if (!visibleInReplay(e.source) || !visibleInReplay(e.target)) return true;
-    if (!(nodeVisible(e.source, loc) && nodeVisible(e.target, loc))) return true;
     return false;
 }
 
@@ -149,11 +185,11 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
     // Aritmetika buňky je tu ROZPÍSANÁ zámerne: ako closure `cellOf(x,y)` volaná
     // v najvnútornejšej slučke stála draw() ~1,5 ms pri 2900 hranách.
     for (const e of S.edges) {
-        const vis = !edgeHidden(e, loc)
-            && L.pos.has(e.source.id) && L.pos.has(e.target.id)
-            && edgeInView(e.source, e.target);
+        const vis = !edgeHidden(e) && edgeInView(e.source, e.target);
         e._vis = vis ? 1 : 0;
-        if (!vis || !damp) continue;
+        if (!vis) continue;
+        edgeWeights(e);          // log2 váhy raz na frame, nie 2× v druhom prechode
+        if (!damp) continue;
         // Celú hranu stopujeme po buňkách — inak by dlhá hrana pridala ink
         // do stredu, ale v mriežke by o sebe nechala záznam len na koncoch.
         const ax = ox + e.source.x * k, ay = oy + e.source.y * k;
@@ -174,17 +210,14 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
         }
     }
     S._densMax = mx;
-    const densAt = !damp ? null : (sx, sy) => {
-        const cx = (sx / DENS_CELL) | 0, cy = (sy / DENS_CELL) | 0;
-        if (cx < 0 || cy < 0 || cx >= gx || cy >= gy) return 1;
-        const c = g[cy * gx + cx];
-        if (c <= DENS_REF) return 1;
-        return Math.max(DENS_FLOOR, Math.pow(DENS_REF / c, DENS_POW));
-    };
+    // Faktor je klesajúci v počte, takže minimum z troch bodov hrany = faktor
+    // NAJHUSTEJŠIEHO z nich. Namiesto troch mocnín a troch Math.min stačí jedno
+    // vyhľadanie v tabuľke nad maximom troch počtov — tá istá hodnota, tretina práce.
+    const dft = damp ? densFactors(mx) : null;
 
     for (const e of S.edges) {
         if (!e._vis) continue;
-        const pa = L.pos.get(e.source.id), pb = L.pos.get(e.target.id);
+        const pa = e.source._ent, pb = e.target._ent;
         // Kontextová hrana sa STLMÍ, nezmizne. Kým bolo zanorenie prepínanie scén,
         // stmavnutý zvyšok grafu v layoute vôbec nebol a `continue` bol správny. Teraz
         // je zanorenie FILTER: fokus zostane plný, zvyšok siete klesne na DIM_CTX —
@@ -194,17 +227,18 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
 
         // v mesh režime nekreslíme prerušované vzory — pri 0,7 px a ~8 % alfy sa dash
         // číta ako šum a rozbije dojem spojitej siete
-        const dashed = real && edgeDashed(e);
-        const wt = Math.min(1, Math.log2(1 + (e.weight || 1)) / MESH_W_REF);
+        const cat = edgeCategory(e);
+        const dashed = real && CAT_DASHED[cat];
+        const kindDim = CAT_DIM[cat];
         let alpha;
         if (real) {
             // Na úrovni oddelenia/uzla sú reálne hrany hlavným nosičom informácie — preto
             // vyššia základná alfa než mala stará hairball mapa (a bez plošného stlmenia).
-            alpha = Math.min(0.62, 0.34 + 0.10 * Math.log2(1 + (e.weight || 1))) * S.opts.edgeAlpha;
-            alpha = Math.max(0.18, alpha) * EDGE_DIM * edgeKindDim(e) * S.dim;
+            alpha = Math.min(0.62, 0.34 + 0.10 * e._lg2) * S.opts.edgeAlpha;
+            alpha = Math.max(0.18, alpha) * EDGE_DIM * kindDim * S.dim;
         } else {
-            alpha = (T.meshA0 + (T.meshA1 - T.meshA0) * wt)
-                * S.opts.edgeAlpha * edgeKindDim(e) * S.dim * fade;
+            alpha = (T.meshA0 + (T.meshA1 - T.meshA0) * e._wt)
+                * S.opts.edgeAlpha * kindDim * S.dim * fade;
         }
         alpha *= dimCtx;
 
@@ -233,19 +267,30 @@ export function drawEdges(L, loc, hl, hlAnchor, softHoverActive, edgeInView) {
             fg.push({
                 e, alpha: Math.max(T.hotA, Math.min(0.9, alpha * (real ? 2.4 : 9))),
                 dashed,
-                width: Math.max(1.5, Math.min(2.4, 1.0 + 0.5 * Math.log2(1 + (e.weight || 1)))) * invK,
+                width: Math.max(1.5, Math.min(2.4, 1.0 + 0.5 * e._lg2)) * invK,
             });
             continue;
         }
 
         if (real && !showAllBg && !edgeSkeletal(e)) continue;
         if (softHoverActive) alpha *= real ? 0.82 : 0.90;
-        // Tlmenie podľa hustoty platí LEN pre pozadovú sieť. Incidentná hrana (vyššie,
-        // s `continue`) je jediná, ktorá musí sama držať 3:1, takže sa jej nedotýka.
-        if (densAt) {
+        /* Tlmenie podľa hustoty platí LEN pre pozadovú sieť. Incidentná hrana (vyššie,
+           s `continue`) je jediná, ktorá musí sama držať 3:1, takže sa jej nedotýka.
+
+           Aritmetika buňky je tu ROZPÍSANÁ z toho istého dôvodu ako v prvom prechode:
+           closure `densAt(x, y)` volaná 3× na hranu stála pri 8271 hranách ~0,6 ms
+           z rozpočtu fázy `edges`. Berie sa NAJVÄČŠÍ z troch počtov, čo je pri
+           klesajúcom faktore presne to isté ako minimum z troch faktorov. */
+        if (dft) {
             const ax = ox + e.source.x * k, ay = oy + e.source.y * k;
             const bx = ox + e.target.x * k, by = oy + e.target.y * k;
-            alpha *= Math.min(densAt(ax, ay), densAt(bx, by), densAt((ax + bx) / 2, (ay + by) / 2));
+            let cx = (ax / DENS_CELL) | 0, cy = (ay / DENS_CELL) | 0;
+            let cnt = (cx >= 0 && cy >= 0 && cx < gx && cy < gy) ? g[cy * gx + cx] : 0;
+            cx = (bx / DENS_CELL) | 0; cy = (by / DENS_CELL) | 0;
+            if (cx >= 0 && cy >= 0 && cx < gx && cy < gy) { const c = g[cy * gx + cx]; if (c > cnt) cnt = c; }
+            cx = ((ax + bx) / 2 / DENS_CELL) | 0; cy = ((ay + by) / 2 / DENS_CELL) | 0;
+            if (cx >= 0 && cy >= 0 && cx < gx && cy < gy) { const c = g[cy * gx + cx]; if (c > cnt) cnt = c; }
+            if (cnt > DENS_REF) alpha *= dft[cnt];
         }
         if (alpha < minA) continue;
         const q = Math.max(1, Math.round(alpha / qStep));

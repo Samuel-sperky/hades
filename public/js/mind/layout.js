@@ -695,20 +695,32 @@ function hubRecords(nav) {
 // Volá to pumpa po každom tiku, takže popisky oblastí sa hýbu so sieťou.
 export function syncHubs(L) {
     if (!L || !L.hubs.length) return;
-    const acc = new Map();
-    for (const h of L.hubs) if (h.kind !== 'layer') acc.set(h.key, { n: 0, sx: 0, sy: 0, sxx: 0, syy: 0 });
+    /* Akumulátory sú DVE mapy s ČÍSELNÝM kľúčom (id oblasti / id oddelenia), nie jedna
+       s kľúčom `h.key`. Tá jedna mapa vyzerá nevinne, ale kľúč sa v nej musel na každý
+       uzol zlepiť ('a' + n.area_id, 'd' + n.department_id) — a syncHubs beží po KAŽDOM
+       tiku pumpy, takže to bolo ~5300 krátkodobých reťazcov na tik, teda cez 300 000
+       za sekundu usadzovania. `h.key` zostáva, hubmi sa naďalej indexuje ním. */
+    const accA = new Map(), accD = new Map();
+    for (const h of L.hubs) {
+        if (h.kind === 'area') accA.set(h.id, { n: 0, sx: 0, sy: 0, sxx: 0, syy: 0 });
+        else if (h.kind === 'dept') accD.set(h.id, { n: 0, sx: 0, sy: 0, sxx: 0, syy: 0 });
+    }
+    // Hub sa v akumulátoroch nájde podľa svojho druhu a id — layer hub v nich nie je,
+    // takže vráti undefined presne ako predtým.
+    const accOf = (h) => (h.kind === 'area' ? accA : h.kind === 'dept' ? accD : null);
     for (const n of S.nodes) {
         if (n.type === 'core') continue;
         if (!Number.isFinite(n.x)) continue;
-        const a = n.area_id != null ? acc.get('a' + n.area_id) : null;
+        const a = n.area_id != null ? accA.get(n.area_id) : null;
         if (a) { a.n++; a.sx += n.x; a.sy += n.y; a.sxx += n.x * n.x; a.syy += n.y * n.y; }
-        const d = n.department_id ? acc.get('d' + n.department_id) : null;
+        const d = n.department_id ? accD.get(n.department_id) : null;
         if (d) { d.n++; d.sx += n.x; d.sy += n.y; d.sxx += n.x * n.x; d.syy += n.y * n.y; }
     }
 
     let maxArea = 1, maxDept = 1;
     for (const h of L.hubs) {
-        const a = acc.get(h.key);
+        const m = accOf(h);
+        const a = m ? m.get(h.id) : null;
         if (!a || !a.n) continue;
         h.count = a.n;
         if (h.kind === 'area') maxArea = Math.max(maxArea, a.n);
@@ -725,7 +737,8 @@ export function syncHubs(L) {
             h.rw = 5 * unit;
             continue;
         }
-        const a = acc.get(h.key);
+        const m = accOf(h);
+        const a = m ? m.get(h.id) : null;
         if (!a || !a.n) { h.rw = 0; h.dim = 0; continue; }
         h.x = a.sx / a.n; h.y = a.sy / a.n;
         const vx = Math.max(0, a.sxx / a.n - h.x * h.x);
