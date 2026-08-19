@@ -131,24 +131,51 @@ decay/teplota, automatické sumáre a prewiring, rozšírené MCP tooly).
 2. Konzola vyrieši 5 reálnych úloh end-to-end: nájdi poznatok, oprav odpadový
    label, prepoj dva uzly, nájdi vzor v súboroch cez ripgrep, uprav súbor s diffom.
 3. Každý zápisový tool si vyžiada potvrdenie a `deny` ho reálne zastaví (test).
-4. Semantický recall nájde poznatok, ktorý dnešný kľúčový nenájde — na
-   dokumentovanej sade dopytov, s číslami pred/po.
-5. Merateľné zlepšenie latencie tam, kde meranie ukázalo problém — **nie tam, kde
-   som ho tipoval**. Baseline (19. 8. 2026, `storage/app/profile-endpoints.php`,
-   celý endpoint vrátane middleware, druhý beh = teplý):
+4. **SPLNENÉ.** `mind:recall-bench`, 28 reálnych dopytov zo živej pamäte,
+   2672 vektorov (99,9 % korpusu), tri behy s identickým poradím:
 
-   | endpoint | studený | teplý | dopytov | payload |
-   |---|---|---|---|---|
-   | `GET /api/mind` | 2742 ms | 1092 ms | **2196** | 933 kB |
-   | `GET /api/library` | 385 ms | 342 ms | 36 | 519 kB |
-   | `GET /api/search?q=docker` | 1703 ms | 79 ms | 126 | 7 kB |
-   | `GET /api/dashboard` | 69 ms | 33 ms | 96 | 17 kB |
-   | `GET /api/journal` | 31 ms | 18 ms | 18 | 143 kB |
+   | metrika | kľúčové slová | hybrid (RRF) |
+   |---|---|---|
+   | pass@1 | 60,7 % | **75,0 %** |
+   | pass@3 | 71,4 % | **100 %** |
+   | MRR | 0,680 | **0,845** |
+   | nenašlo očakávaný uzol | 2 | **0** |
+   | latencia medián | 105 ms | 318 ms (+213) |
 
-   Cieľ: `/api/mind` pod 2196 dopytov a pod 300 ms teplý (N+1), `/api/library`
-   payload dole, `/mcp` recall zmeraný zvlášť (keyword-only vs hybridný).
-   `/api/journal` a `/api/dashboard` sú už rýchle — kontrakt ich menoval mylne,
-   optimalizovať ich nie je čo.
+   Verdikt 11 win / 17 same / **0 loss**. Poctivé zistenie navrch: zdvih
+   nepochádza z objavovania lexikálne odlišných uzlov — všetkých 14
+   semantic-only zásahov sedí na miestach 6–12 a ani jeden nebol tým správnym.
+   Zdvih robí (a) rozšírenie kandidátov za hranicu keyword top-12 a (b) RRF
+   preradenie, ktoré zlomí dominanciu „tučných" uzlov. Uzol [793] bol v keyword
+   vetve #1 pre tri nesúvisiace dopyty, v hybride pre žiadny.
+5. **SPLNENÉ, s korekciou vlastného merania.** Prvý baseline bol nesprávny:
+   profiler registroval nový `DB::listen` na každý beh, listener sa nedá
+   odregistrovať a closure viaže slot premennej, takže každý ďalší endpoint
+   dostal počet dopytov vynásobený počtom dovtedy registrovaných listenerov.
+   Skutočné čísla a výsledok po oprave kódu (`--queries` režim profilera,
+   teplý beh, živá MariaDB):
+
+   | endpoint | dopytov pred → po | teplý pred → po |
+   |---|---|---|
+   | `GET /api/mind` | **1099 → 7** | **925 → 244–325 ms** |
+   | `GET /api/dashboard` | 12 → 12 | 34 → 18–23 ms |
+   | `GET /api/search?q=docker` | 9 → 9 | 62 → 52–64 ms |
+   | `GET /api/library` | 3 → 3 | 222 → 150–234 ms |
+   | `GET /api/journal` | 3 → 3 | 12 → 11–12 ms |
+
+   Reálny N+1 bol teda **jediný** (graf), nie tri: „96 dopytov" na dashboarde
+   bolo 12 a „126" na search bolo 9. Dve z troch nahlásených N+1 nikdy
+   neexistovali a boli by sa opravovali naslepo.
+
+   `/api/library` (520 kB) zostáva zámerne: obrazovka Knižnica čítá každé
+   posielané pole a nevyužité sú len tagy nad 5-čipovým stropom, teda ~5 kB
+   z 520 (1 %). Tučnota je v množstve (1661 kariet bez stránkovania), čo je
+   rozhodnutie o UI, nie optimalizácia dopytu.
+
+   Graf vo frontende: `draw()` medián 6,75 → 4,9 ms, p95 12,6 → 8,0 ms
+   (hrany −42 %, labely −51 %). **fps sa nezmenilo** a to je poctivý titulok —
+   smyčka je vsync-bound a fyzika je dnes väčšia polovica rámca. `rAF` mimo
+   obrazovky Graf stojí (0 volaní, 0 kreslení) pred aj po.
 6. Graf pri 2667/8240 uzloch/hranách plynulý, mimo obrazovky Graf rAF stojí.
 7. Celý balík (dnes 228 testov) zelený, nové testy na konzolu, tooly a embeddings.
 8. `auth.ui` chráni aj konzolu — bez session 401, bez CSRF 419 (testy).

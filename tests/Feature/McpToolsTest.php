@@ -4,8 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Area;
 use App\Models\Decision;
+use App\Models\Edge;
 use App\Models\Node;
+use App\Models\Tag;
+use App\Services\MindService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -291,5 +295,380 @@ class McpToolsTest extends TestCase
 
         $this->assertSame('decided', $data['action']);
         $this->assertNull(Decision::first()->area_id);
+    }
+
+    // ---- pomôcky pre nové nástroje -----------------------------------------
+
+    /** Zavolá tool a vráti celú MCP odpoveď (na overenie odmietnutí). */
+    private function callToolRaw(string $tool, array $args = []): TestResponse
+    {
+        return $this->rpc('tools/call', ['name' => $tool, 'arguments' => $args])->assertOk();
+    }
+
+    private function node(string $label, ?string $description = null, array $attrs = []): Node
+    {
+        return Node::create(array_merge([
+            'type' => 'skill',
+            'area_id' => Area::where('slug', 'vyvoj-kod')->value('id'),
+            'label' => $label,
+            'description' => $description,
+            'strength' => 1,
+            'last_activated_at' => now(),
+        ], $attrs));
+    }
+
+    /** Prázdno sa v MCP odpovediach neposiela — `null` v nej nemá čo robiť. */
+    private function assertNoNullValues(mixed $value, string $path = 'payload'): void
+    {
+        $this->assertNotNull($value, "{$path} nesmie byť null");
+
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $this->assertNoNullValues($item, "{$path}.{$key}");
+            }
+        }
+    }
+
+    // ---- tools/list: tri nové nástroje, staré nedotknuté -------------------
+
+    public function test_tools_list_appends_the_new_tools_without_touching_the_old_ones(): void
+    {
+        $tools = $this->rpc('tools/list')->assertOk()->json('result.tools');
+        $names = collect($tools)->pluck('name')->all();
+
+        // pôvodných deväť v pôvodnom poradí — nové sa len pridali na koniec
+        $this->assertSame([
+            'mind_learn', 'mind_recall', 'mind_read', 'mind_activate', 'mind_overview',
+            'mind_decision', 'mind_rename', 'mind_move', 'mind_delete',
+            'mind_update', 'mind_link', 'mind_hygiene',
+        ], $names);
+
+        $link = collect($tools)->firstWhere('name', 'mind_link');
+        // slovník relácií je ten, ktorý v sieti už žije — nič vymyslené
+        $this->assertSame(['uses', 'part_of'], $link['inputSchema']['properties']['relation']['enum']);
+
+        $update = collect($tools)->firstWhere('name', 'mind_update');
+        $this->assertSame(['replace', 'append'], $update['inputSchema']['properties']['mode']['enum']);
+        $this->assertSame(['description'], $update['inputSchema']['required']);
+    }
+
+    /**
+     * `semantic` pribudlo do payloadu recallu v tomto šprinte, ale klient ho číta
+     * z popisu nástroja — bez vysvetlenia by AI hľadala slová dopytu v uzle,
+     * v ktorom nie sú.
+     */
+    public function test_recall_description_documents_the_semantic_marker(): void
+    {
+        $tools = $this->rpc('tools/list')->assertOk()->json('result.tools');
+        $recall = collect($tools)->firstWhere('name', 'mind_recall');
+
+        $this->assertStringContainsString('`semantic`', $recall['description']);
+        $this->assertStringContainsString('MEANING', $recall['description']);
+    }
+
+    // ---- mind_update: oprava popisu ----------------------------------------
+
+    /**
+     * Presne ten prípad, ktorý si 19. 8. 2026 vyžiadal jednorazový PHP skript:
+     * mind_learn s tým istým labelom popis PRIPOJÍ, takže uzol otvára nesprávne
+     * tvrdenie a opravu nesie pod ním.
+     */
+    public function test_update_replaces_the_description_instead_of_appending_to_it(): void
+    {
+        $node = $this->node('N+1 v /api/mind', 'Endpoint robil 2196 dopytov, čo bola chybná hodnota.');
+
+        $data = $this->callTool('mind_update', [
+            'id' => $node->id,
+            'description' => 'Endpoint robil 1099 dopytov na 1093 uzlov; profiler predtým počítal dvakrát.',
+        ]);
+
+        $this->assertSame('updated', $data['action']);
+        $this->assertSame('N+1 v /api/mind', $data['label']);
+
+        $fresh = $node->fresh();
+        $this->assertStringStartsWith('Endpoint robil 1099', (string) $fresh->description);
+        $this->assertStringNotContainsString('2196', (string) $fresh->description);
+        $this->assertSame(mb_strlen((string) $fresh->description), $data['chars']);
+    }
+
+    public function test_update_appends_only_when_the_caller_asks_for_it(): void
+    {
+        $node = $this->node('Docker rebuild', 'Kontejnery sa rebuildujú voľne.');
+
+        $this->callTool('mind_update', [
+            'id' => $node->id,
+            'mode' => 'append',
+            'description' => 'Migrácie vždy so zálohou do backups/.',
+        ]);
+
+        $description = (string) $node->fresh()->description;
+        $this->assertStringStartsWith('Kontejnery sa rebuildujú voľne.', $description);
+        $this->assertStringContainsString('Migrácie vždy so zálohou', $description);
+    }
+
+    public function test_update_sets_certainty_and_adds_tags_without_removing_any(): void
+    {
+        $node = $this->node('Reverb websockety', 'WS server pre Laravel.', ['certainty' => 'hypoteza']);
+        $node->tags()->attach(Tag::forName('laravel'));
+
+        $this->callTool('mind_update', [
+            'label' => 'Reverb websockety',
+            'description' => 'WS server pre Laravel, overený v Dockeri.',
+            'certainty' => 'overene',
+            'tags' => ['reverb'],
+        ]);
+
+        $fresh = $node->fresh();
+        $this->assertSame('overene', $fresh->certainty);
+        // pôvodný tag ostáva — mind_update tagy pridáva, neodoberá
+        $this->assertEqualsCanonicalizing(['laravel', 'reverb'], $fresh->tags()->pluck('name')->all());
+    }
+
+    public function test_update_refuses_an_unknown_id(): void
+    {
+        $res = $this->callToolRaw('mind_update', ['id' => 987654, 'description' => 'Text.']);
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertStringContainsString('987654', (string) $res->json('result.content.0.text'));
+    }
+
+    public function test_update_refuses_an_empty_description(): void
+    {
+        $node = $this->node('Uzol, ktorý sa nesmie vyprázdniť', 'Popis, ktorý tu má ostať.');
+
+        $res = $this->callToolRaw('mind_update', ['id' => $node->id, 'description' => '   ']);
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertStringContainsString('mind_delete', (string) $res->json('result.content.0.text'));
+        $this->assertSame('Popis, ktorý tu má ostať.', $node->fresh()->description);
+    }
+
+    public function test_update_refuses_an_unknown_mode_instead_of_guessing(): void
+    {
+        $node = $this->node('Uzol s režimom', 'Popis.');
+
+        $res = $this->callToolRaw('mind_update', [
+            'id' => $node->id,
+            'description' => 'Nový popis.',
+            'mode' => 'prepend',
+        ]);
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertStringContainsString('replace', (string) $res->json('result.content.0.text'));
+        $this->assertSame('Popis.', $node->fresh()->description);
+    }
+
+    /** Poistka blacklistu platí na každej zápisovej ceste, nielen v mind_learn. */
+    public function test_update_refuses_a_secret(): void
+    {
+        $node = $this->node('Prístup k službe', 'Ako sa pripojiť.');
+
+        $res = $this->callToolRaw('mind_update', [
+            'id' => $node->id,
+            'description' => 'Prihlasuje sa tokenom ghp_'.str_repeat('a1B2', 8).' z CI.',
+        ]);
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertSame('Ako sa pripojiť.', $node->fresh()->description);
+    }
+
+    // ---- mind_link: úmyselné prepojenie ------------------------------------
+
+    public function test_link_creates_a_manual_edge_and_repeating_it_changes_nothing(): void
+    {
+        $a = $this->node('Vektorové vyhľadávanie', 'bge-m3 embeddingy nad uzlami.');
+        $b = $this->node('Hybridný recall', 'RRF fúzia kľúčových slov a vektorov.');
+
+        $first = $this->callTool('mind_link', [
+            'from_id' => $a->id,
+            'to_id' => $b->id,
+            'relation' => 'uses',
+        ]);
+
+        $this->assertSame('linked', $first['action']);
+        $this->assertEqualsCanonicalizing(['Vektorové vyhľadávanie', 'Hybridný recall'], $first['nodes']);
+        $this->assertSame('uses', $first['relation']);
+
+        $edge = Edge::first();
+        $this->assertSame('manual', $edge->kind);
+        $this->assertFalse((bool) $edge->auto);
+        $weight = (float) $edge->weight;
+
+        $second = $this->callTool('mind_link', ['from_id' => $b->id, 'to_id' => $a->id]);
+
+        // idempotencia: druhé volanie hranu NEPOSILNÍ. connect() by váhu
+        // inkrementoval a trikrát potvrdené spojenie by bolo ťažšie než skutočná
+        // opakovaná co-aktivácia.
+        $this->assertSame('already_linked', $second['action']);
+        $this->assertSame(1, Edge::count());
+        $this->assertSame($weight, (float) $edge->fresh()->weight);
+    }
+
+    public function test_link_never_overwrites_a_relation_that_is_already_set(): void
+    {
+        $a = $this->node('Konzola Hades', 'Nástroje na údržbu siete.');
+        $b = $this->node('Hades vedomie', 'Sieť uzlov a hrán.');
+
+        $this->callTool('mind_link', ['from_id' => $a->id, 'to_id' => $b->id, 'relation' => 'part_of']);
+        $data = $this->callTool('mind_link', ['from_id' => $a->id, 'to_id' => $b->id, 'relation' => 'uses']);
+
+        // odpoveď hlási VÝSLEDNÚ reláciu, takže volajúci vidí, že jeho neprešla
+        $this->assertSame('part_of', $data['relation']);
+        $this->assertSame('part_of', Edge::first()->relation);
+    }
+
+    public function test_link_refuses_a_self_link(): void
+    {
+        $node = $this->node('Uzol sám o sebe', 'Popis uzla.');
+
+        $res = $this->callToolRaw('mind_link', ['from_id' => $node->id, 'to_id' => $node->id]);
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertSame(0, Edge::count());
+    }
+
+    public function test_link_refuses_an_unknown_relation_and_names_the_known_ones(): void
+    {
+        $a = $this->node('Prvý uzol', 'Popis prvého uzla.');
+        $b = $this->node('Druhý uzol', 'Popis druhého uzla.');
+
+        $res = $this->callToolRaw('mind_link', [
+            'from_id' => $a->id,
+            'to_id' => $b->id,
+            'relation' => 'depends_on',
+        ]);
+
+        $this->assertTrue($res->json('result.isError'));
+        $text = (string) $res->json('result.content.0.text');
+        $this->assertStringContainsString('uses', $text);
+        $this->assertStringContainsString('part_of', $text);
+        // odmietnutie je úplné — hrana bez relácie by bola tichá polovica zápisu
+        $this->assertSame(0, Edge::count());
+    }
+
+    public function test_link_refuses_an_unknown_node(): void
+    {
+        $node = $this->node('Existujúci uzol', 'Popis existujúceho uzla.');
+
+        $res = $this->callToolRaw('mind_link', ['from_id' => $node->id, 'to_id' => 987654]);
+
+        $this->assertTrue($res->json('result.isError'));
+        $this->assertSame(0, Edge::count());
+    }
+
+    public function test_link_accepts_exact_labels_when_the_session_has_no_ids(): void
+    {
+        // recall labely vracia, id nie — bez tejto cesty by nástroj bol nepoužiteľný
+        $this->node('Ollama lokálny model', 'Beží v Dockeri na porte 11434.');
+        $this->node('bge-m3 embeddingy', '1024 dimenzií, float32 BLOB.');
+
+        $data = $this->callTool('mind_link', [
+            'from' => 'Ollama lokálny model',
+            'to' => 'bge-m3 embeddingy',
+        ]);
+
+        $this->assertSame('linked', $data['action']);
+        $this->assertSame(1, Edge::count());
+    }
+
+    // ---- mind_hygiene: správa, ktorá nič nemení ----------------------------
+
+    public function test_hygiene_reports_counts_with_example_ids(): void
+    {
+        $stub = $this->node('Docker Compose', 'krátke');
+        $clean = $this->node('Čistý uzol', 'Popis, ktorý je dostatočne dlhý na to, aby uzol nebol stub.');
+        app(MindService::class)->connect($clean, $stub);
+
+        $data = $this->callTool('mind_hygiene');
+
+        $this->assertSame(2, $data['nodes']);
+        $this->assertGreaterThanOrEqual(1, $data['dirty_nodes']);
+
+        $stubClass = collect($data['classes'])->firstWhere('class', 'stub');
+        $this->assertNotNull($stubClass);
+        $this->assertSame(1, $stubClass['count']);
+        $this->assertContains($stub->id, $stubClass['examples']);
+
+        // trieda s nulou nenesie informáciu (to je zdravý stav) a neposiela sa
+        $this->assertNotContains(0, collect($data['classes'])->pluck('count')->all());
+
+        // najdrahšie uzly majú aj label — o nich sa rozhoduje prvé
+        $this->assertSame($stub->id, $data['worst'][0]['id']);
+        $this->assertSame('Docker Compose', $data['worst'][0]['label']);
+    }
+
+    public function test_hygiene_changes_nothing(): void
+    {
+        $node = $this->node('# Smernica: niečo', 'Popis s markdownom v labeli, dosť dlhý.');
+
+        $this->callTool('mind_hygiene', ['limit' => 5]);
+
+        $this->assertSame(1, Node::count());
+        $this->assertSame('# Smernica: niečo', $node->fresh()->label);
+        $this->assertSame(0, Edge::count());
+    }
+
+    public function test_hygiene_refuses_an_unknown_class_and_names_the_valid_ones(): void
+    {
+        $res = $this->callToolRaw('mind_hygiene', ['class' => 'rubbish']);
+
+        $this->assertTrue($res->json('result.isError'));
+        // platné triedy menuje sám príkaz — druhá kópia zoznamu by sa rozišla
+        $this->assertStringContainsString('raw-prompt', (string) $res->json('result.content.0.text'));
+    }
+
+    // ---- aditívnosť: staré payloady sa nezmenili ---------------------------
+
+    /**
+     * `mind_read` je kontrakt, ktorý čítajú živé sessions. Nové nástroje k nemu
+     * nesmú pridať ani odobrať jediný kľúč.
+     */
+    public function test_read_payload_shape_is_unchanged(): void
+    {
+        $node = $this->node('Uzol na čítanie', 'Popis dosť dlhý na to, aby nebol stub, a nič viac.');
+        $neighbour = $this->node('Sused uzla', 'Popis suseda, tiež dosť dlhý.');
+        app(MindService::class)->connect($node, $neighbour);
+        $node->tags()->attach(Tag::forName('docker'));
+
+        $data = $this->callTool('mind_read', ['label' => 'Uzol na čítanie']);
+
+        $this->assertSame([
+            'label', 'type', 'area', 'strength', 'origin', 'tags', 'created',
+            'last_activated', 'description', 'related', 'related_total',
+        ], array_keys($data));
+    }
+
+    public function test_recall_payload_shape_is_unchanged(): void
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $this->markTestSkipped('recall/searchNodes vyžaduje MariaDB COLLATE.');
+        }
+
+        $this->node('Redis fronta', 'Queue driver s Redisom, popis dosť dlhý na to, aby nebol stub.');
+
+        $data = $this->callTool('mind_recall', ['query' => 'Redis fronta']);
+
+        $this->assertSame(['found', 'terms', 'nodes'], array_keys($data));
+        $this->assertSame([
+            'label', 'type', 'area', 'relevance', 'strength', 'description',
+        ], array_keys($data['nodes'][0]));
+    }
+
+    public function test_new_tools_never_return_null_valued_keys(): void
+    {
+        $a = $this->node('Uzol A', 'Popis uzla A, dosť dlhý na to, aby nebol stub.');
+        $b = $this->node('Uzol B', 'Popis uzla B, dosť dlhý na to, aby nebol stub.');
+
+        $this->assertNoNullValues($this->callTool('mind_update', [
+            'id' => $a->id,
+            'description' => 'Opravený popis uzla A, dosť dlhý na to, aby nebol stub.',
+        ]), 'mind_update');
+
+        $this->assertNoNullValues($this->callTool('mind_link', [
+            'from_id' => $a->id,
+            'to_id' => $b->id,
+        ]), 'mind_link');
+
+        $this->assertNoNullValues($this->callTool('mind_hygiene'), 'mind_hygiene');
     }
 }

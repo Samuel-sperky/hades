@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\MindPulse;
 use App\Models\Area;
 use App\Models\Decision;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\Tag;
 use App\Services\Brain\SecretScanner;
 use App\Services\MindService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -21,6 +24,22 @@ use Throwable;
 class McpController extends Controller
 {
     protected const PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18'];
+
+    /**
+     * Sémantické vzťahy, ktoré smie pomenovať `mind_link` — presne tie, ktoré už
+     * v sieti žijú v stĺpci `edges.relation` (viď migráciu a MindRewire::backfillRelations).
+     *
+     * Vedľa toho stojí `edges.kind` (mechanizmus vzniku hrany: similarity,
+     * co_activation, skill_mention, wiki, manual) a ten volajúci nastavovať NEMÔŽE:
+     * ručné prepojenie z MCP JE `manual`, takže nechať AI napísať `similarity` by
+     * znamenalo dovoliť jej sfalšovať pôvod hrany. Nové hodnoty sem nepridávaj bez
+     * toho, aby ich vedel čítať aj MindRewire a graf — inak vzniknú relácie, ktoré
+     * nikto nezobrazí.
+     */
+    protected const LINK_RELATIONS = ['uses', 'part_of'];
+
+    /** `certainty` uzla — tá istá trojica, akú berie mind_learn. */
+    protected const CERTAINTY = ['overene', 'hypoteza', 'pasca'];
 
     public function __construct(
         protected SecretScanner $secrets = new SecretScanner,
@@ -183,7 +202,9 @@ class McpController extends Controller
                     .'of a session with the session topic, and any time earlier context about the user, '
                     .'their projects or preferences would help. How to read the answer: `relevance` is '
                     .'0-1, the share of query concepts a node matched; a node with `via` is NOT a direct '
-                    .'hit — the graph pulled it in through that neighbour, at half relevance. `related` '
+                    .'hit — the graph pulled it in through that neighbour, at half relevance. `semantic` '
+                    .'marks a node that matched by MEANING rather than by words, so the words of your '
+                    .'query will NOT appear in it. `related` '
                     .'names the strongest connections of each node, so you get structure, not a flat list. '
                     .'Empty fields are omitted to save context: no `origin` means session, no `verified` '
                     .'means unverified, no `tags`/`department`/`certainty` means none. `description` is '
@@ -324,6 +345,106 @@ class McpController extends Controller
                     'required' => ['label'],
                 ],
             ],
+            [
+                'name' => 'mind_update',
+                'description' => 'Correct an existing node whose text is wrong or out of date: replaces '
+                    .'its description, and optionally sets certainty or adds tags. This is the ONLY way '
+                    .'to fix a description — mind_learn with the same label MERGES instead: it appends '
+                    .'the new text UNDER the old one and bumps strength, so the node keeps opening with '
+                    .'the wrong claim and carries the correction beneath it (worst of all on a `pasca` '
+                    .'node, where the first sentence is the one that gets believed). The default is a '
+                    .'full replace; pass mode=append only when the old text stays true and you are '
+                    .'adding to it. `tags` are added to the ones the node already has, never removed; '
+                    .'`certainty` overwrites. Identify the node by `id` when you have one, otherwise by '
+                    .'its exact `label` from mind_recall. Not for renaming (mind_rename), not for '
+                    .'refiling (mind_move), not for a genuinely new piece of knowledge (mind_learn). '
+                    .'Never write secrets.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'id' => ['type' => 'integer', 'description' => 'Node id — preferred when you have it'],
+                        'label' => ['type' => 'string', 'description' => 'Exact label of the node — use when you have no id'],
+                        'description' => ['type' => 'string', 'description' => 'The corrected text'],
+                        'mode' => [
+                            'type' => 'string',
+                            'enum' => ['replace', 'append'],
+                            'description' => 'replace (default) = the new text becomes the whole description; '
+                                .'append = the new text is added at the end, old text kept',
+                        ],
+                        'certainty' => [
+                            'type' => 'string',
+                            'enum' => ['overene', 'hypoteza', 'pasca'],
+                            'description' => 'Overwrite the confidence level; omit to leave it as it is',
+                        ],
+                        'tags' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Tags to add (existing tags are kept)',
+                        ],
+                    ],
+                    'required' => ['description'],
+                ],
+            ],
+            [
+                'name' => 'mind_link',
+                'description' => 'Link two existing nodes on purpose, when you have just understood that '
+                    .'they are related. Every other edge in the mind is made by machinery — same-session '
+                    .'co-activation, label mentions, vector similarity — so this is the only way a '
+                    .'deliberate insight becomes structure that later recalls can walk. The edge is '
+                    .'undirected and recorded as `manual`, the strongest provenance in the mind, so no '
+                    .'automatic pass can downgrade it. `relation` is optional and names what the '
+                    .'relatedness IS, from the vocabulary the mind already uses: `uses` (one node uses '
+                    .'the other) or `part_of` (one node is a member of the other); because the edge has '
+                    .'no direction, `relation` labels the pair, not the way round. Identify each side by '
+                    .'`from_id`/`to_id`, or by an exact label in `from`/`to`. Calling it again on the '
+                    .'same pair is a no-op: the weight is not inflated and a relation already set is '
+                    .'never overwritten. Self-links are refused. Do not use it to record that a skill '
+                    .'was used again (that is mind_activate), and do not link everything to everything — '
+                    .'an edge that carries no meaning costs every future recall.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'from_id' => ['type' => 'integer', 'description' => 'Id of the first node'],
+                        'to_id' => ['type' => 'integer', 'description' => 'Id of the second node'],
+                        'from' => ['type' => 'string', 'description' => 'Exact label of the first node — use when you have no id'],
+                        'to' => ['type' => 'string', 'description' => 'Exact label of the second node — use when you have no id'],
+                        'relation' => [
+                            'type' => 'string',
+                            'enum' => self::LINK_RELATIONS,
+                            'description' => 'What the relatedness is: uses | part_of. Omit when neither fits — '
+                                .'an unlabelled link is still a link.',
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'mind_hygiene',
+                'description' => 'Read-only report on the junk in the mind: how many nodes fall into each '
+                    .'defect class, plus a few example ids. Use it when the user asks how healthy the '
+                    .'memory is, or before offering to tidy it up. Classes are ordered by `weight` — 5 '
+                    .'means the class costs you the most on every recall, 1 that it only wastes a row: '
+                    .'raw-prompt, markdown, tag-sprawl, duplicate, slug, oversized, misfiled, stub, '
+                    .'orphan. `examples` are node ids; open one with mind_read to judge it. This tool '
+                    .'changes nothing, and fixing is deliberately not exposed through MCP: rename with '
+                    .'mind_rename, refile with mind_move, correct the text with mind_update, drop a '
+                    .'genuinely worthless node with mind_delete, and leave duplicates to the human queue '
+                    .'(`php artisan mind:duplicates`). It walks the whole network, so call it once per '
+                    .'conversation, not per node.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'class' => [
+                            'type' => 'string',
+                            'description' => 'Report only this one class; an unknown class is refused and the '
+                                .'error names the valid ones',
+                        ],
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'Example ids per class (default 3, max 10)',
+                        ],
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -343,6 +464,9 @@ class McpController extends Controller
                 'mind_rename' => $this->toolRename($args, $mind),
                 'mind_move' => $this->toolMove($args, $mind),
                 'mind_delete' => $this->toolDelete($args, $mind),
+                'mind_update' => $this->toolUpdate($args, $mind),
+                'mind_link' => $this->toolLink($args, $mind),
+                'mind_hygiene' => $this->toolHygiene($args),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {
@@ -723,6 +847,293 @@ class McpController extends Controller
             'reversible' => true,
             'note' => 'Soft-deleted: hidden from recall and the graph, edges kept, restorable.',
         ];
+    }
+
+    /**
+     * Oprava popisu existujúceho uzla.
+     *
+     * Prečo to musí existovať: `mind_learn` s tým istým labelom NEPREPÍŠE, ale
+     * zlúči — popis PRIPOJÍ pod pôvodný (viď MindService::mergeInto). 19. 8. 2026
+     * sa tým do uzla 2700 (typ „pasca") dostalo nesprávne číslo ako prvé tvrdenie
+     * a oprava pod ním; opraviť sa to dalo len jednorazovým PHP skriptom
+     * (storage/app/fix-node-2700.php), lebo MCP nemalo ako popis prepísať.
+     *
+     * Default je PREPIS a je zámerne explicitný, nie odvodený: „pripoj, ak sa
+     * nový text nezhoduje" je presne to chytré správanie, ktoré tú pascu vyrobilo.
+     *
+     * Vektor uzla sa tu ZÁMERNE nepočíta znova. `EmbeddingService::sourceHash()`
+     * sa mení s textom, takže uzol sa sám označí za `stale` a prepočíta ho dávka
+     * (mind:embed) — zápisová cesta MCP tak nezávisí od toho, či práve beží
+     * lokálny model. Do najbližšej dávky preto semantická vetva recallu ešte
+     * pozná starý text.
+     */
+    protected function toolUpdate(array $args, MindService $mind): array
+    {
+        $node = $this->requireNodeBy($args, 'id', 'label', $mind);
+
+        $incoming = trim((string) ($args['description'] ?? ''));
+
+        if ($incoming === '') {
+            throw new \InvalidArgumentException(
+                'Missing required argument: description. To remove a node use mind_delete, '
+                .'not an empty description.'
+            );
+        }
+
+        $mode = (string) ($args['mode'] ?? 'replace');
+
+        if (! in_array($mode, ['replace', 'append'], true)) {
+            throw new \InvalidArgumentException("Unknown mode: {$mode}. Use replace (default) or append.");
+        }
+
+        // serverová poistka blacklistu — rovnaká ako v mind_learn/mind_decision
+        if ($this->looksLikeSecret($incoming)) {
+            return [
+                'content' => [[
+                    'type' => 'text',
+                    'text' => 'Odmietnuté: text vyzerá ako heslo/API kľúč/token — to do vedomia nepatrí (pravidlo blacklistu).',
+                ]],
+                'isError' => true,
+            ];
+        }
+
+        $certainty = null;
+        if (! blank($args['certainty'] ?? null)) {
+            $certainty = (string) $args['certainty'];
+
+            if (! in_array($certainty, self::CERTAINTY, true)) {
+                throw new \InvalidArgumentException(
+                    "Unknown certainty: {$certainty}. Known: ".implode(', ', self::CERTAINTY).'.'
+                );
+            }
+        }
+
+        $current = trim((string) $node->description);
+
+        $node->description = $mode === 'append' && $current !== ''
+            // rovnaký oddeľovač ako pri zlúčení (mergeInto), nech uzol nemá dva
+            // rôzne tvary „viac odsekov v popise"
+            ? $current."\n".$incoming
+            : $incoming;
+
+        if ($certainty !== null) {
+            $node->certainty = $certainty;
+        }
+
+        $node->save();
+
+        // Tagy sa PRIDÁVAJÚ. Odoberať ich cez MCP sa nedá zámerne: tag je jediná
+        // väzba, ktorou uzol vstupuje do cudzích dopytov, a jej tiché odobranie by
+        // sa v odpovedi nijako neprejavilo.
+        $tagIds = [];
+        foreach ((array) ($args['tags'] ?? []) as $name) {
+            if ($tag = Tag::forName(trim((string) $name))) {
+                $tagIds[] = $tag->id;
+            }
+        }
+
+        if ($tagIds !== []) {
+            $node->tags()->syncWithoutDetaching($tagIds);
+        }
+
+        $fresh = $node->fresh();
+        MindPulse::dispatch('node.updated', ['node' => $fresh->toApi()]);
+
+        // `label` je jediné, čo volajúci ešte nevie (mal len id) — a je to jeho
+        // kontrola, že prepísal ten uzol, ktorý chcel. `chars` je dôkaz o dĺžke
+        // uloženého textu; nič ďalšie sa neposiela, mód aj tagy poslal sám.
+        return [
+            'action' => 'updated',
+            'label' => $fresh->label,
+            'chars' => mb_strlen((string) $fresh->description),
+        ];
+    }
+
+    /**
+     * Ručné prepojenie dvoch uzlov — jediná cesta, ktorou sa pochopený vzťah
+     * dostane do grafu. Hrany inak vznikajú výhradne strojovo (co-aktivácia
+     * v session, zmienka labelu, vektorová podobnosť), takže AI, ktorá práve
+     * zistila, že dve veci súvisia, to doteraz nemala kde povedať.
+     */
+    protected function toolLink(array $args, MindService $mind): array
+    {
+        $a = $this->requireNodeBy($args, 'from_id', 'from', $mind);
+        $b = $this->requireNodeBy($args, 'to_id', 'to', $mind);
+
+        if ($a->id === $b->id) {
+            throw new \InvalidArgumentException(
+                'Refused: a node cannot be linked to itself ('.$a->label.').'
+            );
+        }
+
+        $relation = null;
+        if (! blank($args['relation'] ?? null)) {
+            $relation = (string) $args['relation'];
+
+            if (! in_array($relation, self::LINK_RELATIONS, true)) {
+                throw new \InvalidArgumentException(
+                    "Unknown relation: {$relation}. Known: ".implode(', ', self::LINK_RELATIONS)
+                    .'. Omit it when neither fits.'
+                );
+            }
+        }
+
+        // Hrana je neorientovaná a v tabuľke sedí s nižším id ako source (viď
+        // MindService::connect) — hľadať ju treba v tomto kanonickom poradí.
+        [$sourceId, $targetId] = $a->id < $b->id ? [$a->id, $b->id] : [$b->id, $a->id];
+
+        $edge = Edge::query()
+            ->where('source_id', $sourceId)
+            ->where('target_id', $targetId)
+            ->first();
+
+        $existed = $edge !== null;
+
+        // Idempotencia nie je kozmetika: `connect()` by pri existujúcej hrane
+        // váhu inkrementoval, takže AI, ktorá si to isté spojenie potvrdí trikrát,
+        // by vyrobila hranu ťažšiu než akú dá skutočná opakovaná co-aktivácia.
+        if (! $existed) {
+            $edge = $mind->connect($a, $b);
+
+            // connect() vracia null, len keď medzitým zanikol uzol — tu sú oba
+            // práve načítané, takže je to skutočná chyba, nie stav na preskočenie
+            if ($edge === null) {
+                throw new \RuntimeException('Link failed: one of the nodes disappeared meanwhile.');
+            }
+        }
+
+        // Relácia sa DOPLŇUJE, nikdy neprepisuje — to isté pravidlo, aké drží
+        // mind:rewire (backfillRelations berie len hrany s relation = null).
+        if ($relation !== null && blank($edge->relation)) {
+            $edge->forceFill(['relation' => $relation])->save();
+        }
+
+        return $this->dropEmpty([
+            'action' => $existed ? 'already_linked' : 'linked',
+            // labely sú to jediné nové: volajúci mal id a potrebuje vidieť, že
+            // spojil tie uzly, ktoré chcel
+            'nodes' => [$a->label, $b->label],
+            // výsledná relácia, nie tá vyžiadaná — pri už označenej hrane sa
+            // volajúci takto dozvie, že jeho `relation` neprešla
+            'relation' => $edge->relation,
+        ]);
+    }
+
+    /**
+     * Hygienická správa pre session — len na čítanie.
+     *
+     * Klasifikátor je JEDEN a je v `mind:hygiene` (ten zase stojí na
+     * `MindService::noiseOf()`). Preto sa tu príkaz volá, a nepíše sa druhá
+     * kópia pravidiel: dva detektory odpadu by sa rozišli a AI by videla iné
+     * čísla než človek v CLI.
+     *
+     * `--no-file` je povinné — správa z MCP nesmie po každom volaní zakladať
+     * súbor v storage. `--fix` sa nepodáva nikdy: opravy a mazanie idú cez
+     * menované nástroje, kde je jasné, čo presne sa deje s ktorým uzlom.
+     */
+    protected function toolHygiene(array $args): array
+    {
+        $options = [
+            '--json' => true,
+            '--no-file' => true,
+            '--limit' => max(1, min((int) ($args['limit'] ?? 3), 10)),
+        ];
+
+        if (! blank($args['class'] ?? null)) {
+            $options['--class'] = (string) $args['class'];
+        }
+
+        $exit = Artisan::call('mind:hygiene', $options);
+        $output = trim(Artisan::output());
+
+        // Neznámu triedu odmieta príkaz a jeho chyba UŽ menuje platné triedy —
+        // držať tu ich druhú kópiu by znamenalo, že raz sa rozídu.
+        if ($exit !== 0) {
+            throw new \InvalidArgumentException($output !== '' ? $output : 'mind:hygiene failed.');
+        }
+
+        $report = json_decode($output, true);
+
+        if (! is_array($report)) {
+            throw new \RuntimeException('mind:hygiene returned no machine-readable report.');
+        }
+
+        return $this->dropEmpty([
+            'nodes' => $report['nodes'] ?? 0,
+            'edges' => $report['edges'] ?? 0,
+            'dirty_nodes' => $report['dirty_nodes'] ?? 0,
+            // Trieda s nulou nenesie informáciu (to je zdravý stav), takže sa
+            // neposiela. Poradie drží príkaz: najdrahšie triedy prvé.
+            'classes' => collect($report['classes'] ?? [])
+                ->filter(fn (array $class): bool => ($class['count'] ?? 0) > 0)
+                ->map(fn (array $class): array => [
+                    'class' => $class['class'],
+                    'count' => $class['count'],
+                    'weight' => $class['weight'],
+                    // len id — label a oblasť si AI dotiahne cez mind_read, keď
+                    // sa pre konkrétny uzol rozhodne
+                    'examples' => array_values(array_filter(
+                        array_column($class['examples'] ?? [], 'id'),
+                        fn ($id): bool => $id !== null,
+                    )),
+                ])
+                ->values()
+                ->all(),
+            // tri najdrahšie uzly aj s labelom — o týchto sa rozhoduje najskôr,
+            // tak nech ich AI vie pomenovať bez ďalšieho dotazu
+            'worst' => collect($report['worst'] ?? [])
+                ->map(fn (array $node): array => [
+                    'id' => $node['id'],
+                    'label' => $node['label'],
+                    'classes' => $node['classes'],
+                ])
+                ->all(),
+        ]);
+    }
+
+    /**
+     * Uzol pre nástroje, ktoré menia konkrétny uzol: najprv `id`, potom presný
+     * label. Neznáme `id` je CHYBA, nie dôvod skúsiť label — pri zápise je
+     * „skoro ten správny uzol" horší výsledok než odmietnutie (to isté pravidlo
+     * ako v {@see requireNode}).
+     *
+     * `id` musí byť v ponuke, hoci recall ho nevracia: uzly bez použiteľného
+     * labelu (surový prompt, slug) sa inak nedajú osloviť vôbec — a práve tie
+     * treba opraviť. Ich id dá `mind_hygiene`.
+     */
+    protected function requireNodeBy(array $args, string $idKey, string $labelKey, MindService $mind): Node
+    {
+        $id = $args[$idKey] ?? null;
+
+        if (! blank($id) && ctype_digit((string) $id)) {
+            $node = Node::find((int) $id);
+
+            if (! $node) {
+                throw new \InvalidArgumentException(
+                    "No live node with {$idKey} ".(int) $id.'. Ids come from mind_hygiene or from the '
+                    .'mind_learn/mind_activate response; a deleted node has none.'
+                );
+            }
+
+            return $node;
+        }
+
+        if (blank($args[$labelKey] ?? null)) {
+            throw new \InvalidArgumentException(
+                "Missing required argument: {$idKey} (node id) or {$labelKey} (its exact label)."
+            );
+        }
+
+        $node = $mind->findExact((string) $args[$labelKey]);
+
+        if (! $node) {
+            throw new \InvalidArgumentException(
+                'No single node matches label: '.$args[$labelKey]
+                .'. Use mind_recall to find its exact label first.'
+            );
+        }
+
+        return $node;
     }
 
     protected function toolActivate(array $args, MindService $mind): array
