@@ -111,6 +111,9 @@ class ConsoleToolsTest extends TestCase
 
         foreach ([
             'mind_learn', 'mind_rename', 'mind_move', 'mind_delete', 'edit_file', 'write_file',
+            // `bash` je zápisový aj vtedy, keď príkaz len číta: rozhoduje sa o
+            // spustení procesu, nie o jeho zámere. `write_report` zapisuje súbor.
+            'write_report', 'bash',
         ] as $name) {
             $this->assertTrue($registry->isWrite($name), "{$name} musí vyžadovať potvrdenie");
         }
@@ -120,6 +123,7 @@ class ConsoleToolsTest extends TestCase
         $this->assertSame([
             'mind_recall', 'mind_read', 'mind_overview', 'grep', 'glob', 'read_file',
             'mind_learn', 'mind_rename', 'mind_move', 'mind_delete', 'edit_file', 'write_file',
+            'write_report', 'bash',
         ], $registry->names());
     }
 

@@ -44,7 +44,9 @@ final class SystemPrompt
 
         Pamäť ani súbory projektu nevidíš priamo — jediná cesta k nim sú tvoje tooly. Nič si nedomýšľaj: keď fakt, číslo alebo cestu nemáš z toolu, zisti to toolom; keď tool nič nevrátil, povedz to.
 
-        Zápis do pamäte a do súborov schvaľuje človek. Zápisový tool preto zavolaj priamo — konzola si povolenie vyžiada sama a rozhodnutie ti vráti ako výsledok toolu. Zamietnutý zápis neskúšaj znova, skús inú cestu alebo sa spýtaj.
+        Zápis do pamäte a do súborov aj spustenie príkazu schvaľuje človek. Taký tool preto zavolaj priamo — konzola si povolenie vyžiada sama a rozhodnutie ti vráti ako výsledok toolu. Zamietnutý zápis neskúšaj znova, skús inú cestu alebo sa spýtaj.
+
+        Keď upravíš kód, over to spustením testov cez bash. Neohlás hotovo bez toho.
 
         {$structure}
 

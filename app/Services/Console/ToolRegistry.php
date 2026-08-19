@@ -13,9 +13,12 @@ use App\Services\Console\Tools\MindOverviewTool;
 use App\Services\Console\Tools\MindReadTool;
 use App\Services\Console\Tools\MindRecallTool;
 use App\Services\Console\Tools\MindRenameTool;
+use App\Services\Console\Tools\NarrowsAllowance;
 use App\Services\Console\Tools\ReadFileTool;
+use App\Services\Console\Tools\BashTool;
 use App\Services\Console\Tools\ToolRefusal;
 use App\Services\Console\Tools\WriteFileTool;
+use App\Services\Console\Tools\WriteReportTool;
 use App\Services\Llm\LlmProvider;
 use Throwable;
 
@@ -54,6 +57,11 @@ class ToolRegistry
         MindDeleteTool::class,
         EditFileTool::class,
         WriteFileTool::class,
+        WriteReportTool::class,
+        // `bash` je ÚPLNE POSLEDNÝ a je to zámer, nie abeceda: je to najsilnejší
+        // tool v registri a poradie je pre slabý model návod, po čom siahnuť
+        // najskôr. Otázku „čo je v pamäti" má vyriešiť recall, nie `cat`.
+        BashTool::class,
     ];
 
     /** @var array<string, ConsoleTool> meno → tool, v poradí self::TOOLS */
@@ -118,6 +126,52 @@ class ToolRegistry
     public function isWrite(string $name): bool
     {
         return $this->has($name) ? $this->tools[$name]->isWrite() : true;
+    }
+
+    /**
+     * Zužuje tento tool „povoliť vždy" na kľúč?
+     *
+     * Kontrola je `instanceof`, nie meno toolu: rozhodnutie „tento tool je
+     * priširoký na plošné povolenie" patrí k toolu, nie do smyčky. Keby to
+     * smyčka riešila zoznamom mien, každý nový mocný tool by ten zoznam musel
+     * niekto nájsť a doplniť — a nedoplnil by.
+     *
+     * Smyčka to potrebuje odlíšiť od {@see self::allowanceKey()} vracajúceho
+     * `null`: „tool zúženie nepozná" znamená plošné povolenie, ale „tool ho pozná
+     * a kľúč sa nedal vypočítať" nesmie povoliť nič. Bez tohto rozdielu by sa
+     * `bash` s chýbajúcim argumentom povolil plošne — teda presne naopak, než má.
+     *
+     * Neznámy tool nezužuje: `drain()` ho aj tak nevykoná (`has()` je tam prvá
+     * podmienka) a `call()` naň vráti odmietnutie so zoznamom toolov.
+     */
+    public function narrowsAllowance(string $name): bool
+    {
+        return $this->has($name) && $this->tools[$name] instanceof NarrowsAllowance;
+    }
+
+    /**
+     * Kľúč, na ktorý sa má zúžiť „povoliť vždy" — alebo `null`, keď tool zúženie
+     * neponúka (vtedy povolenie platí na celé vlákno, dnešné `auto_accept`),
+     * alebo keď sa z argumentov vypočítať nedá (vtedy sa nepovolí nič).
+     *
+     * @param  array<string, mixed>  $args
+     */
+    public function allowanceKey(string $name, array $args): ?string
+    {
+        $tool = $this->has($name) ? $this->tools[$name] : null;
+
+        if (! $tool instanceof NarrowsAllowance) {
+            return null;
+        }
+
+        try {
+            return $tool->allowanceKey($args);
+        } catch (Throwable $e) {
+            // Zlyhaný výpočet kľúča nesmie povoliť nič — a nesmie ani zhodiť ťah.
+            report($e);
+
+            return null;
+        }
     }
 
     /**

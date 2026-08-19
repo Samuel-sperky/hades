@@ -816,3 +816,144 @@ kbd {
     #composer { padding: 10px 12px 8px; }
     #composer-hint { display: none; }
 }
+
+/* ---------- bash a write_report ----------
+
+   Príkazový riadok aj titulok reportu sedia MEDZI hlavičkou a telom karty (telo
+   si `fillResult()` pred každým výsledkom vymaže), preto nesú vlastný oddeľovač
+   — telo si svoj pridá pod nimi. */
+
+.tc-cmd,
+.tc-report {
+    padding: 8px 12px 10px;
+    border-top: 1px solid var(--line-soft);
+}
+
+.cmd-line {
+    display: flex;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: var(--fs-small);
+    line-height: 1.5;
+    color: var(--text);
+    /* Dlhý príkaz sa ZALOMÍ a neskroluje do strany: v riadku, ktorý človek
+       povoľuje, nesmie byť skrytý koniec — `&& rm -rf` za pravým okrajom je
+       presne to, čo potvrdzovanie zápisov má zachytiť. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* Dolár je značka riadku, nie časť príkazu — `user-select: none` drží, že
+   skopírovaný riadok sa dá vložiť do shellu bez mazania prvého znaku. */
+.cmd-sign {
+    flex: none;
+    color: var(--accent-ink);
+    user-select: none;
+}
+
+.cmd-text { min-width: 0; }
+
+.cmd-why {
+    margin: 6px 0 0;
+    font-size: var(--fs-caption);
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+/* Exit čip stojí PRED `.tc-state`, teda na pravom okraji hlavičky, kde oko číta
+   stav volania. `flex: none` preto, aby ho dlhý príkaz v `.tc-args` nezrazil. */
+.tc-exit {
+    flex: none;
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: 1.6;
+}
+
+.tc-exit.ok { border-color: var(--cert-overene); color: var(--cert-overene); }
+.tc-exit.bad { border-color: var(--danger-border); color: var(--danger); }
+
+/* Zlyhanie nástroja NIE JE to isté ako nenulový exit: príkaz sa nedobehol (alebo
+   ho zarezal timeout), preto výplň — rozdiel má byť vidieť bez čítania textu. */
+.tc-exit.failed {
+    border-color: var(--danger-border);
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+/* Zamietnutý príkaz sa nikdy nespustil, takže exit kód neexistuje ani neskôr —
+   prerušovaný rámik hovorí „prázdny slot", nie „zlá hodnota". */
+.tc-exit.denied { border-style: dashed; }
+
+/* Rozbalený výstup je vlastná scrollovacia oblasť, nie stĺp textu do nekonečna:
+   `bash` vracia bežne stovky riadkov a nezbalený by odpoveď modelu vytlačil mimo
+   obraz. `:not(.clamped)` je povinné — tento blok je v súbore nižšie než
+   `.tc-result.clamped`, takže bez neho by prebil `-webkit-line-clamp` a zbalenie
+   by prestalo fungovať. */
+.tc-result.tc-out:not(.clamped) {
+    max-height: 22rem;
+    overflow: auto;
+    scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+.rp-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.rp-title { font-size: var(--fs-body); font-weight: 500; color: var(--text); }
+
+.rp-format {
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    background: var(--surface-subtle);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+}
+
+/* Odkazy idú do tela karty POD výsledok: telo sa čistí pred vykreslením výsledku
+   a obálka ich dopĺňa po ňom, takže sa nemajú ako stratiť. */
+.rp-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+    margin-top: 10px;
+}
+
+.rp-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--accent-ink);
+    font-size: var(--fs-body);
+    text-decoration: none;
+}
+
+.rp-link:hover { border-color: var(--border-accent); background: var(--accent-softer); }
+.rp-link .ms { font-size: 16px; }
+
+/* V karte potvrdenia je príkaz to jediné, čo človek naozaj hodnotí: rámik
+   akcentu a o stupeň väčšie písmo než výpis v karte volania. Blok nesie aj
+   `.tc-cmd`, preto musí tento selektor stáť NIŽŠIE — pri rovnakej špecificite
+   prepíše `padding` aj `border-top` až poradím v súbore. */
+.pc-cmd {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+}
+
+.pc-cmd .cmd-line { font-size: var(--fs-body); }

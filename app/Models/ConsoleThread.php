@@ -19,6 +19,7 @@ class ConsoleThread extends Model
 
     protected $casts = [
         'auto_accept' => 'bool',
+        'allowances' => 'array',
         'last_message_at' => 'datetime',
     ];
 
@@ -27,6 +28,34 @@ class ConsoleThread extends Model
         static::creating(function (self $thread) {
             $thread->uuid ??= (string) Str::uuid();
         });
+    }
+
+    /**
+     * Je pre tento tool a tento kľúč už povolené bez pýtania?
+     *
+     * `auto_accept` sa tu ZÁMERNE nekontroluje — o tom rozhoduje smyčka. Táto
+     * metóda odpovedá len na úzku otázku „bol práve TENTO vzor povolený", aby sa
+     * plošné a úzke povolenie nedali zameniť v jednom `if`.
+     */
+    public function allowsTool(string $tool, string $key): bool
+    {
+        return in_array($key, $this->allowances[$tool] ?? [], true);
+    }
+
+    /** Zapíše úzke povolenie. Idempotentné — dvakrát povolený vzor je jeden vzor. */
+    public function allowTool(string $tool, string $key): void
+    {
+        $allowances = $this->allowances ?? [];
+        $keys = $allowances[$tool] ?? [];
+
+        if (in_array($key, $keys, true)) {
+            return;
+        }
+
+        $keys[] = $key;
+        $allowances[$tool] = $keys;
+
+        $this->allowances = $allowances;
     }
 
     public function messages(): HasMany

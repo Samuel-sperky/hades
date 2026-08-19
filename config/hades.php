@@ -153,6 +153,88 @@ return [
         // Strop na jeden prečítaný súbor a na výstup ripgrepu (znaky).
         'read_cap' => (int) env('HADES_CONSOLE_READ_CAP', 60000),
         'grep_cap' => (int) env('HADES_CONSOLE_GREP_CAP', 20000),
+
+        // -----------------------------------------------------------------
+        // Klietka pre shell (tool `bash`).
+        //
+        // Do 19. 8. 2026 konzola shell NEMALA (rozhodnutie #7 pôvodného
+        // kontraktu) a preto nevedela spustiť ani testy — „kódovanie" bez
+        // spustenia je písanie naslepo. Rozhodnutie #11 ho pustilo dovnútra,
+        // ale v klietke: BIELY zoznam, nie čierny.
+        //
+        // Prečo biely: čierny zoznam sa dá obísť čímkoľvek, na čo autor
+        // nepomyslel (`find -exec`, `xargs`, `env`, `sh -c`). Biely zoznam
+        // zlyhá opačným smerom — odmietne užitočný príkaz, čo je otrava, nie
+        // diera. Príkaz beží v kontejneri `app`, nie na hoste.
+        //
+        // Štruktúrne pravidlá (reťazenie, presmerovanie, substitúcia) NIE SÚ
+        // tu — sú v CommandCage, pretože to nie je zoznam, ale gramatika.
+        // -----------------------------------------------------------------
+        'bash' => [
+            'enabled' => (bool) env('HADES_CONSOLE_BASH', true),
+
+            // Sekundy. `php artisan test` nad celým balíkom beží ~82 s, takže
+            // strop pod dvoma minútami by zabil práve ten príkaz, pre ktorý
+            // tool existuje.
+            'timeout' => (int) env('HADES_CONSOLE_BASH_TIMEOUT', 120),
+
+            // Znaky výstupu pre model. Výstup phpunitu s farbami vie mať 100 kB
+            // a na 9 tok/s je každý znak zaplatený token.
+            'output_cap' => (int) env('HADES_CONSOLE_BASH_CAP', 30000),
+
+            // Segmenty rúry sa validujú KAŽDÝ zvlášť proti tomuto zoznamu.
+            // Ukotvené regexy nad celým segmentom — `^` a `$` sú tu povinné.
+            'allow' => [
+                '/^php artisan test( .*)?$/',
+                '/^php artisan migrate(:status)?( --pretend)?$/',
+                '/^php artisan (route:list|about|env)( .*)?$/',
+                '/^php artisan mind:[a-z:-]+( .*)?$/',
+                '/^php vendor\/bin\/(phpunit|pint)( .*)?$/',
+                '/^composer (install|show|audit|dump-autoload)( .*)?$/',
+                '/^npm (install|ci|audit|ls|run [a-z][a-z0-9:-]*)( .*)?$/',
+                '/^git (status|diff|log|show|branch|remote|blame|shortlog)( .*)?$/',
+                '/^(ls|cat|head|tail|wc|file|stat|sort|uniq|cut|tr|sed -n)( .*)?$/',
+                '/^(rg|grep)( .*)?$/',
+                '/^curl -s https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/\S*$/',
+                '/^(php|node|npm|composer) --version$/',
+            ],
+
+            // Skontroluje sa PRVÝ a nad celým príkazom, nie nad segmentom.
+            // Čokoľvek odtiaľto je odmietnuté aj vtedy, keď to `allow` pustí —
+            // a nedá sa to povoliť ani cez allow-always.
+            'deny' => [
+                '/(^|\s)(rm|mv|cp|chmod|chown|chgrp|ln|sudo|su|dd|mkfs|shutdown|reboot|kill|pkill|killall|wsl|docker|systemctl|service|apt|apt-get|yum|pip|pipx)(\s|$)/',
+                '/(^|\s)(sh|bash|zsh|env|xargs|eval|exec|nohup|at|cron|crontab)(\s|$)/',
+                '/(^|\s)find\s+.*-(exec|delete|ok)(\s|$)/',
+                '/\bgit\s+(push|reset|checkout|switch|clean|rebase|stash|commit|merge|cherry-pick|worktree|remote\s+(add|remove|set-url))\b/',
+                '/\bartisan\s+(tinker|db:wipe|migrate:(fresh|reset|rollback)|queue:flush|cache:clear\b.*--all)/i',
+                '/\b(drop|truncate)\s+(database|table)\b/i',
+                '/\bnpm\s+(publish|login|token|config\s+set)\b/',
+                '/\b(composer\s+(global|config)|npx)\b/',
+                // .env je čitateľné pre appku, nie pre model v chate
+                '/(^|\s|\/)\.env(\.|\s|$)/',
+            ],
+        ],
+
+        // -----------------------------------------------------------------
+        // HTML reporty (tool `write_report`).
+        //
+        // Report píše MODEL, číta ho prehliadač a servuje ho autentizovaná
+        // route v tom istom origine ako celá appka. Preto sa neservuje ako
+        // obyčajný `text/html` bez obrany: `<script>` v reporte by mal
+        // session cookie a mohol by volať `/api/nodes`. Obrana je dvojitá —
+        // sanitizácia pri zápise a CSP pri servovaní (viď ReportWriter,
+        // ReportController).
+        // -----------------------------------------------------------------
+        'reports' => [
+            // Strop na jeden report (znaky). Model na 9 tok/s väčší nenapíše,
+            // ale `format: html` prijíma aj to, čo vygeneroval z dát.
+            'cap' => (int) env('HADES_CONSOLE_REPORT_CAP', 400000),
+
+            // Koľko reportov nechať na disku; najstaršie sa pri zápise mažú.
+            // Bez toho by `storage/app/reports` rástol bez konca.
+            'keep' => (int) env('HADES_CONSOLE_REPORT_KEEP', 100),
+        ],
     ],
 
     // ---------------------------------------------------------------------

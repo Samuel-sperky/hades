@@ -138,9 +138,7 @@ final class AgentRunner
             $placeholder = $this->openAssistant($thread, $emit, $provider, $model);
 
             if ($decision === self::DECISION_ALLOW_ALWAYS) {
-                // auto-accept na sedenie: ďalší zápis v tomto vlákne sa už nepýta
-                $thread->auto_accept = true;
-                $thread->save();
+                $this->rememberAllowance($thread, $call);
             }
 
             if ($decision === self::DECISION_DENY) {
@@ -347,7 +345,7 @@ final class AgentRunner
             // toolov, ktoré model má, a on si z nich vyberie.
             $write = $this->registry->has($call->name) && $this->registry->isWrite($call->name);
 
-            if ($write && ! $thread->auto_accept) {
+            if ($write && ! $this->preapproved($thread, $call)) {
                 $call->preview = $this->registry->preview($call->name, $call->arguments ?? []);
                 $call->save();
 
@@ -415,6 +413,54 @@ final class AgentRunner
             'result' => $this->clip($display),
             'duration_ms' => $ms,
         ]);
+    }
+
+    /**
+     * Smie sa tento zápis vykonať bez otázky?
+     *
+     * Dve cesty a je dôležité, že sú dve:
+     *  • `auto_accept` — plošné povolenie vlákna, ako doteraz;
+     *  • úzke povolenie na jeden kľúč toolu ({@see Tools\NarrowsAllowance}).
+     *
+     * Bez tej druhej cesty by „povoliť vždy" pri `bash` muselo zapnúť `auto_accept`
+     * — a jedno kliknutie pri `php artisan test` by v tom vlákne povolilo aj
+     * `mind_delete`. Preto sa pri tooloch s úzkym kľúčom `auto_accept` NEZAPÍNA
+     * (viď {@see self::rememberAllowance()}).
+     */
+    private function preapproved(ConsoleThread $thread, ConsoleToolCall $call): bool
+    {
+        if ($thread->auto_accept) {
+            return true;
+        }
+
+        $key = $this->registry->allowanceKey($call->name, $call->arguments ?? []);
+
+        return $key !== null && $thread->allowsTool($call->name, $key);
+    }
+
+    /**
+     * Zapíše rozhodnutie „povoliť vždy".
+     *
+     * Tool s úzkym kľúčom dostane povolenie len na ten kľúč; ostatné zostávajú pri
+     * plošnom `auto_accept`, aby sa nezmenilo správanie, ktoré už existuje a je
+     * otestované. Keď sa kľúč nedá vypočítať (chýbajúci argument), NEPOVOLÍ SA NIČ
+     * — fail-closed: ďalší taký call sa spýta znova, čo je otrava, nie diera.
+     */
+    private function rememberAllowance(ConsoleThread $thread, ConsoleToolCall $call): void
+    {
+        $key = $this->registry->allowanceKey($call->name, $call->arguments ?? []);
+
+        if ($key === null) {
+            if (! $this->registry->narrowsAllowance($call->name)) {
+                $thread->auto_accept = true;
+                $thread->save();
+            }
+
+            return;
+        }
+
+        $thread->allowTool($call->name, $key);
+        $thread->save();
     }
 
     /** @param  callable(array<string, mixed>): void  $emit */
