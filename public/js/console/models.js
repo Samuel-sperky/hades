@@ -39,6 +39,12 @@ async function probe() {
         // 300 s, takže ten omyl nie je kozmetický.
         if (data && typeof data === 'object' && data.default?.model) C.defaultModel = data.default.model;
 
+        // `unavailable` je zoznam poskytovateľov, ktorých backend zámerne nepustil
+        // do ponuky. Bez neho je Anthropic bez kľúča neodlíšiteľný od Anthropicu,
+        // ktorý appka nepodporuje — a to je rozdiel medzi „nedá sa" a „chýba jeden
+        // riadok v .env".
+        C.unavailable = Array.isArray(data?.unavailable) ? data.unavailable : [];
+
         return normalize(data);
     } catch {
         return [];
@@ -90,15 +96,18 @@ export function paintModels() {
         option.value = current;
         select.append(option);
         select.disabled = true;
-        select.title = current
-            ? `Model vlákna: ${current}. Zoznam modelov konzola nedostala.`
-            : 'Konzola beží na predvolenom modeli z konfigurácie.';
+        select.title = [
+            current
+                ? `Model vlákna: ${current}. Zoznam modelov konzola nedostala.`
+                : 'Konzola beží na predvolenom modeli z konfigurácie.',
+            missingProviders(),
+        ].filter(Boolean).join(' ');
 
         return;
     }
 
     select.disabled = false;
-    select.title = '';
+    select.title = missingProviders();
 
     // Model vlákna nemusí byť v zozname (stiahnutý model mohol zmiznúť) — do
     // ponuky sa aj tak pridá, inak by prepínač tvrdil, že vlákno beží na inom.
@@ -112,6 +121,27 @@ export function paintModels() {
         if (model.id === current) option.selected = true;
         select.append(option);
     });
+}
+
+/**
+ * Veta o poskytovateľoch, ktorí v ponuke nie sú — a čo s tým.
+ *
+ * Hoistovaná `function`, nie `const` s arrow: modely importuje `main.js` aj
+ * `slash.js` a cyklus medzi nimi je v tomto grafe normálny stav (viď state.js).
+ *
+ * Návod je konkrétny (meno premennej, súbor), pretože všeobecné „poskytovateľ
+ * nie je dostupný" nikoho nikam nedovedie. Kľúč sem NIKDY nevypisujeme — len to,
+ * že chýba.
+ */
+export function missingProviders() {
+    if (!C.unavailable?.length) return '';
+
+    const help = {
+        anthropic: 'Anthropic (Claude) je vypnutý — chýba ANTHROPIC_API_KEY v .env.',
+        ollama: 'Lokálna Ollama neodpovedá — skontroluj, či beží na OLLAMA_HOST.',
+    };
+
+    return C.unavailable.map((name) => help[name] || `Poskytovateľ ${name} je nedostupný.`).join(' ');
 }
 
 async function saveModel(select) {

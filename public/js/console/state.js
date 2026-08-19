@@ -18,6 +18,13 @@ export const C = {
     models: [],          // čo je reálne stiahnuté (ak backend zoznam vie dať)
     defaultModel: '',    // model z configu — na ňom beží vlákno, ktoré si vlastný nevybralo
 
+    // Poskytovatelia, ktorých backend NEPUSTIL do ponuky (`unavailable` z
+    // /api/console/models). Držíme ich preto, že ich absencia je inak nečitateľná:
+    // Anthropic bez API kľúča z prepínača jednoducho zmizne a človek nemá ako
+    // zistiť, či ho appka nepodporuje, alebo mu len chýba kľúč. Prvé je nepravda,
+    // druhé je jedna zmena v .env.
+    unavailable: [],
+
     // Kým init nedobehne, konzola neprijíma ťahy: vlákna a zoznam modelov ešte
     // len tečú a `openThread()` na konci štartu prekresľuje celý tok. Bez tejto
     // brány sa dala odoslať správa, ktorú init o 100 ms zmazal zo obrazovky —
