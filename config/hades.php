@@ -184,19 +184,31 @@ return [
 
             // Segmenty rúry sa validujú KAŽDÝ zvlášť proti tomuto zoznamu.
             // Ukotvené regexy nad celým segmentom — `^` a `$` sú tu povinné.
+            //
+            // Medzery sú `\s+`, nie jedna medzera: model diktuje príkaz po tokenoch
+            // a `php  artisan  test` s dvomi medzerami je ten istý príkaz. Prvá
+            // verzia ho odmietla a vyzeralo to ako chyba klietky.
+            //
+            // Čo tu VEDOME nie je, a prečo (zmerané sondou 19. 8. 2026):
+            //  • `sed` — `sed -n '1w /tmp/x'` ZAPÍŠE súbor. Čítanie riadkov pokrýva
+            //    `head`/`tail`/`cut` a tool `read_file`, takže sed sem nemá čo pridať
+            //    okrem zápisu, ktorý má ísť cez `edit_file` a jeho diff.
+            //  • curl na ľubovoľný port — `curl http://127.0.0.1:6379/` je Redis
+            //    appky. Port je preto zoznam, nie `\d+`, a za URL nesmie nasledovať
+            //    nič (teda ani `-o`, ktorým curl zapisuje súbory).
             'allow' => [
-                '/^php artisan test( .*)?$/',
-                '/^php artisan migrate(:status)?( --pretend)?$/',
-                '/^php artisan (route:list|about|env)( .*)?$/',
-                '/^php artisan mind:[a-z:-]+( .*)?$/',
-                '/^php vendor\/bin\/(phpunit|pint)( .*)?$/',
-                '/^composer (install|show|audit|dump-autoload)( .*)?$/',
-                '/^npm (install|ci|audit|ls|run [a-z][a-z0-9:-]*)( .*)?$/',
-                '/^git (status|diff|log|show|branch|remote|blame|shortlog)( .*)?$/',
-                '/^(ls|cat|head|tail|wc|file|stat|sort|uniq|cut|tr|sed -n)( .*)?$/',
-                '/^(rg|grep)( .*)?$/',
-                '/^curl -s https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/\S*$/',
-                '/^(php|node|npm|composer) --version$/',
+                '/^php\s+artisan\s+test(\s.*)?$/',
+                '/^php\s+artisan\s+migrate(:status)?(\s+--pretend)?$/',
+                '/^php\s+artisan\s+(route:list|about|env)(\s.*)?$/',
+                '/^php\s+artisan\s+mind:[a-z:-]+(\s.*)?$/',
+                '/^php\s+vendor\/bin\/(phpunit|pint)(\s.*)?$/',
+                '/^composer\s+(install|show|audit|dump-autoload)(\s.*)?$/',
+                '/^npm\s+(install|ci|audit|ls|run\s+[a-z][a-z0-9:-]*)(\s.*)?$/',
+                '/^git\s+(status|diff|log|show|branch|remote|blame|shortlog)(\s.*)?$/',
+                '/^(ls|cat|head|tail|wc|file|stat|sort|uniq|cut|tr)(\s.*)?$/',
+                '/^(rg|grep)(\s.*)?$/',
+                '/^curl\s+-s\s+https?:\/\/(localhost|127\.0\.0\.1):(8080|8092)(\/\S*)?$/',
+                '/^(php|node|npm|composer)\s+--version$/',
             ],
 
             // Skontroluje sa PRVÝ a nad celým príkazom, nie nad segmentom.

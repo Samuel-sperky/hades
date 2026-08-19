@@ -78,6 +78,11 @@ final class CommandCage
             return $structure;
         }
 
+        if ($this->unbalancedQuotes($command)) {
+            return 'Refused: unbalanced quote in the command. Close it — an open quote would make the shell '
+                .'wait for the rest and the command would hang until the timeout.';
+        }
+
         // Nad celým príkazom, teda aj nad segmentmi rúry a aj nad tým, čo by
         // `allow` pustilo. Toto je jediné pravidlo, ktoré sa nedá prehlasovať.
         foreach ((array) config('hades.console.bash.deny', []) as $pattern) {
@@ -102,7 +107,7 @@ final class CommandCage
      */
     public function pattern(string $command): string
     {
-        $first = trim(explode('|', trim($command))[0]);
+        $first = trim($this->splitPipeline(trim($command))[0]);
         $tokens = preg_split('/\s+/', $first) ?: [];
         $tokens = array_values(array_filter($tokens, fn (string $t): bool => $t !== ''));
 
@@ -117,6 +122,12 @@ final class CommandCage
             return 'php artisan '.$tokens[2];
         }
 
+        // `npm run build` a `npm run watch` sú dva rôzne programy: skripty žijú v
+        // package.json a povolením jedného sa nemá povoliť druhý.
+        if (($tokens[0] ?? '') === 'npm' && ($tokens[1] ?? '') === 'run' && isset($tokens[2])) {
+            return 'npm run '.$tokens[2];
+        }
+
         // `php vendor/bin/phpunit` sem patrí tiež — druhý token je cesta k binárke,
         // teda presne to, čo príkaz odlišuje.
         if (in_array($tokens[0], ['php', 'composer', 'npm', 'node', 'git'], true) && isset($tokens[1])) {
@@ -124,6 +135,83 @@ final class CommandCage
         }
 
         return $tokens[0];
+    }
+
+    /**
+     * Rozdelí príkaz na segmenty rúry — ale `|` VNÚTRI úvodzoviek nechá na pokoji.
+     *
+     * Naivné `explode('|')` tu bola funkčná chyba, nie bezpečnostná:
+     * `rg -e "foo|bar" app` sa rozpadlo na `rg -e "foo` a `bar" app`, druhý segment
+     * neprešel bielym zoznamom a klietka odmietla úplne legitímne hľadanie. Model
+     * potom skúša variácie a na CPU inferencii je každý pokus minúta.
+     *
+     * Bezpečnosť to nezoslabuje: skutočné reťazenie (`;`, `&&`, `||`, `&`) aj
+     * substitúciu odmieta gramatika ešte pred týmto rozdelením, a to bez ohľadu na
+     * úvodzovky. Otvorená úvodzovka je odmietnutá zvlášť ({@see self::unbalancedQuotes()}) —
+     * shell by inak čakal na jej dokončenie a príkaz by visel do timeoutu.
+     *
+     * @return array<int, string>
+     */
+    private function splitPipeline(string $command): array
+    {
+        $segments = [];
+        $current = '';
+        $quote = null;
+
+        $length = strlen($command);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $command[$i];
+
+            if ($quote !== null) {
+                $current .= $char;
+
+                if ($char === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($char === '"' || $char === "'") {
+                $quote = $char;
+                $current .= $char;
+
+                continue;
+            }
+
+            if ($char === '|') {
+                $segments[] = $current;
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        $segments[] = $current;
+
+        return $segments;
+    }
+
+    /** Nezavretá úvodzovka: shell by na ňu čakal, takže príkaz odmietame vopred. */
+    private function unbalancedQuotes(string $command): bool
+    {
+        $quote = null;
+        $length = strlen($command);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $command[$i];
+
+            if ($quote === null && ($char === '"' || $char === "'")) {
+                $quote = $char;
+            } elseif ($quote === $char) {
+                $quote = null;
+            }
+        }
+
+        return $quote !== null;
     }
 
     /**
@@ -211,7 +299,7 @@ final class CommandCage
         /** @var array<int, string> $allow */
         $allow = (array) config('hades.console.bash.allow', []);
 
-        foreach (explode('|', $command) as $segment) {
+        foreach ($this->splitPipeline($command) as $segment) {
             $segment = trim($segment);
 
             if ($segment === '') {
@@ -231,8 +319,9 @@ final class CommandCage
                 return "Refused: `{$segment}` is not on the shell allowlist. The shell has an ALLOWLIST, not a "
                     .'deny list, so guessing variants will not help — pick a different command. Allowed are '
                     .'tests (php artisan test, php vendor/bin/phpunit), read-only git (status, diff, log, show), '
-                    .'composer and npm, ls/cat/head/tail/wc/sort/uniq/cut/sed -n, rg and grep, and curl to '
-                    .'localhost.';
+                    .'composer and npm, ls/cat/head/tail/wc/sort/uniq/cut/tr, rg and grep, and curl to the '
+                    .'application itself on localhost:8080. There is no `sed` — use head/tail/cut to read '
+                    .'lines, or the read_file tool.';
             }
         }
 

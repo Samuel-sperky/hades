@@ -295,4 +295,72 @@ class ConsoleBashToolTest extends TestCase
 
         $this->assertStringContainsString('disabled', $refusal);
     }
+
+    // ---- 8. čo našla sonda 19. 8. 2026 ---------------------------------------
+
+    /**
+     * Rúra V ARGUMENTE nie je spojka.
+     *
+     * `rg -e "foo|bar" app` sa pri naivnom `explode('|')` rozpadlo na `rg -e "foo`
+     * a `bar" app`, druhý segment neprešel bielym zoznamom a klietka odmietla úplne
+     * legitímne hľadanie. Bola to funkčná chyba, nie bezpečnostná — a taká, ktorú
+     * model „opravuje" ďalšími pokusmi po minúte na CPU.
+     */
+    public function test_a_pipe_inside_quotes_is_an_argument_not_a_connector(): void
+    {
+        $this->assertNull($this->cage()->refusalFor('rg -e "foo|bar" app'));
+        $this->assertNull($this->cage()->refusalFor("rg 'a|b' app"));
+
+        // A skutočná rúra vedľa toho funguje ďalej.
+        $this->assertNull($this->cage()->refusalFor('rg -e "foo|bar" app | head -5'));
+    }
+
+    /** Nezavretá úvodzovka by nechala shell čakať do timeoutu. */
+    public function test_an_unbalanced_quote_is_refused(): void
+    {
+        $refusal = (string) $this->cage()->refusalFor('rg "foo app');
+
+        $this->assertStringContainsString('quote', $refusal);
+    }
+
+    /** Dve medzery sú ten istý príkaz — model diktuje po tokenoch, nie po znakoch. */
+    public function test_extra_whitespace_does_not_change_the_command(): void
+    {
+        $this->assertNull($this->cage()->refusalFor('php  artisan  test'));
+        $this->assertSame('php artisan test', $this->cage()->pattern('php  artisan  test'));
+    }
+
+    /**
+     * `curl` smie hovoriť s APPKOU, nie s čímkoľvek na localhoste.
+     *
+     * Sonda ukázala, že `curl http://127.0.0.1:6379/` prešel — to je Redis tejto
+     * appky, teda cache a sessions. Port je preto zoznam a za URL nesmie nasledovať
+     * nič, aby sa nedal pripojiť `-o`, ktorým curl zapisuje súbory.
+     */
+    public function test_curl_reaches_the_application_and_nothing_else(): void
+    {
+        $this->assertNull($this->cage()->refusalFor('curl -s http://localhost:8080/up'));
+
+        $this->assertNotNull($this->cage()->refusalFor('curl -s http://127.0.0.1:6379/'));
+        $this->assertNotNull($this->cage()->refusalFor('curl -s http://127.0.0.1:3306/'));
+        $this->assertNotNull($this->cage()->refusalFor('curl -s http://example.com/'));
+        $this->assertNotNull($this->cage()->refusalFor('curl -s -o /tmp/x http://localhost:8080/'));
+    }
+
+    /**
+     * `sed` v bielom zozname nemá čo robiť: `sed -n '1w /tmp/x'` ZAPÍŠE súbor.
+     * Čítanie riadkov pokrýva head/tail/cut a tool `read_file`.
+     */
+    public function test_sed_is_not_on_the_allowlist_because_it_writes_files(): void
+    {
+        $this->assertNotNull($this->cage()->refusalFor('sed -n "1w /tmp/out" app/Models/Node.php'));
+        $this->assertNotNull($this->cage()->refusalFor('sed -n 1,20p app/Models/Node.php'));
+    }
+
+    /** `npm run build` nesmie povoliť `npm run watch` — skripty žijú v package.json. */
+    public function test_npm_run_narrows_to_the_script_name(): void
+    {
+        $this->assertSame('npm run build', $this->cage()->pattern('npm run build'));
+        $this->assertSame('npm run watch', $this->cage()->pattern('npm run watch'));
+    }
 }
