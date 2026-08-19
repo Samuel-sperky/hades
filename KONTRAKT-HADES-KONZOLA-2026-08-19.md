@@ -192,6 +192,67 @@ decay/teplota, automatické sumáre a prewiring, rozšírené MCP tooly).
 | Zápisové tooly nad pamäťou | Slabý model vie napísať odpad | Potvrdzovacia brána + `noiseOf()` validácia pred zápisom |
 | Rast rozsahu | Päť vĺn je veľa | Pri prekročení odhadu o >30 % zastavím a ozvem sa |
 
-## 9. Výsledok
+## 9. Výsledok (19. 8. 2026)
 
-_(dopíše sa po dobehnutí šprintu)_
+**Hotové a overené.** Päť commitov na `feat/hades-konzola`, celá sada **346 testov
+zelená** (44 preskočených = sqlite `COLLATE`, bežia na MariaDB).
+
+| commit | čo |
+|---|---|
+| `cbc2ac1` | guardovaný okruh konzoly, tabuľky vlákien, ripgrep do image, §8.11 auditu |
+| `368c1ad` | vrstva poskytovateľov (Ollama + Anthropic), embeddingy bge-m3, hybridný recall (RRF) |
+| `7976a98` | N+1 v grafe, výkon draw loopu, `mind:hygiene`, `mind:recall-bench` |
+| `9eeaf28` | konzola: 12 nástrojov, dvojfázová brána, UI, `think=false` |
+| `d91a868` | MCP `mind_update` / `mind_link` / `mind_hygiene`, aktualizovaný CLAUDE.md |
+
+**Bezpečnostná prehliadka** (povinná — šprint pridal exponovaný endpoint, ktorý
+spúšťa nástroje; appka je tunelovaná cez ngrok). Vykonaná útokom, nie čítaním, a
+každý harness kalibrovaný na známom stave:
+
+- **15/15 útokov na nástroje odmietnutých** (`storage/app/attack-tools.php`):
+  traversal `../.env`, `.env`, `.git`, `vendor`, absolútna cesta, zápis nad koreň,
+  a hlavne **injektáž prepínača do ripgrepu** (`--pre=/bin/sh`, `-f/etc/passwd`) —
+  vzor ide cez `--regexp`, takže sa spracuje ako literál a nič sa nespustí.
+- **12/12 XSS útokov neškodných** (`scratchpad/xss.js`, nad reálnym
+  `renderMarkdown` v prehliadači): `<script>`, `img onerror`, `svg onload`,
+  `javascript:`/`data:`/`vbscript:` odkazy, breakout z `href`. Escape-first plus
+  menovaný zoznam schém; `window.__pwned` sa nenastavilo ani raz.
+- `/api/console/decide` hľadá tool call **v rámci vlákna** (`where thread_id`),
+  takže id z cudzieho vlákna sa vykonať nedá.
+- Celý prefix `/api/console/*` je za `auth.ui` + CSRF a `ConsoleGuardTest` to
+  overuje **prechodom routera**, nie zoznamom — endpoint pridaný mimo skupinu
+  test zhodí. `throttle:20,1` je na `run`.
+- **Bash/shell tool neexistuje** (rozhodnutie #7 dodržané).
+
+**Poctivé korekcie vlastných tvrdení** (obe zapísané aj do Hadesa):
+
+1. Prvý baseline bol nesprávny — profiler registroval `DB::listen` na každý beh a
+   počty dopytov boli násobené počtom listenerov. „96 dopytov" na dashboarde bolo
+   12 a „126" na search bolo 9; **dve z troch nahlásených N+1 nikdy neexistovali.**
+2. Tvrdil som, že `docs/BEZPECNOST.md` §8 je neaktuálny. Nebol — neaktuálny bol
+   uzol v Hadesovej pamäti, z ktorého som čítal.
+
+**Čo NIE je hotové a prečo:**
+
+- **Vektorový prewiring** (`mind:rewire` na embeddingoch namiesto TF-IDF).
+  Zadanie bolo pripravené a agent padol na limit sessiony. Vedomá voľba nedokončiť
+  to nasilo: pri 2672 uzloch by nesprávne zvolená podlaha podobnosti vygenerovala
+  tisíce hrán a zo siete hairball — tento graf sa z toho už raz zachraňoval
+  (`mind:prune-coactivation`). Podklad, ktorý si to prevezme: dnešný `mind:rewire`
+  beží **cez 55 minút v O(n²)** na TF-IDF, vektory sú predpočítané (2672 × 1024,
+  ~11 MB), a pred zapnutím treba porovnať top-5 susedov TF-IDF vs vektory na
+  vzorke ~20 uzlov a z nej odvodiť podlahu.
+- **Nezávislý review agent.** Bezpečnostnú časť som odviedol sám (vyššie); čo
+  chýba, je druhý pohľad na korektnosť celého diffu.
+- **Decay, teplota a automatické sumáre sa nestavali** — už existovali
+  (`mind:decay` 04:15, `mind:digest`/`mind:rollup` týždenne, `mind:ingest` každých
+  10 min). Kontrakt ich menoval ako „nové možnosti" mylne; overené, nie prepísané.
+
+**Otvorené rozhodnutia pre vlastníka:**
+
+1. **Rotovať `HADES_UI_TOKEN`** — jeho hodnotu som omylom vypísal do výstupu.
+2. **16 starých dumpov** v `backups/` nad pravidlo „posledné 3" (nemažem dáta).
+3. **62 prázdnych vlákien konzoly** a **2 `pending` tool cally** z testovania;
+   jeden z nich drží svoje vlákno, kým sa nerozhodne.
+4. Či zapnúť vektorový prewiring (viď vyššie) a či zdvihnúť RAM Docker VM
+   (`.wslconfig` → `memory=34GB` + `wsl --shutdown`), aby bol 30B model použiteľný.
