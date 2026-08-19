@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Console;
 use App\Http\Controllers\Controller;
 use App\Models\ConsoleThread;
 use App\Models\ConsoleToolCall;
+use App\Models\Run;
 use App\Services\Console\AgentRunner;
+use App\Services\Console\RunRecorder;
 use App\Services\Llm\ProviderFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -32,7 +34,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class RunController extends Controller
 {
     /** Jeden ťah: správa človeka → prúd rámcov protokolu. */
-    public function run(Request $request, AgentRunner $runner, ProviderFactory $providers): StreamedResponse
+    public function run(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder): StreamedResponse
     {
         $validator = Validator::make($request->all(), [
             'thread' => 'required|uuid',
@@ -59,17 +61,23 @@ class RunController extends Controller
             return $this->refuse('Vlákno čaká na rozhodnutie o zápise. Najprv ho povoľ alebo zamietni.');
         }
 
+        $options = ['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null];
+
+        // Beh sa zakladá PRED prúdom, aby existoval aj vtedy, keď model nedá ani
+        // prvý rámec — práve taký beh chce človek v logu nájsť.
+        $run = $recorder->open($thread, $data['message'], $options);
+
         return $this->stream(fn (callable $emit, callable $aborted) => $runner->run(
             $thread,
             $data['message'],
-            $emit,
+            $recorder->wrap($run, $emit),
             $aborted,
-            ['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null],
-        ));
+            $options,
+        ), $run, $recorder);
     }
 
     /** Rozhodnutie o jednom zápisovom toole — a pokračovanie toho istého ťahu. */
-    public function decide(Request $request, AgentRunner $runner, ProviderFactory $providers): StreamedResponse
+    public function decide(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder): StreamedResponse
     {
         $validator = Validator::make($request->all(), [
             'thread' => 'required|uuid',
@@ -105,25 +113,36 @@ class RunController extends Controller
             return $this->refuse('Toto rozhodnutie sa nedá priradiť k žiadnemu volaniu toolu.');
         }
 
+        $options = ['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null];
+
+        // Ten istý beh, nie nový: dvojfázová brána ťah rozdelí na segmenty a log
+        // má ukázať jeden beh s rozhodnutím v ňom, nie dva polovičné.
+        $run = $recorder->resume($thread, '', $options);
+
         return $this->stream(fn (callable $emit, callable $aborted) => $runner->resume(
             $thread,
             $call,
             $data['decision'],
-            $emit,
+            $recorder->wrap($run, $emit),
             $aborted,
-            ['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null],
-        ));
+            $options,
+        ), $run, $recorder);
     }
 
     /**
      * Prúd NDJSON. `$body` dostane `$emit` (jeden rámec) a `$aborted` (odišiel
      * klient?) — smyčka o HTTP nevie nič a dá sa testovať bez requestu.
      *
+     * `$run` a `$recorder` sú voliteľné len preto, aby `stream()` zostal
+     * použiteľný pre odmietnutie ešte pred behom; pri reálnom ťahu sú vždy oba.
+     * Uzavretie je v `finally`, nie za telom: keď `AgentRunner` vyletí výnimkou,
+     * beh nesmie v logu zostať naveky v stave `running`.
+     *
      * @param  callable(callable(array<string, mixed>): void, callable(): bool): void  $body
      */
-    private function stream(callable $body): StreamedResponse
+    private function stream(callable $body, ?Run $run = null, ?RunRecorder $recorder = null): StreamedResponse
     {
-        return response()->stream(function () use ($body): void {
+        return response()->stream(function () use ($body, $run, $recorder): void {
             ignore_user_abort(true);
 
             $emit = function (array $frame): void {
@@ -138,7 +157,15 @@ class RunController extends Controller
                 flush();
             };
 
-            $body($emit, static fn (): bool => connection_aborted() === 1);
+            $aborted = static fn (): bool => connection_aborted() === 1;
+
+            try {
+                $body($emit, $aborted);
+            } finally {
+                if ($run !== null && $recorder !== null) {
+                    $recorder->close($run, $aborted());
+                }
+            }
         }, 200, $this->headers());
     }
 

@@ -20,6 +20,7 @@ use App\Http\Controllers\LibraryController;
 use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\MindController;
 use App\Http\Controllers\NodeController;
+use App\Http\Controllers\RunsController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StructureController;
 use App\Http\Controllers\TodayController;
@@ -130,6 +131,18 @@ Route::middleware([
     // by znamenalo, že sa v dlhom vlákne nedá dopovoliť vlastný zápis.
     Route::post('/console/run', [ConsoleRunController::class, 'run'])->middleware('throttle:20,1');
     Route::post('/console/decide', [ConsoleRunController::class, 'decide']);
+
+    // -----------------------------------------------------------------------
+    // Log behov — obrazovka Runy. Len na čítanie; „spustiť znovu" vracia zadanie
+    // a nový ťah spustí klient cez `/console/run`, aby nevznikla druhá cesta
+    // k modelu, ktorá obchádza dvojfázovú bránu.
+    //
+    // Tvar odpovede drží `App\Serializers\Screen\Runs*Screen` — tie isté triedy
+    // čítajú MCP tooly `mind_runs` a `mind_run`.
+    // -----------------------------------------------------------------------
+    Route::get('/runs', [RunsController::class, 'index']);
+    Route::get('/runs/{uuid}', [RunsController::class, 'show']);
+    Route::post('/runs/{uuid}/rerun', [RunsController::class, 'rerun']);
 });
 
 // ---------------------------------------------------------------------------
