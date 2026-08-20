@@ -73,8 +73,21 @@ export const S = {
     _camTween: null,       // tweenovaná kamera pri zanorení: { from, to, t, dur }
     _navFocusKey: null,    // posledný S.focus, ktorý sme sami zapísali (detekcia zmien zvonku)
     _navApi: 0,            // window.HADES.go/currentPath už exportované?
-    // FÁZA SHELL: aktívna obrazovka (Dnes / Denník / Graf / Knižnica). Plátno (rAF) beží len na 'graf'.
-    screen: (() => { const v = localStorage.getItem('hades.screen'); return ['dnes', 'dennik', 'graf', 'kniznica', 'rozhodnutia', 'kontrola', 'smernica'].includes(v) ? v : 'dnes'; })(),
+    // FÁZA SHELL: aktívna obrazovka. Plátno (rAF) beží len na 'graf'.
+    //
+    // `?screen=graf` má prednosť pred uloženou voľbou — na tom stojí lokálna appka
+    // (`bin/hades.cmd`), ktorá otvára rovno graf bez toho, aby človek klikal.
+    //
+    // Zoznam obrazoviek sa tu už NEOPAKUJE. Bol tu zadrôtovaný a pri pridaní
+    // obrazovky Runy sa naň zabudlo, takže uložená voľba `runy` tichým fallbackom
+    // padla na `dnes` — chyba, ktorú nič nenahlási. Platnosť overuje `setScreen()`
+    // v `screens.js`, ktorý zoznam vlastní; sem sa hodnota len prečíta.
+    // Import odtiaľ NEROB: `state.js` importuje každý modul a vznikol by cyklus.
+    screen: (() => {
+        const q = new URLSearchParams(location.search).get('screen');
+
+        return q || localStorage.getItem('hades.screen') || 'dnes';
+    })(),
     // Default 0 = celá sieť. Predtým tu bolo 1.0, čo skrylo 791 z 2877 hrán (všetky
     // similarity 0.5 a jednorazové co_activation 0.6) — a odkedy sú hrany hlavným
     // nosičom neurónového dojmu, je to presne to, čo nemá byť skryté.
