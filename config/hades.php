@@ -319,6 +319,24 @@ return [
         // Pod touto podobnosťou sa kandidát zahodí — bez podlahy vektorová vetva
         // vždy niečo „najde" a recall na neznámu tému vracia náhodné uzly.
         'min_similarity' => (float) env('HADES_EMBED_MIN_SIM', 0.35),
+
+        // -----------------------------------------------------------------
+        // Prewiring: má nočný `mind:rewire` dopájať hrany aj podľa vektorov?
+        //
+        // Do 20. 8. 2026 pároval uzly výhradne TF-IDF kosínusom, takže dva uzly
+        // o tej istej veci napísané inými slovami zostali nespojené. Vektory to
+        // dopĺňajú — ale zapína sa to VEDOME, pretože ide o job, ktorý do siete
+        // pridáva hrany natrvalo, a jeho prínos sa dá zmerať (`--dry-run`
+        // porovná obe vetvy a nič nezapíše).
+        //
+        // Prah je zámerne VYŠŠÍ než `min_similarity` recallu (0,72 vs 0,35):
+        // recall si môže dovoliť pritiahnuť slabšieho kandidáta, o ktorom človek
+        // rozhodne pohľadom, ale hrana v grafe je trvalý záväzok a slabé hrany
+        // sieť zahustia na nečitateľný chumáč. Tú istú chybu tento projekt už raz
+        // zaplatil pri koincidenčných hranách (`mind:prune-coactivation`).
+        // -----------------------------------------------------------------
+        'prewire' => (bool) env('HADES_EMBED_PREWIRE', false),
+        'prewire_min_similarity' => (float) env('HADES_EMBED_PREWIRE_MIN_SIM', 0.72),
     ],
 
     // WebSocket adresa tak, ako ju vidi prehliadac (nie docker siet)

@@ -340,6 +340,42 @@ class EmbeddingService
     }
 
     /**
+     * Vektor uzla, ktorý už v tabuľke JE — bez volania modelu. Prewiring
+     * (`mind:rewire`) porovnáva uzly medzi sebou, nie dopyt s korpusom, takže by
+     * inak platil sekundy CPU inferencie za vektor, ktorý leží štyri kilobajty
+     * odtiaľ. Čítanie je aditívne: `search`/`searchByVector`/`embedNode` sa
+     * nemenia, na nich stojí živý `mind_recall`.
+     *
+     * Vracia `null`, keď uzol vektor pre AKTUÁLNY model nemá — volajúci to má
+     * preskočiť, nie dopočítať (dopĺňanie je práca `mind:embed`). Rovnako `null`
+     * pri riadku, ktorého blob nemá zapísanú dĺžku: taký vektor je poškodený a
+     * kosínus z neho by bol tiché číslo bez významu.
+     *
+     * @return array<int, float>|null
+     */
+    public function vectorFor(Node|int $node): ?array
+    {
+        $id = $node instanceof Node ? (int) $node->id : $node;
+
+        $row = DB::table('node_embeddings')
+            ->where('node_id', $id)
+            ->where('model', $this->model())
+            ->first(['vector', 'dimensions']);
+
+        if (! $row) {
+            return null;
+        }
+
+        $vector = unpack('g*', (string) $row->vector);
+
+        if (! is_array($vector) || count($vector) !== (int) $row->dimensions) {
+            return null;
+        }
+
+        return array_values(array_map('floatval', $vector));
+    }
+
+    /**
      * Uzly, ktoré potrebujú (pre)vektorizovať: bez vektora pre aktuálny model,
      * alebo so `source_hash`, ktorý už nesedí s textom uzla.
      *
