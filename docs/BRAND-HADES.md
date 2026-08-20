@@ -61,6 +61,31 @@ Znak je **sigil zo súosných prstencov** — uzol z plátna povýšený na zna�
 Progresia 46 / 34 / 22 je krok 12. Uhol 52° je jediná asymetria a nesie celý dej —
 neposúvať ho „aby to bolo vyvážené"; symetrický znak stráca vetu.
 
+### Wordmark
+
+**Cinzel 600**, rozstup **0,06 em**, prevedený **do kriviek**. Cinzel je kapitálkové
+písmo, takže `Hades` sa vysádza ako vysoké `H` a nápisové kapitálky `ADES` — presne
+ten rímsky nápisový register, ktorý drží mýtus aj technickú vecnosť naraz.
+
+- rozstup sa **nemení**: bez neho sa `D` a `E` zlepia,
+- wordmark je **atramentový** (`--ink`), farbu nesie znak. Amethystový wordmark na
+  tmavom papieri hasol,
+- v appke sa **nesádza živo** — všade sú krivky, takže lockupy a exporty nezávisia
+  od žiadneho fontu. `public/fonts/cinzel-wordmark.woff2` (1,2 kB, subset na glyfy
+  `Hades`) leží v repe len pre prípad, že by sa niekedy sádzal živý text,
+- slovo pod znakom v raile zostáva **Geist** — je to 10 px mikrotypografia, nie
+  wordmark, a kapitálky by tam ubrali čitateľnosť.
+
+### Lockupy
+
+| | Pravidlo |
+|---|---|
+| Horizontálny | výška znaku : výška verzálky = **1,55 : 1**, medzera = **0,34 × výška znaku**, wordmark opticky centrovaný na stred znaku |
+| Vertikálny | znak nad wordmarkom, medzera = **0,22 × výška znaku**, obe časti centrované |
+
+Ochranná zóna: **0,34 × výška znaku** na všetkých stranách (tá istá hodnota ako
+medzera v lockupe — tak sa nedá pomýliť).
+
 ### Dve verzie
 
 - **Master** (`hades-sigil.svg`) — od 32 px vyššie: deck, hero, tlač, OG.
@@ -163,10 +188,12 @@ by kolíziu len zhoršil.
 |---|---|
 | UI | **Geist** (variabilné, self-hosted) |
 | Čísla, ID, cesty, prompty, tool volania | **Geist Mono** |
-| Hero metriky a wordmark | **Playfair Display** — *dočasne, viď §10* |
+| Hero metriky | **Playfair Display** |
+| Wordmark | **Cinzel 600** — len v krivkách, viď §2 |
 
-Serif je vzácny, a preto významný: **len** hero metriky a wordmark. Nadpisy
-obrazoviek sú Geist.
+Serif je vzácny, a preto významný: **len** hero metriky. Nadpisy obrazoviek sú
+Geist. Cinzel je vyhradený wordmarku a nikde inde sa nepoužíva — je to písmo
+značky, nie písmo textu.
 
 Fonty sú **self-hostované v `public/fonts/`**, Google Fonts CDN je zámerne preč —
 pri jeho výpadku sa každá ikona vykreslila ako svoj ligatúrový názov.
@@ -241,14 +268,27 @@ stránkach.
 
 | Súbor | Použitie |
 |---|---|
-| `hades-sigil.svg` | master, od 32 px |
-| `hades-sigil-mini.svg` | pod 24 px |
+| `hades-sigil.svg` | znak, master — od 32 px |
+| `hades-sigil-mini.svg` | znak, mini — pod 24 px |
 | `hades-sigil-mono.svg` | jednofarebné podklady, tlač, razítko (`currentColor`) |
+| `hades-wordmark.svg` | samotný wordmark v krivkách (`currentColor`) |
+| `hades-lockup-h.svg` | horizontálny lockup |
+| `hades-lockup-v.svg` | vertikálny lockup |
+| `hades-og.png` | náhľad odkazu, 1200 × 630, tmavý |
+| `hades-sigil-{512,256,128}.png` | znak pre deck a prezentácie, priehľadné pozadie |
+| `hades-lockup-{1200,600,300}.png` | lockup pre deck, priehľadné pozadie |
+| `apple-touch-icon.png` | dlaždica iOS, 180 × 180 |
 
-Master aj mini sa prispôsobujú téme samy cez `prefers-color-scheme` — jeden súbor
-drží obe verzie, netreba `-dark` / `-light` dvojičky.
+Mimo tohto adresára: `public/favicon.ico` (z **mini** verzie, 16–256 px) a inline SVG
+favicon priamo v `<head>` oboch stránok.
 
----
+SVG assety sa prispôsobujú téme samy cez `prefers-color-scheme` — jeden súbor drží
+obe verzie, netreba `-dark` / `-light` dvojičky.
+
+**Pasca pri vkladaní znaku do väčšieho SVG:** jeho `<style>` platí pre celý
+dokument, takže `path { fill: none; stroke: … }` utečie na písmo lockupu a wordmark
+sa vykreslí obtiahnutý namiesto vyplneného. Preto sa pravidlá znaku pri vkladaní
+zapuzdrujú pod `.sig` (robí to `build-brand.py`).
 
 ## 9. Checklist pred odovzdaním
 
@@ -263,14 +303,12 @@ drží obe verzie, netreba `-dark` / `-light` dvojičky.
 
 ---
 
-## 10. Otvorené
+## 10. Pôvod
 
-**Wordmark.** Rozhodnutie znelo „nové display písmo" (nie Playfair, nie Geist).
-Také písmo na stroji nie je a jeho stiahnutie som nespravil bez súhlasu. Do vtedy
-wordmark beží na **Playfair Display**, ktorý je self-hostovaný a ktorý appka už má.
-Keď sa písmo doplní, wordmark sa vyexportuje **do kriviek**, takže lockupy a assety
-nebudú závisieť od žiadneho fontu — a do `public/fonts/` pôjde len subset glyfov
-slova `Hades` (~2–4 kB).
+Písmo: **Cinzel** (OFL), stiahnuté z Google Fonts 20. 8. 2026 so súhlasom
+používateľa, variabilná os `wght` zafixovaná na 600. Zdrojový TTF v repe nie je —
+sú v ňom len krivky a 1,2 kB subset.
 
-**Lockupy, OG obrázok a PNG exporty** čakajú na to isté rozhodnutie — bez wordmarku
-sa nedajú vyrobiť.
+Assety stavia `build-brand.py` (scratchpad): číta `hades-sigil.svg`, vyťahuje
+glyfy z Cinzelu cez `fontTools` a skladá wordmark aj lockupy. Keď sa zmení znak,
+prestavajú sa aj lockupy — ručne sa neupravujú.

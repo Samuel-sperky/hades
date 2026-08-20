@@ -11,6 +11,16 @@
     <meta name="console-thread" content="{{ request()->route('uuid') ?? '' }}">
     <title>Hades — Charón</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
+    {{-- Fallback pre prehliadače, ktoré SVG favicon neberú, a dlaždica pre iOS.
+         .ico je vyrobené z MINI verzie znaku — master by sa pri 16 px zlial. --}}
+    <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+    {{-- Náhľad odkazu (appka je tunelovaná cez ngrok, takže sa reálne zdieľa).
+         Cesta je relatívna zámerne: ngrok doména sa mení, absolútna by zastarala. --}}
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Hades — Charón">
+    <meta property="og:description" content="Hierarchical Associative Data Embedding System">
+    <meta property="og:image" content="/brand/hades-og.png">
     {{-- Tie isté self-hosted fonty ako graf (Google Fonts CDN je zámerne preč,
          inak sa ikony vykreslia ako ligatúrové názvy). --}}
     <link rel="preload" href="/fonts/material-symbols-rounded-subset.woff2" as="font" type="font/woff2" crossorigin>
