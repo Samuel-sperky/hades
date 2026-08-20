@@ -3033,8 +3033,14 @@ body[data-screen="graf"] #screens { display: none; }
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .lib-skill:hover, .lib-skill:focus-visible {
-    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+    border-color: var(--border-accent); background: var(--accent-softer);
 }
+/* Fokus NIE JE hover. Do 20. 8. 2026 mala táto karta `:hover, :focus-visible`
+   v jednom pravidle s `outline: none`, takže klávesnicový fokus vyzeral presne ako
+   prejdenie myšou — a natívny prstenec bol pritom zmazaný. Farbu si stavy delia,
+   ale POLOHU fokusu nesie výhradne --focus-ring, ktorý je kontrastne premeraný
+   (viď docs/BRAND-HADES.md §3). */
+.lib-skill:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .lib-skill-label { font-size: var(--fs-body); font-weight: var(--fw-medium); }
 .lib-skill-snip {
     font-size: var(--fs-small); color: var(--muted);
@@ -3068,8 +3074,10 @@ body[data-screen="graf"] #screens { display: none; }
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .today-card-link:hover, .today-card-link:focus-visible {
-    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+    border-color: var(--border-accent); background: var(--accent-softer);
 }
+/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
+.today-card-link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .tcl-title {
     font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text);
     overflow: hidden; text-overflow: ellipsis;
@@ -3107,6 +3115,14 @@ body[data-screen="graf"] #screens { display: none; }
 .pack-btn.in-pack { opacity: 1; }
 /* W3b: --accent-ink (6,4:1), nie --accent-600 — ten dával nad --accent-softer 2,5–3,3:1 */
 .pack-btn:hover { background: var(--accent-softer); color: var(--accent-ink); }
+
+/* Dotyk nemá hover, takže tlačidlo skryté za `opacity: 0` je tam TRVALE nedosiahnuteľné.
+   Appka je tunelovaná cez ngrok, takže telefón nie je hypotetický. Na dotykových
+   vstupoch preto tlačidlo mlčky svieti — pokojová farba je --muted, takže riadok
+   neprekričí, len prestane byť neviditeľný. */
+@media (hover: none) {
+    .pack-btn { opacity: 1; }
+}
 .pack-btn.in-pack { color: var(--accent-ink); }
 
 /* ---- Pack indikátor v hlavičke ---- */
@@ -3204,8 +3220,10 @@ body[data-screen="graf"] #screens { display: none; }
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .dir-tpl:hover, .dir-tpl:focus-visible {
-    border-color: var(--border-accent); background: var(--accent-soft); color: var(--text); outline: none;
+    border-color: var(--border-accent); background: var(--accent-soft); color: var(--text);
 }
+/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
+.dir-tpl:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .dir-tpl .ms { font-size: var(--icon-sm); color: var(--accent); }
 
 /* Vstup úlohy + tlačidlo Poskladať */
@@ -3311,8 +3329,10 @@ label.check.dir-check.off { opacity: .5; }
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .dir-saved-item:hover, .dir-saved-item:focus-visible {
-    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+    border-color: var(--border-accent); background: var(--accent-softer);
 }
+/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
+.dir-saved-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .dir-saved-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .dsi-text { display: flex; flex-direction: column; min-width: 0; }
 .dsi-title { font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3746,8 +3766,10 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
     transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .dtl-card:hover, .dtl-card:focus-visible {
-    border-color: var(--border-accent); background: var(--accent-softer); outline: none;
+    border-color: var(--border-accent); background: var(--accent-softer);
 }
+/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
+.dtl-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .dtl-card .dtl-head {
     display: flex; align-items: baseline; gap: var(--sp-1);
 }

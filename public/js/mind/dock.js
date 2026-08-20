@@ -1,7 +1,15 @@
-import { refreshStats } from './panels.js';
+import { closeNodePanel, refreshStats } from './panels.js';
 import { renderStructure } from './structure.js';
 import { loadTagFilter } from './tagfilter.js';
 import { $ } from './util.js';
+
+/* Pod 900 px dostanú dock aj detail uzla v mind.css rovnaké `right: var(--edge)`
+   a rovnakú šírku, takže otvorené naraz ležia presne na sebe. V CSS sa to vyriešiť
+   nedá — stylesheet nevie, ktorý z nich je práve otvorený. Preto sa vylučujú tu.
+   Hranica MUSÍ sedieť s @media (max-width: 900px) v mind.css; keď sa tam zmení,
+   zmeň ju aj tu. */
+const NARROW = window.matchMedia('(max-width: 900px)');
+
 
 /* ---------- ovládanie ---------- */
 
@@ -16,6 +24,7 @@ export let dockOpen = null;
 
 export function openDock(name) {
     if (dockOpen === name) { closeDock(); return; }
+    if (NARROW.matches) closeNodePanel(); // úzke okno: dock a detail ležia na sebe
     dockOpen = name;
     $('dock').classList.remove('hidden');
     $('dock-title').textContent = DOCK_SECTIONS[name].title;

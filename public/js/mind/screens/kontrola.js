@@ -27,10 +27,23 @@ export async function renderKontrola() {
         // KontrolaScreen) a je zámerne NEfiltrovaný.
         kontrolaState.total = d.total || 0;
         kontrolaState.idx = 0;
-        rerenderKontrola();
+        rerenderKontrola(canTakeKontrolaFocus());
     } catch (e) {
         renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať frontu', 'Skús obnoviť stránku.');
     }
+}
+
+/* Prvé vykreslenie fronty označilo prvú položku vizuálne, ale fokus prehliadača tam
+   nebol, kým človek nestlačil j/k — Tab preto začínal odznova od hlavičky a čítač
+   obrazovky o výbere nevedel. Fokus si ale nemôžeme vziať vždy: `/api/review/queue`
+   beží stovky ms a človek medzitým môže byť úplne inde (písať do hľadania, otvoriť
+   paletu). Berieme ho len tam, kde oň nikto iný nestojí: prázdny fokus, tlačidlo
+   railu, ktorým sa sem prišlo, alebo už niečo vnútri tejto obrazovky. */
+function canTakeKontrolaFocus() {
+    const a = document.activeElement;
+    if (!a || a === document.body || a === document.documentElement) return true;
+    if (a.id === 'dest-kontrola') return true;
+    return !!(a.closest && a.closest('#screen-kontrola'));
 }
 
 /* moveFocus=true — prekreslenie po AKCII (overiť / vyriešiť / preskočiť / zmazať).
@@ -102,6 +115,18 @@ export function wireKontrola(body) {
         const id = +item.dataset.id;
         const idx = +item.dataset.idx;
         item.addEventListener('mousedown', () => { kontrolaState.idx = idx; markKontrolaSelected(); });
+        /* Fokus a `idx` musia byť jedna vec. Riadok nesie tri <button>-y s normálnym
+           tabindexom, takže Tab-om sa dá stáť na tlačidlách tretej položky — kým `idx`
+           ostával na nule, lebo ten sa menil len cez j/k a mousedown. Kláves `v` potom
+           overil PRVÚ položku: ticho a na nesprávnom uzle. `focusin` bublá, takže jeden
+           listener na riadku pokryje aj jeho tlačidlá; položky sa pri každom prekreslení
+           tvoria nanovo, takže sa listenery nevrstvia. */
+        item.addEventListener('focusin', () => {
+            if (kontrolaState.idx === idx) return;
+            kontrolaState.idx = idx;
+            // bez `true`: fokus už je tam, kam ho človek dal — dorovnáva sa len výber
+            markKontrolaSelected();
+        });
         const bodyEl = item.querySelector('.queue-body');
         if (bodyEl) bodyEl.onclick = () => { kontrolaState.idx = idx; openNodeFromAnywhere(kontrolaNodeRef(id)); };
         const v = item.querySelector('.act-verify');

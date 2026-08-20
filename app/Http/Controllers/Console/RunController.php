@@ -123,10 +123,42 @@ class RunController extends Controller
             $thread,
             $call,
             $data['decision'],
-            $recorder->wrap($run, $emit),
+            $recorder->wrap($run, $this->withThreadState($thread, $emit)),
             $aborted,
             $options,
         ), $run, $recorder);
+    }
+
+    /**
+     * Doplní koncové rámce `/decide` o stav brány zápisov.
+     *
+     * Rozhodnutie „Povoliť vždy" vypne bránu pre CELÉ vlákno
+     * ({@see AgentRunner::resume()}) — od tej chvíle idú ďalšie zápisy bez
+     * pýtania. Klient si stav vlákna dovtedy čítal len pri jeho otvorení, takže
+     * po tomto rozhodnutí ukazoval odškrtnuté políčko, kým brána bola
+     * v skutočnosti vypnutá. UI teda klamalo práve o tom, na čom pri zápisoch
+     * záleží najviac.
+     *
+     * Prečo pole na existujúcom rámci a nie rámec vlastný: protokol sľubuje, že
+     * ťah končí PRESNE jedným `end` / `error` / `permission` a že po ňom už nič
+     * nepríde. Samostatný rámec by sa musel poslať za koniec ťahu a ten sľub by
+     * zrušil. Pole navyše je aditívne — starší klient ho ignoruje.
+     *
+     * Obal sedí POD recorderom (`wrap(..., withThreadState(...))`), aby log
+     * behov videl rámec presne taký, aký ho poslal `AgentRunner`.
+     *
+     * @param  callable(array<string, mixed>): void  $emit
+     * @return callable(array<string, mixed>): void
+     */
+    private function withThreadState(ConsoleThread $thread, callable $emit): callable
+    {
+        return static function (array $frame) use ($thread, $emit): void {
+            if (in_array($frame['t'] ?? '', ['end', 'error', 'permission'], true)) {
+                $frame['auto_accept'] = (bool) $thread->auto_accept;
+            }
+
+            $emit($frame);
+        };
     }
 
     /**

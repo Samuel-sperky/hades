@@ -34,8 +34,17 @@ export function showToast(text, nodeId, variant) {
         }
         leave(el);
     };
-    el.addEventListener('mouseenter', () => clearTimeout(el._t));
-    el.addEventListener('mouseleave', () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 2500); });
+    const hold = () => clearTimeout(el._t);
+    const release = () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 2500); };
+    el.addEventListener('mouseenter', hold);
+    el.addEventListener('mouseleave', release);
+    /* Pauza platí aj pre fokus, nielen pre myš. Toast je fokusovateľný (button,
+       resp. v undo variante nesie tlačidlo „Späť") a klávesnicový používateľ sa
+       k nemu dostane Tabom — bez tejto vetvy mu odpočet beží ďalej a možnosť
+       vrátiť akciu mu zmizne pod rukami. `focusin`/`focusout` (nie focus/blur),
+       lebo fokus dostáva vnorené tlačidlo, nie samotný toast. */
+    el.addEventListener('focusin', hold);
+    el.addEventListener('focusout', release);
 
     wrap.appendChild(el);
     while (wrap.children.length > 3) wrap.firstChild.remove();
@@ -58,8 +67,13 @@ export function showUndoToast(text, onUndo) {
     const leave = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), REDUCED_MOTION ? 0 : 200); };
     let t = setTimeout(leave, REDUCED_MOTION ? 0 : 6000);
     undo.onclick = () => { clearTimeout(t); leave(); if (onUndo) onUndo(); };
-    el.addEventListener('mouseenter', () => clearTimeout(t));
-    el.addEventListener('mouseleave', () => { t = setTimeout(leave, REDUCED_MOTION ? 0 : 2500); });
+    const hold = () => clearTimeout(t);
+    const release = () => { t = setTimeout(leave, REDUCED_MOTION ? 0 : 2500); };
+    el.addEventListener('mouseenter', hold);
+    el.addEventListener('mouseleave', release);
+    // Fokus drží toast rovnako ako myš — viď poznámku v showToast().
+    el.addEventListener('focusin', hold);
+    el.addEventListener('focusout', release);
 
     wrap.appendChild(el);
     while (wrap.children.length > 3) wrap.firstChild.remove();

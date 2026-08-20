@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — agentový beh (NDJSON stream).
+   Charón — agentový beh (NDJSON stream).
 
    Beh je jeden POST, ktorého telo tečie ako newline-delimited JSON: jeden objekt
    na riadok, `t` je diskriminátor. Nie SSE zámerne — EventSource nedokáže poslať
@@ -145,7 +145,7 @@ async function stream(url, body) {
             // 401/419 už ohlásil http.js do toku správ, druhé hlásenie by len
             // zdvojilo tú istú vetu.
             if (res.status !== 401 && res.status !== 419) {
-                pushError(`Beh sa nepodarilo spustiť (HTTP ${res.status}).`);
+                pushError(await refusalText(res));
             }
             closed = true;
 
@@ -184,6 +184,45 @@ async function stream(url, body) {
     }
 
     if (C.thread) loadThreads();
+}
+
+/**
+ * Veta k odmietnutému behu. Backend aj pri 422 posiela TEN ISTÝ NDJSON rámec
+ * `error` (viď RunController::refuse) a jeho text hovorí, čo sa naozaj stalo —
+ * „Vlákno čaká na rozhodnutie o zápise…", „Také vlákno neexistuje." Predtým sa
+ * telo vôbec nečítalo a človek dostal len číslo stavu, teda presne tú
+ * informáciu, s ktorou sa nedá nič spraviť. Generická veta zostáva ako záloha,
+ * keď telo chýba alebo sa nedá naparsovať.
+ */
+async function refusalText(res) {
+    const fallback = `Beh sa nepodarilo spustiť (HTTP ${res.status}).`;
+
+    let text = '';
+
+    try {
+        text = await res.text();
+    } catch {
+        return fallback;
+    }
+
+    // Telo je NDJSON ako celý zvyšok protokolu — rámcov môže byť aj viac,
+    // hľadá sa prvý `error`.
+    for (const line of text.split('\n')) {
+        const raw = line.trim();
+        if (raw === '') continue;
+
+        let frame;
+
+        try {
+            frame = JSON.parse(raw);
+        } catch {
+            continue;
+        }
+
+        if (frame?.t === 'error' && frame.message) return String(frame.message);
+    }
+
+    return fallback;
 }
 
 /**
@@ -243,7 +282,20 @@ function handleLine(line) {
     return dispatch(frame);
 }
 
+/**
+ * Rámec → obrazovka. Stav vlákna sa premieta AŽ PO ňom: koncové rámce `/decide`
+ * nesú aj `auto_accept` a hlásenie o vypnutej bráne má prekryť rutinné „Odpoveď
+ * dokončená" v `#run-announce`, nie naopak.
+ */
 function dispatch(frame) {
+    const closing = route(frame);
+
+    applyThreadState(frame);
+
+    return closing;
+}
+
+function route(frame) {
     switch (frame.t) {
         case 'start':
             beginTurn(frame);
@@ -294,6 +346,7 @@ function dispatch(frame) {
                 tps: frame.tokens_per_second,
             };
             C.step = null;
+            noteStop(frame.stop_reason);
             announce(endAnnounce(frame));
 
             return true;
@@ -312,12 +365,74 @@ function dispatch(frame) {
 }
 
 function endAnnounce(frame) {
-    const bits = ['Odpoveď dokončená'];
+    const bits = [cleanStop(frame.stop_reason) ? 'Odpoveď dokončená' : 'Beh prerušený'];
 
     if (frame.tokens_out) bits.push(`${num(frame.tokens_out, 0)} tokenov`);
     if (frame.tokens_per_second) bits.push(`${num(frame.tokens_per_second)} tokenov za sekundu`);
 
     return `${bits.join(', ')}.`;
+}
+
+/**
+ * Dôvody, po ktorých je odpoveď naozaj celá. Všetko ostatné, čo môže v rámci
+ * `end` prísť, znamená zrezaný ťah: `max_steps` posiela AgentRunner po dosiahnutí
+ * stropu kôl, `max_tokens` hlási model, ktorý minul okno, a Ollama si vyhradzuje
+ * právo poslať vlastný `done_reason`, ktorý sa prekladom nestratí.
+ */
+const CLEAN_STOP = ['end_turn', 'stop_sequence'];
+
+const STOP_NOTE = {
+    max_steps: 'Beh narazil na strop krokov — úloha mohla zostať nedokončená. Pokračovať sa dá ďalšou správou.',
+    max_tokens: 'Model minul okno odpovede — text je zrezaný, nie dokončený. Pokračovať sa dá ďalšou správou.',
+};
+
+function cleanStop(reason) {
+    return CLEAN_STOP.includes(String(reason || 'end_turn'));
+}
+
+/**
+ * Neriadne ukončený ťah vyzeral v toku PRESNE ako dokončená odpoveď: klient
+ * z rámca `end` čítal len tokeny a `stop_reason` zahadzoval. Človek tak nemal
+ * ako rozoznať odpoveď od behu zrezaného na dvanástom kroku.
+ */
+function noteStop(reason) {
+    if (cleanStop(reason)) return;
+
+    const stop = String(reason || '');
+
+    // Karta / bublina sa uzavrie sama až v `finally`; bez tohto by poznámka
+    // pristála doprostred rozpísaného odseku modelu.
+    closeBubble();
+    pushNotice(STOP_NOTE[stop] || `Beh sa skončil neriadne (${stop}) — úloha mohla zostať nedokončená.`);
+}
+
+/**
+ * Premietne stav brány zápisov z koncového rámca `/decide` do `C.thread` aj do
+ * políčka v hlavičke.
+ *
+ * Predtým sa `#auto-accept` nastavovalo LEN pri otvorení vlákna a pri ručnom
+ * prepnutí, takže po kliknutí na „Povoliť vždy" ostalo odškrtnuté, hoci backend
+ * bránu pre celé vlákno práve vypol — a ďalšie zápisy už išli bez pýtania.
+ *
+ * Vypnutá brána je bezpečnostne relevantná zmena stavu, takže ide aj do toku
+ * správ: políčko v hlavičke je pri odpovedi, ktorá práve beží, to posledné,
+ * čoho si človek všimne, a v histórii vlákna by po ňom nezostalo nič.
+ */
+function applyThreadState(frame) {
+    if (typeof frame.auto_accept !== 'boolean') return;
+
+    const before = !!C.thread?.auto_accept;
+
+    if (C.thread) C.thread.auto_accept = frame.auto_accept;
+
+    const box = $('#auto-accept');
+    if (box) box.checked = frame.auto_accept;
+
+    if (frame.auto_accept && !before) {
+        closeBubble();
+        pushNotice('Zápisy sa v tomto vlákne už nepýtajú — brána je vypnutá. Vrátiť sa dá políčkom „Auto-povoliť zápisy" v hlavičke.');
+        announce('Zápisy sa v tomto vlákne už nepýtajú.');
+    }
 }
 
 /* ---------- stav behu v UI ---------- */

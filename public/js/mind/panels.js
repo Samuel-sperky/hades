@@ -1,4 +1,5 @@
 import { spawnPulse } from './anim.js';
+import { closeDock } from './dock.js';
 import { renderNodeBadges } from './certainty.js';
 import { persistFilter, setLocal } from './filters.js';
 import { anchorOf } from './layout.js';
@@ -8,6 +9,14 @@ import { buildSim, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
 import { T, mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
+
+/* Pod 900 px dostanú dock aj detail uzla v mind.css rovnaké `right: var(--edge)`
+   a rovnakú šírku, takže otvorené naraz ležia presne na sebe. V CSS sa to vyriešiť
+   nedá — stylesheet nevie, ktorý z nich je práve otvorený. Preto sa vylučujú tu.
+   Hranica MUSÍ sedieť s @media (max-width: 900px) v mind.css; keď sa tam zmení,
+   zmeň ju aj tu. */
+const NARROW = window.matchMedia('(max-width: 900px)');
+
 import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, renderEmpty, timeAgo, typeName, updateHeaderMetrics } from './util.js';
 
 /* ---------- panely ---------- */
@@ -18,6 +27,7 @@ export async function selectNode(n) {
     S.selected = n;
     requestDraw(); // nový výber → prekresli zvýraznenie (slučka mohla spať)
     updatePackUi(); // node-pack tlačidlo odzrkadlí stav balíka pre tento uzol
+    if (NARROW.matches) closeDock(); // úzke okno: dock a detail ležia na sebe
     $('node-panel').classList.remove('hidden');
     $('node-form').classList.add('hidden');
     $('node-view').classList.remove('hidden');

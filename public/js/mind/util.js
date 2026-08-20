@@ -1,4 +1,6 @@
 import { neighborsOf } from './anim.js';
+import { edgeCategoryHidden } from './edges.js';
+import { filterPass } from './filters.js';
 import { draw, requestDraw } from './render.js';
 // W2c: breadcrumb číta stav zo stavového stroja zanorenia. util.js ↔ sim.js je
 // cyklický import — obidve strany preto exportujú HOISTOVANÉ `function`
@@ -178,9 +180,79 @@ export function markTreeActive() {
     });
 }
 
+/* ---------- počty v hlavičke ----------
+
+   Hlavička vypisovala SUROVÉ `S.nodes.length` / `S.edges.length`. Po vypnutí dvoch
+   typov uzlov v Pokročilých nastaveniach teda ďalej tvrdila plný počet — číslo
+   v hlavičke hovorilo o inej sieti než plátno pod ním. Viditeľnosť sa preto pýtame
+   tej istej brány, akou ju rieši kreslenie: filterPass() pre uzly (typy, zdroje,
+   oblasti, značky) a edgeCategoryHidden() + minWeight + oba konce pre hrany
+   (kategórie vzťahov, kostra).
+
+   Lokálny graf a prehrávanie času sem zámerne NEVSTUPUJÚ: oba majú vlastný
+   indikátor (čip lokálneho grafu, posuvník replayu) a sú to dočasné pohľady, nie
+   nastavenie toho, čo sieť obsahuje.
+
+   Cena: updateHeaderMetrics() sa NEVOLÁ za frame, ale len pri zmene dát (načítanie,
+   zrod uzla z WS, vytvorenie/zmazanie v paneli) a pri zmene filtra — teda rádovo
+   jednotky volaní, nie 60/s. Jeden prechod cez ~2700 uzlov a ~8300 hrán je tam
+   neviditeľný a cache by bola réžia navyše. */
+function visibleCounts() {
+    const vis = new Set();
+    for (const n of S.nodes) if (filterPass(n)) vis.add(n.id);
+    let edges = 0;
+    for (const e of S.edges) {
+        if (!vis.has(e.source_id) || !vis.has(e.target_id)) continue;
+        if ((e.weight || 1) < S.minWeight) continue;
+        if (edgeCategoryHidden(e)) continue;
+        edges++;
+    }
+    return { nodes: vis.size, edges };
+}
+
+/* Odtlačok filtra — lacné porovnanie „zmenilo sa niečo?". Poradie v množinách je
+   poradie vkladania, takže to isté nastavenie naklikané v inom poradí dá iný
+   reťazec; horší dôsledok je jeden zbytočný prepočet, nie zlé číslo. */
+function currentFilterSig() {
+    const f = S.filter;
+    return [[...f.types], [...f.sources], [...f.areas], [...f.tags], [...f.relations]]
+        .map((a) => a.join(',')).join('|') + '|' + (S.skeleton ? 1 : 0) + '|' + S.minWeight;
+}
+
+let filterSig = null;
+let metricsWired = false;
+
+/* Filtre sa prepínajú v troch moduloch (controls.js — typy/zdroje/vzťahy,
+   panels.js — legenda oblastí, tagfilter.js — značky) a ani jeden o hlavičke nevie.
+   Namiesto štyroch nových volaní naprieč cudzími modulmi tu visí jeden delegovaný
+   listener: po každom kliknutí či zmene porovná odtlačok filtra a prepočíta len
+   vtedy, keď sa naozaj zmenil. Beží v bublinovej fáze, teda až po handleroch, ktoré
+   S.filter menia.
+
+   Bez graphActive() strážcu zámerne: nesiaha na plátno ani na rAF, len číta dáta —
+   a keby v pokoji zaspal, hlavička by po návrate na Graf ukazovala staré číslo
+   (prepnutie obrazovky updateHeaderMetrics() nevolá). */
+function wireFilterMetrics() {
+    if (metricsWired) return;
+    metricsWired = true;
+    const check = () => {
+        if (currentFilterSig() === filterSig) return;
+        updateHeaderMetrics();
+    };
+    document.addEventListener('change', check);
+    document.addEventListener('click', check);
+}
+
 export function updateHeaderMetrics() {
     const el = document.getElementById('header-metrics');
-    if (el) el.textContent = S.nodes.length + ' uzlov · ' + S.edges.length + ' spojení';
+    if (!el) return;
+    wireFilterMetrics();
+    filterSig = currentFilterSig();
+    const c = visibleCounts();
+    // Bez aktívneho filtra ostáva veta znak po znaku taká, aká bola.
+    el.textContent = (c.nodes === S.nodes.length && c.edges === S.edges.length)
+        ? S.nodes.length + ' uzlov · ' + S.edges.length + ' spojení'
+        : c.nodes + ' z ' + S.nodes.length + ' uzlov · ' + c.edges + ' z ' + S.edges.length + ' spojení';
 }
 
 // W2c: focusPass() zmazaný — jediným čitateľom boli nodeAlphaMul/edgeAlphaMul
