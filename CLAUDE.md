@@ -110,6 +110,10 @@ blik surových ligatúrových názvov, čo je presne tá porucha, ktorú tu rie�
 
 ### CSS
 
+**Značka má vlastný manuál: `docs/BRAND-HADES.md`** — identita, znak, farebná rampa
+s nameranými kontrastmi, typografia, hlas, assety. Je to zdroj pravdy; keď sa tu
+a tam niečo rozíde, platí manuál.
+
 `public/css/mind.css`, ~3700 riadkov. Pravidlo: **žiadny raw hex/rgba mimo `:root`**,
 všetko cez tokeny. Svetlá paleta je v `:root`, tmavá v `:root[data-theme="dark"]`.
 **Tmavá je default** (`initialTheme()` v `theme.js`).
@@ -118,12 +122,17 @@ Presvitanie utlčeného grafu pod obsahom je **len na tmavej téme** — na svet
 ostáva plátno mimo Grafu skryté, pretože pod poloprehľadnými chipmi tam kontrast
 textu závisel od obsahu grafu.
 
-**Kánon akcentu: teal je interaktívny, zlatá je značková.** Teal (`--accent`) nesie
-hover, fokus, aktívny stav a primárne akcie. Zlatá (`--gold`) je vyhradená značke
+**Kánon akcentu: amethyst je interaktívny, zlatá je značková.** Amethyst (`--accent`,
+`#6d3fb5` svetlá / `#c4a2f5` tmavá) nesie hover, fokus, aktívny stav a primárne akcie.
+Teal tu bol do 19. 8. 2026; prefarbenie bola **výmena hodnôt, nie refaktor** (akcent
+bol plne tokenizovaný) a nezhoršilo ani jeden meraný kontrastný pár. Vedľajší efekt:
+teal `#03797e` je farba oblasti *Vývoj & kód*, takže akcent a jedna oblasť mali
+dovtedy tú istú farbu. Zlatá (`--gold`) je vyhradená značke
 a jadru vedomia — jadro je na plátne jediný sýty plný prvok a je zlaté. Keby zlatá
 nesla aj interaktívny stav, ten jeden vyhradený význam by sa rozdrobil. Menované
 výnimky (a nič nad ne nepridávaj): `#brand-core` je síce `<button>`, ale zlatá tam
-nesie identitu a všetky jeho stavy sú teal; `.avatar` a `.empty-loading .load-mark`
+nesie identitu jadra (prstenec okolo neho je amethyst, tak ako v znaku) a všetky
+jeho stavy sú amethystové; `.avatar` a `.empty-loading .load-mark`
 sú značkový znak. `--cert-hypoteza` je na tmavej téme tá istá hodnota ako
 `--brand-gold` — je to tretia, semantická rola a presun na `--warn` (70° vs 79°)
 by kolíziu len zhoršil, preto zostáva.
@@ -140,11 +149,13 @@ naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva r�
 + 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
 hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
-## Konzola vedomia (`/console`)
+## Charón — konzola vedomia (`/console`)
 
 Samostatné rozhranie (nie obrazovka v raile grafu): agentová smyčka s 12 nástrojmi
 nad vlastnou pamäťou a nad súbormi projektu. Vlákna majú vlastnú URL
-(`/console/<uuid>`). Vzniklo 19. 8. 2026.
+(`/console/<uuid>`). Vzniklo 19. 8. 2026, meno **Charón** dostalo 20. 8. 2026 —
+prievozník je ten, kto hovorí, Hades je vedomie, za ktoré hovorí. **URL sa
+nemenila**, aby odkazy na existujúce vlákna žili.
 
 **Beh je dvojfázový a to je jeho podstata.** Čítacie tooly bežia hneď; každý
 zápisový tool zaparkuje ako `pending` s náhľadom (unified diff, resp. before/after)
@@ -204,7 +215,7 @@ a prekryje každý screenshot.
 ktorý render nepoužíva, takže vracal vždy 0 a kritérium „rAF stojí mimo Grafu"
 vyzeralo splnené bez toho, aby čokoľvek meralo. Obaľuj `window.requestAnimationFrame`.
 Pri kontraste neber farbu textu cez `elementFromPoint` — vracia iný element, a tým
-cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na tealovej výplni).
+cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na akcentovej výplni).
 
 Ďalšie tri pasce toho istého druhu, na každú z nich sa dá naletieť:
 

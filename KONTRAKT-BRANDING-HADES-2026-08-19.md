@@ -113,4 +113,29 @@ Bez agentového fan-outu — celý beh v hlavnej slučke (rozhodnuté kvôli spe
 
 ## 8. Výsledok
 
-_(dopĺňa sa po behu)_
+**Hotové 20. 8. 2026**, vetva `feat/hades-branding`, commity `aca65c3` + `8557a4e`.
+
+| Vlna | Stav |
+|---|---|
+| 1 manuál | `docs/BRAND-HADES.md`, 10 sekcií, zdroj pravdy |
+| 2 znak a assety | sigil master/mini/mono, wordmark, 2 lockupy, OG, 6 PNG, favicon.ico, apple-touch-icon |
+| 3 amethyst | tokeny light+dark, `theme.js`, heat rampa, 12 raw hexov, 25 komentárov |
+| 4 Charón | názov, autor odpovedí, znak namiesto ikony `hub`, titulky `Hades — X` |
+| 5 dôkaz | 369 testov zelených, screenshoty oboch tém, kontrastné merania |
+
+**Merania:** amethyst je lepší než teal na **všetkých deviatich** kritických pároch
+(napr. biela na výplni 5,20 → 6,93; hover na tmavej 9,39 → 11,89). Heat rampa je
+luminančne zhodná s pôvodnou (odchýlka < 0,002), takže heatmapa nesie tú istú
+hustotu a mení sa len tón.
+
+**Spend:** ~145k z odhadovaných 300–450k.
+
+**Odchýlky od plánu:**
+- Wordmark nie je subset webfontu, ale **krivky** — appka tak nemá žiadnu novú
+  runtime závislosť. Subset (1,2 kB) v repe zostáva pre prípad živého textu.
+- Cinzel sa sťahoval až po výslovnom súhlase používateľa (20. 8. 2026).
+- `puppeteer-core` v prostredí už nie je; overovanie beží na headless Chrome
+  bez npm. Prihlásené UI som nefotil — heslá nezadávam; namiesto toho sa render
+  blade-u ťahá cez `artisan` a fotí lokálne nad tým istým CSS.
+
+**Otvorené:** nič z rozsahu kontraktu.
