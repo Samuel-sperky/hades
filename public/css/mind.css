@@ -700,8 +700,12 @@ button.primary:active { background: var(--accent-600); }
 button.primary:disabled { background: rgba(var(--accent-rgb), .35); border-color: transparent; }
 
 /* Ghost */
-button.ghost { background: none; border: none; color: var(--muted); }
-button.ghost:hover { background: var(--accent-softer); color: var(--text); }
+/* Viazané na `button` AJ na `a`: odkaz s `.ghost` nedostával nič, takže „Otvoriť
+   vlákno" v detaile behu svietil UA modrou `#0000EE` na 1,87:1 a fokusový prsteň
+   mal 1,08:1. Oba audity to našli nezávisle. Trieda pomenúva vzhľad, nie značku —
+   ak ho nesie odkaz, musí vyzerať rovnako. */
+button.ghost, a.ghost { background: none; border: none; color: var(--muted); }
+button.ghost:hover, a.ghost:hover { background: var(--accent-softer); color: var(--text); }
 
 /* Quiet destructive */
 button.danger {
@@ -4379,6 +4383,16 @@ button.danger.armed {
 .adv-body { padding-top: var(--sp-1); }
 .adv-body > h3:first-child { margin-top: 0; }
 
+/* Číselné readouty v dátových riadkoch: appka ich kreslí ako `<button>` a UA
+   `font` shorthand tam `font-variant-numeric` z `body` RESETUJE. Zmerané 20. 8. 2026:
+   3255 prvkov v 19 podpisoch malo `normal`, po tejto jednej deklarácii 0.
+   Tvrdenie „globálne to rieši `body` a lokálne opakovania sú inertné" teda neplatilo
+   — a 3 zo 14 lokálnych opakovaní nie sú inertné, takže sa NEMAŽÚ.
+   `font: inherit` sa použiť nedá: `button.record` by preskočil z 13 na 14 px. */
+button, input, select, textarea {
+    font-variant-numeric: inherit;
+}
+
 /* ==========================================================================
    Obrazovka Runy — log behov konzoly
    --------------------------------------------------------------------------
@@ -4397,6 +4411,23 @@ button.danger.armed {
     margin-bottom: var(--sp-1);
 }
 
+/* Prepínač detailu. `margin-left: auto` ho drží na konci hlavičky; cieľ má 32 px,
+   nie 24 — WCAG 2.5.8 je minimum, nie odporúčanie, a v časovej osi sa naň klikne
+   často. Ikona `arrow_downward` v subsete fontu NIE JE, takže je to prevrátená
+   `arrow_upward` — ten istý trik, aký používa konzola. */
+.run-toggle {
+    margin-left: auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px;
+    background: none; border: none; border-radius: var(--r-sm);
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.run-toggle .ms { font-size: var(--icon-xs); transform: rotate(180deg); }
+.run-toggle[aria-expanded="true"] .ms { transform: none; }
+.run-toggle:hover { background: var(--accent-softer); color: var(--text); }
+
 .run-when, .run-model {
     color: var(--muted);
     font-size: var(--fs-caption);
@@ -4406,6 +4437,9 @@ button.danger.armed {
 
 .run-prompt {
     margin: 0;
+    /* Zmerané 260 znakov na riadok, teda 2,9× nad čitateľnou hranicou ~90.
+       `ch` a nie px: strop sa má držať znakov, nie šírky okna. */
+    max-width: 90ch;
     color: var(--text);
 }
 
@@ -4489,7 +4523,10 @@ button.danger.armed {
     border-radius: var(--r-sm);
     color: var(--text-secondary);
     font-family: var(--mono);
-    font-size: var(--fs-caption);
+    /* `--fs-body` (13 px), nie `--fs-caption` (11 px): technický výpis sa pod 13 px
+       číta zle a ten istý druh obsahu má v konzole 14 px. Jedna deklarácia, nie dve —
+       druhá by bola presne tá dvojitá deklarácia, akú v tomto súbore hľadá detektor. */
+    font-size: var(--fs-body);
     white-space: pre;
 }
 

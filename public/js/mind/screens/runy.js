@@ -17,7 +17,10 @@ import { $, emptyCardHtml, esc, fmtNum, getJson, plainInline, renderEmpty, rende
    (dnes/včera/dátum), formát trvania a `timeAgo`. To sú slová, nie údaje. */
 
 export const runsState = {
-    items: [], counts: {}, models: [], status: null, model: null, open: null, details: new Map(),
+    items: [], counts: {}, models: [], status: null, model: null, open: null,
+    details: new Map(),
+    /** uuid behu, na ktorého prepínač sa má po prekreslení vrátiť fokus */
+    focus: null,
 };
 
 /** Stav behu → slovo pre človeka. Beh, ktorý čaká na povolenie zápisu, NIE JE chyba. */
@@ -95,24 +98,25 @@ function renderRunsView() {
             renderRuns();
         };
     });
+    body.querySelectorAll('button[data-toggle]').forEach((btn) => {
+        btn.onclick = () => toggleRun(btn.dataset.toggle);
+    });
     body.querySelectorAll('.dtl-card[data-run]').forEach((card) => {
         card.onclick = (ev) => {
-            if (ev.target.closest('button')) return;
-            toggleRun(card.dataset.run);
-        };
-        // Karta je `role="button"` s `tabindex="0"`, takže MUSÍ reagovať na Enter
-        // aj Space (WCAG 2.1.1). Bez tohto bol detail behu dosiahnuteľný len myšou,
-        // hoci prvok sa čítačke ohlasoval ako tlačidlo — teda sľuboval, čo nevedel.
-        card.onkeydown = (ev) => {
-            if (ev.key !== 'Enter' && ev.key !== ' ') return;
-            if (ev.target.closest('button')) return;
-            ev.preventDefault();            // Space inak odskroluje stránku
+            if (ev.target.closest('button, a')) return;
             toggleRun(card.dataset.run);
         };
     });
     body.querySelectorAll('button[data-rerun]').forEach((b) => {
         b.onclick = () => rerun(b.dataset.rerun, b);
     });
+
+    // Prekreslenie zahodí celý `innerHTML`, teda aj prvok, na ktorom bol fokus —
+    // ten by spadol na `<body>` a klávesnica by začínala od začiatku stránky.
+    // Vracia sa preto na prepínač toho behu, s ktorým človek práve pracoval.
+    if (runsState.focus) {
+        body.querySelector('button[data-toggle="' + CSS.escape(runsState.focus) + '"]')?.focus();
+    }
 }
 
 function filtersHtml() {
@@ -139,8 +143,12 @@ function filtersHtml() {
     return out;
 }
 
+/* `aria-pressed` je povinné: čip je prepínač a bez neho nesie zapnutý stav LEN
+   farba, takže čítačka o filtri nevie nič. `#legend-areas` to v tomto projekte
+   robí správne už dnes — tu to bolo opomenutie. */
 function chip(label, active, attrs, n) {
-    return '<button type="button" class="chip' + (active ? ' active' : '') + '" ' + attrs + '>'
+    return '<button type="button" class="chip' + (active ? ' active' : '') + '"'
+        + ' aria-pressed="' + (active ? 'true' : 'false') + '" ' + attrs + '>'
         + esc(label)
         + (n != null ? '<span class="chip-n">' + fmtNum(n) + '</span>' : '')
         + '</button>';
@@ -181,25 +189,44 @@ function dayLabel(day) {
     return +dd + '. ' + +mm + '. ' + yy;
 }
 
+/* Karta NIE JE tlačidlo, hoci sa na ňu dá kliknúť.
+   Bola ním (`role="button" tabindex="0"`) a bola to chyba v návrhu, nie preklep:
+   vnorené `<button>` a `<a>` sú vnútri `role="button"` neplatné, a prístupné meno
+   karty vyšlo na 778 znakov — obsahovalo celý diff aj JSON argumentov, takže
+   čítačka namiesto „otvoriť beh" prečítala celý obsah karty.
+   Rozbaľuje preto skutočné tlačidlo v hlavičke: krátke meno, `aria-controls`,
+   a Enter aj Space obsluhuje prehliadač sám. Klik na telo karty zostáva ako
+   pohodlie pre myš, nie ako prístupná cesta. */
 function runItemHtml(r) {
     const open = runsState.open === r.uuid;
     const detail = runsState.details.get(r.uuid);
+    const panelId = 'run-detail-' + r.uuid;
+    const prompt = plainInline(r.prompt || '(bez zadania)');
 
     return '<div class="dtl-item">'
         + '<span class="dtl-dot" data-status="' + esc(r.status) + '"></span>'
-        + '<article class="dtl-card run-card' + (open ? ' open' : '') + '" data-run="' + esc(r.uuid) + '"'
-        + ' tabindex="0" role="button" aria-expanded="' + (open ? 'true' : 'false') + '">'
+        + '<article class="dtl-card run-card' + (open ? ' open' : '') + '" data-run="' + esc(r.uuid) + '">'
         + '<div class="run-head">'
         + '<span class="badge" data-status="' + esc(r.status) + '">' + esc(STATUS_LABEL[r.status] || r.status) + '</span>'
         + '<span class="run-when">' + esc(timeAgo(r.started_at)) + '</span>'
         + (r.model ? '<span class="run-model">' + esc(r.model) + '</span>' : '')
+        + '<button type="button" class="run-toggle" data-toggle="' + esc(r.uuid) + '"'
+        + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + esc(panelId) + '"'
+        + ' aria-label="' + esc((open ? 'Zavrieť beh: ' : 'Otvoriť beh: ') + clipLabel(prompt)) + '">'
+        + '<span class="ms" aria-hidden="true">arrow_upward</span>'
+        + '</button>'
         + '</div>'
-        + '<p class="run-prompt">' + esc(plainInline(r.prompt || '(bez zadania)')) + '</p>'
+        + '<p class="run-prompt">' + esc(prompt) + '</p>'
         + costHtml(r)
         + (r.error ? '<p class="run-error">' + esc(r.error) + '</p>' : '')
-        + (open ? detailHtml(r, detail) : '')
+        + (open ? detailHtml(r, detail, panelId) : '')
         + '</article>'
         + '</div>';
+}
+
+/** Meno tlačidla má povedať, ČO otvorí — nie prečítať celú kartu. */
+function clipLabel(text) {
+    return text.length > 70 ? text.slice(0, 69) + '…' : text;
 }
 
 /* Cena behu. Trvanie je wall clock (obsahuje čas, kým sa človek rozhodoval
@@ -237,10 +264,12 @@ function dur(ms) {
     return m + ' min ' + Math.round(s - m * 60) + ' s';
 }
 
-function detailHtml(r, detail) {
-    if (!detail) return '<div class="run-detail">' + emptyCardHtml('Načítavam beh…') + '</div>';
+function detailHtml(r, detail, panelId) {
+    const attrs = ' id="' + esc(panelId) + '" role="region" aria-label="Priebeh behu"';
 
-    let out = '<div class="run-detail">';
+    if (!detail) return '<div class="run-detail"' + attrs + '>' + emptyCardHtml('Načítavam beh…') + '</div>';
+
+    let out = '<div class="run-detail"' + attrs + '>';
 
     if (r.stop_reason) {
         out += '<p class="run-stop">Ukončené: <b>' + esc(r.stop_reason) + '</b></p>';
@@ -298,6 +327,8 @@ function toolWord(status) {
 }
 
 async function toggleRun(uuid) {
+    runsState.focus = uuid;
+
     if (runsState.open === uuid) {
         runsState.open = null;
         renderRunsView();

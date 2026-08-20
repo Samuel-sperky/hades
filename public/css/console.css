@@ -534,7 +534,7 @@ kbd {
     font-size: var(--fs-body);
 }
 
-.msg.error .who { color: var(--danger); }
+.msg.error .who { color: var(--danger-ink); }   /* --danger dal na svetlej 4,02:1 */
 
 .msg.error .bubble {
     border-color: var(--danger-border);
@@ -687,8 +687,8 @@ kbd {
 }
 
 .tool-call.running .tc-state { color: var(--accent-ink); animation: tc-pulse 1.1s ease-in-out infinite; }
-.tool-call.waiting .tc-state { color: var(--warn); }
-.tool-call.error .tc-state { color: var(--danger); }
+.tool-call.waiting .tc-state { color: var(--warn-ink); }   /* --warn dal na svetlej 3,00:1 */
+.tool-call.error .tc-state { color: var(--danger-ink); }   /* --danger dal na svetlej 4,12:1 */
 .tool-call.denied .tc-state { color: var(--muted); }
 
 @keyframes tc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
