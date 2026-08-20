@@ -1,20 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-     Sada worktree feat/hades-klient — vlastná scratch DB hades_klient_test, aby dve
-     paralelné sessions netruncovali tú istú databázu pod sebou navzájom.
+     Sada worktree feat/hades-klient — JEDEN config, databáza z PROSTREDIA.
 
-     `vendor` je vo worktree symlink na hlavný checkout, takže predvolená sada
-     (phpunit.xml / phpunit.mariadb.xml) beží proti kódu hlavnej vetvy — viď
-     tests/worktree-autoload.php. Tento config len prepne bootstrap a inak je
-     to phpunit.mariadb.xml: MariaDB scratch databáza `hades_test`, pretože
-     searchNodes stojí na COLLATE utf8mb4_unicode_ci a FULLTEXT.
+     Predtým tu boli tri takmer identické súbory (phpunit.klient{,2,3}.xml), ktoré
+     sa líšili presne v dvoch riadkoch: v tomto komentári a v mene databázy. Dôvod
+     na tri databázy zostáva (RefreshDatabase tabuľky ZAHADZUJE, takže dva
+     paralelné behy nad tou istou DB si ich truncujú pod sebou navzájom a padne to
+     ako chyba kódu), ale na tri kópie configu dôvod nie je — každá zmena sady sa
+     musela robiť trikrát a tretia kópia sa zabudla.
+
+     Ako sa databáza prepne: `<env>` má atribút `force` defaultne `false`, takže
+     premenná, ktorá už V PROSTREDÍ je, vyhrá nad hodnotou nižšie. Hodnota v XML je
+     len default pre beh bez prepínača.
+
+       docker exec -w /var/www/html/.claude/worktrees/hades-klient hades-app-1 \
+         php vendor/bin/phpunit -c tests/phpunit.klient.xml                      # hades_klient_test
+       docker exec -e DB_DATABASE=hades_klient2_test \
+         -w /var/www/html/.claude/worktrees/hades-klient hades-app-1 \
+         php vendor/bin/phpunit -c tests/phpunit.klient.xml                      # hades_klient2_test
+
+     Overené spustením 20. 8. 2026 na PHPUnit 12 / PHP 8.4.23, nie prečítané
+     v dokumentácii: `-e DB_DATABASE=hades_klient_probe` sadu zhodilo vetou
+     „Testy odmietajú bežať nad databázou „hades_klient_probe"", teda premenná
+     prostredia sa k aplikácii DOSTALA a XML ju neprepísalo. Beh bez `-e` je
+     zelený nad `hades_klient_test` — a keby XML nezabralo, dosadila by sa hodnota
+     z `.env` projektu (`hades`), ktorá na `_test` nekončí, takže by ho tá istá
+     poistka zhodila.
 
      Databáza MUSÍ končiť na `_test` — Tests\TestCase to overuje a inak beh
      odmietne (RefreshDatabase tabuľky zahadzuje a preklep by zmazal ostrého
-     Hadesa).
+     Hadesa). Novú scratch DB zakladá root, appka `CREATE DATABASE` nemá:
+       docker exec hades-mariadb-1 mariadb -uroot -p… -e "CREATE DATABASE …_test"
 
-     Spustenie z korena worktree:
-       php vendor/bin/phpunit -c tests/phpunit.worktree.xml
+     `vendor` je vo worktree symlink na hlavný checkout, takže predvolená sada
+     (phpunit.xml / phpunit.mariadb.xml) beží proti kódu hlavnej vetvy — viď
+     tests/worktree-autoload.php, ktorý prepíše autoloader aj APP_BASE_PATH. Inak
+     je to phpunit.mariadb.xml: MariaDB, pretože searchNodes stojí na
+     COLLATE utf8mb4_unicode_ci a FULLTEXT.
 -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="../vendor/phpunit/phpunit/phpunit.xsd"

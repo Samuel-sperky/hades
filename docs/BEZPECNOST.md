@@ -1,7 +1,8 @@
 # Bezpečnosť Hadesa
 
 Ako je Hades (AI-mind) chránený, čím konkrétne, a čo chránené **nie je**. Stav
-k 13. 8. 2026, branch `feat/hades-hygiena`.
+k 20. 8. 2026 (auth okruhy do 13. 8. 2026, konzola vedomia a klietka shellu
+19. 8. 2026).
 
 Dokument opisuje mechanizmy, nie hodnoty. Žiadne tokeny, heslá ani hashe tu
 nie sú a byť nemajú — tie žijú v `.env` (git-ignorovaný) a v `docker/Caddyfile`.
@@ -20,6 +21,8 @@ tunelovaná cez ngrok**, takže model hrozby má tri vrstvy:
 | Iný proces na tom istom stroji (47 docker kontajnerov, skripty) | volanie `mind_learn` / `mind_decision` bez akejkoľvek autorizácie | token guard na `/mcp` (§3.1) |
 | Iný proces si otvorí interné `/api/*` alebo dashboard | čítanie celej pamäte a zápis (`POST /api/nodes`, `DELETE …`) bez autorizácie | session guard na UI okruhu (§3.3) |
 | Cudzia stránka otvorená v prehliadači pošle zápis na `localhost:8080` | uzly a rozhodnutia vytvorené naslepo (odpoveď útočník neprečíta, zápis prejde) | CSRF + `SameSite` cookie na UI okruhu (§3.3) |
+| Request z tunela siahne na programový okruh konzoly | spustenie príkazu a zápis do súborov projektu **bez CSRF** (Caddy token do requestu vkladá sám) | loopback-only + odmietnutie `X-Forwarded-*` (§3.5) |
+| Model si v konzole vypýta shell na niečo, čo nemal | prečítanie `.env`, zmazanie súborov, čítanie histórie repa | klietka `CommandCage` — gramatika + `deny` + biely zoznam (§7.1) |
 | Samotný model (Claude) uloží tajomstvo | heslo/API kľúč natrvalo v pamäti a v `.md` | `SecretScanner` na serveri (§4) |
 | Zlyhanie zápisu / súbežný beh | polovičný `.md`, stratený uzol, rozbitý sync | atomický zápis, zámky, tombstones (§6) |
 
@@ -57,7 +60,7 @@ Kľúčové vlastnosti (`docker-compose.yml`):
 
 ---
 
-## 3. Autentifikácia — štyri nezávislé okruhy
+## 3. Autentifikácia — päť nezávislých okruhov
 
 ### 3.1 `/mcp` — token guard (`AuthenticateMcp`)
 
@@ -145,6 +148,82 @@ requestu na appku, takže verejný dashboard netreba odomykať druhýkrát: gate
 basic-auth. Použité je `header_up` (nastaví, nie pridá), takže vlastnú hlavičku od
 klienta zároveň prepíše — token sa cez tunel nedá podstrčiť ani vyčítať.
 
+### 3.5 `auth.console` — programový okruh (`AuthenticateConsoleToken`)
+
+Od 19. 8. 2026. Konzolu vedomia (`/console`) neovláda len prehliadač: terminálový
+klient (`bin/hades/`), desktopové okno (`desktop/`), skripty, scheduler a iná AI
+cez `/mcp` sú tiež klienti. Ani jeden z nich nemá cookie jar ani CSRF token
+z blade view, takže cez UI okruh (§3.3) neprejde — a odstrániť CSRF z
+`/api/console/*` by tú ochranu zrušilo aj prehliadaču. Preto vlastný okruh, alias
+`auth.console`.
+
+- **Token**: tá istá hlavička `X-Hades-Ui-Token` a ten istý `HADES_UI_TOKEN` ako
+  UI okruh — jedno tajomstvo, dva vstupy. `hash_equals()`, **fail-closed**:
+  prázdny `hades.ui_token` = 401 pre všetkých.
+- **Bez session a bez CSRF**, a je to bezpečné práve preto, že tajomstvo drží
+  klient v hlavičke, nie cookie: cross-site niet čo zneužiť a vlastnú hlavičku si
+  cudzia stránka cross-origin poslať nevie (vyžiada si preflight).
+- **Loopback-only — a to je podstata okruhu, nie jeho detail.** Caddy na verejnej
+  ceste (§3.4) vkladá hlavičku s UI tokenom do **každého** requestu na appku.
+  Keby tento guard veril iba tokenu, ngrok tunel by bol plne autentizovaný vstup
+  **bez CSRF** k toolom, ktoré zapisujú do pamäte, do súborov a **spúšťajú
+  príkazy**. Basic-auth pred tým je jedno heslo, nie druhá vrstva.
+
+Preto sú v guarde **dve** kontroly prenosu, nie jedna:
+
+1. Request nesmie niesť `X-Forwarded-For` ani `X-Forwarded-Host`. Tie pridáva
+   reverzná proxy, takže ich prítomnosť znamená „prešlo to cez tunel" aj vtedy,
+   keď `ip()` vidí loopback — Caddy beží na tom istom stroji, takže sám o sebe
+   loopback **je**. Kontrola ide **pred** overením tokenu a vracia `403`: request
+   z tunela nemá dostať odpoveď, z ktorej sa dá čítať, či token trafil.
+2. `request->ip()` musí byť loopback **alebo adresa default gateway** kontejnera.
+   Appka beží v Dockeri a request z hosta dorazí SNAT-nutý z brány mostu
+   (zmerané 19. 8. 2026: `172.19.0.1`), takže kontrola len na `127.0.0.1` by
+   terminálovému aj desktopovému klientovi vracala 403 a okruh by bol z hosta
+   nepoužiteľný — pritom práve na hoste beží. Povolená je **výhradne brána**, nie
+   celá podsieť mostu: na zdieľanom moste tohto stroja žijú desiatky cudzích
+   kontejnerov a podsieť by dala dosah každému z nich. Zoznam sa dá zúžiť alebo
+   prepísať cez `hades.console.allow_from`.
+
+Keby ostala len prvá kontrola, stačí Caddy pred appkou a diera je otvorená; keby
+len druhá, stačí proxy, ktorá `X-Forwarded-*` nepridáva. Zostávajúce známe
+riziko: kontejner na tom istom moste vie zdrojovú adresu podvrhnúť (bridge zdroj
+nefiltruje) — bez tokenu mu to nedá nič, a s tokenom už má aj UI okruh.
+
+**Tri cesty do konzoly, a ten rozdiel je zámer:**
+
+| Cesta | Kto | Ochrana | Tooly |
+|---|---|---|---|
+| `/api/console/*` | prehliadač | `auth.ui` + session + CSRF (§3.3) | plný register |
+| `/api/console/cli/*` | terminál, desktopové okno | `auth.console`, **loopback-only**, bez session a CSRF | plný register |
+| `/api/console/headless` | skript, MCP, plánovaný beh | `auth.console` | čítacie + **zápisy len ako návrh** |
+| `/api/console/cli/pending` | terminál (rozhodnutie človeka) | `auth.console`, loopback-only | vykoná odložený zápis |
+
+Pri `cli/*` človek pri termináli **je**, takže rámec `permission` má komu prísť a
+klient ho obslúži rovnako ako webová konzola — preto plný register. Headless ho
+nemá, a preto tam zápisový tool **nikdy nevykoná zápis**: zápisový tool ťah
+**zaparkuje** a čaká na rozhodnutie človeka (§8.11), takže v skriptovanom behu by
+vlákno zostalo trvalo zablokované. Nie je to opatrnosť, je to jediné, čo v takom
+behu môže dobehnúť.
+
+Ako to teda dopadne (kód `app/Services/Console/HeadlessRunner.php`, metóda `tools()`):
+
+- čítací tool a tool označený `SafeUnattended` (`write_report`, zapisuje výhradne do
+  `storage/app/reports`) sa **vykonajú** — bez druhého by nočný rozvrh nemal ako
+  vyrobiť svoj jediný zmysluplný výstup;
+- ostatné zápisové tooly sa **obalia do návrhu** (`WriteProposals::proposalTool()`).
+  Obal má `isWrite() === false`, takže ťah nezaparkuje, a jeho `execute()` namiesto
+  zápisu založí riadok v `console_write_proposals` s náhľadom. Zápis sa vykoná **až**
+  pri `hades pending approve <id>` — teda rukou človeka, v tom istom loopback okruhu.
+
+Obal do `ToolRegistry::TOOLS` **nepatrí** a nesmie sa tam dostať: v prehliadačovom
+okruhu by tichom vypnul potvrdzovanie zápisov, pretože sa netvári ako zápis. Preto sa
+skladá na jedno použitie v `HeadlessRunner`, nie v registri.
+
+`ConsoleGuardTest` neprechádza vymenované routy, ale **celý router**: routa
+konzoly, ktorá nie je ani v jednom z týchto okruhov, zhodí test — vrátane
+programovej routy, ktorá by si omylom niesla session.
+
 ---
 
 ## 4. Ochrana tajomstiev — `SecretScanner`
@@ -198,6 +277,9 @@ Tabuľka toho, čo sa stane, keď je konfigurácia prázdna alebo chybná — te
 | `HADES_API_TOKEN` | prázdny | **401 pre všetkých** (fail-closed) |
 | `HADES_UI_TOKEN` | prázdny | **401 pre všetkých vrátane dashboardu** (fail-closed) + `caddy` sa nespustí (`:?` guard) |
 | `HADES_ALLOW_BRAIN_WRITE` | `false` | brain-write endpointy **403**, `.md` sa nemenia (fail-safe) |
+| `HADES_CONSOLE_BASH` | `true` | pri `false` tool `bash` nespustí nič a povie to modelu vetou, nie chybou (§7.1) |
+| `hades.console.bash.allow` | zoznam v configu | prázdny zoznam = **žiadny príkaz neprejde** (biely zoznam, nie čierny) |
+| neznámy tool konzoly | — | považuje sa za **zápisový** → ťah sa zaparkuje a čaká na človeka (fail-closed) |
 | `ANTHROPIC_API_KEY` | prázdny | chat odpovie inštrukciou, nič nevolá von |
 | `HADES_RECALL_FULLTEXT` | `false` | recall ide bezpečnejšou LIKE cestou |
 | writable brain zdroj | žiadny | `RuntimeException`, zápis odmietnutý |
@@ -260,6 +342,82 @@ aktivácie 30 dní. Prevádzkové stopy po čítaní pamäte sa nedržia navždy
 Chyby na `api/*` a `mcp` sa vždy renderujú ako JSON (`shouldRenderJsonWhen`),
 takže sa nikam nevykreslí HTML debug stránka Laravelu.
 
+### 7.1 Klietka shellu — `CommandCage`
+
+Od 19. 8. 2026 má konzola tool `bash`, teda **najsilnejší vstup v celej appke**
+(§8.11). Dovtedy shell zámerne neexistoval, ale konzola potom nevedela spustiť ani
+testy: model písal kód naslepo a „hotovo" znamenalo „prečítal som si to". Klietka
+je `app/Services/Console/CommandCage.php`, zoznamy sú v `config/hades.php` →
+`hades.console.bash`.
+
+Vrstvy sa vyhodnocujú **v tomto poradí a to poradie je súčasť obrany**:
+
+1. **Gramatika — a je v KÓDE, nie v configu.** Jeden riadok, jeden príkaz.
+   Odmietnuté sekvencie: `&&`, `||`, `>>`, `>`, `<`, `;`, `&`, `` ` ``, `$(`,
+   `${`, `$'`. Reťazenie, presmerovanie a substitúcia nie sú „zoznam príkazov",
+   ale spôsob, ako biely zoznam obísť: `ls; rm -rf x` je proti zoznamu „ls plus
+   čokoľvek" a prešlo by prvou polovicou. `$'` je tam preto, že ANSI-C quoting vie
+   zapísať znak číslom (`$'\x2eenv'` je `.env`) a žiadny vzor na `.env` by ho
+   nevidel. Keby gramatika žila v configu, dala by sa vypnúť premennou prostredia.
+   Zvlášť sa odmieta **nezavretá úvodzovka** (shell by čakal na jej dokončenie
+   a príkaz by visel do timeoutu) a príkaz dlhší než **2000 znakov** — nie kvôli
+   dĺžke, ale aby človek v potvrdzovacom dialógu nemusel klikať naslepo nad vetou,
+   do ktorej model vysypal celý súbor.
+2. **`deny` nad CELÝM príkazom — a aj nad jeho odúvodzovkovanou podobou.** Toto je
+   jediné pravidlo, ktoré sa nedá prehlasovať ničím, ani „povoliť vždy". Zakázané
+   sú: destruktívne a systémové príkazy (`rm`, `mv`, `cp`, `chmod`, `chown`, `ln`,
+   `dd`, `mkfs`, `kill`/`pkill`, `shutdown`, `reboot`, `sudo`/`su`, `docker`,
+   `wsl`, `systemctl`/`service`, `apt`, `yum`, `pip`), shelly a všetko, čo spustí
+   cudzí príkaz za ne (`sh`, `bash`, `zsh`, `env`, `xargs`, `eval`, `exec`,
+   `nohup`, `at`, `cron`/`crontab`), `find … -exec/-delete/-ok`, zápisové git
+   operácie (`push`, `reset`, `checkout`, `clean`, `rebase`, `stash`, `commit`,
+   `merge`, `worktree`, …), destruktívny artisan (`tinker`, `db:wipe`,
+   `migrate:fresh|reset|rollback`, `queue:flush`), `drop`/`truncate`,
+   `npm publish|login|token|config set`, `composer global|config`, `npx`, čítanie
+   obsahu z **histórie repa** (`git show`, `cat-file`, `rev-list`, `archive`,
+   `bundle`, a `git … -p/--patch/-U`) a **`.env` kdekoľvek v príkaze**
+   (case-insensitive).
+3. **Biely zoznam nad KAŽDÝM segmentom rúry zvlášť.** Rúra (`|`) je jediná
+   povolená spojka, takže `a | b` musí prejsť ako `a` aj ako `b`; `|` vnútri
+   úvodzoviek sa nedelí (`rg -e "foo|bar" app` je jeden segment). Vzory sú
+   ukotvené regexy nad celým segmentom. Povolené je: `php artisan test`,
+   `migrate`/`migrate:status --pretend`, `route:list`/`about`/`env`,
+   `php artisan mind:*`, `php vendor/bin/phpunit|pint`, `composer show`/`audit`/
+   `dump-autoload`, `npm audit|ls|run <skript>`, git **bez** histórie súborov
+   (`status`, `branch`, `remote`, `shortlog`, `blame`, `diff` bez revízií, `log`
+   bez `-p`), `ls`/`cat`/`head`/`tail`/`wc`/`file`/`stat`/`uniq`/`cut`/`tr`,
+   `rg`/`grep`, `curl -s` **výhradne na localhost:8080|8092** a `--version`.
+
+**Prečo biely zoznam a nie čierny**: čierny sa obíde čímkoľvek, na čo autor
+nepomyslel (`env`, `xargs`, `sh -c`, `find -exec`). Biely zlyhá opačným smerom —
+odmietne užitočný príkaz, čo je otrava, nie diera.
+
+**Čo je vedome von, a prečo** (každý bod je nález sondy z 19. 8. 2026, nie dojem):
+
+- **`sed`** — `sed -n '1w /tmp/x'` **zapíše** súbor. Čítanie riadkov pokrýva
+  `head`/`tail`/`cut` a tool `read_file`, takže `sed` sem okrem zápisu nič
+  nepridáva; zápis má ísť cez `edit_file` a jeho diff.
+- **`sort`** — `sort -o <súbor>` zapisuje, tá istá trieda ako `sed -n '1w …'`.
+  Usporiadanie výstupu konzola nepotrebuje.
+- **História git** — `git log -p` aj `git show <ref>:<cesta>` vypíšu obsah
+  z minulosti, a v tej histórii podľa §8.2 žije natvrdo zapísaný bcrypt hash
+  basic-auth hesla a starý MCP token. Súborové tooly do histórie nevidia, takže je
+  to plocha, ktorú by pridal výlučne shell.
+- **Inštalácie balíkov** — `npm install <čokoľvek>` stiahne balík z registry a jeho
+  `postinstall` je spustenie cudzieho kódu v kontejneri appky; `npm ci` aj
+  `composer install` spúšťajú lifecycle skripty rovnako, len z lockfile.
+  Nastavenie prostredia patrí človeku.
+- **`curl` na ľubovoľný port** — `curl http://127.0.0.1:6379/` je Redis appky.
+  Port je preto zoznam, nie `\d+`, a za URL nesmie nasledovať nič (teda ani `-o`,
+  ktorým curl zapisuje súbory).
+
+Beh samotný: `Process::fromShellCommandline` v `hades.console.files_root`, timeout
+**120 s** (celý balík testov beží ~82 s, takže kratší strop by zabil práve ten
+príkaz, pre ktorý tool existuje), výstup zrezaný na **30 000 znakov** a stdout so
+stderr v **jednom** prúde v poradí, v akom pritiekli. Shell sa smie použiť práve
+preto, že gramatika je overená vopred — jediné, čo mu ostáva, je spojiť rúru.
+Celý tool sa dá vypnúť `HADES_CONSOLE_BASH=false`.
+
 ---
 
 ## 8. Známe riziká a limity (čo NIE je vyriešené)
@@ -282,7 +440,7 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
      nečinnosti. Odomknutá session = plný prístup k pamäti pre toho, kto sedí
      za prehliadačom, a rotácia tokenu je jediný spôsob, ako ju zneplatniť.
    - **Kto vie čítať `.env`, prejde** — to je ale explicitne mimo modelu hrozby
-     (§1) a platí rovnako pre všetky štyri okruhy.
+     (§1) a platí rovnako pre všetkých päť okruhov.
    - Guard nechráni `POST /debug/snapshot` (bod 7 nižšie) ani Reverb na 8081.
 2. **~~Token a bcrypt hash sú natvrdo v `docker/Caddyfile`~~ — vyriešené
    13. 8. 2026, ale staré hodnoty zostávajú v histórii.**
@@ -327,7 +485,9 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
    kľúčov; heslo typu `Mojemeno1985` neodhalí. Blacklist je poistka, nie
    garancia — pravidlo „tajomstvá do Hadesa nepatria" musí primárne držať
    volajúci.
-9. **Rate limit má len `/api/chat` a `/api/console/run`.** Recall, graf ani
+9. **Rate limit má len `/api/chat` a spúšťacie routy konzoly** (`/api/console/run`,
+   `/api/console/cli/run`, `/api/console/headless` — všetky `throttle:20,1`).
+   Recall, graf ani
    zápisy throttle nemajú (lokálny model, ale platí to aj pre verejnú cestu za
    basic-auth).
 10. **Chat a konzola posielajú obsah pamäte modelu.** Pri `provider=anthropic`
@@ -338,22 +498,52 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
 11. **Konzola vedomia (`/console`) je najsilnejší vstup do appky.** Jej tooly
     vedia pamäť čítať aj prepisovať a siahajú na súbory v `hades.console.files_root`.
     Čo ju drží:
-    - Celý okruh `/console` + `/api/console/*` je za `AuthenticateUi` + CSRF
-      (§3.3) a `ConsoleGuardTest` to overuje **na celom prefixe**, nie na
-      vymenovaných routách — nový endpoint pridaný mimo skupinu zhodí test.
-    - **Bash/shell tool zámerne neexistuje.** Bola to vedomá voľba pri zadaní:
-      appka je verejne tunelovaná cez ngrok a shell za HTTP endpointom je iná
-      kategória rizika než zápis do súboru.
+    - Prehliadačový okruh `/console` + `/api/console/*` je za `AuthenticateUi`
+      + CSRF (§3.3), programový za `auth.console` (§3.5) — a `ConsoleGuardTest`
+      to overuje **na celom prefixe**, nie na vymenovaných routách: endpoint
+      konzoly, ktorý nie je ani v jednom okruhu, zhodí test.
+    - **~~Bash/shell tool zámerne neexistuje~~ — od 19. 8. 2026 existuje**
+      a je v klietke (§7.1). Pôvodná voľba padla na tom, že konzola bez shellu
+      nevedela spustiť ani testy. Riziko sa tým neodstránilo, len obmedzilo:
+      gramatika + `deny` + biely zoznam, a `bash` je v registri **posledný**
+      (slabý model siaha po tom, čo je vyššie).
     - Zápisové tooly (`mind_learn`, `mind_rename`, `mind_delete`, `edit_file`,
-      `write_file`) sa **nevykonajú bez rozhodnutia človeka** — beh je dvojfázový
-      a tool call čaká v stave `pending` s náhľadom zmeny. `auto_accept` je
-      per-vlákno a default vypnutý.
+      `write_file`, `bash`) sa **nevykonajú bez rozhodnutia človeka** — beh je
+      dvojfázový a tool call čaká v stave `pending` s náhľadom zmeny.
+      `auto_accept` je per-vlákno a default vypnutý; pri toole, ktorý je na plošné
+      povolenie priširoký (shell), sa „povoliť vždy" **zúži na vzor príkazu**
+      (bod 13 nižšie).
     - Cesta mimo `files_root` je **odmietnutá, nie sanitizovaná** — sanitizácia
       by ticho zapísala niekam inam.
+    - `write_report` píše HTML, ktoré napísal **model**, a stránka žije v tom
+      istom origine ako session, takže obrana je dvojitá: sanitizácia pri zápise
+      (DOMDocument, nie regex — `Str::markdown()` blokový `<script>` zaescapuje,
+      ale `<div onclick>` prepustí) a CSP bez skriptov pri servovaní.
+    - Programový vstup (CLI, skript, MCP, scheduler) nejde cez UI okruh, ale cez
+      `auth.console` (§3.5): loopback-only, bez session a CSRF, a headless má
+      register **len na čítanie**.
 
     Čo tým *nie je* vyriešené: kto má odomknutú session, má cez konzolu zápis do
-    súborov projektu. To je zámer (je to nástroj vlastníka), ale je to väčšia
-    plocha než mal dashboard — odomknutá session na 30 dní (bod 1) teraz váži viac.
+    súborov projektu a spustenie povoleného príkazu. To je zámer (je to nástroj
+    vlastníka), ale je to väčšia plocha než mal dashboard — odomknutá session na
+    30 dní (bod 1) teraz váži viac.
+12. **~~Úvodzovkový obchvat `deny` zoznamu~~ — našlo sa a opravilo sa
+    19. 8. 2026.** `cat ".env"` **prešlo**: deny vzor chcel `.env` na hranici
+    (začiatok / medzera / lomka) a úvodzovka ňou nie je — shell ju pri behu strhne
+    a prečíta reálny súbor. Overené spustením: príkaz vrátil 2237 B vrátane
+    `APP_KEY`, `DB_PASSWORD` a všetkých tokenov, teda naraz rozbil **všetky štyri
+    autentifikačné okruhy**. Oprava je `dequote()` v `CommandCage` — `deny` sa
+    odteraz testuje nad celým príkazom **aj nad jeho odúvodzovkovanou podobou** —
+    a vzor na `.env` je zámerne široký, nie ukotvený na hranicu slova. Falošné
+    pozitíva tým vzniknúť môžu (`rg "rm -rf" docs`) a je to správny smer zlyhania.
+13. **~~Plošné `auto_accept` zakrylo úzke povolenie~~ — našlo sa a opravilo sa
+    19. 8. 2026.** „Povoliť vždy" na `mind_learn` zapínalo `auto_accept` na celé
+    vlákno, takže od tej chvíle by **každý** príkaz shellu bežal bez potvrdenia;
+    dosiahnuteľné bolo aj programovo cez `PATCH` na vlákno. Oprava: tool, ktorý je
+    na plošné povolenie priširoký, implementuje `NarrowsAllowance` a povolenie sa
+    uloží do `console_threads.allowances` **len na jeho kľúč** — pri shelli je
+    kľúčom vzor príkazu (`php artisan test`, nie `php artisan` a nie celé vlákno).
+    Čo v `deny` (§7.1) sa nedá povoliť ani takto.
 
 ---
 
@@ -363,6 +553,10 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
 |---|---|
 | `tests/Feature/AuthenticateMcpTest.php` | odmietnutie bez tokenu / so zlým tokenom (Bearer aj query), akceptáciu správneho, case-insensitive `bearer`, **fail-closed** pri nenakonfigurovanom tokene, pokrytie `GET`/`DELETE` |
 | `tests/Feature/AuthenticateUiTest.php` | UI okruh: odmietnutie čítania aj zápisu bez odomknutia, zamknutý dashboard, zlý token, odomknutie hlavičkou (Caddy) aj `?token=` s odstrihnutím z URL, **fail-closed**, rotácia tokenu ruší staré session, CSRF na zápisoch (419) a 401 **pred** CSRF aj pred route model bindingom, oddelenie od `/api/v1` a `/mcp` |
+| `tests/Feature/ConsoleProgrammaticTest.php` | programový okruh (§3.5): odmietnutie bez tokenu a so zlým tokenom, **odmietnutie requestu s `X-Forwarded-*` aj so správnym tokenom**, odmietnutie z neloopback adresy, **fail-closed** pri prázdnom UI tokene, a že headless register neponúkne ani jeden tool, ktorý by ťah zaparkoval |
+| `tests/Feature/ConsoleGuardTest.php` | prechádza **celý router**: každá routa konzoly musí byť v jednom z okruhov (§3.5), programová nesmie niesť session |
+| `tests/Feature/ConsoleBashToolTest.php` | klietka shellu (§7.1): reťazenie, presmerovanie a substitúcia, `find -exec` pred deny zoznamom, **`.env` cez úvodzovky aj cez ANSI-C quoting**, `git` nesmie vypísať históriu súborov, `sed` mimo zoznamu, rúra po segmentoch, nezavretá úvodzovka, timeout a strop výstupu |
+| `tests/Feature/ConsoleAllowanceTest.php` | „povoliť vždy" pri shelli sa zúži na vzor príkazu, nezapne `auto_accept`, neotvorí ostatné zápisové tooly a plošné `auto_accept` nekryje zúžený tool (§8.13) |
 | `tests/Unit/SecretScannerTest.php` | jednotlivé vzory a to, že sa nevracia hodnota |
 | `tests/Feature/McpToolsTest.php` | odmietnutie `mind_learn` s obsahom podobným tajomstvu, klamp recall limitu |
 | `tests/Feature/ApiV1Test.php` | Bearer guard na `v1`, health bez tokenu |
@@ -380,6 +574,23 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
   dostal CSRF token. Programatický klient patrí na `/api/v1/*`, nie sem.
 - Nová HTML route mimo `/` → tiež `->middleware('auth.ui')`, inak z nej cudzí
   proces vyčíta CSRF token aj obsah pamäte.
+- Nový endpoint konzoly → **do jedného z okruhov** (§3.5): pre prehliadač
+  `auth.ui` + CSRF, pre CLI a desktop `auth.console` (loopback-only, bez session).
+  Programová routa nesmie niesť session — `ConsoleGuardTest` prechádza celý router
+  a routu mimo okruhov zhodí.
+- Nový endpoint pre skript, MCP alebo scheduler → **len čítacie tooly**. Zápisový
+  tool tam ťah zaparkuje a nikto ho nepotvrdí, takže vlákno zostane zablokované;
+  tool, ktorý zapisuje výhradne do svojho vlastného miesta, dostane `SafeUnattended`.
+- Zmena v klietke shellu (`hades.console.bash` v `config/hades.php`, §7.1) →
+  najprv si polož otázku, či ten príkaz vie **zapísať súbor** (`sed -n '1w …'`,
+  `sort -o`, `curl -o`), či vie **spustiť iný príkaz** (`env`, `xargs`, `sh -c`,
+  `find -exec`) a či vie čítať **históriu repa** (v nej žijú kompromitované
+  tajomstvá, §8.2). Vzory v `allow` musia byť ukotvené (`^…$`) — platia nad
+  jedným segmentom rúry. Gramatiku nepresúvaj do configu: dala by sa vypnúť
+  premennou prostredia. Každá zmena patrí do `ConsoleBashToolTest`.
+- Nový tool, ktorý je na plošné „povoliť vždy" priširoký → `NarrowsAllowance`,
+  nie `auto_accept` (§8.13). A skontroluj, či sa `deny` testuje aj nad podobou bez
+  úvodzoviek (§8.12) — hranica slova ňou nie je.
 - Nový MCP nástroj, ktorý zapisuje text → pretlač obsah cez `SecretScanner`.
 - Nová zápisová cesta do `.md` → **len** cez `BrainWriter` (atomicita + sken
   + guard na jednom mieste).

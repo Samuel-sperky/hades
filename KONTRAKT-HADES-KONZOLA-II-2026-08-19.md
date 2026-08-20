@@ -61,7 +61,7 @@ ako prepínateľný provider + odmeraný silnejší lokálny kandidát.
 - **HTML reporty:** tool `write_report` → `storage/app/reports/<uuid>.html`, servované
   autentizovanou routou `/console/reports/<uuid>`, v streame karta s náhľadom a
   odkazom „otvoriť / stiahnuť". Šablóna nesie tokeny z `mind.css` (tmavá aj svetlá).
-- **Plánované behy:** tabuľka `console_schedules`, `mind:console-run` v scheduleri,
+- **Plánované behy:** tabuľka `console_schedules`, `mind:console-schedules` v scheduleri,
   **len read-only tooly + reporty**; čokoľvek zápisové sa odloží do frontu potvrdení.
 - **Perzistencia:** nové tabuľky `console_reports`, `console_schedules`,
   `console_agent_runs`, `console_bridge_tasks`. Pred migráciou `mysqldump` do `backups/`.

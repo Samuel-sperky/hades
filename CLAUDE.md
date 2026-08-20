@@ -276,12 +276,22 @@ u seba. Tá istá slepota skryla celý `hades.console.bash` blok z configu.
 `worktree-autoload.php` preto nastaví `$_ENV['APP_BASE_PATH']` na worktree.
 
 **Dve sessions naraz nesmú testovať tú istú DB.** `RefreshDatabase` tabuľky zahadzuje, takže
-dva paralelné behy nad `hades_test` si truncujú tabuľky pod sebou a padne to ako chyba kódu.
-Preto sú v repe aj `tests/phpunit.klient.xml`, `.klient2.xml`, `.klient3.xml` — tri scratch
-databázy (`hades_klient_test`, `hades_klient2_test`, `hades_klient3_test`), jedna na agenta.
-Nová DB sa zakladá rootom (appka `CREATE DATABASE` nemá): `docker exec hades-mariadb-1 …`.
+dva paralelné behy nad tou istou scratch DB si truncujú tabuľky pod sebou a padne to ako
+chyba kódu. Config je preto jeden (`tests/phpunit.klient.xml`) a **databáza sa berie
+z prostredia**: `<env>` má atribút `force` defaultne `false`, takže premenná, ktorá už
+v prostredí je, **vyhrá** nad hodnotou v XML:
 
-Testy CLI klienta sú v Node: `cd bin/hades && node --test --test-timeout=20000` (45 testov).
+```
+docker exec -e DB_DATABASE=hades_klient2_test -w /var/www/html/.claude/worktrees/<vetva> \
+  hades-app-1 php vendor/bin/phpunit -c tests/phpunit.klient.xml
+```
+
+Overené spustením (20. 8. 2026, PHPUnit 12): s `-e DB_DATABASE=hades_klient_probe` sada
+padla poistkou na meno DB — teda premenná dorazila k aplikácii a XML ju neprepísalo. Meno
+**musí** končiť na `_test`, inak `Tests\TestCase` beh odmietne. Novú DB zakladá root (appka
+`CREATE DATABASE` nemá): `docker exec hades-mariadb-1 …`.
+
+Testy CLI klienta sú v Node: `cd bin/hades && node --test --test-timeout=20000` (55 testov).
 `node --test bin/hades/test/` na Node 24 vo Windows **nefunguje** — argument-priečinok
 vyhodnotí ako súbor; buď glob, alebo `node --test` bez argumentu z `bin/hades`.
 
