@@ -84,6 +84,41 @@ Mimo obrazovky Graf sa `requestAnimationFrame` **zastaví** (`graphActive()`).
 Keď pridávaš window listener, ktorý siaha na graf, daj mu `graphActive()` strážcu —
 inak beží nad 1000+ uzlami na obrazovkách, kde graf nikoho nezaujíma.
 
+### Dotyk a ovládanie plátna
+
+Plátno počúva **`touch*` vedľa myšacích handlerov**, nie zjednotené pointer eventy.
+Myšacia cesta nesie veci, ktoré dotyk nemá (hover karta, `S.cursor` pre gravitáciu
+kurzora, tvar kurzora), takže `pointermove` by sa aj tak vetvil na `pointerType` —
+jedna cesta by bola tá istá dvojkoľajnosť schovaná vnútri. Zdieľané je **telo gesta**:
+`beginDragAt()`, `moveDragTo()`, `resolveClick()`, `zoomAt()`.
+
+**Pinch je ukotvený v strede medzi prstami**, nie v strede plátna: namerané, drift
+svetového bodu pod stredom gesta je 0.000, kotva v strede plátna ho posunie o ~365
+jednotiek sveta. Dvojklep má vlastnú detekciu (300 ms / 30 px) — `preventDefault`
+na `touchstart` syntetický `dblclick` nikdy nevydá.
+
+`touch-action: none` je v CSS a je **viazané na `body[data-screen="graf"]`**. Musí
+byť: plátno je `position: fixed; inset: 0` pod obsahom, takže natvrdo vypnuté gestá
+by na dotyku zabili scrollovanie stránky všade, kde sa prst trafí mimo textu.
+
+### Metriky v hlavičke sú po filtri
+
+`updateHeaderMetrics()` počíta viditeľné uzly cez `filterPass()` a hrany cez oba
+konce + `minWeight` + `edgeCategoryHidden()`. Bez aktívneho filtra je text znak po
+znaku pôvodný („1109 uzlov · 3053 spojení"), s filtrom hlási pomer („230 z 1109").
+Do 20. 8. 2026 hlásil surové `S.nodes.length`, takže vypnuté typy sa v číslach
+neprejavili vôbec.
+
+### Ikony — ako sa overuje subset
+
+**Nečítaj GSUB tabuľky, meraj šírku vykresleného glyfu.** Prvý pokus o audit hlásil
+32 chýbajúcich ikon vrátane tých, o ktorých je nižšie napísané, že v subsete sú —
+čítal ligatúrové lookupy zle. Metóda, ktorá sa kalibruje sama: vykresli názov ikony
+v Material Symbols a odmeraj šírku. Vykreslený glyf ≈ 1 em (18 px), nevykreslená
+ligatúra padne na fallback a je násobne širšia (`terminal` 144 px, `arrow_downward`
+252 px). Kalibruj na známom kladnom (`hub` = 18 px) aj zápornom prípade.
+Stav k 20. 8. 2026: **všetkých 32 ikon použitých v kóde je v subsete**.
+
 ### Fonty
 
 **Self-hosted v `public/fonts/`, Google Fonts CDN je zámerne preč.** Pri jeho
