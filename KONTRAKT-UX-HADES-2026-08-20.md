@@ -179,3 +179,48 @@ istom pracovnom strome commitla (`7bbf3a4`) v momente, keď bola moja práca
 v indexe, a vzala ju so sebou. Nič sa nestratilo — celá vlna 2 je v tom commite
 spolu s ich obrazovkou Runy. Pri ďalších sprintoch v tomto repozitári treba buď
 worktree, alebo dohodu, kto commituje.
+
+
+---
+
+## 8. Recenzná vlna (20. 8. 2026)
+
+Po dokončení piatich vĺn prešli zmeny **adversariálnou recenziou** — dvaja
+recenzenti, obaja read-only, obaja s pokynom nehlásiť domnienky.
+
+### Bezpečnosť — čisté
+
+Overené v behujúcom kontajneri, nie prečítaním:
+
+- `Str::slug('../etc/passwd')` → `etcpasswd`; z `directives/` sa cesta nedostane von,
+- `/api/console/decide` pole `auto_accept` v requeste **vôbec neprijíma** — brána
+  ostáva výhradne serverová a klient si ju podstrčiť nevie,
+- titulok vlákna ide cez `textContent`, nie `innerHTML`,
+- obe nové mazacie routy sú v guardovanom okruhu a **nie sú** v `/api/v1/*`.
+
+Jediný nález bol o **pokrytí testom**, nie o diere: krytie nových rout bolo overené
+čítaním, kým Charón má plošný test cez router. Doplnené v `7bb3928`
+(`DestructiveRouteGuardTest`) — 6 interných mazacích rout musí niesť guard + CSRF,
+vonkajšia musí niesť token.
+
+**Pri jeho písaní som sa pomýlil:** prvá verzia tvrdila, že vonkajšie API nemá
+žiadnu mazaciu routu. Padla — `DELETE /api/v1/knowledge/{node}` existuje a je
+staršia než tento sprint. Test bol prepísaný na to, čo je pravda; nesprávny
+predpoklad by z neho spravil pascu.
+
+### Graf — dva nálezy, oba moje, oba opravené (`c96f43c`)
+
+| Nález | Prejav |
+|---|---|
+| `openNodeFromAnywhere()` nemal strážcu aktuálnosti | druhý preklik počas rozširovania rozsahu → staršia odpoveď dobehne posledná a strhne panel späť na predošlý uzol; odchod na inú obrazovku → neskorý callback tam znovu otvorí detail uzla (`#node-panel` nie je vnorený v `.screen`) |
+| `.h-scope` nebol v zozname prvkov skrytých mimo Grafu | prepínač rozsahu svietil na Dnes, v Knižnici aj všade inde, osamotený a bez kontextu |
+
+### Čo recenzent výslovne preveril a našiel v poriadku
+
+Cyklické importy (`panels ↔ dock`, `screens → pack`, `dnes → dennik`,
+`util → filters/edges`) — všetky cez hoistované `export function`; odstránenie
+mŕtveho `renderSearch` bez volajúcich; `updateHeaderMetrics()` sa nevolá per-frame
+ani v `draw()`; dotykové gestá uvoľňujú `fx/fy` vo všetkých vetvách vrátane
+`touchcancel`, `contextmenu` a `blur`.
+
+**Testy po recenzii: 441 prešlo** (na začiatku sprintu 421).
