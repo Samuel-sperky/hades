@@ -106,6 +106,12 @@ class RunsScreen extends ScreenSerializer
             'error' => $run->error,
             'started_at' => $run->started_at?->toIso8601String(),
             'ended_at' => $run->ended_at?->toIso8601String(),
+            // Kľúč na zoskupenie časovej osi po dňoch. Je tu z toho istého dôvodu,
+            // z akého Rozhodnutia dostávajú `month`: hranicu dňa určuje časová zóna
+            // servera, a keby si ju klient počítal z `started_at` sám, dva behy tesne
+            // okolo polnoci by v UI a v odpovedi pre AI spadli do iných dní.
+            // Popisok hlavičky (dnes/včera/dátum) je naopak vizuálny a robí ho UI.
+            'day' => $run->started_at?->toDateString(),
             'thread' => $run->thread?->uuid,
             'thread_title' => $run->thread?->title,
         ];

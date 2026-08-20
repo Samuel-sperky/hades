@@ -37,7 +37,7 @@ export function timeHM(iso) {
    kým sa filtrovalo nad oknom 50 záznamov, čip sľuboval 22 a zoznam dal 9. */
 export async function renderJournal() {
     const list = $('journal-list');
-    renderLoading(list, 'Načítavam denník…');
+    renderLoading(list, 'Načítava sa denník…');
     try {
         const q = journalProject ? '?project=' + encodeURIComponent(journalProject) : '';
         const data = await getJson('/api/journal' + q);
@@ -93,10 +93,27 @@ export function renderJournalFilter() {
 
     wrap.querySelectorAll('.chip[data-project]').forEach((chip) => {
         chip.onclick = () => {
-            journalProject = chip.dataset.project || null;
-            renderJournal();
+            /* Aktívny stav sa nasadzuje HNEĎ, nie až po odpovedi servera.
+               renderJournalFilter() čipy prekresľuje až vnútri renderJournal(),
+               teda po fetchi (3–4 s pri plnom denníku) — dovtedy kliknutý čip
+               vyzeral neaktívne a klik pôsobil, akoby nezabral. */
+            wrap.querySelectorAll('.chip[data-project]').forEach((c) => c.classList.remove('active'));
+            chip.classList.add('active');
+            setJournalProject(chip.dataset.project || null);
         };
     });
+}
+
+/**
+ * Nastaví filter projektu a prekreslí denník.
+ *
+ * Existuje preto, že `journalProject` je `export let` — cudzí modul doň nevie
+ * priradiť (ESM väzby sú pre importéra len na čítanie). Volá to obrazovka Dnes,
+ * keď človek klikne na čip projektu.
+ */
+export function setJournalProject(key) {
+    journalProject = key || null;
+    renderJournal();
 }
 
 export function renderJournalList() {

@@ -326,6 +326,22 @@ class RunLogTest extends TestCase
         $this->assertArrayNotHasKey('error', $ai['items'][0]);
     }
 
+    public function test_the_day_key_groups_the_timeline_for_the_human_and_is_not_sent_to_the_ai(): void
+    {
+        $this->makeRun(['started_at' => '2026-08-19 23:40:00']);
+
+        $human = (new RunsScreen([]))->data();
+        $ai = (new RunsScreen([]))->forAi();
+
+        // Hranicu dňa určuje časová zóna servera. Keby si ju počítal prehliadač
+        // z `started_at`, dva behy tesne okolo polnoci by v UI a v odpovedi pre AI
+        // spadli do iných dní.
+        $this->assertSame('2026-08-19', $human['items'][0]['day']);
+
+        // Zoskupenie je vizuálne — AI má `started_at` a `day` jej netreba.
+        $this->assertArrayNotHasKey('day', $ai['items'][0]);
+    }
+
     public function test_zero_survives_the_empty_field_pruning(): void
     {
         // Nula tool callov je informácia („beh nič nevolal"), nie prázdno.

@@ -2,6 +2,10 @@ import { mdToHtml } from '../md.js';
 import { setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
 import { $, busy, emptyCardHtml, esc, getJson, plainText, renderEmpty, renderLoading } from '../util.js';
+// Ozbrojené potvrdenie (prvý klik sa spýta, druhý do 3 s maže) je JEDEN vzor pre
+// celú appku, tak sa neduplikuje. Býva v rozhodnutiach len dočasne — patrí do
+// util.js, ktorý táto vlna nevlastní.
+import { armDelete } from './rozhodnutia.js';
 
 /* ---------- obrazovka Smernica (/api/directive/*) ----------
    Prompt builder: úloha → Hades poskladá KDE ČO NÁJDE (skilly, projekty,
@@ -22,6 +26,8 @@ export let directiveTemplates = null;    // cache šablón (/api/directive/templ
 export let directiveMarkdown = '';       // markdown zo servera (na copy/save) — nikdy nie skladaný tu
 export let directiveBuildSeq = 0;        // ochrana proti pretekaniu odpovedí
 export let directivePreviewSeq = 0;      // to isté pre dopočet náhľadu k výberu
+export let directiveSaved = [];          // posledný /api/directives (aby prepnutie režimu nešlo po sieť)
+export let directiveManaging = false;    // režim „Upraviť zoznam" — až v ňom sa dá mazať
 
 export const DIR_SECTIONS = [
     { key: 'skills', title: 'Skilly', icon: 'bolt' },
@@ -52,7 +58,14 @@ export function renderDirective(prefillTask) {
         + '</div></div>'
         + '<div class="dir-preview md-body" id="dir-preview"></div>'
         + '</div></div>'
-        + '<section class="dir-saved-sec"><h2>Uložené smernice</h2><div class="dir-saved" id="dir-saved"></div></section>';
+        /* Prepínač režimu, nie kôš pri každom riadku: mazanie súboru na disku je
+           nevratné, tak stojí za dvoma krokmi — zapnúť režim a potom potvrdiť
+           ozbrojené tlačidlo. Kým je zoznam prázdny, prepínač nemá čo prepínať
+           (triedu `hidden` mu dáva syncDirManageBtn). */
+        + '<section class="dir-saved-sec"><h2>Uložené smernice</h2>'
+        + '<button type="button" id="dir-manage" class="chip hidden">'
+        + '<span class="ms" aria-hidden="true">edit</span>Upraviť zoznam</button>'
+        + '<div class="dir-saved" id="dir-saved"></div></section>';
 
     const taskInput = $('dir-task');
     const buildBtn = $('dir-build');
@@ -64,6 +77,12 @@ export function renderDirective(prefillTask) {
     if (copyBtn) copyBtn.onclick = copyDirective;
     const saveBtn = $('dir-save');
     if (saveBtn) saveBtn.onclick = saveDirective;
+    const manageBtn = $('dir-manage');
+    if (manageBtn) manageBtn.onclick = () => { directiveManaging = !directiveManaging; syncDirManageBtn(); renderDirectiveSaved(); };
+
+    // Režim mazania neprežíva odchod z obrazovky: vrátiť sa na Smernicu a nájsť
+    // pri každej položke ozbrojený kôš je prekvapenie, nie pokračovanie.
+    directiveManaging = false;
 
     loadDirectiveTemplates();
     loadDirectiveSaved();
@@ -270,7 +289,7 @@ export function dirAllIds() {
 export async function copyDirective() {
     if (!directiveMarkdown) { showToast('Najprv poskladaj smernicu'); return; }
     try { await navigator.clipboard.writeText(directiveMarkdown); showToast('Smernica skopírovaná'); }
-    catch (e) { showToast('Kopírovanie zlyhalo'); }
+    catch (e) { showToast('Kopírovanie sa nepodarilo'); }
 }
 
 export async function saveDirective() {
@@ -282,11 +301,11 @@ export async function saveDirective() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, markdown: directiveMarkdown }),
         });
-        if (!res.ok) { showToast('Uloženie zlyhalo'); return; }
+        if (!res.ok) { showToast('Uloženie sa nepodarilo'); return; }
         const data = await res.json();
         showToast('Uložené: ' + (data.path || ''));
         loadDirectiveSaved();
-    } catch (e) { showToast('Uloženie zlyhalo'); }
+    } catch (e) { showToast('Uloženie sa nepodarilo'); }
 }
 
 export async function loadDirectiveSaved() {
@@ -294,19 +313,82 @@ export async function loadDirectiveSaved() {
     if (!box) return;
     try {
         const d = await getJson('/api/directives');
-        const items = d.directives || [];
-        // Sekcia sa menuje „Uložené smernice" — prázdny stav ju nemá prehovoriť znova.
-        if (!items.length) { box.innerHTML = emptyCardHtml('Zatiaľ žiadne — poskladanú smernicu môžeš uložiť a vrátiť sa k nej.'); return; }
-        box.innerHTML = items.map((it) =>
-            '<button type="button" class="dir-saved-item" data-name="' + esc(it.name) + '">'
-            + '<span class="ms" aria-hidden="true">description</span>'
-            + '<span class="dsi-text"><span class="dsi-title">' + esc(it.title || it.name) + '</span>'
-            + '<span class="dsi-path">' + esc(it.path) + '</span></span></button>'
-        ).join('');
-        box.querySelectorAll('.dir-saved-item').forEach((b) => {
-            b.onclick = () => openSavedDirective(b.dataset.name);
-        });
+        directiveSaved = d.directives || [];
+        // Zoznam sa mohol zmazaním vyprázdniť — režim, ktorý nemá čo upravovať,
+        // sa musí sám vypnúť, inak ostane svietiť „Hotovo" nad prázdnom.
+        if (!directiveSaved.length) directiveManaging = false;
+        syncDirManageBtn();
+        renderDirectiveSaved();
     } catch (e) { box.innerHTML = emptyCardHtml('Uložené smernice sa nepodarilo načítať.'); }
+}
+
+/* Prepínač režimu hovorí, v akom stave zoznam JE — preto sa mení aj popisok, aj
+   ikona. Skrytý je, kým nie je čo mazať. */
+export function syncDirManageBtn() {
+    const btn = $('dir-manage');
+    if (!btn) return;
+    // `.hidden` a nie atribút `hidden`: `.chip` má `display: inline-block`, čo
+    // pravidlo prehliadača pre [hidden] prebije — tlačidlo by ostalo svietiť.
+    btn.classList.toggle('hidden', !directiveSaved.length);
+    btn.classList.toggle('active', directiveManaging);
+    btn.innerHTML = '<span class="ms" aria-hidden="true">' + (directiveManaging ? 'check' : 'edit') + '</span>'
+        + (directiveManaging ? 'Hotovo' : 'Upraviť zoznam');
+}
+
+export function renderDirectiveSaved() {
+    const box = $('dir-saved');
+    if (!box) return;
+    // Sekcia sa menuje „Uložené smernice" — prázdny stav ju nemá prehovoriť znova.
+    if (!directiveSaved.length) {
+        box.innerHTML = emptyCardHtml('Zatiaľ žiadne — poskladanú smernicu môžeš uložiť a vrátiť sa k nej.');
+        return;
+    }
+
+    /* Dve podoby toho istého riadku, a je to zámer. Mimo režimu je riadok jedno
+       <button>, ktoré smernicu otvorí. V režime je to <div> s vlastným tlačidlom
+       koša — tlačidlo vnútri tlačidla je neplatné HTML a pre klávesnicu slepá
+       ulička, takže sa riadok na ten čas prestane klikať celý. */
+    box.innerHTML = directiveSaved.map((it) => {
+        const inner = '<span class="ms" aria-hidden="true">description</span>'
+            + '<span class="dsi-text"><span class="dsi-title">' + esc(it.title || it.name) + '</span>'
+            + '<span class="dsi-path">' + esc(it.path) + '</span></span>';
+        if (!directiveManaging) {
+            return '<button type="button" class="dir-saved-item" data-name="' + esc(it.name) + '">'
+                + inner + '</button>';
+        }
+        return '<div class="dir-saved-item">' + inner
+            + '<button type="button" class="danger ms dir-del" data-name="' + esc(it.name) + '"'
+            + ' title="Zmazať smernicu" aria-label="Zmazať smernicu">delete</button>'
+            + '</div>';
+    }).join('');
+
+    box.querySelectorAll('button.dir-saved-item').forEach((b) => {
+        b.onclick = () => openSavedDirective(b.dataset.name);
+    });
+    box.querySelectorAll('.dir-del').forEach((b) => {
+        b.onclick = () => armDelete(b, 'Naozaj zmazať?', () => deleteDirective(b, b.dataset.name));
+    });
+}
+
+export async function deleteDirective(btn, name) {
+    await busy(btn, async () => {
+        try {
+            const res = await fetch('/api/directive/' + encodeURIComponent(name), { method: 'DELETE' });
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast(j.message || 'Nepodarilo sa zmazať'); return; }
+            showToast('Smernica zmazaná');
+            /* Riadok zmizne hneď, nie až po `/api/directives`. Ten endpoint skladá
+               celú `SmernicaScreen` a trvá sekundy — namerané: zmazaná smernica
+               ostala na obrazovke ešte 2,5 s po tom, čo súbor už na disku nebol,
+               takže obrazovka klamala. Server zmazanie potvrdil, tak sa to smie
+               povedať; načítanie za tým je len dorovnanie zvyšku. */
+            directiveSaved = directiveSaved.filter((it) => it.name !== name);
+            if (!directiveSaved.length) directiveManaging = false;
+            syncDirManageBtn();
+            renderDirectiveSaved();
+            loadDirectiveSaved();
+        } catch (e) { showToast('Nepodarilo sa zmazať'); }
+    }, 'Maže sa…');
 }
 
 export async function openSavedDirective(name) {

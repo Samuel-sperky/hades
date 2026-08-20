@@ -29,6 +29,13 @@ use Illuminate\Support\Collection;
  * stále `Node::toApi()` a nové kľúče sa len **pripájajú**. `total` je zámerne
  * **nefiltrovaný** — visí na ňom počítadlo v raile (`#dest-kontrola .count`) a
  * keby ho zúžil filter, rail by tvrdil, že práce je menej, než jej je.
+ *
+ * **`counts.matching` je tretie číslo a bez neho mala obrazovka dieru.** `total`
+ * hovorí o celej fronte, `counts.shown` o jednej stránke — a medzi ne sa vošlo
+ * všetko, čo strop odrezal: pri 140 čakajúcich videl človek stovku a nič mu
+ * nepovedalo, že zvyšok existuje. `matching` je počet uzlov, ktoré vyhovujú
+ * FILTRU (bez stropu), takže „zobrazených 100 zo 140" je odteraz veta, ktorú
+ * vie povedať aj UI, aj AI.
  */
 class KontrolaScreen extends ScreenSerializer
 {
@@ -40,6 +47,9 @@ class KontrolaScreen extends ScreenSerializer
     /**
      * @param  array<string, mixed>  $filters  area (slug|id|name), type, certainty, origin, q, limit
      */
+    /** Normalizované filtre — počítajú sa raz, viď {@see self::active()}. */
+    private ?array $activeCache = null;
+
     public function __construct(private array $filters = []) {}
 
     public function data(): array
@@ -52,7 +62,10 @@ class KontrolaScreen extends ScreenSerializer
         return [
             'queue' => $rows,
             'total' => $total,
-            'counts' => $this->counts($total) + ['shown' => count($rows)],
+            'counts' => $this->counts($total) + [
+                'shown' => count($rows),
+                'matching' => $this->matching($total),
+            ],
             'areas' => $this->areaAxis($names),
             'limit' => $limit,
         ];
@@ -88,48 +101,102 @@ class KontrolaScreen extends ScreenSerializer
     }
 
     /**
-     * Riadky fronty, od najnovších. Filtre sú serverové: keby ich robil
-     * prehliadač nad stránkou, výber by sa končil na prvej stovke a AI by o osi
-     * nevedela nič.
+     * Filtre po normalizácii — **jeden zdroj pre riadky aj pre `matching`**.
+     * Predtým žili priamo v `rows()`; keby si ich `matching` opísal, boli by to
+     * dva predikáty, ktoré sa vedia rozísť, a obrazovka by hlásila „zobrazených
+     * 100 zo 140" nad inou stovkou, než akú vypísala.
+     *
+     * Neznáma hodnota sa **ignoruje, nevracia 422**: `/api/review/queue` tieto
+     * parametre doteraz nepoznal a mlčky ich zahadzoval. Zaviesť na nich chybu
+     * by bola zmena chovania externého mirroru, teda presne to, čo sa nesmie.
+     * Prázdny výsledok preto znamená „žiadny filter", nie „zlý filter".
+     *
+     * @return array<string, mixed>
+     */
+    private function active(): array
+    {
+        if ($this->activeCache !== null) {
+            return $this->activeCache;
+        }
+
+        $out = [];
+
+        $area = trim((string) ($this->filters['area'] ?? ''));
+        if ($area !== '') {
+            $out['area_id'] = RozhodnutiaScreen::resolveAreaId($area) ?? -1;
+        }
+
+        $type = (string) ($this->filters['type'] ?? '');
+        if (in_array($type, ['memory', 'skill', 'project', 'core'], true)) {
+            $out['type'] = $type;
+        }
+
+        $certainty = (string) ($this->filters['certainty'] ?? '');
+        if (in_array($certainty, ['overene', 'hypoteza', 'pasca'], true)) {
+            $out['certainty'] = $certainty;
+        }
+
+        $origin = (string) ($this->filters['origin'] ?? '');
+        if (in_array($origin, ['session', 'brain'], true)) {
+            $out['origin'] = $origin;
+        }
+
+        $q = trim((string) ($this->filters['q'] ?? ''));
+        if ($q !== '') {
+            $out['q'] = $q;
+        }
+
+        return $this->activeCache = $out;
+    }
+
+    /**
+     * Fronta zúžená filtrom, bez stropu a bez radenia. Filtre sú serverové:
+     * keby ich robil prehliadač nad stránkou, výber by sa končil na prvej
+     * stovke a AI by o osi nevedela nič.
+     */
+    private function filtered(): Builder
+    {
+        $query = $this->base();
+        $active = $this->active();
+
+        foreach (['area_id', 'type', 'certainty', 'origin'] as $column) {
+            if (isset($active[$column])) {
+                $query->where($column, $active[$column]);
+            }
+        }
+
+        if (isset($active['q'])) {
+            $q = $active['q'];
+            $query->where(function ($w) use ($q): void {
+                $w->where('label', 'like', '%'.$q.'%')->orWhere('description', 'like', '%'.$q.'%');
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * Koľko uzlov vyhovuje filtru — teda koľko ich je NAD stropom stránky.
+     *
+     * Dopyt navyše sa platí len vtedy, keď je nejaký filter naozaj zapnutý; bez
+     * filtrov je `matching` z definície `total` a počet dopytov sa nemení
+     * (stráži to `PayloadPerformanceTest`).
+     */
+    private function matching(int $total): int
+    {
+        return $this->active() === [] ? $total : (int) $this->filtered()->count();
+    }
+
+    /**
+     * Riadky fronty, od najnovších.
      *
      * @param  Collection<int, Area>  $names
      * @return list<array<string, mixed>>
      */
     private function rows(int $limit, $names): array
     {
-        $query = $this->base()->with('tags');
-
-        $area = trim((string) ($this->filters['area'] ?? ''));
-        if ($area !== '') {
-            $query->where('area_id', RozhodnutiaScreen::resolveAreaId($area) ?? -1);
-        }
-
-        // Neznáma hodnota sa **ignoruje, nevracia 422**: `/api/review/queue` tieto
-        // parametre doteraz nepoznal a mlčky ich zahadzoval. Zaviesť na nich chybu
-        // by bola zmena chovania externého mirroru, teda presne to, čo sa nesmie.
-        $type = (string) ($this->filters['type'] ?? '');
-        if ($type !== '' && in_array($type, ['memory', 'skill', 'project', 'core'], true)) {
-            $query->where('type', $type);
-        }
-
-        $certainty = (string) ($this->filters['certainty'] ?? '');
-        if ($certainty !== '' && in_array($certainty, ['overene', 'hypoteza', 'pasca'], true)) {
-            $query->where('certainty', $certainty);
-        }
-
-        $origin = (string) ($this->filters['origin'] ?? '');
-        if (in_array($origin, ['session', 'brain'], true)) {
-            $query->where('origin', $origin);
-        }
-
-        $q = trim((string) ($this->filters['q'] ?? ''));
-        if ($q !== '') {
-            $query->where(function ($w) use ($q): void {
-                $w->where('label', 'like', '%'.$q.'%')->orWhere('description', 'like', '%'.$q.'%');
-            });
-        }
-
-        return $query
+        return $this->filtered()
+            ->with('tags')
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit($limit)

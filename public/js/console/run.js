@@ -20,7 +20,7 @@ import { request } from './http.js';
 import { ensureThread, loadThreads } from './main.js';
 import {
     appendDelta, beginTurn, closeBubble, endTurn, paintStats, pushBlock,
-    pushError, pushNotice, pushUser, announce, scrollIfFollowing,
+    pushError, pushNotice, pushUser, announce, scrollIfFollowing, waitStart,
 } from './render.js';
 import { markResult, permissionCard, pendingCard, decidePending, toolCard } from './tools.js';
 
@@ -318,6 +318,9 @@ function route(frame) {
 
         case 'tool_result':
             markResult(frame);
+            // Nástroj dobehol a model premýšľa znova. Toto ticho je rovnako dlhé
+            // ako to pred prvým tokenom, takže si žiada ten istý signál.
+            waitStart();
 
             return false;
 

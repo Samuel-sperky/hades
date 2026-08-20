@@ -1,5 +1,6 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere, setScreen } from '../screens.js';
+import { setJournalProject } from './dennik.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
 import { $, busy, emptyCardHtml, emptyHtml, esc, fmtNum, getJson, prettyLabel, renderEmpty, timeAgo } from '../util.js';
@@ -83,29 +84,39 @@ export async function renderToday() {
     // Bez `.slice()`: strop drží server (DnesScreen.RECENT_SESSIONS). Kým bol tu,
     // posielalo sa osem a kreslilo šesť, takže AI videla dve session, ktoré na
     // obrazovke neboli — a to je celý mechanizmus, ktorým sa plochy rozchádzajú.
+    /* Sekcie pri prázdnych dátach MIZLI celé (bez `else`), takže v tichý deň
+       obrazovka pod dashboardom skončila uprostred ničoho — kým karty grafov
+       prázdny stav majú. Tri sekcie hovoria to isté rovnako. */
     const sessions = d.recent_sessions || [];
-    if (sessions.length) {
-        h += '<section class="today-sec"><h2>Naposledy si robil na…</h2><div class="today-grid">'
-            + sessions.map((s) => todaySessionCard(s)).join('')
-            + '</div></section>';
-    }
+    h += '<section class="today-sec"><h2>Naposledy si robil na…</h2>'
+        + (sessions.length
+            ? '<div class="today-grid">' + sessions.map((s) => todaySessionCard(s)).join('') + '</div>'
+            : emptyCardHtml('Zatiaľ žiadna session'))
+        + '</section>';
 
     const records = d.recent_records || [];
-    if (records.length) {
-        h += '<section class="today-sec"><h2>Posledné záznamy</h2><div class="today-list">'
-            + records.map((r) => todayRow('article', r)).join('')
-            + '</div></section>';
-    }
+    h += '<section class="today-sec"><h2>Posledné záznamy</h2>'
+        + (records.length
+            ? '<div class="today-list">' + records.map((r) => todayRow('article', r)).join('') + '</div>'
+            : emptyCardHtml('Zatiaľ žiadny záznam'))
+        + '</section>';
 
     // `p.label` je zo servera: strojové názvy adresárov sú tam už zlúčené do jednej
     // skupiny „bez projektu". Kým to robil prehliadač (prettyProject), stálo v rade
     // vedľa seba niekoľko čipov s tým istým popiskom a rôznymi počtami.
+    /* Čipy boli do 20. 8. 2026 obyčajné <span>, teda slepá ulička: Denník filtruje
+       presne podľa `project`, ale prekliknúť sa naň nedalo. Teraz sú to tlačidlá,
+       ktoré prepnú obrazovku a rovno nasadia filter. */
     const projects = d.top_projects || [];
     if (projects.length) {
         h += '<section class="today-sec"><h2>Aktívne projekty</h2><div class="today-chips">'
-            + projects.map((p) => '<span class="today-chip">' + esc(p.label || p.project || '')
-                + '<span class="n">' + (p.count || 0) + '</span></span>').join('')
+            + projects.map((p) => '<button type="button" class="today-chip" data-project="'
+                + esc(p.project || '') + '">' + esc(p.label || p.project || '')
+                + '<span class="n">' + (p.count || 0) + '</span></button>').join('')
             + '</div></section>';
+    } else {
+        h += '<section class="today-sec"><h2>Aktívne projekty</h2>'
+            + emptyCardHtml('Zatiaľ žiadny projekt') + '</section>';
     }
 
     body.innerHTML = h;
@@ -119,6 +130,16 @@ export async function renderToday() {
     body.querySelectorAll('.today-item[data-id], .today-card-link[data-id]').forEach((el) => {
         el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
     });
+    /* Čip projektu = preklik do Denníka s nasadeným filtrom. Poradie je dôležité:
+       najprv prepnúť obrazovku, potom filter — setJournalProject() rovno prekresľuje
+       a na skrytej obrazovke by sa kreslilo do prázdna. */
+    body.querySelectorAll('.today-chip[data-project]').forEach((chip) => {
+        chip.onclick = () => {
+            setScreen('dennik');
+            setJournalProject(chip.dataset.project || null);
+        };
+    });
+
     bindPackButtons(body);
 }
 

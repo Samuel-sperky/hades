@@ -5,7 +5,7 @@ import { persistFilter, setLocal } from './filters.js';
 import { anchorOf } from './layout.js';
 import { updatePackUi } from './pack.js';
 import { draw, focusNode, requestDraw } from './render.js';
-import { buildSim, kickSim } from './sim.js';
+import { buildSim, go, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
 import { T, mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
@@ -68,11 +68,11 @@ export async function selectNode(n) {
         // C4: tlačidlo dokumentu len ak uzol má markdown zdroj (summary_path / path)
         const nm = data.node.meta || {};
         $('node-md').classList.toggle('hidden', !(nm.summary_path || nm.path));
-        const meta = [];
-        if (data.node.area_name) meta.push(data.node.area_name);
-        if (data.node.department_name) meta.push(data.node.department_name);
-        meta.push('sila ' + data.node.strength.toFixed(0));
-        $('node-meta').textContent = meta.join(' · ');
+        /* Oblasť a oddelenie boli do 20. 8. 2026 obyčajný text, takže panel bol
+           slepá ulička: zo suseda sa dalo pokračovať, z vlastnej oblasti nie —
+           človek musel panel zavrieť a hľadať ju v strome Štruktúry. Teraz zúžia
+           filter rovnako ako breadcrumb, cez go({level, area|dept}). */
+        renderNodeMeta(data.node);
 
         // riadok suseda: chip (navigácia) + × (zrušenie spojenia) — edge id z S.edges podľa páru
         $('node-neighbors').innerHTML = data.neighbors.map((m) => {
@@ -351,6 +351,41 @@ export function buildLegend() {
             + '<p class="legend-note">V celej sieti sú spojenia plné a líšia sa jasnosťou.'
             + ' Prerušované vzory podľa typu ukazuje až lokálny graf uzla (G).</p>';
     }
+}
+
+/** Meta riadok detailu: oblasť a oddelenie sú navigácia, nie popiska. */
+function renderNodeMeta(node) {
+    const box = $('node-meta');
+    if (!box) return;
+    box.textContent = '';
+
+    const sep = () => box.appendChild(document.createTextNode(' · '));
+    const crumb = (text, target) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'meta-link';
+        b.textContent = text;
+        b.onclick = () => go(target);
+        box.appendChild(b);
+    };
+
+    if (node.area_name && node.area_id != null) {
+        crumb(node.area_name, { level: 'area', area: node.area_id });
+    } else if (node.area_name) {
+        box.appendChild(document.createTextNode(node.area_name));
+    }
+
+    if (node.department_name) {
+        if (box.childNodes.length) sep();
+        if (node.department_id != null) {
+            crumb(node.department_name, { level: 'dept', area: node.area_id, dept: node.department_id });
+        } else {
+            box.appendChild(document.createTextNode(node.department_name));
+        }
+    }
+
+    if (box.childNodes.length) sep();
+    box.appendChild(document.createTextNode('sila ' + node.strength.toFixed(0)));
 }
 
 export function closeNodePanel() {

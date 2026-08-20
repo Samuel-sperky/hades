@@ -64,6 +64,8 @@ Route::middleware([
     Route::post('/directive/save', [DirectiveController::class, 'save']);
     Route::get('/directive/templates', [DirectiveController::class, 'templates']);
     Route::get('/directive/{name}', [DirectiveController::class, 'show']);
+    // Mazanie uloženej smernice — bez neho vedela sekcia „Uložené smernice" len rásť.
+    Route::delete('/directive/{name}', [DirectiveController::class, 'destroy']);
     Route::get('/directives', [DirectiveController::class, 'index']);
 
     Route::post('/nodes', [NodeController::class, 'store']);
@@ -97,6 +99,10 @@ Route::middleware([
     Route::post('/sync', [SyncController::class, 'store']);            // lock → 423
     Route::get('/decisions', [DecisionController::class, 'index']);
     Route::post('/decisions', [DecisionController::class, 'store']);   // §4.7 aj pri guard OFF
+    // Oprava zle zapísaného rozhodnutia. Zámerne LEN v internom (UI) okruhu:
+    // `/api/v1/decisions` je kontrakt pre skripty a mazanie pamäte na Bearer token
+    // je väčšia plocha, než akú tento nález žiada.
+    Route::delete('/decisions/{decision}', [DecisionController::class, 'destroy']);
     Route::get('/tags', [KnowledgeController::class, 'tags']);
 
     // Kontrola — verify/review fronta (B5).

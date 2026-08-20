@@ -114,6 +114,36 @@ class DirectiveController extends Controller
     }
 
     /**
+     * DELETE /api/directive/{name} → zmaže directives/<slug>.md.
+     *
+     * Sekcia „Uložené smernice" dovtedy vedela len rásť: `save` prepisuje súbor
+     * podľa slugu úlohy, takže každá preformulovaná úloha nechala vedľa seba ďalší
+     * .md a zoznam sa nedal upratať inak než ručne v repozitári.
+     *
+     * Cesta sa **odmieta, nesanitizuje** — presne ako v `show`: `Str::slug()`
+     * zahodí lomky aj bodky, takže `..%2Fetc%2Fpasswd` skončí ako neexistujúci
+     * slug a nie ako súbor mimo priečinka. Mažeme len `.md` v `directivesPath()`.
+     */
+    public function destroy(string $name): JsonResponse
+    {
+        $slug = Str::slug($name);
+        if ($slug === '') {
+            return response()->json(['message' => 'Neplatný názov.'], 404);
+        }
+
+        $full = rtrim($this->directivesPath(), '/\\').DIRECTORY_SEPARATOR.$slug.'.md';
+        if (! is_file($full)) {
+            return response()->json(['message' => 'Smernica sa nenašla.'], 404);
+        }
+
+        if (! @unlink($full)) {
+            return response()->json(['message' => 'Smernicu sa nepodarilo zmazať.'], 500);
+        }
+
+        return response()->json(['deleted' => $slug, 'path' => 'directives/'.$slug.'.md']);
+    }
+
+    /**
      * GET /api/directive/templates → rýchle štarty. Každá šablóna predvyplní
      * task a UI ju hneď spustí cez /api/directive/build.
      */

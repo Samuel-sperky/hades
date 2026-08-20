@@ -47,6 +47,29 @@ export function bindPackButtons(root) {
 }
 
 // Zosúlaď celé pack UI so stavom S.pack — počet v hlavičke, všetky tlačidlá, detail, zásuvka.
+/** Prepínač rozsahu drží stav vlákna aj vizuál — inak by tvrdil niečo iné než graf. */
+export function syncScopeToggle() {
+    const btn = $('scope-toggle');
+    if (btn) btn.setAttribute('aria-checked', S.graphScope === 'all' ? 'true' : 'false');
+}
+
+/**
+ * Prepne rozsah grafu, uloží ho a načíta sieť nanovo.
+ *
+ * Vydelené z onclicku, lebo rozsah teraz prepína aj hľadanie: keď človek otvorí
+ * uzol, ktorý v aktuálnom pohľade nie je, pohľad sa musí rozšíriť — a musí to
+ * spraviť CEZ TOTO, aby sa prepínač nerozišiel so skutočným stavom. Presne taký
+ * rozchod (stav vypnutý, políčko tvrdí zapnutý) sme opravovali v Charónovi.
+ *
+ * @returns {Promise<void>} dobehne, keď je sieť načítaná
+ */
+export function setGraphScope(next) {
+    S.graphScope = next === 'all' ? 'all' : 'live';
+    localStorage.setItem('hades.graphScope', S.graphScope);
+    syncScopeToggle();
+    return reloadGraph();
+}
+
 export function updatePackUi() {
     const n = S.pack.size;
     const trig = $('pack-trigger');
@@ -136,14 +159,14 @@ export async function copyPack() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ node_ids: ids }),
         });
-        if (!res.ok) { showToast('Kopírovanie zlyhalo'); return; }
+        if (!res.ok) { showToast('Kopírovanie sa nepodarilo'); return; }
         const data = await res.json();
         await navigator.clipboard.writeText(data.markdown || '');
         showToast(cut > 0
             ? 'Skopírované ' + ids.length + ' z ' + S.pack.size + ' — strop balíka je ' + PACK_LIMIT
             : 'Skopírované pre Claude Code');
     } catch (e) {
-        showToast('Kopírovanie zlyhalo');
+        showToast('Kopírovanie sa nepodarilo');
     }
 }
 
@@ -181,20 +204,15 @@ export function setupPack() {
     if (mcp) mcp.onclick = async () => {
         if (!mdPath) return;
         try { await navigator.clipboard.writeText(mdPath); showToast('Cesta skopírovaná'); }
-        catch (e) { showToast('Kopírovanie zlyhalo'); }
+        catch (e) { showToast('Kopírovanie sa nepodarilo'); }
     };
 
     // Prepínač rozsahu grafu — 'live' (default) vs 'all' (celá knižnica v grafe)
     const scopeBtn = $('scope-toggle');
     if (scopeBtn) {
-        const sync = () => scopeBtn.setAttribute('aria-checked', S.graphScope === 'all' ? 'true' : 'false');
-        sync();
+        syncScopeToggle();
         scopeBtn.onclick = () => {
-            S.graphScope = S.graphScope === 'all' ? 'live' : 'all';
-            localStorage.setItem('hades.graphScope', S.graphScope);
-            sync();
-            showToast(S.graphScope === 'all' ? 'Graf: celá knižnica' : 'Graf: len živé uzly');
-            reloadGraph();
+            setGraphScope(S.graphScope === 'all' ? 'live' : 'all');
         };
     }
 

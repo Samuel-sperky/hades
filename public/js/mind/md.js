@@ -104,7 +104,7 @@ export async function openMdOverlay(node) {
     mdLabel = node.label || '';
     mdPath = node.path || null;
     $('md-title').textContent = mdLabel;
-    $('md-body').innerHTML = loadingHtml('Načítavam dokument…');
+    $('md-body').innerHTML = loadingHtml('Načítava sa dokument…');
     syncMdFoot();
     mdReturnFocus = document.activeElement;
     overlay.classList.remove('hidden');

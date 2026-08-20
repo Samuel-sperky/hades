@@ -22,10 +22,10 @@
    =========================================================================== */
 
 import { C } from './state.js';
-import { $ } from './dom.js';
+import { $, $$, el } from './dom.js';
 import { json, setLockedHandler } from './http.js';
 import {
-    clearView, paintJump, paintStats, pushNotice, renderEmpty, renderThread, wireStream,
+    announce, clearView, paintJump, paintStats, pushNotice, renderEmpty, renderThread, wireStream,
 } from './render.js';
 import { wireRun } from './run.js';
 import { wireComposer, paintSend } from './composer.js';
@@ -41,39 +41,366 @@ function applyTheme() {
     document.documentElement.dataset.theme = name === 'light' ? 'light' : 'dark';
 }
 
+/* ---------- bočný panel vlákien ---------- */
+
+/* Stav zoznamu je vlastná premenná a nie odvodenina z `C.threads.length`: prázdne
+   pole počas fetchu a prázdne pole po odpovedi vyzerajú rovnako, ale človeku
+   hovoria dve úplne odlišné veci. Predtým nemal panel ani jeden z týchto stavov —
+   počas načítania bol prázdny, pri nula vláknach tiež a chyba fetchu skončila len
+   v toku správ, takže zoznam ticho ukazoval staré dáta ako čerstvé. */
+let listState = 'loading';   // 'loading' | 'ready' | 'error'
+let listFilter = '';
+
+/* Rozpísané premenovanie musí prežiť prekreslenie: `loadThreads()` beží po každom
+   ťahu a bez uloženej rozpísanej hodnoty by titulok zmizol uprostred písania. */
+let renaming = null;         // { uuid, value, focused }
+
+/** Porovnanie bez diakritiky — kto hľadá „zaznam", má nájsť aj „záznam". */
+function fold(text) {
+    return String(text ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+}
+
+function matchesFilter(t) {
+    if (listFilter === '') return true;
+
+    return fold(t.title || 'Nové vlákno').includes(fold(listFilter));
+}
+
 /** Riadky v bočnom paneli. Titulok je prvá veta človeka, nie výmysel modelu. */
 export function renderThreadList() {
     const list = $('#thread-list');
     if (!list) return;
 
     list.innerHTML = '';
+    list.setAttribute('aria-busy', listState === 'loading' ? 'true' : 'false');
 
-    C.threads.forEach((t) => {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'thread-row';
-        row.dataset.uuid = t.uuid;
-        if (C.thread?.uuid === t.uuid) row.setAttribute('aria-current', 'true');
+    if (listState === 'loading' && !C.threads.length) {
+        list.append(el('p', 'sr-only', 'Vlákna sa načítavajú…'), skeletonRows());
 
-        const when = t.last_message_at ? new Date(t.last_message_at).toLocaleString('sk-SK', {
-            day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit',
-        }) : 'nezačaté';
+        return;
+    }
 
-        row.innerHTML = '<span class="ttl"></span><span class="when"></span>';
-        row.querySelector('.ttl').textContent = t.title || 'Nové vlákno';
-        row.querySelector('.when').textContent = when;
+    // Chyba NEZAHADZUJE riadky, ktoré už v paneli sú: staré vlákna sú stále
+    // platné odkazy a zahodiť ich kvôli jednej neúspešnej obnove by bolo horšie
+    // než priznať, že zoznam je starý.
+    if (listState === 'error') list.append(errorNote());
 
-        row.addEventListener('click', () => {
-            document.body.classList.remove('rail-open');
-            openThread(t.uuid);
-        });
-        list.append(row);
+    if (!C.threads.length) {
+        if (listState !== 'error') list.append(emptyNote());
+
+        return;
+    }
+
+    const rows = C.threads.filter(matchesFilter);
+
+    if (!rows.length) {
+        list.append(el('p', 'rail-msg', `Hľadaniu „${listFilter}" nezodpovedá žiadne vlákno.`));
+
+        return;
+    }
+
+    rows.forEach((t) => list.append(threadRow(t)));
+
+    if (renaming) focusRename(list);
+}
+
+function threadRow(t) {
+    const row = el('div', 'thread-row');
+    row.dataset.uuid = t.uuid;
+
+    // Premenovanie berie celý riadok: políčko vedľa titulku by v 260 px paneli
+    // nemalo kam.
+    if (renaming?.uuid === t.uuid) {
+        row.append(renameField(t));
+
+        return row;
+    }
+
+    const open = el('button', 'tr-open');
+    open.type = 'button';
+    if (C.thread?.uuid === t.uuid) {
+        open.setAttribute('aria-current', 'true');
+        row.classList.add('on');
+    }
+
+    const when = t.last_message_at ? new Date(t.last_message_at).toLocaleString('sk-SK', {
+        day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit',
+    }) : 'nezačaté';
+
+    open.append(el('span', 'ttl', t.title || 'Nové vlákno'), el('span', 'when', when));
+    open.addEventListener('click', () => {
+        document.body.classList.remove('rail-open');
+        openThread(t.uuid);
     });
+
+    const rename = actionBtn('edit', 'Premenovať vlákno');
+    rename.addEventListener('click', (event) => {
+        event.stopPropagation();
+        startRename(t.uuid);
+    });
+
+    const remove = actionBtn('delete', 'Zmazať vlákno');
+    remove.classList.add('act-del');
+    remove.addEventListener('click', (event) => {
+        event.stopPropagation();
+        armDelete(remove, t.uuid);
+    });
+
+    const acts = el('span', 'tr-acts');
+    acts.append(rename, remove);
+    row.append(open, acts);
+
+    return row;
+}
+
+/** Ikonové tlačidlo riadku. Text tlačidla JE ligatúra — `armDelete` ho vymieňa. */
+function actionBtn(icon, label) {
+    const btn = el('button', 'tr-act ms', icon);
+    btn.type = 'button';
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+
+    return btn;
+}
+
+/* ---------- mazanie (armed-confirm) ---------- */
+
+/* Ten istý vzor ako fronta Kontroly (`armKontrolaAction` v
+   public/js/mind/screens/kontrola.js): prvý klik tlačidlo ozbrojí, druhý do troch
+   sekúnd maže. Natívny `confirm()` sem nejde — blokuje vlákno prehliadača aj
+   rozbehnutý prúd behu a vyzerá ako dialóg cudzej appky. */
+function disarm(btn) {
+    clearTimeout(btn._disarm);
+    btn.classList.remove('armed');
+    btn.classList.add('ms');
+    btn.textContent = 'delete';
+    btn.title = 'Zmazať vlákno';
+    btn.setAttribute('aria-label', 'Zmazať vlákno');
+}
+
+function armDelete(btn, uuid) {
+    if (btn.classList.contains('armed')) {
+        disarm(btn);
+        deleteThread(uuid);
+
+        return;
+    }
+
+    // Ozbrojené môže byť naraz len jedno tlačidlo — dve „Naozaj zmazať?" vedľa
+    // seba by sa dali potvrdiť omylom.
+    $$('#thread-list .tr-act.armed').forEach(disarm);
+
+    btn.classList.add('armed');
+    btn.classList.remove('ms');
+    btn.textContent = 'Naozaj zmazať?';
+    btn.title = 'Potvrď druhým kliknutím';
+    btn.setAttribute('aria-label', 'Naozaj zmazať vlákno? Potvrď druhým kliknutím.');
+    btn._disarm = setTimeout(() => { if (btn.isConnected) disarm(btn); }, 3000);
+}
+
+/** Zmazanie je nevratné — správy aj tool cally idú s vláknom (cascadeOnDelete). */
+export async function deleteThread(uuid) {
+    // Beh v mazanom vlákne by dostreamoval do niečoho, čo už neexistuje.
+    if (C.running && C.thread?.uuid === uuid) document.dispatchEvent(new CustomEvent('console:stop'));
+
+    const done = await json(`/api/console/threads/${uuid}`, { method: 'DELETE' });
+
+    // Chybu ohlásil `json()` do toku správ; riadok musí zostať, kým vlákno žije.
+    if (!done) return;
+
+    C.threads = C.threads.filter((t) => t.uuid !== uuid);
+
+    if (C.thread?.uuid !== uuid) {
+        renderThreadList();
+        announce('Vlákno je zmazané.');
+
+        return;
+    }
+
+    // Zmazané AKTÍVNE vlákno: UI nesmie zostať visieť na neexistujúcom uuid —
+    // URL by po obnove stránky skončila na 404 a hlavička by ukazovala titulok
+    // niečoho, čo v DB nie je.
+    C.thread = null;
+    C.awaiting = null;
+    C.stats = null;
+    C.step = null;
+
+    const next = C.threads.find(matchesFilter) || C.threads[0];
+
+    if (next) {
+        await openThread(next.uuid);
+    } else {
+        history.pushState({}, '', '/console');
+        const title = $('#thread-title');
+        if (title) title.textContent = 'Charón';
+        const auto = $('#auto-accept');
+        if (auto) auto.checked = false;
+        renderEmpty();
+        renderThreadList();
+        paintModels();
+    }
+
+    paintStats();
+    paintSend();
+    announce('Vlákno je zmazané.');
+}
+
+/* ---------- premenovanie ---------- */
+
+function startRename(uuid) {
+    const t = C.threads.find((x) => x.uuid === uuid);
+    if (!t) return;
+
+    renaming = { uuid, value: t.title || '', focused: false };
+    renderThreadList();
+}
+
+function stopRename() {
+    // Poradie je dôležité: `renaming` sa nuluje PRED prekreslením, aby blur
+    // odstráneného políčka nespustil uloženie toho, čo človek práve zahodil.
+    renaming = null;
+    renderThreadList();
+}
+
+function renameField(t) {
+    const form = el('form', 'tr-rename');
+    const input = el('input', 'tr-input');
+    input.type = 'text';
+    input.value = renaming.value;
+    input.maxLength = 200;   // ten istý strop, aký validuje ThreadController
+    input.setAttribute('aria-label', 'Nový názov vlákna');
+    input.placeholder = 'Názov vlákna';
+
+    input.addEventListener('input', () => { if (renaming) renaming.value = input.value; });
+
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+
+        // Bez zastavenia by to isté Esc pod políčkom zastavilo rozbehnutý beh.
+        event.preventDefault();
+        event.stopPropagation();
+        stopRename();
+    });
+
+    // Odchod z políčka je potvrdenie, nie zahodenie: klik vedľa je bežnejší než
+    // Enter a zahodiť po ňom prepísaný názov by bola strata bez varovania.
+    input.addEventListener('blur', () => {
+        if (renaming?.uuid === t.uuid) saveRename(t.uuid, input.value);
+    });
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveRename(t.uuid, input.value);
+    });
+
+    form.append(input);
+
+    return form;
+}
+
+function focusRename(list) {
+    const input = list.querySelector('.tr-input');
+    if (!input || !renaming) return;
+
+    input.focus();
+
+    // Označiť celý text má zmysel raz — pri ďalších prekresleniach (`loadThreads()`
+    // po ťahu) by to zmazalo rozpísanú zmenu prvým stlačeným klávesom.
+    if (!renaming.focused) {
+        input.select();
+        renaming.focused = true;
+    }
+}
+
+async function saveRename(uuid, raw) {
+    const title = String(raw ?? '').replace(/\s+/gu, ' ').trim().slice(0, 200);
+    const row = C.threads.find((t) => t.uuid === uuid);
+    const before = row?.title || '';
+
+    renaming = null;
+
+    // Prázdny názov sa neukladá: backend ho vezme ako `null` a v paneli by sa
+    // vlákno nedalo od ostatných rozoznať.
+    if (title === '' || title === before) {
+        renderThreadList();
+
+        return;
+    }
+
+    const data = await json(`/api/console/threads/${uuid}`, { method: 'PATCH', body: { title } });
+
+    if (!data) {
+        renderThreadList();
+
+        return;
+    }
+
+    if (row) row.title = data.title;
+
+    if (C.thread?.uuid === uuid) {
+        C.thread.title = data.title;
+        const head = $('#thread-title');
+        if (head) head.textContent = data.title;
+    }
+
+    renderThreadList();
+    announce('Vlákno je premenované.');
+}
+
+/* ---------- stavy zoznamu ---------- */
+
+/* Kostra namiesto prázdna: `/api/console/threads` ide cez ten istý PHP worker ako
+   beh, takže počas rozbehnutého ťahu môže odpovedať sekundy. */
+function skeletonRows() {
+    const box = el('div', 'rail-skeleton');
+    box.setAttribute('aria-hidden', 'true');
+
+    for (let i = 0; i < 4; i++) box.append(el('span', 'sk-row'));
+
+    return box;
+}
+
+/** Prázdny stav hovorí, čo robiť ďalej — tak ako všade inde v appke. */
+function emptyNote() {
+    const box = el('div', 'rail-empty');
+    box.append(el('p', 'rail-msg', 'Zatiaľ žiadne vlákna.'));
+    box.append(el('p', 'rail-msg', 'Napíš úlohu dole — vlákno vznikne samo. Alebo ho začni tlačidlom „Nové vlákno".'));
+
+    return box;
+}
+
+function errorNote() {
+    const box = el('div', 'rail-error');
+    box.append(el('p', 'rail-msg', 'Zoznam vlákien sa nepodarilo načítať.'));
+
+    const retry = el('button', 'rail-retry', 'Skúsiť znovu');
+    retry.type = 'button';
+    retry.addEventListener('click', () => loadThreads());
+    box.append(retry);
+
+    return box;
 }
 
 export async function loadThreads() {
+    // Kostra sa ukáže LEN keď panel nemá čo ukázať. `loadThreads()` beží aj po
+    // každom ťahu a preblikávať vtedy hotový zoznam na kostru by bolo horšie než
+    // nechať na obrazovke to, čo platí.
+    if (!C.threads.length) {
+        listState = 'loading';
+        renderThreadList();
+    }
+
     const data = await json('/api/console/threads');
-    C.threads = data?.threads ?? C.threads;
+
+    if (!data?.threads) {
+        listState = 'error';
+        renderThreadList();
+
+        return;
+    }
+
+    listState = 'ready';
+    C.threads = data.threads;
     renderThreadList();
 }
 
@@ -138,6 +465,9 @@ export async function newThread(options = {}) {
         C.threads.unshift({
             uuid: data.uuid, title: data.title, model: data.model, last_message_at: null,
         });
+        // Server práve odpovedal, takže prípadné hlásenie o nenačítanom zozname
+        // už neplatí — inak by nad novým vláknom svietila stará chyba.
+        listState = 'ready';
         history.pushState({}, '', `/console/${data.uuid}`);
         $('#thread-title').textContent = data.title;
         $('#auto-accept').checked = !!data.auto_accept;
@@ -165,6 +495,24 @@ export async function ensureThread() {
 
 function wireShell() {
     $('#new-thread')?.addEventListener('click', () => newThread());
+
+    // Hľadanie je čisto klientské nad už načítanými riadkami: `/api/console/threads`
+    // vracia najviac 100 vlákien, takže druhý okruh na server by tu nič nepridal.
+    $('#thread-find')?.addEventListener('input', (event) => {
+        listFilter = event.target.value.trim();
+        renderThreadList();
+    });
+
+    $('#thread-find')?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+
+        // Esc vyprázdni hľadanie. Bez zastavenia propagácie by to isté Esc
+        // dobehlo na dokument a zastavilo rozbehnutý beh.
+        event.stopPropagation();
+        event.target.value = '';
+        listFilter = '';
+        renderThreadList();
+    });
 
     // Pod 860 px je panel vlákien skrytý — bez tohto prepínača by sa k histórii
     // na úzkom okne nedalo dostať vôbec.

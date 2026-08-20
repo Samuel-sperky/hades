@@ -52,6 +52,7 @@ export function renderEmpty() {
     if (!stream) return;
 
     stream.innerHTML = '';
+    waitNode = null;
 
     const box = el('div', 'empty-state');
     box.append(sigilMark());
@@ -127,6 +128,11 @@ export function paintJump() {
    nie „toto tu je". Preto sa počas renderThread() zrod potlačí. */
 let restoring = 0;
 
+/* Bublina čakania na prvý token (viď `waitStart()` nižšie). Deklarácia stojí tu,
+   nad `appendBlock()`, ktorý ju číta — moduly konzoly sú v cykle a `let` nie je
+   hoistovaný. */
+let waitNode = null;
+
 /** Prvé pridanie po prázdnom stave musí prázdny stav odstrániť. */
 function appendBlock(node) {
     const stream = streamEl();
@@ -134,10 +140,52 @@ function appendBlock(node) {
 
     stream.querySelector('.empty-state')?.remove();
     if (!restoring) node.classList.add('is-new');
-    stream.append(node);
+
+    // Bublina čakania drží spodok toku: čokoľvek pribudne počas nej (karta
+    // nástroja, hlásenie) ide PRED ňu, inak by sa signál „ešte sa pracuje"
+    // ocitol uprostred histórie a pod ním by stálo ticho.
+    if (waitNode?.isConnected) stream.insertBefore(node, waitNode);
+    else stream.append(node);
+
     scrollIfFollowing();
 
     return node;
+}
+
+/* ---------- čakanie na prvý token ---------- */
+
+/* Lokálny model beží na CPU (~8 tok/s) a prvý token môže prísť po 25 s. Jediný
+   signál bol dovtedy `#run-stats` v pravom hornom rohu hlavičky — teda ďaleko od
+   miesta, kam sa človek pozerá, keď čaká na odpoveď. Bublina stojí presne tam,
+   kde odpoveď vzápätí pribudne, a zmizne s prvým znakom. */
+export function waitStart() {
+    const stream = streamEl();
+    if (!stream || waitNode?.isConnected) return;
+
+    stream.querySelector('.empty-state')?.remove();
+
+    const box = el('div', 'msg assistant thinking');
+    // Tok je `aria-live` oblasť; pulzujúce bodky nemajú čo hlásiť a `#run-announce`
+    // hovorí za ne celou vetou.
+    box.setAttribute('aria-hidden', 'true');
+
+    const who = el('span', 'who');
+    who.append(el('span', null, 'Charón'));
+
+    const bubble = el('div', 'bubble');
+    const dots = el('span', 'think-dots');
+    for (let i = 0; i < 3; i++) dots.append(el('span', 'think-dot'));
+    bubble.append(dots, el('span', 'think-note', 'Odpoveď sa pripravuje…'));
+
+    box.append(who, bubble);
+    stream.append(box);
+    waitNode = box;
+    scrollIfFollowing();
+}
+
+export function waitStop() {
+    waitNode?.remove();
+    waitNode = null;
 }
 
 /** Hotový blok (karta nástroja, potvrdenie) do toku — poradie je chronológia. */
@@ -221,10 +269,18 @@ export function beginTurn(meta = {}) {
     // Kým sa odpoveď skladá, čítačka nemá čo hlásiť: bez aria-busy by predčítala
     // každý prílet tokenu, teda pri 9 tok/s deväťkrát za sekundu.
     streamEl()?.setAttribute('aria-busy', 'true');
+
+    // Ticho medzi `start` a prvým tokenom je na tomto stroji desiatky sekúnd —
+    // od tejto chvíle je vidieť, že sa niečo deje.
+    waitStart();
 }
 
 export function appendDelta(text) {
     if (!C.turn) beginTurn({});
+
+    // Prvý znak je koniec čakania. Až tu, nie pri `start`: rámec `start` prichádza
+    // okamžite, kým model ešte ani nezačal generovať.
+    waitStop();
 
     if (!C.turn.bubble) {
         const box = appendBlock(assistantShell({
@@ -283,6 +339,8 @@ export function endTurn() {
         painting = 0;
     }
 
+    // Ťah sa skončil (aj zaparkovaním na povolení) — čakať už nie je na čo.
+    waitStop();
     paintTurn();
     streamEl()?.setAttribute('aria-busy', 'false');
     C.turn = null;
@@ -309,6 +367,7 @@ export function renderThread(data) {
 
 function renderThreadBody(stream, data) {
     stream.innerHTML = '';
+    waitNode = null;
     C.turn = null;
     C.awaiting = null;
     stream.setAttribute('aria-busy', 'false');

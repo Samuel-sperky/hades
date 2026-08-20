@@ -63,6 +63,15 @@
                 <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
             </div>
             <div id="header-metrics" aria-live="polite"></div>
+            {{-- Rozsah grafu patrí k POČTU uzlov, nie do zbalených Pokročilých nastavení.
+                 Je to jediný prepínač, ktorý rozhoduje, či je na plátne ~1100 alebo ~2700
+                 uzlov — pochovaný tri kliky hlboko pod kozmetickými slidrami pôsobil ako
+                 jeden z nich. Vedľa metriky je vidieť aj to, čo urobil. --}}
+            <div class="h-scope">
+                <span id="scope-label">Knižnica</span>
+                <button id="scope-toggle" class="switch" type="button" role="switch"
+                        aria-checked="false" aria-labelledby="scope-label"></button>
+            </div>
         </div>
         <div class="h-right">
             <button id="pack-trigger" type="button" class="hidden" aria-label="Balík pre Claude Code">
@@ -109,6 +118,9 @@
             </button>
             <button class="dest" data-screen="rozhodnutia" type="button" aria-label="Rozhodnutia">
                 <span class="ms" aria-hidden="true">gavel</span><span class="lbl">Rozhodnutia</span>
+            </button>
+            <button class="dest" data-screen="runy" type="button" aria-label="Runy">
+                <span class="ms" aria-hidden="true">bolt</span><span class="lbl">Runy</span>
             </button>
             <button id="dest-kontrola" class="dest" data-screen="kontrola" type="button" aria-label="Kontrola">
                 <span class="ms" aria-hidden="true">fact_check</span><span class="lbl">Kontrola</span>
@@ -161,6 +173,14 @@
                 <p class="screen-sub">Časová os rozhodnutí naprieč projektami</p>
             </header>
             <div id="rozhodnutia-body"></div>
+        </section>
+
+        <section class="screen" id="screen-runy">
+            <header class="screen-head">
+                <h1>Runy</h1>
+                <p class="screen-sub">Čo konzola robila — zadanie, kroky, cena</p>
+            </header>
+            <div id="runy-body"></div>
         </section>
 
         <section class="screen" id="screen-kontrola">
@@ -261,10 +281,6 @@
                         <output></output>
                     </label>
                     <h3>Sieť — filter</h3>
-                    <div class="switch-row">
-                        <span id="scope-label">Zobraziť knižnicu v grafe</span>
-                        <button id="scope-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="scope-label"></button>
-                    </div>
                     <div class="check-cap">Typy</div>
                     <label class="check"><input type="checkbox" data-ftype="memory" checked><span class="box" aria-hidden="true"></span><span>Spomienky</span></label>
                     <label class="check"><input type="checkbox" data-ftype="skill" checked><span class="box" aria-hidden="true"></span><span>Skills</span></label>

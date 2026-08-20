@@ -113,6 +113,33 @@ kbd {
 
 #new-thread { flex: 1; }
 
+/* Hľadanie nad zoznamom. Fokusový prsteň nesie globálne `:focus-visible`, preto
+   tu žiadny druhý indikátor nie je — dva naraz oko číta ako dva rôzne stavy. */
+.rail-find {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+}
+
+.rail-find .ms { font-size: 16px; }
+
+#thread-find {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 2px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-body);
+    outline: none;
+}
+
+#thread-find::placeholder { color: var(--muted); }
+
 #thread-list {
     flex: 1;
     min-height: 0;
@@ -120,12 +147,31 @@ kbd {
     padding: var(--sp-1);
 }
 
+/* Riadok už NIE JE jedno tlačidlo: nesie otvorenie vlákna a dve akcie, a
+   <button> vnorený do <button> je neplatné HTML — parser ho rozbije na
+   súrodencov a akcie by vypadli mimo riadok. */
 .thread-row {
-    display: block;
-    width: 100%;
-    padding: var(--sp-1) 10px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
     margin-bottom: var(--sp-0);
     border: 1px solid transparent;
+    border-radius: var(--r-sm);
+}
+
+.thread-row:hover { border-color: var(--border); background: var(--hover-fill); }
+.thread-row.on { border-color: var(--border-accent); }
+.thread-row.on .tr-open { color: var(--accent-ink); }
+
+.tr-open {
+    flex: 1;
+    min-width: 0;
+    /* `display` sa MUSÍ vypísať: mind.css dáva každému <button> `inline-flex`,
+       takže titulok a čas by si sadli vedľa seba namiesto pod seba. Presne preto
+       ho mal aj pôvodný riadok, keď bol celý jedným tlačidlom. */
+    display: block;
+    padding: var(--sp-1) 10px;
+    border: 0;
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--text);
@@ -135,14 +181,137 @@ kbd {
     cursor: pointer;
     /* dlhý titulok sa nezalomí do troch riadkov — panel má držať rytmus */
     overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.tr-open .ttl { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-open .when { display: block; font-size: var(--fs-micro); color: var(--muted); }
+
+/* Zvýraznenie nesie celý riadok; druhé podfarbenie pod tlačidlom by z neho
+   spravilo dva prekrývajúce sa obdĺžniky. */
+.tr-open:hover { background: transparent; border-color: transparent; }
+
+/* Akcie sa odkryjú až nad riadkom, na ktorom človek stojí: dva gombíky pri každom
+   z osemdesiatich vlákien by z panela urobili nástrojovú lištu. `opacity` a nie
+   `visibility`/`display` zámerne — skryté tlačidlo sa nedá zafokusovať, takže by
+   `:focus-within` nikdy nenastalo a klávesnica by sa k premenovaniu nedostala. */
+.tr-acts {
+    display: flex;
+    flex: none;
+    gap: 2px;
+    padding-right: 4px;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+
+.thread-row:hover .tr-acts,
+.thread-row:focus-within .tr-acts { opacity: 1; }
+
+.tr-act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    /* mind.css dáva každému <button> `min-height: 32px`; v 48 px riadku by dva
+       také gombíky vyzerali ako druhá lišta. */
+    min-height: 0;
+    height: 26px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.tr-act:hover { border-color: var(--border); color: var(--text); }
+.tr-act.act-del:hover { border-color: var(--danger-border); color: var(--danger); }
+
+/* Ozbrojené mazanie nesie VETU, nie ikonu — potvrdzuje sa nevratná operácia a
+   človek má prečítať, čo potvrdzuje. Ten istý vzor má fronta Kontroly v grafe. */
+.tr-act.armed {
+    padding: 0 8px;
+    border-color: var(--danger-border);
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-family: var(--font);
+    font-size: var(--fs-caption);
     white-space: nowrap;
 }
 
-.thread-row:hover { border-color: var(--border); background: var(--hover-fill); }
-.thread-row[aria-current="true"] { border-color: var(--border-accent); color: var(--accent-ink); }
-.thread-row .ttl { display: block; overflow: hidden; text-overflow: ellipsis; }
-.thread-row .when { display: block; font-size: var(--fs-micro); color: var(--muted); }
+/* Premenovanie berie celý riadok — políčko vedľa titulku by v 260 px paneli
+   nemalo kam. */
+.tr-rename { flex: 1; min-width: 0; padding: 4px 6px; }
+
+.tr-input {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid var(--accent);
+    border-radius: var(--r-sm);
+    background: var(--field-bg);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-body);
+    outline: none;
+}
+
+/* ---------- stavy zoznamu vlákien ---------- */
+
+.rail-msg {
+    margin: 0 0 6px;
+    padding: 0 4px;
+    color: var(--muted);
+    font-size: var(--fs-small);
+    line-height: 1.5;
+}
+
+.rail-empty { padding: var(--sp-1) 6px; }
+
+.rail-error {
+    margin-bottom: var(--sp-1);
+    padding: var(--sp-1) 10px;
+    border: 1px solid var(--danger-border);
+    border-radius: var(--r-sm);
+    background: var(--danger-soft);
+}
+
+.rail-error .rail-msg { padding: 0; color: var(--text); }
+
+.rail-retry {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--accent-ink);
+    font: inherit;
+    font-size: var(--fs-caption);
+    cursor: pointer;
+}
+
+.rail-retry:hover { border-color: var(--border-accent); background: var(--accent-softer); }
+
+/* Kostra drží rytmus skutočných riadkov, aby zoznam po načítaní neposkočil. */
+.rail-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: var(--sp-1) 4px;
+}
+
+.sk-row {
+    display: block;
+    height: 30px;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    animation: sk-pulse 1.4s ease-in-out infinite;
+}
+
+.sk-row:nth-child(2) { animation-delay: .12s; }
+.sk-row:nth-child(3) { animation-delay: .24s; }
+.sk-row:nth-child(4) { animation-delay: .36s; }
+
+@keyframes sk-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 
 /* ---------- hlavný stĺpec ---------- */
 
@@ -318,6 +487,42 @@ kbd {
 }
 
 .msg.assistant .bubble { padding: 2px 0; }
+
+/* Čakanie na prvý token. Model beží lokálne na CPU (~8 tok/s) a prvý znak môže
+   prísť po 25 s; jediný signál bol dovtedy `#run-stats` v pravom hornom rohu
+   hlavičky, teda ďaleko od miesta, kam sa človek pri čakaní pozerá. Bublina
+   stojí presne tam, kde odpoveď vzápätí pribudne. */
+.msg.thinking .bubble {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.think-dots { display: inline-flex; gap: 5px; }
+
+.think-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    opacity: .3;
+    animation: think-blink 1.2s ease-in-out infinite;
+}
+
+.think-dot:nth-child(2) { animation-delay: .16s; }
+.think-dot:nth-child(3) { animation-delay: .32s; }
+
+@keyframes think-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+.think-note { color: var(--muted); font-size: var(--fs-body); }
+
+/* Bez pohybu zostáva bublina aj jej veta — signál nesie prítomnosť bubliny,
+   nie pulz. To isté platí pre kostru zoznamu vlákien. */
+@media (prefers-reduced-motion: reduce) {
+    .think-dot { animation: none; opacity: .65; }
+    .sk-row { animation: none; opacity: .7; }
+    .tr-acts { transition: none; }
+}
 
 .msg.system .bubble,
 .msg.error .bubble {
@@ -807,6 +1012,12 @@ kbd {
     font-feature-settings: 'liga';
 }
 
+/* DVE ÚROVNE ZALOMENIA, obe zámerné a obe použité v mind.css aj tu:
+     900 px — plávajúce panely (dock, detail uzla) a karty dashboardu,
+     860 px — plochy, ktoré strácajú druhý stĺpec (Smernica, rail Charóna).
+   Nedajú sa vytiahnuť do tokenu: CSS premenné v `@media` nefungujú. Keď niektorú
+   z hraníc meníš, prehľadaj OBA stylesheety — inak sa appka zlomí na dvoch
+   rôznych šírkach a bude to vyzerať ako chyba layoutu. */
 @media (max-width: 860px) {
     #console-app { grid-template-columns: 1fr; }
 
@@ -834,6 +1045,9 @@ kbd {
         z-index: 10;
     }
 
+    /* Na dotyku hover neexistuje — skryté akcie by boli nedosiahnuteľné. */
+    .tr-acts { opacity: 1; }
+
     #rail-toggle { display: inline-flex; }
     #console-header { flex-wrap: wrap; padding: 6px var(--sp-2); }
     .ch-right { gap: 10px; }
@@ -841,5 +1055,10 @@ kbd {
     #model-select { max-width: 130px; }
     #stream { padding: var(--sp-2) 12px var(--sp-1); }
     #composer { padding: 10px 12px 8px; }
-    #composer-hint { display: none; }
+    /* Nápoveda sa pod 860 px NEskrýva, len sa zúži. `display: none` tu bol do
+       20. 8. 2026 a s ním zmizla jediná stopa po slash príkazoch a skratkách —
+       na úzkom okne zostal len zrezaný placeholder. Teraz sa schovajú len
+       klávesové kombinácie (na dotyku aj tak nemajú význam) a veta o `/` ostane. */
+    #composer-hint .hint-keys { display: none; }
+    #composer-hint { font-size: 10px; margin-top: 6px; }
 }

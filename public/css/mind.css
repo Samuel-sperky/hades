@@ -169,6 +169,14 @@
     --danger-border-hover: rgba(214, 69, 69, .60);
     --warn: #d97706;
 
+    /* Semantic hues ako TEXT. Tá istá potreba, akú už rieši --accent-ink: základné
+       --success/--danger/--warn sú ladené ako VÝPLŇ a akcent, takže na svetlom tinte
+       badge dávajú 3,76 / 3,85 / 2,80:1 — teda pod AA. Zmerané na reálnom pozadí
+       badge (rgb 244,238,252) 20. 8. 2026, s rezervou, nie na hranici. */
+    --success-ink: #0b6a44;               /* 5,85:1 na tinte badge */
+    --danger-ink: #a52a2a;                /* 6,23:1 */
+    --warn-ink: #9a4a08;                  /* 5,51:1 */
+
     /* ---- canvas identity colors ----
        Zostal JEDEN: --node-memory pre .dtl-dot[data-origin="brain"]. Ostatné štyri
        (--node-core/skill/project/relation) boli mŕtve — plátno berie farbu uzla z
@@ -436,6 +444,12 @@
     --danger-border: rgba(240, 117, 117, .34);
     --danger-border-hover: rgba(240, 117, 117, .60);
     --warn: #f59e0b;
+    /* Na tmavej téme sú základné hodnoty ako text v poriadku (7,34 / 5,05 / 6,57:1
+       na tinte badge), takže ink je tá istá farba — token existuje preto, aby ho
+       komponent mohol použiť bez toho, aby vedel, na ktorej téme beží. */
+    --success-ink: var(--success);
+    --danger-ink: var(--danger);
+    --warn-ink: var(--warn);
     --shimmer-sheen: rgba(255, 255, 255, .07);
     --elev-1: 0 1px 2px rgba(0, 0, 0, .40), inset 0 1px 0 var(--top-rim);
     --elev-2: 0 1px 2px rgba(0, 0, 0, .40), 0 8px 24px -14px rgba(0, 0, 0, .50), inset 0 1px 0 var(--top-rim);
@@ -2984,6 +2998,16 @@ body[data-screen="graf"] #screens { display: none; }
     font-size: var(--fs-small); color: var(--text-secondary);
 }
 .today-chip .n { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+/* Čip je od 20. 8. 2026 <button> (preklik do Denníka s filtrom), nie <span>.
+   `font: inherit` je nutné — tlačidlo by inak vzalo systémové písmo prehliadača
+   a rad čipov by sa rozišiel so zvyškom obrazovky. */
+.today-chip {
+    font: inherit; font-size: var(--fs-small);
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.today-chip:hover { border-color: var(--border-accent); background: var(--accent-softer); }
+.today-chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Fluidná mriežka — riadok záznamu potrebuje ~640px (názov + značka + čas), tak sa
    šírka doleje ďalším stĺpcom namiesto prázdna medzi názvom a časom. */
 .today-list {
@@ -3091,6 +3115,30 @@ body[data-screen="graf"] #screens { display: none; }
     max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tcl-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+
+/* Oblasť a oddelenie v detaile uzla sú NAVIGÁCIA, nie popiska — zúžia filter
+   rovnako ako breadcrumb. Vyzerajú ako text, kým na ne človek nesiahne: meta riadok
+   je tichý a tri podčiarknuté odkazy by z neho spravili panel s odkazmi. */
+.meta-link {
+    background: none; border: none; padding: 0;
+    font: inherit; color: inherit;
+    cursor: pointer;
+    border-bottom: 1px solid transparent;
+}
+.meta-link:hover { color: var(--accent-ink); border-bottom-color: var(--border-accent); }
+.meta-link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-xs); }
+
+/* Rozsah grafu v hlavičke, hneď pri počte uzlov (viď komentár v mind.blade.php). */
+.h-scope { display: flex; align-items: center; gap: var(--sp-1); }
+.h-scope #scope-label {
+    font-size: var(--fs-micro); color: var(--muted);
+    letter-spacing: var(--ls-mono); text-transform: uppercase;
+}
+/* Pod 1280 px ostane len samotný prepínač — jeho stav nesie aria-checked
+   a popis drží aria-labelledby, takže sa nestráca pre čítačku, len pre oko. */
+@media (max-width: 1280px) {
+    .h-scope #scope-label { display: none; }
+}
 
 /* ---- Riadok zoznamu s pack tlačidlom (Dnes / Denník / Knižnica) ---- */
 .li-wrap { display: flex; align-items: stretch; gap: 2px; }
@@ -3839,6 +3887,34 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
 .queue-actions button.act-resolve:hover { color: var(--accent-ink); background: var(--accent-softer); }
 .queue-actions button.act-skip:hover { color: var(--danger); background: var(--danger-soft); }
 .queue-actions button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Vstup vo filtračnom rade nesmie brať celú šírku. Základné `input { width: 100% }`
+   ho inak roztiahne cez celý riadok a poznámku („Zobrazených 100 zo 140") vytlačí
+   na okraj. Nahrádza dva inline štýly — v Kontrole a v Rozhodnutiach. */
+.dtl-filter input { flex: 0 1 340px; width: auto; min-width: 140px; }
+
+/* Stlmenie čakajúceho zoznamu sa NESMIE týkať jeho vlastného filtra: človek by
+   počas fetchu nemohol filter opraviť ani zrušiť, hoci práve to chce urobiť. */
+#library-body.is-stale #library-filter { opacity: 1; pointer-events: auto; }
+
+/* OZBROJENÝ STAV — spoločné pravidlo pre všetky nevratné akcie.
+   Vzor „prvý klik ozbrojí, druhý do 3 s vykoná" má appka na štyroch miestach
+   (uzol, fronta Kontroly, rozhodnutie, smernica), ale štýl mal do 20. 8. 2026
+   len prvé dve. Ikonové tlačidlo sa musí rozšíriť na text, inak sa otázka
+   „Naozaj zmazať?" nevojde do 34 px a orežie sa na „Naoz…". */
+button.danger.armed {
+    width: auto;
+    padding: 0 10px;
+    font-family: var(--font);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: var(--danger);
+    border-color: var(--danger-border-hover);
+    background: var(--danger-soft);
+}
+
+/* Kôš v riadku uloženej smernice — bol to inline štýl v smernica.js. */
+.dir-del { margin-left: auto; }
+
 /* armed inline (Preskočiť / Delete) — no native confirm() */
 .queue-actions button.armed {
     width: auto; padding: 0 10px;
@@ -4271,3 +4347,132 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
 }
 .adv-body { padding-top: var(--sp-1); }
 .adv-body > h3:first-child { margin-top: 0; }
+
+/* ==========================================================================
+   Obrazovka Runy — log behov konzoly
+   --------------------------------------------------------------------------
+   Stavia na existujúcich komponentoch (.dtl* časová os, .chip filtre, .badge
+   stav), takže tu je len to, čo skutočne chýba. Bolo to vedomé rozhodnutie, nie
+   šetrenie: šprint mal zjednotiť komponentné názvoslovie, takže nová obrazovka
+   nesmie priniesť ôsmy dialekt.
+
+   Farby idú výhradne cez tokeny, aj mapovanie stavov — prefarbenie palety sa
+   tým prenesie sem samo.
+   ========================================================================== */
+
+.run-head {
+    display: flex; align-items: center; gap: var(--sp-2);
+    flex-wrap: wrap;
+    margin-bottom: var(--sp-1);
+}
+
+.run-when, .run-model {
+    color: var(--muted);
+    font-size: var(--fs-caption);
+}
+
+.run-model { font-family: var(--mono); }
+
+.run-prompt {
+    margin: 0;
+    color: var(--text);
+}
+
+/* Cena behu. `celkom` je wall clock a obsahuje čas, kým sa človek rozhodoval
+   o zápise; `tok/s` je z generovacieho času správ. Sú to dva rôzne údaje, preto
+   stoja vedľa seba a majú vlastné popisky — nie jedno číslo, ktoré klame. */
+.run-cost {
+    display: flex; flex-wrap: wrap; gap: var(--sp-3);
+    margin-top: var(--sp-2);
+    color: var(--muted);
+    font-size: var(--fs-caption);
+}
+
+.run-metric b {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+}
+
+.run-error {
+    margin: var(--sp-2) 0 0;
+    color: var(--danger-ink);
+    font-size: var(--fs-small);
+}
+
+.run-detail {
+    margin-top: var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--line-soft);
+}
+
+.run-stop {
+    margin: 0 0 var(--sp-2);
+    color: var(--muted);
+    font-size: var(--fs-caption);
+}
+
+.run-steps {
+    list-style: none;
+    margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: var(--sp-2);
+}
+
+.run-step {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr;
+    gap: var(--sp-2);
+    align-items: start;
+}
+
+.run-step-who {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    overflow-wrap: anywhere;
+}
+
+.run-step-text { min-width: 0; }
+
+.run-args {
+    display: block;
+    margin-top: var(--sp-1);
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    overflow-wrap: anywhere;
+}
+
+/* Náhľad zápisu sa ukazuje aj po zamietnutí: práve pri zamietnutom zápise chce
+   človek najčastejšie vedieť, čo presne odmietol. */
+.run-diff {
+    margin: var(--sp-2) 0 0;
+    padding: var(--sp-2);
+    max-height: 18rem;
+    overflow: auto;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-sm);
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    white-space: pre;
+}
+
+.run-actions {
+    display: flex; gap: var(--sp-2);
+    margin-top: var(--sp-3);
+}
+
+/* Stav behu nesie farbu aj slovo — farba nikdy nie je jediný nosič významu.
+   `waiting` je varovanie a nie chyba: beh čaká na človeka, nie na opravu. */
+.badge[data-status="failed"], .run-step[data-status="failed"] .badge { color: var(--danger-ink); }
+.badge[data-status="waiting"], .run-step[data-status="pending"] .badge { color: var(--warn-ink); }
+.badge[data-status="done"] { color: var(--success-ink); }
+.badge[data-status="aborted"] { color: var(--muted); }
+.run-step[data-status="denied"] .badge { color: var(--danger-ink); }
+
+.dtl-dot[data-status="failed"] { background: var(--danger); }
+.dtl-dot[data-status="waiting"], .dtl-dot[data-status="running"] { background: var(--warn); }
+.dtl-dot[data-status="done"] { background: var(--success); }

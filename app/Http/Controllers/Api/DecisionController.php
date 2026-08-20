@@ -117,6 +117,33 @@ class DecisionController extends Controller
     }
 
     /**
+     * DELETE — zmaže jedno rozhodnutie.
+     *
+     * Prečo to existuje: obrazovka Rozhodnutia mala dovtedy len `index` a `store`,
+     * takže zle zapísané rozhodnutie sa dalo napraviť jedine tým, že sa vedľa neho
+     * zapíše ďalšie. Plocha, ktorej účel je držať pamäť v poriadku, tak sama
+     * neporiadok vyrábala.
+     *
+     * **Markdown zrkadlo sa nemaže.** Pri `origin=brain` žije text rozhodnutia aj
+     * v súbore (`source_file`) a vyrezať z neho riadok je zásah do mozgu, nie do
+     * indexu — a nevratný. Cestu preto vraciame v odpovedi, nech UI vie povedať
+     * pravdu: záznam je preč, zápis v `.md` zostáva. Nič ho späť do DB nenaimportuje
+     * (rozhodnutia sa zo súborov nesynchronizujú), takže obrazovka ostane čistá.
+     *
+     * Neexistujúce id rieši route model binding (404) — vlastnú vetvu nemá,
+     * lebo by bola druhá kópia toho istého pravidla.
+     */
+    public function destroy(Decision $decision): JsonResponse
+    {
+        $id = $decision->id;
+        $sourceFile = $decision->source_file;
+
+        $decision->delete();
+
+        return response()->json(['deleted' => $id, 'source_file' => $sourceFile]);
+    }
+
+    /**
      * Oblasť podľa id (numerické) alebo slug/mena. Vráti area_id alebo null.
      *
      * Jediná implementácia žije v serializéri — zápis a filter musia rozumieť

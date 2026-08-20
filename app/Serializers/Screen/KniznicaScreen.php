@@ -175,7 +175,10 @@ class KniznicaScreen extends ScreenSerializer
             $query->whereIn('area_id', $areaIds ?: [0]);
         }
 
-        $skills = $query->get(['id', 'label', 'area_id', 'description', 'meta', 'external_key', 'origin', 'certainty']);
+        // `verified_at` a `updated_at` nesú vek playbooku — jediná obrazovka, kde
+        // karta dátum nemala, hoci Kontrola aj Rozhodnutia ho ukazujú.
+        $skills = $query->get(['id', 'label', 'area_id', 'description', 'meta', 'external_key',
+            'origin', 'certainty', 'verified_at', 'updated_at']);
 
         if ($roots->isNotEmpty()) {
             $skills = $skills->filter(function (Node $n) use ($roots, $mind) {
@@ -205,6 +208,11 @@ class KniznicaScreen extends ScreenSerializer
                 : null,
             'origin' => $node->origin,
             'certainty' => $node->certainty,
+            // Vek karty. Do `fieldsForAi()` to zámerne NEIDE: pri 200 riadkoch by
+            // to boli dva ďalšie reťazce na uzol a AI si celý uzol aj s dátumami
+            // dotiahne cez `mind_read`. Je to pole pre oko, ako `snippet` a `tags`.
+            'verified_at' => $node->verified_at?->toIso8601String(),
+            'updated_at' => $node->updated_at?->toIso8601String(),
             'tags' => array_slice($tags, 0, self::TAG_CAP),
             'tags_more' => max(count($tags) - self::TAG_CAP, 0),
         ];

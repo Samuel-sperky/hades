@@ -505,13 +505,17 @@ export function emptyCardHtml(text) {
 }
 
 /* Načítavanie NIE JE prázdny stav — má vlastný znak: súosé kruhy značky, ktoré
-   dýchajú (rovnaká motív ako jadro vedomia a favicon), namiesto generických
-   presýpacích hodín. Text zostáva v prvej osobe („Načítavam…"), pretože Hades
-   o sebe hovorí v prvej osobe aj inde v UI. Pohyb rieši CSS a vypína ho
-   prefers-reduced-motion. */
+   dýchajú (rovnaký motív ako jadro vedomia a favicon), namiesto generických
+   presýpacích hodín.
+
+   Text je NEOSOBNÝ („Načítava sa…"). Do 20. 8. 2026 tu stálo „Načítavam…" a tento
+   komentár to zdôvodňoval tým, že Hades o sebe hovorí v prvej osobe — čo prestalo
+   platiť rozhodnutím o hlase značky (docs/BRAND-HADES.md §1). Prvá osoba je pri
+   dlhej práci rušivá a mýtus už nesie meno; nemusí ho niesť aj každá hláška.
+   Pohyb rieši CSS a vypína ho prefers-reduced-motion. */
 export function loadingHtml(text) {
     return '<div class="empty empty-loading"><span class="load-mark" aria-hidden="true"></span>'
-        + '<p>' + esc(text || 'Načítavam…') + '</p></div>';
+        + '<p>' + esc(text || 'Načítava sa…') + '</p></div>';
 }
 
 export function renderLoading(container, text) {

@@ -378,7 +378,7 @@ export function setupControls() {
         } catch (e) {
             showToast('Uloženie sa nepodarilo');
         }
-    }, 'Ukladám…');
+    }, 'Ukladá sa…');
 
     // Mazanie uzla — arm pattern namiesto confirm(): prvý klik ozbrojí, druhý do 3 s maže
     const nodeDel = $('node-delete');
@@ -422,7 +422,7 @@ export function setupControls() {
             } catch (e) {
                 showToast('Nepodarilo sa zmazať');
             }
-        }, 'Mažem…');
+        }, 'Maže sa…');
         disarmNodeDelete();
     };
 }

@@ -9,7 +9,7 @@ import { $, busy, emptyHtml, esc, getJson, markTreeActive, renderEmpty, renderLo
 
 export async function renderStructure() {
     const wrap = $('structure-tree');
-    renderLoading(wrap, 'Načítavam štruktúru…');
+    renderLoading(wrap, 'Načítava sa štruktúra…');
     try {
         const data = await getJson('/api/structure');
         const cnt = (v) => (v && typeof v === 'object') ? (v.node_count || v.count || 0) : (v || 0);
@@ -127,7 +127,7 @@ export function toggleDeptActions(deptId) {
             }, 3000);
             return;
         }
-        busy(del, () => deptRequest(deptId, 'DELETE', null, 'Oddelenie zmazané'), 'Mažem…');
+        busy(del, () => deptRequest(deptId, 'DELETE', null, 'Oddelenie zmazané'), 'Maže sa…');
     };
 }
 
@@ -155,7 +155,7 @@ export async function deptRequest(deptId, method, body, okMsg) {
 
 export async function findDuplicates() {
     const wrap = $('dup-list');
-    renderLoading(wrap, 'Hľadám duplicity…');
+    renderLoading(wrap, 'Hľadajú sa duplicity…');
     try {
         const data = await getJson('/api/duplicates');
         const pairs = data.pairs || [];

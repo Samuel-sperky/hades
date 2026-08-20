@@ -24,7 +24,7 @@ export const SHORTCUTS = [
     ['Esc', 'Zrušiť filter'],
     ['Backspace', 'O úroveň von'],
     ['D', 'Denník'],
-    ['R', 'Štruktúra'],
+    ['R', 'Štruktúra (na Kontrole: vyriešiť položku)'],
     ['S', 'Prehľad'],
     ['L', 'Legenda'],
     ['G', 'Lokálny graf zvoleného uzla'],
@@ -40,6 +40,7 @@ export const MOUSE_HINTS = [
     ['koliesko', 'Zoom'],
     ['klik na uzol', 'Detail + zúženie filtra'],
     ['klik do prázdna', 'O úroveň von'],
+    ['dvojklik do prázdna', 'Zrušiť celý filter naraz'],
 ];
 
 /* VLNA GRAF A: klávesy 1–4 zužujú FILTER nad jednou scénou. go({level}) doplní

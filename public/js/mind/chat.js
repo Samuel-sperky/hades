@@ -133,7 +133,7 @@ export function renderSuggestCard(sug) {
         } catch (err) {
             showToast('Vytvorenie sa nepodarilo');
         }
-    }, 'Ukladám…');
+    }, 'Ukladá sa…');
 }
 
 export function addMsg(cls, text) {
@@ -221,7 +221,7 @@ export function setupPrompt() {
             if (data && data.suggested_node) renderSuggestCard(data.suggested_node);
         } catch (err) {
             thinking.remove();
-            addMsg('sys sys--error', 'Spojenie s vedomím zlyhalo.');
+            addMsg('sys sys--error', 'Spojenie s vedomím sa nepodarilo.');
         }
     });
 }
@@ -244,7 +244,7 @@ export function handleCommand(text) {
             closeCmdk();
             openCmdk();
             if (arg) { $('cmdk-input').value = arg; renderCmdk(arg); }
-            sys(arg ? 'Hľadám: ' + arg : 'Otvoril som hľadanie.');
+            sys(arg ? 'Hľadá sa: ' + arg : 'Hľadanie otvorené.');
             break;
         case 'zoom':
             if (arg === 'in') zoomBy(1.3);

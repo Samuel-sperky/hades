@@ -49,6 +49,14 @@
                     <span class="ms" aria-hidden="true">add</span><span class="lbl">Nové vlákno</span>
                 </button>
             </div>
+            {{-- Filter nad zoznamom je čisto klientský: `/api/console/threads` vracia
+                 najviac 100 riadkov, takže hľadať sa má v tom, čo už je načítané —
+                 druhý okruh na server by pri tejto veľkosti nič nepridal. --}}
+            <div class="rail-find">
+                <span class="ms" aria-hidden="true">search</span>
+                <input type="search" id="thread-find" autocomplete="off"
+                       placeholder="Hľadať vo vláknach…" aria-label="Hľadať vo vláknach">
+            </div>
             <nav id="thread-list" aria-label="História vlákien"></nav>
         </aside>
 
@@ -110,9 +118,13 @@
                         <span class="ms" aria-hidden="true">stop</span>
                     </button>
                 </div>
+                {{-- Klávesová časť je obalená v .hint-keys, aby sa na úzkom okne dala
+                     skryť SAMOSTATNE. Predtým sa pod 860 px skrývala celá nápoveda
+                     a s ňou jediná stopa po slash príkazoch; skryť len <kbd> sa nedá,
+                     zo zvyšku by ostalo „pošle · nový riadok · príkazy". --}}
                 <p id="composer-hint">
-                    <kbd>Enter</kbd> pošle · <kbd>Shift</kbd>+<kbd>Enter</kbd> nový riadok ·
-                    <kbd>/</kbd> príkazy · <kbd>Esc</kbd> zastaví beh
+                    <span class="hint-keys"><kbd>Enter</kbd> pošle · <kbd>Shift</kbd>+<kbd>Enter</kbd> nový riadok · </span>
+                    <kbd>/</kbd> príkazy<span class="hint-keys"> · <kbd>Esc</kbd> zastaví beh</span>
                 </p>
                 {{-- Paleta slash príkazov — /recall, /read, /model, /clear, /new, /help --}}
                 <div id="slash-palette" class="hidden" role="listbox" aria-label="Príkazy"></div>
