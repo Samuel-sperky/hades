@@ -43,7 +43,58 @@ final class UnifiedDiff
 
         $hunks = self::hunks($a, $b);
 
-        return $hunks === '' ? "Bez zmeny: {$label}" : $header.$hunks;
+        // Bajty sa líšia, ale riadky nie — zmena je teda LEN v koncoch riadkov
+        // alebo na konci súboru (`\n` navyše/menej, CRLF → LF). Vrátiť tu „Bez
+        // zmeny" bola pasca v tom jedinom mieste, kde náhľad nesie váhu: človek
+        // dostal kartu s vetou „nič sa nestane", povolil ju — a zápis prepísal
+        // konce riadkov v celom súbore. Pri `write_file` nad windowsovým
+        // checkoutom servovaným do linuxového kontejnera je to presne tento repo.
+        // Náhľad preto musí povedať, že sa mení niečo neviditeľné, a čo presne.
+        if ($hunks === '') {
+            return "Zmena len v koncoch riadkov alebo na konci súboru: {$label}\n"
+                .self::invisibleDelta($before, $after);
+        }
+
+        return $header.$hunks;
+    }
+
+    /**
+     * Popis zmeny, ktorú diff riadkov neuvidí. Vypisuje sa v znakoch a v počte
+     * konkrétnych zakončení, nie ako „whitespace" — človek sa rozhoduje o zápise
+     * a potrebuje vedieť, či mu to prepíše celý súbor, alebo ubralo jeden znak.
+     */
+    protected static function invisibleDelta(string $before, string $after): string
+    {
+        $count = static fn (string $s, string $needle): int => substr_count($s, $needle);
+
+        $crlfBefore = $count($before, "\r\n");
+        $crlfAfter = $count($after, "\r\n");
+
+        // Osamotené CR (staré Mac konce) — CRLF sa musí odpočítať, inak by sa
+        // každý windowsový riadok počítal dvakrát.
+        $crBefore = $count($before, "\r") - $crlfBefore;
+        $crAfter = $count($after, "\r") - $crlfAfter;
+
+        $lines = [];
+
+        if ($crlfBefore !== $crlfAfter) {
+            $lines[] = "  CRLF zakončení: {$crlfBefore} → {$crlfAfter}";
+        }
+
+        if ($crBefore !== $crAfter) {
+            $lines[] = "  samotných CR: {$crBefore} → {$crAfter}";
+        }
+
+        $tailBefore = str_ends_with($before, "\n") ? 'áno' : 'nie';
+        $tailAfter = str_ends_with($after, "\n") ? 'áno' : 'nie';
+
+        if ($tailBefore !== $tailAfter) {
+            $lines[] = "  nový riadok na konci: {$tailBefore} → {$tailAfter}";
+        }
+
+        $lines[] = sprintf('  veľkosť: %d → %d bajtov', strlen($before), strlen($after));
+
+        return implode("\n", $lines);
     }
 
     /**

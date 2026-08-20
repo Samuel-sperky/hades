@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Edge;
 use App\Models\Node;
+use App\Services\EmbeddingService;
 use App\Services\MindService;
 use App\Services\SimilarityService;
 use Illuminate\Console\Command;
@@ -13,6 +14,39 @@ use Illuminate\Support\Facades\Schema;
 /**
  * A3 — backfill similarity synapsií naprieč celou sieťou (TF-IDF kosínus).
  * Idempotentné: prepája len páry, ktoré ešte hranu nemajú. Prah 0.20.
+ *
+ * A3b (20. 8. 2026) — `--vector`: ten istý krok z hotových bge-m3 embeddingov
+ * namiesto TF-IDF. Vektorová cesta prečíta 2 674 blobov RAZ, rozbalí ich po
+ * dlaždiciach a spočíta 3 573 801 kosínov v pamäti: **31,5 s a špička 106 MB**
+ * na celú sieť.
+ *
+ * Dôvod, prečo `--vector` vzniklo, medzitým z TF-IDF cesty vypadol. Tá bola
+ * O(n²) NAD DATABÁZOU — `topSimilar()` volal `Node::find()` na každého kandidáta,
+ * pri 2 680 uzloch ~7 miliónov dopytov: 22,2 s / 196 uzlov, 90,4 s / 396 uzlov,
+ * exponent log(4,07)/log(2,02) = 1,99, extrapolovane ~69 min na celú sieť.
+ * Odvtedy si `warmCorpus()` drží načítané modely v mape a `topSimilar()` číta
+ * z nej (SimilarityService::$nodes), takže v smyčke nie je ani jeden dopyt.
+ * Namerané na tej istej 396-uzlovej podmnožine: 154,6 s → 2,4 s pri nezmenenom
+ * počte hrán, a celý živý beh **113,8 s a špička 63,0 MB** na 2 690 uzloch.
+ *
+ * Kvadratická ostáva — 3,6 milióna kosínov sa nespočíta zadarmo — ale je to už
+ * len aritmetika v pamäti. `--vector` je stále ~3,6× rýchlejšie a pre nočný beh
+ * preferované; TF-IDF ako záchranná sieť je po tejto oprave únosná aj sama.
+ *
+ * Prah nesie hustotu, nie rýchlosť: nad 0,70 je v celom korpuse len 2 950 párov
+ * (0,08 % všetkých), nad 0,65 už 8 403 — a to je približne toľko, koľko má sieť
+ * hrán dnes. Ten druhý prah by ju zdvojnásobil šumom.
+ *
+ * `--vector` je opt-in a mlčky padá späť: vypnuté `hades.embeddings.enabled`,
+ * prázdna tabuľka `node_embeddings` alebo uzol bez vektora znamenajú TF-IDF
+ * cestu a beh je znak na znak ten istý ako predtým. `mind:rewire` chodí nočným
+ * plánovačom nad živou pamäťou — nevektorizovaný korpus nesmie znamenať, že
+ * sieť príde o backfill.
+ *
+ * Krok NEkonverguje na jeden beh a nikdy nekonvergoval: berie 3 najlepších
+ * NEPREPOJENÝCH susedov, takže druhý beh dosype tých, ktorých prvý vytlačil.
+ * Namerané na 400-uzlovej podmnožine: 118 → 14 → 0 → 0. Stropom je počet párov
+ * nad prahom, nie počet behov.
  *
  * A4 — cross-project cez skill: pre session záznamy doplní chýbajúce
  * skill_mention synapsie (ich zdieľané skilly sú nepriamym mostom medzi
@@ -59,6 +93,37 @@ class MindRewire extends Command
     /** Strop nových skill_mention hrán na jeden session záznam (parita s ingestom). */
     protected const MAX_NEW_MENTIONS = 5;
 
+    /** Koľko similarity susedov si A3 vezme na uzol. */
+    protected const SIM_PER_NODE = 3;
+
+    /** Prah TF-IDF kosínusu pre A3 — pôvodná hodnota, nemeniť bez novej vzorky. */
+    protected const TFIDF_FLOOR = 0.20;
+
+    /**
+     * Prah kosínusu pre vektorovú cestu. NIE je to prepočítaná 0.20 — je to iné
+     * číslo na inej stupnici. TF-IDF nad riedkymi vektormi dáva príbuzným uzlom
+     * 0,15–0,30, bge-m3 nad hustými 0,60–0,86 a dvojica bez akéhokoľvek vzťahu
+     * tam ešte drží ~0,55. Prepočítať jedno na druhé sa nedá.
+     *
+     * 0,70 padlo z ručne prejdenej vzorky 19 uzlov naprieč typmi a oblasťami
+     * (top-5 TF-IDF vedľa top-5 vektorových susedov, 20. 8. 2026): nad 0,70 bolo
+     * 23 z 24 párov také, ktoré človek nazve príbuznými. V pásme 0,65–0,70 to
+     * padne na ~dve tretiny a kandidátov je trojnásobok — a práve to pásmo robí
+     * z tejto siete chumáč, na ktorý existuje `mind:prune-coactivation`. Bývajú
+     * v ňom páry z tej istej tematickej štvrti bez akéhokoľvek vzťahu:
+     * „Aura Takt — osobné stránky" ↔ „Report Ovládač zliav" (0,691),
+     * „Config a route cache deploy" ↔ „Laravel backend" (0,646).
+     */
+    protected const VECTOR_FLOOR = 0.70;
+
+    /**
+     * Koľko vektorových susedov si na uzol odložiť pred výberom. Berú sa najlepší
+     * SIM_PER_NODE NEPREPOJENÍ, takže zoznam musí uniesť aj hub, ktorému už
+     * niekoľko najbližších susedov hranu má — inak by dostal menej hrán než mu
+     * TF-IDF cesta dá, a porovnanie oboch ciest by nemeralo to isté.
+     */
+    protected const VECTOR_CANDIDATES = 12;
+
     /** Strop nových cross-domain mostov na jeden uzol (bráni hairballu okolo hubov). */
     protected const MAX_BRIDGES_PER_NODE = 6;
 
@@ -103,21 +168,58 @@ class MindRewire extends Command
         'map', 'ecosystem', 'system', 'hierarchy', 'architecture', 'overview', 'dashboard', 'kit',
     ];
 
-    protected $signature = 'mind:rewire';
+    protected $signature = 'mind:rewire
+        {--vector : Similarity krok (A3) počítať z hotových embeddingov namiesto TF-IDF; keď vektory nie sú, mlčky sa použije TF-IDF}
+        {--dry-run : Nič nezapisovať — len spočítať, koľko similarity hrán BY vzniklo. Kroky A4–A11 sa preskočia}
+        {--floor= : Prah kosínusu pre similarity krok (default 0.20 TF-IDF, 0.70 vektory). Uplatní sa na cestu, ktorá naozaj pobehne — vypísaný riadok „Similarity krok" hovorí ktorá a s akým prahom}';
 
     protected $description = 'Backfill: doplní chýbajúce similarity, skill_mention a cross-domain mosty medzi príbuznými uzlami';
 
-    public function handle(SimilarityService $similarity, MindService $mind): int
+    public function handle(SimilarityService $similarity, MindService $mind, EmbeddingService $embeddings): int
     {
+        $dryRun = (bool) $this->option('dry-run');
         $nodes = Node::query()->get();
-        $similarity->warmCorpus($nodes);
 
+        // Vektorová cesta je opt-in a smie zlyhať doticha — plán null znamená
+        // „rob to presne ako predtým".
+        $floorOption = $this->option('floor');
+        $vectorPlan = null;
+        $floor = self::TFIDF_FLOOR;
+
+        // Meria sa CELÝ similarity krok, teda aj príprava (warmCorpus / načítanie
+        // vektorov a all-pairs kosínus). Prvá verzia tohto merania spúšťala stopky
+        // až za prípravou a hlásila 2,1 s na behu, ktorý trval 39 — všetka práca
+        // vektorovej cesty je práve v tej príprave.
+        $simStarted = microtime(true);
+
+        if ($this->option('vector')) {
+            $floor = $floorOption === null ? self::VECTOR_FLOOR : (float) $floorOption;
+            $vectorPlan = $this->vectorNeighbourPlan($nodes, $similarity, $embeddings, $floor);
+        }
+
+        if ($vectorPlan === null) {
+            $floor = $floorOption === null ? self::TFIDF_FLOOR : (float) $floorOption;
+            $similarity->warmCorpus($nodes);
+        }
+
+        $byId = $nodes->keyBy('id');
         $skills = Node::where('type', 'skill')->get(['id', 'label']);
 
         $simCreated = 0;
         $skillCreated = 0;
         $skillPromoted = 0;
         $checked = 0;
+
+        // Páry navrhnuté v TOMTO behu — vedie sa LEN v dry-run. V zápisovom režime
+        // je autorita databáza: `linkedIds()` sa číta nanovo pri každom uzle, takže
+        // hranu vytvorenú o pár uzlov skôr už vidí. V dry-run žiadna taká hrana
+        // nevznikne a bez tejto množiny by uzol B navrhol späť ten istý pár, ktorý
+        // pred chvíľou navrhol uzol A — dry-run by hlásil dvojnásobok skutočnosti.
+        $pending = [];
+
+        // Navrhnuté páry pre `-v`. Číslo „koľko hrán by vzniklo" sa nedá overiť
+        // a tisíc nových hrán je rozhodnutie človeka — musí si ich vedieť prečítať.
+        $proposals = [];
 
         foreach ($nodes as $node) {
             if ($node->type === 'core') {
@@ -130,12 +232,13 @@ class MindRewire extends Command
 
             $isSession = $node->type === 'memory' && $node->source === 'session';
             $ownProject = (string) ($node->meta['project'] ?? '');
+            $already = $pending[$node->id] ?? [];
 
-            $filter = function (Node $cand) use ($node, $linkedIds, $isSession, $ownProject) {
+            $filter = function (Node $cand) use ($node, $linkedIds, $isSession, $ownProject, $already) {
                 if ($cand->id === $node->id || $cand->type === 'core') {
                     return false;
                 }
-                if ($linkedIds->has($cand->id)) {
+                if ($linkedIds->has($cand->id) || isset($already[$cand->id])) {
                     return false;
                 }
                 // A4: dva session záznamy rôznych projektov sa priamo nespájajú
@@ -148,44 +251,184 @@ class MindRewire extends Command
                 return true;
             };
 
-            foreach ($similarity->topSimilar($node, 3, 0.20, $filter) as $hit) {
+            $hits = $vectorPlan === null
+                ? $similarity->topSimilar($node, self::SIM_PER_NODE, $floor, $filter)
+                : $this->pickVectorHits($vectorPlan[$node->id] ?? [], $filter, $byId);
+
+            foreach ($hits as $hit) {
                 $other = Node::find($hit['node_id']);
                 if (! $other) {
                     continue;
                 }
-                $mind->connect($node, $other, 'similarity', true, 0.5);
+                if ($dryRun) {
+                    $pending[$node->id][$other->id] = true;
+                    $pending[$other->id][$node->id] = true;
+                    $proposals[] = sprintf(
+                        '  %.4f  [%d] %s  ↔  [%d] %s',
+                        $hit['score'],
+                        $node->id,
+                        $node->label,
+                        $other->id,
+                        $other->label,
+                    );
+                } else {
+                    $mind->connect($node, $other, 'similarity', true, 0.5);
+                }
                 $simCreated++;
             }
 
             // A4: over/doplň (a povýš) skill_mention synapsie pre session záznamy
-            if ($isSession) {
+            if ($isSession && ! $dryRun) {
                 ['new' => $new, 'promoted' => $promoted] = $this->verifySkillMentions($node, $skills, $mind, $similarity);
                 $skillCreated += $new;
                 $skillPromoted += $promoted;
             }
         }
 
-        // A5: cross-domain mosty z tokenov labelu (po similarity/skill_mention fáze)
-        $bridged = $this->bridgeByLabelTokens($mind, $similarity);
+        $simSeconds = microtime(true) - $simStarted;
 
-        // A6: sémantické klastre hviezdicou okolo huba (single-tag rodiny)
-        $clustered = $this->bridgeSemanticClusters($mind, $similarity);
+        $bridged = 0;
+        $clustered = 0;
+        $sessioned = 0;
+        $depted = 0;
+        $relInfo = 'relácie preskočené (dry-run)';
 
-        // A7: memory záznam → jeho projektový uzol (meta.project → label)
-        $sessioned = $this->bridgeSessionsToProjects($mind);
+        if (! $dryRun) {
+            // A5: cross-domain mosty z tokenov labelu (po similarity/skill_mention fáze)
+            $bridged = $this->bridgeByLabelTokens($mind, $similarity);
 
-        // A8: vnútro-oddelenské soft-linky hviezdou (rieši riedke oddelenia)
-        $depted = $this->bridgeDepartmentStars($mind, $similarity);
+            // A6: sémantické klastre hviezdicou okolo huba (single-tag rodiny)
+            $clustered = $this->bridgeSemanticClusters($mind, $similarity);
 
-        // A11: sémantika hrán do stĺpca 'relation' (uses / part_of), aditívne
-        $relations = $this->backfillRelations($similarity);
-        $relInfo = $relations['skipped']
-            ? 'relácie preskočené (stĺpec chýba)'
-            : "{$relations['uses']} uses + {$relations['part_of']} part_of relácií";
+            // A7: memory záznam → jeho projektový uzol (meta.project → label)
+            $sessioned = $this->bridgeSessionsToProjects($mind);
+
+            // A8: vnútro-oddelenské soft-linky hviezdou (rieši riedke oddelenia)
+            $depted = $this->bridgeDepartmentStars($mind, $similarity);
+
+            // A11: sémantika hrán do stĺpca 'relation' (uses / part_of), aditívne
+            $relations = $this->backfillRelations($similarity);
+            $relInfo = $relations['skipped']
+                ? 'relácie preskočené (stĺpec chýba)'
+                : "{$relations['uses']} uses + {$relations['part_of']} part_of relácií";
+        }
+
+        // Diagnostika sa vypisuje LEN pri nových prepínačoch — bez nich musí byť
+        // výstup znak na znak ten istý ako pred vektorovou cestou, aby sa parita
+        // dala overiť obyčajným diffom, nie čítaním.
+        if ($this->option('vector') || $dryRun) {
+            $this->line(sprintf(
+                'Similarity krok: %s, prah %.2f, %d uzlov, %.1f s, špička pamäti %.1f MB.',
+                $vectorPlan === null ? 'TF-IDF' : 'vektory ('.$embeddings->model().')',
+                $floor,
+                $checked,
+                $simSeconds,
+                memory_get_peak_usage(true) / 1048576,
+            ));
+        }
+
+        if ($dryRun) {
+            if ($this->output->isVerbose() && $proposals !== []) {
+                $this->line('Navrhnuté páry (skóre · uzol ↔ uzol):');
+                $this->line(implode(PHP_EOL, $proposals));
+            }
+
+            $this->warn("Dry-run: nič sa nezapísalo, {$simCreated} similarity hrán BY vzniklo; kroky A4–A11 preskočené.");
+        }
 
         $this->info("Rewire: {$checked} uzlov · {$simCreated} similarity · {$skillCreated} nových + {$skillPromoted} povýšených skill_mention · {$bridged} cross-domain · {$clustered} klastrových · {$sessioned} projekt · {$depted} oddelenských mostov · {$relInfo}.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Vektorová alternatíva A3: pre každý uzol najbližší susedia z hotových
+     * embeddingov (`node_embeddings`), alebo NULL, keď vektorová cesta nie je
+     * k dispozícii.
+     *
+     * NULL je tu plnohodnotná odpoveď, nie chyba: vypnuté
+     * `hades.embeddings.enabled` alebo prázdna tabuľka znamenajú, že volajúci
+     * mlčky pokračuje TF-IDF cestou. Model sa tu NEVOLÁ — čítajú sa len uložené
+     * vektory, takže spadnutá Ollama tento krok vôbec netrápi.
+     *
+     * Filtre sa robia počas enumerácie párov, nie po nej, a sú tie isté ako v
+     * TF-IDF ceste (core von, už prepojené páry von, dva session záznamy rôznych
+     * projektov von). Musia byť: `topSimilar()` filtruje PRED zrezaním na k,
+     * takže keby sa tu filtrovalo až z hotového top-k, uzol s prepojeným okolím
+     * by dostal menej hrán než dnes a porovnanie ciest by nemeralo to isté.
+     *
+     * @param  Collection<int, Node>  $nodes
+     * @return array<int, array<int, array{node_id: int, score: float}>>|null
+     */
+    protected function vectorNeighbourPlan(
+        Collection $nodes,
+        SimilarityService $similarity,
+        EmbeddingService $embeddings,
+        float $floor,
+    ): ?array {
+        if (! $embeddings->enabled() || $embeddings->count() === 0) {
+            return null;
+        }
+
+        $vectors = $similarity->loadNormalizedVectors($embeddings->model());
+        if ($vectors === []) {
+            return null;
+        }
+
+        $type = [];
+        $isSession = [];
+        $project = [];
+        foreach ($nodes as $node) {
+            $type[$node->id] = (string) $node->type;
+            $isSession[$node->id] = $node->type === 'memory' && $node->source === 'session';
+            $project[$node->id] = (string) ($node->meta['project'] ?? '');
+        }
+
+        // core uzly von z KORPUSU, nie z výsledku: A3 ich nikdy nespája a párovať
+        // ich by bola práca, ktorú aj tak zahodíme. Uzol bez záznamu v $nodes je
+        // vektor po zmazanom uzle (soft delete + iný beh) — tiež von.
+        foreach (array_keys($vectors) as $id) {
+            if (($type[$id] ?? 'core') === 'core') {
+                unset($vectors[$id]);
+            }
+        }
+
+        $linked = $this->linkedPairs();
+
+        // páry chodia vzostupne podľa id, takže kanonický kľúč je „a:b" bez otáčania
+        $allowed = fn (int $a, int $b): bool => ! isset($linked[$a.':'.$b])
+            && ! ($isSession[$a] && $isSession[$b] && $project[$a] !== $project[$b]);
+
+        return $similarity->vectorNeighbours($vectors, self::VECTOR_CANDIDATES, $floor, $allowed);
+    }
+
+    /**
+     * Z predpočítaného zoznamu vektorových susedov vyberie prvých SIM_PER_NODE,
+     * ktoré prejdú tým istým filtrom ako TF-IDF cesta. Zoznam je dlhší než k
+     * práve preto, aby filter mal z čoho brať.
+     *
+     * @param  array<int, array{node_id: int, score: float}>  $candidates
+     * @param  Collection<int, Node>  $byId
+     * @return array<int, array{node_id: int, score: float}>
+     */
+    protected function pickVectorHits(array $candidates, callable $filter, Collection $byId): array
+    {
+        $out = [];
+
+        foreach ($candidates as $candidate) {
+            $other = $byId->get($candidate['node_id']);
+            if (! $other || ! $filter($other)) {
+                continue;
+            }
+
+            $out[] = $candidate;
+
+            if (count($out) >= self::SIM_PER_NODE) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     /** Množina id uzlov, s ktorými má $node hranu (bez seba). */
@@ -431,7 +674,7 @@ class MindRewire extends Command
      * hub-hinty (agregačný uzol typu mapa/ekosystém/systém); 2) inak najsilnejší
      * člen, tie-break najnižšie id (determinizmus).
      *
-     * @param  \Illuminate\Support\Collection<int, Node>  $members
+     * @param  Collection<int, Node>  $members
      * @param  array<int, array<int, string>>  $tokens
      * @param  array<int, string>  $hubHints
      */

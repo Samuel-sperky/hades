@@ -5,7 +5,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Vlákna konzoly vedomia — perzistentný stav agentového behu.
+ * Vlákna Charóna — perzistentný stav agentového behu. Tabuľky sa menujú `console_*`
+ * a tak to zostane: názov Charón je pre človeka, schéma pre kód.
  *
  * Prečo to musí byť v DB a nie v localStorage ako doterajší chat: konzola beží
  * dvojfázovo. Keď agent chce zapisovať (upraviť uzol, prepísať súbor), beh sa

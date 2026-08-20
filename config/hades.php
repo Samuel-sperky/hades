@@ -98,7 +98,9 @@ return [
     'chat_model' => env('HADES_CHAT_MODEL', 'claude-opus-4-8'),
 
     // ---------------------------------------------------------------------
-    // Konzola vedomia (/console) — agentový beh s toolmi nad vlastnou pamäťou.
+    // Charón (/console) — agentový beh s toolmi nad vlastnou pamäťou. Meno je
+    // len pre človeka; kľúč `hades.console.*`, route aj tabuľky `console_*`
+    // zostávajú technické, aby premenovanie nebolo migrácia bez čitateľa.
     //
     // Default poskytovateľ je `ollama`, teda lokálny model v Dockeri: stroj má
     // 24 CPU jadier, 47 GB RAM a ŽIADNU použiteľnú GPU (AMD iGPU, ktorú Docker

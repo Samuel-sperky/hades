@@ -1,4 +1,4 @@
-# Kontrakt — Hades: konzola vedomia + optimalizácia + dynamika
+# Kontrakt — Hades: Charón + optimalizácia + dynamika
 
 **Dátum:** 19. 8. 2026 · **Vetva:** `feat/hades-konzola` (nová, z `feat/mcp-tags-a-uzly-oblasti`)
 **Strop:** 3 000 000 tokenov · **Kadencia:** jedno schválenie, potom beh do konca
@@ -6,12 +6,16 @@
 
 ## 1. Cieľ
 
-Postaviť **konzolu vedomia** — samostatné rozhranie na vlastnej URL, v ktorom sa dá
+Postaviť **Charón** — samostatné rozhranie na vlastnej URL, v ktorom sa dá
 ovládať AI, ktorá má prístup k Hadesovmu grafu, a ktorá vie robiť reálne úlohy
 (hľadať, čítať, upravovať pamäť aj súbory) s Claude-Code-ovským UX. Model beží
-**lokálne v Dockeri** (Ollama, CPU-only). Súčasne doladiť Hadesa: rýchlosť API,
-kvalitu recallu, výkon grafu, hygienu dát, a zapnúť nové možnosti (embeddings,
-decay/teplota, automatické sumáre a prewiring, rozšírené MCP tooly).
+**lokálne v Dockeri** (Ollama, CPU-only). Meno **Charón** padlo 20. 8. 2026 a je
+len pre človeka: route `/console`, kľúč `hades.console.*`, tabuľky `console_*`
+aj názov tohto súboru zostávajú technické, lebo odkazy na ne už existujú.
+
+Súčasne doladiť Hadesa: rýchlosť API, kvalitu recallu, výkon grafu, hygienu
+dát, a zapnúť nové možnosti (embeddings, decay/teplota, automatické sumáre a
+prewiring, rozšírené MCP tooly).
 
 ## 2. Zistený stav (19. 8. 2026, pred štartom)
 

@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — zdieľaný stav.
+   Charón — zdieľaný stav.
 
    Vlastný súbor a nie objekt v main.js zámerne: render.js, run.js, tools.js aj
    slash.js ho všetky potrebujú a main.js ich všetky importuje. Keby stav sedel

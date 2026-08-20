@@ -4,14 +4,34 @@ namespace App\Services;
 
 use App\Models\Node;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Čistý TF-IDF + kosínusová podobnosť uzlov — bez modelu, deterministické.
  * IDF a tokenizovaný korpus sa nacache-ujú do inštancie, takže dávkový beh
  * (rewire) tokenizuje každý uzol len raz.
+ *
+ * Od 20. 8. 2026 tu žije aj druhá, VEKTOROVÁ polovica tej istej otázky „ktoré
+ * dva uzly patria k sebe" — čítanie hotových embeddingov z `node_embeddings` a
+ * all-pairs kosínus nad nimi ({@see loadNormalizedVectors}, {@see vectorNeighbours}).
+ * Je to tu a nie v {@see EmbeddingService} zámerne: tá služba obsluhuje hybridný
+ * recall živých sessions a vektor JEDNÉHO dopytu proti celému korpusu, kým tu ide
+ * o n × n bez modelu. Rozšíriť EmbeddingService o čítač uložených vektorov by
+ * znamenalo hýbať kódom, na ktorom visí `mind_recall`.
  */
 class SimilarityService
 {
+    /**
+     * Veľkosť dlaždice pri all-pairs kosíne.
+     *
+     * Vektory sa držia ZABALENÉ (float32, 4 kB na uzol = 11 MB na celý korpus) a
+     * rozbaľujú sa po dlaždiciach. Naivné „rozbaľ všetko naraz" stojí pri 2 674
+     * uzloch × 1024 rozmerov ~72 MB živých PHP polí a pri `memory_limit=128M`
+     * padne v momente, keď k tomu rewire pridá kolekciu uzlov. Dlaždica 512
+     * znamená dve živé polia po ~8 MB a n²/512 rozbalení namiesto n².
+     */
+    protected const VECTOR_TILE = 512;
+
     /** Diakritika → ASCII (slovenčina + čeština). */
     protected array $diacritics = [
         'á' => 'a', 'ä' => 'a', 'à' => 'a', 'â' => 'a', 'č' => 'c', 'ć' => 'c',
@@ -230,6 +250,17 @@ class SimilarityService
     /** @var array<int, string> node_id → surový text (label+description+meta) */
     protected array $texts = [];
 
+    /**
+     * node_id → už načítaný model z warmCorpus(). Existuje kvôli topSimilar(),
+     * ktorý inak na KAŽDÉHO kandidáta volal Node::find() — pri 2 680 uzloch
+     * ~7 miliónov dopytov, teda O(n²) nad databázou (22,2 s / 196 uzlov,
+     * 90,4 s / 396 uzlov, extrapolovane ~69 min na celú sieť). Modely tu už
+     * načítané sú, volajúci ich drží tak či tak; mapa pridáva len ukazovatele.
+     *
+     * @var array<int, Node>
+     */
+    protected array $nodes = [];
+
     protected bool $warmed = false;
 
     /**
@@ -333,12 +364,14 @@ class SimilarityService
     {
         $this->corpus = [];
         $this->texts = [];
+        $this->nodes = [];
         $docFreq = [];
 
         foreach ($nodes as $node) {
             $tf = $this->nodeTf($node);
             $this->corpus[$node->id] = $tf;
             $this->texts[$node->id] = $this->nodeText($node);
+            $this->nodes[$node->id] = $node;
 
             foreach (array_keys($tf) as $term) {
                 $docFreq[$term] = ($docFreq[$term] ?? 0) + 1;
@@ -394,6 +427,15 @@ class SimilarityService
      * odfiltruje kandidátov (napr. už prepojených). Vracia [['node_id'=>, 'score'=>], …]
      * zoradené zostupne.
      *
+     * Kandidáti sa berú zo SNAPSHOTU z warmCorpus() — skóre aj tak číta TF z
+     * `$this->corpus`, teda z toho istého snapshotu, takže model načítaný nanovo
+     * by hodnotu nezmenil, len by pridal dopyt. Dôsledok: uzol soft-deleted MEDZI
+     * nahriatím a týmto volaním sa už neodfiltruje sám (predtým ho zahodilo
+     * `Node::find() === null`). Nie je to na tomto mieste čo riešiť — všetci
+     * volajúci (MindRewire, NodeController, TranscriptIngestService) si vrátené
+     * `node_id` beztak načítajú čerstvo a nully zahodia, takže hrana na zmiznutý
+     * uzol nevznikne ani sa nezobrazí.
+     *
      * @return array<int, array{node_id: int, score: float}>
      */
     public function topSimilar(Node $node, int $k = 3, float $min = 0.18, ?callable $filter = null): array
@@ -408,7 +450,10 @@ class SimilarityService
                 continue;
             }
 
-            $other = Node::find($otherId);
+            // Model z nahriateho korpusu; Node::find() len pre id, ktoré v mape
+            // nie sú, aby nenahriata cesta (a čokoľvek, čo korpus doplní zboku)
+            // fungovala presne ako predtým.
+            $other = $this->nodes[$otherId] ?? Node::find($otherId);
             if (! $other) {
                 continue;
             }
@@ -425,6 +470,217 @@ class SimilarityService
         usort($scores, fn ($x, $y) => $y['score'] <=> $x['score']);
 
         return array_slice($scores, 0, $k);
+    }
+
+    /**
+     * Uložené vektory pre daný model, znormalizované na jednotkovú dĺžku a
+     * zabalené späť do float32 (`pack('g*')` — ten istý formát a endianita ako
+     * v tabuľke). Po normalizácii JE kosínus obyčajný skalárny súčin, takže sa
+     * v najtesnejšej smyčke nedelí normami.
+     *
+     * Dimenzia sa neverí konfigurácii ani prvému riadku: berie sa najčastejšia
+     * v tabuľke a riadky s inou sa preskočia. Korpus prevektorizovaný dvoma
+     * modelmi by inak dával súčiny nad rôzne dlhými vektormi — nie chyba, ktorú
+     * je vidieť, len tiché nezmysly v poradí.
+     *
+     * Join na `nodes` nie je kozmetika (tá istá pasca ako v EmbeddingService):
+     * uzly majú soft delete, vektor zmazaného uzla v tabuľke ostáva a bez filtra
+     * by rewire navrhoval hrany na id, ktoré už nikto nenačíta.
+     *
+     * Skenuje sa `chunkById`, nie `chunk`: pamäť je živá a `mind_learn` počas
+     * behu doplní riadok. Offsetové stránkovanie by tým posunulo okno a jeden
+     * uzol by z korpusu tichým spôsobom vypadol.
+     *
+     * @return array<int, string> node_id => packed float32
+     */
+    public function loadNormalizedVectors(string $model): array
+    {
+        $dimensions = DB::table('node_embeddings')
+            ->where('model', $model)
+            ->groupBy('dimensions')
+            ->orderByRaw('COUNT(*) DESC')
+            ->value('dimensions');
+
+        if ($dimensions === null) {
+            return [];
+        }
+
+        $vectors = [];
+
+        DB::table('node_embeddings')
+            ->join('nodes', 'nodes.id', '=', 'node_embeddings.node_id')
+            ->whereNull('nodes.deleted_at')
+            ->where('node_embeddings.model', $model)
+            ->where('node_embeddings.dimensions', $dimensions)
+            ->select([
+                'node_embeddings.id as id',
+                'node_embeddings.node_id as node_id',
+                'node_embeddings.vector as vector',
+            ])
+            ->chunkById(500, function ($rows) use (&$vectors, $dimensions) {
+                foreach ($rows as $row) {
+                    $unpacked = unpack('g*', (string) $row->vector);
+
+                    if (! is_array($unpacked) || count($unpacked) !== (int) $dimensions) {
+                        continue;
+                    }
+
+                    $sum = 0.0;
+                    foreach ($unpacked as $value) {
+                        $sum += $value * $value;
+                    }
+                    $norm = sqrt($sum);
+
+                    // nulový vektor nie je „slabá" podobnosť, je to nedefinovaný
+                    // kosínus — von z korpusu, nie delenie nulou o pár párov neskôr
+                    if ($norm <= 0.0) {
+                        continue;
+                    }
+
+                    foreach ($unpacked as $i => $value) {
+                        $unpacked[$i] = $value / $norm;
+                    }
+
+                    $vectors[(int) $row->node_id] = pack('g*', ...array_values($unpacked));
+                }
+            }, 'node_embeddings.id', 'id');
+
+        return $vectors;
+    }
+
+    /**
+     * Top-$k najpodobnejších susedov pre KAŽDÝ uzol naraz — all-pairs kosínus
+     * nad zabalenými jednotkovými vektormi z {@see loadNormalizedVectors}.
+     *
+     * Prečo takto a nie n-krát `EmbeddingService::searchByVector()`: to by pri
+     * 2 674 uzloch rozbalilo n² ≈ 7,1 milióna blobov namiesto n. Tu sa každý
+     * vektor rozbalí n/VECTOR_TILE-krát a každý pár sa počíta RAZ — skóre sa
+     * zapíše obom koncom.
+     *
+     * `$pairAllowed(int $a, int $b): bool` sa volá až PO prekročení prahu. Pri
+     * 3,5 milióna párov je poradie tých dvoch testov rozdiel medzi sekundami a
+     * minútami, nie kozmetika.
+     *
+     * Poradie je reprodukovateľné: páry sa enumerujú podľa vzostupného node_id a
+     * pri rovnakom skóre vyhráva nižšie id. Bez toho by dve dry-run merania toho
+     * istého korpusu vrátili iné počty a nemalo by zmysel ich porovnávať.
+     *
+     * @param  array<int, string>  $vectors  node_id => packed float32 (jednotkové)
+     * @param  (callable(int, int): bool)|null  $pairAllowed
+     * @return array<int, array<int, array{node_id: int, score: float}>>
+     */
+    public function vectorNeighbours(array $vectors, int $k, float $min, ?callable $pairAllowed = null): array
+    {
+        if ($vectors === [] || $k < 1) {
+            return [];
+        }
+
+        $ids = array_keys($vectors);
+        sort($ids);
+        $count = count($ids);
+
+        // dimenzia z dĺžky blobu: float32 = 4 bajty na zložku
+        $dimensions = intdiv(strlen($vectors[$ids[0]]), 4);
+        if ($dimensions < 1) {
+            return [];
+        }
+
+        $top = array_fill_keys($ids, []);
+
+        for ($aStart = 0; $aStart < $count; $aStart += self::VECTOR_TILE) {
+            $aIds = array_slice($ids, $aStart, self::VECTOR_TILE);
+            $aVectors = $this->unpackTile($vectors, $aIds);
+            $aCount = count($aIds);
+
+            for ($bStart = $aStart; $bStart < $count; $bStart += self::VECTOR_TILE) {
+                $sameTile = $bStart === $aStart;
+                $bIds = $sameTile ? $aIds : array_slice($ids, $bStart, self::VECTOR_TILE);
+                $bVectors = $sameTile ? $aVectors : $this->unpackTile($vectors, $bIds);
+                $bCount = count($bIds);
+
+                for ($i = 0; $i < $aCount; $i++) {
+                    $left = $aVectors[$i];
+                    $idA = $aIds[$i];
+
+                    for ($j = $sameTile ? $i + 1 : 0; $j < $bCount; $j++) {
+                        $right = $bVectors[$j];
+
+                        $dot = 0.0;
+                        for ($t = 0; $t < $dimensions; $t++) {
+                            $dot += $left[$t] * $right[$t];
+                        }
+
+                        if ($dot < $min) {
+                            continue;
+                        }
+
+                        $idB = $bIds[$j];
+
+                        if ($pairAllowed !== null && ! $pairAllowed($idA, $idB)) {
+                            continue;
+                        }
+
+                        $score = round(min(1.0, max(-1.0, $dot)), 6);
+                        $this->pushNeighbour($top[$idA], $idB, $score, $k);
+                        $this->pushNeighbour($top[$idB], $idA, $score, $k);
+                    }
+                }
+            }
+        }
+
+        return array_filter($top);
+    }
+
+    /**
+     * Rozbalí dlaždicu vektorov do PHP polí v poradí $ids.
+     *
+     * @param  array<int, string>  $vectors
+     * @param  array<int, int>  $ids
+     * @return array<int, array<int, float>>
+     */
+    protected function unpackTile(array $vectors, array $ids): array
+    {
+        $out = [];
+
+        foreach ($ids as $id) {
+            $out[] = array_values(unpack('g*', $vectors[$id]));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Vloží suseda do zostupne zoradeného top-$k zoznamu. Pri rovnakom skóre
+     * vyhráva nižšie id (reprodukovateľnosť poradia).
+     *
+     * Hľadá sa od KONCA: kandidát, ktorý na zoznam nedosiahne, skončí po jednom
+     * porovnaní. Pri 3,5 milióna párov je to celá cena tejto funkcie.
+     *
+     * @param  array<int, array{node_id: int, score: float}>  $list
+     */
+    protected function pushNeighbour(array &$list, int $id, float $score, int $k): void
+    {
+        $pos = count($list);
+
+        while ($pos > 0) {
+            $prev = $list[$pos - 1];
+
+            if ($prev['score'] > $score || ($prev['score'] === $score && $prev['node_id'] < $id)) {
+                break;
+            }
+
+            $pos--;
+        }
+
+        if ($pos >= $k) {
+            return;
+        }
+
+        array_splice($list, $pos, 0, [['node_id' => $id, 'score' => $score]]);
+
+        if (count($list) > $k) {
+            array_pop($list);
+        }
     }
 
     /**

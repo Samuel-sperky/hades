@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — slash príkazy.
+   Charón — slash príkazy.
 
    Všetkých šesť je KLIENTSKÁ skratka. Buď urobia lokálnu vec (prepnutie modelu,
    vyčistenie zobrazenia, nové vlákno, pomoc), alebo sa rozpíšu na normálnu

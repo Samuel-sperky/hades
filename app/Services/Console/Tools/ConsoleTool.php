@@ -5,7 +5,7 @@ namespace App\Services\Console\Tools;
 use App\Services\Console\ToolResult;
 
 /**
- * Jeden tool konzoly vedomia.
+ * Jeden tool Charóna.
  *
  * Tri veci, ktoré tento kontrakt drží a ktoré sa inak rozsypú:
  *

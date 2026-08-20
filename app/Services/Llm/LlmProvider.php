@@ -5,7 +5,7 @@ namespace App\Services\Llm;
 /**
  * Jeden kontrakt, ktorý spĺňa lokálny model v Ollame aj Claude v cloude.
  *
- * Prečo to takto: konzola vedomia (`/console`) beží ako agentová smyčka nad
+ * Prečo to takto: Charón (`/console`) beží ako agentová smyčka nad
  * vlastnými toolmi. Keby volala SDK priamo — ako to dodnes robí
  * `ChatController` s pevne zadrôtovaným modelom — výmena modelu by znamenala
  * prepísať smyčku. Stroj pod tým nemá použiteľnú GPU,

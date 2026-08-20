@@ -149,13 +149,16 @@ naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva r�
 + 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
 hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
-## Charón — konzola vedomia (`/console`)
+## Charón (`/console`)
 
 Samostatné rozhranie (nie obrazovka v raile grafu): agentová smyčka s 12 nástrojmi
 nad vlastnou pamäťou a nad súbormi projektu. Vlákna majú vlastnú URL
 (`/console/<uuid>`). Vzniklo 19. 8. 2026, meno **Charón** dostalo 20. 8. 2026 —
-prievozník je ten, kto hovorí, Hades je vedomie, za ktoré hovorí. **URL sa
-nemenila**, aby odkazy na existujúce vlákna žili.
+prievozník je ten, kto hovorí, Hades je vedomie, za ktoré hovorí. **Charón je
+meno pre človeka, nie identifikátor**: route `/console`, kľúč `hades.console.*`,
+tabuľky `console_*`, triedy `Console*` aj adresáre `app/Services/Console` a
+`public/js/console` zostávajú technické — premenovať ich by bola migrácia bez
+jediného čitateľa. **URL sa nemenila**, aby odkazy na existujúce vlákna žili.
 
 **Beh je dvojfázový a to je jeho podstata.** Čítacie tooly bežia hneď; každý
 zápisový tool zaparkuje ako `pending` s náhľadom (unified diff, resp. before/after)
@@ -231,8 +234,24 @@ cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na akcentovej výplni)
 
 ## Testy
 
-`docker compose exec app php artisan test` — 326 testov, všetko PHP (backend, MCP,
+`docker compose exec app php artisan test` — 438 testov, všetko PHP (backend, MCP,
 API). Frontend testy nie sú; UI sa overuje prekliknutím v prehliadači.
+
+**Zelená sada na sqlite NEZNAMENÁ overený recall.** `phpunit.xml` beží na sqlite
+`:memory:`, ale `MindService::searchNodes()` má natvrdo `COLLATE utf8mb4_unicode_ci`,
+takže sa **45 testov preskočí** — a medzi nimi celý `HybridRecallTest` (9 prípadov),
+teda aj tá vlastnosť, ktorú CLAUDE.md volá tvrdým požiadavkom: *spadnutý model nesmie
+spôsobiť, že pamäť vyzerá prázdna*. Keby to niekto pokazil, sada zostane zelená.
+Nie je to test, ktorý nemôže padnúť — je to test, ktorý sa v defaultnej konfigurácii
+nespustí. **Preto po každej zmene v recalle, embeddingoch alebo v nástrojoch Charóna
+pusti aj:**
+
+```
+docker compose exec app php vendor/bin/phpunit -c phpunit.mariadb.xml \
+  --filter="HybridRecall|RecallBench|ConsoleTools|McpTools"
+```
+
+Overené 19. 8. 2026: tam je to **93 testov, 0 preskočených, 0 padnutých**.
 
 **Vo worktree tá istá sada netestuje worktree.** `vendor` je symlink na hlavný
 checkout, Composer si z jeho polohy počíta `$baseDir` a autoloader je optimalizovaný
