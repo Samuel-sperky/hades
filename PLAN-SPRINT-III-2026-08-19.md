@@ -94,4 +94,36 @@ Aby plánovaný beh vedel navrhnúť zmenu, nie len report:
 
 ## 5. Výsledok
 
-_(dopíše sa po dobehnutí)_
+**Stav 20. 8. 2026:** tri commity nad `c0555c7`, vetva pushnutá.
+Sada **487 PHP testov** (pred šprintom 462) + **55 Node testov** (pred šprintom 45), zelené.
+
+| Balík | Stav | Čo z toho je |
+|---|---|---|
+| **P1** | hotové | `docs/BEZPECNOST.md` má **päť** okruhov namiesto štyroch (§3.5 `auth.console`) a §7.1 klietku shellu vrátane toho, čo je z nej vedome von; §8 nesie oba zaplatené nálezy. `README.md` pozná oba klienty. Kontrakt II má správny názov príkazu. Tri phpunit configy sú **jeden**, DB z prostredia |
+| **P2** | **kód hotový, meranie beží** | `EmbeddingSimilarity` + vektorová vetva v `mind:rewire` + `--dry-run` porovnanie. **Vypnuté defaultom** (`hades.embeddings.prewire`) — job, ktorý pridáva trvalé hrany, má zapnúť ten, kto videl jeho čísla. 14 testov |
+| **P3** | hotové | `console_write_proposals` + `WriteProposals` + `hades pending` / `approve` / `deny`. Programový beh zápis **navrhne**, nevykoná; vykoná sa až rukou človeka. 11 testov + 10 Node |
+
+### Čo musel dorobiť integrátor (a prečo to pracovníci nemohli)
+
+Rozdelenie na disjunktné súbory fungovalo — **nulový konflikt medzi tromi pracovníkmi** —
+ale zaplatilo sa tým, že tri veci musel spojiť niekto, kto vidí celok:
+
+1. **P3 by bez zapojenia bol mŕtvy kód.** `HeadlessRunner` (spoločný súbor) teraz zápisový
+   tool obaľuje do návrhu namiesto toho, aby ho zahodil. Obal má `isWrite() === false`, takže
+   ťah nezaparkuje — a práve preto **nesmie** skončiť v `ToolRegistry::TOOLS`: v prehliadačovom
+   okruhu by tichom vypnul potvrdzovanie zápisov. Skladá sa na jedno použitie.
+2. **P2 bola celá vypnutá.** Vetva stojí na `config('hades.embeddings.prewire')`, ale
+   `config/hades.php` vlastní integrátor, takže kľúč neexistoval a `bridgeByEmbeddings()`
+   sa nikdy nespustil.
+3. **Bezpečnostná dokumentácia si po pár hodinách odporovala.** P1 písal §3.5 v čase, keď
+   headless okruh zápisové tooly vôbec nenakladal; P3 to medzitým zmenil na návrhy. Toto je
+   cena paralelnej práce nad jedným systémom a je to práca integrátora, nie chyba pracovníka.
+
+### Poctivá poznámka k P2
+
+Meranie na živých dátach (`mind:rewire --dry-run`, 2679 uzlov) **v čase písania stále beží** —
+je to O(n²) kosínus nad 1024-rozmernými vektormi v PHP plus TF-IDF vetva, ktorá je sama
+dokumentovaná na ~55 minút. To je samo o sebe zistenie: ako nočný job to znesie, ako
+interaktívna operácia nie. Číslo (koľko hrán pridala vektorová vetva, ktoré TF-IDF nenašla,
+a či sú na vzorke zmysluplné) sa dopíše sem, keď beh dobehne — vrátane prípadu, že zdvih
+nebude žiadny. Do tej chvíle je vetva **vypnutá** a nič v grafe nezmenila.
