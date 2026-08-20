@@ -181,13 +181,32 @@ class ScreenParityTest extends TestCase
             $data = $serializer->data();
 
             foreach ($serializer->fieldsForAi() as $field) {
-                [$root] = explode('[].', $field, 2);
+                [$root, $rowKey] = array_pad(explode('[].', $field, 2), 2, null);
 
                 $this->assertArrayHasKey(
                     $root,
                     $data,
                     "Obrazovka {$screen} menuje pre AI kľúč `{$field}`, ktorý `data()` nedáva. ".
                     'Preklep v zozname by pole ticho vyhodil z odpovede pre AI.',
+                );
+
+                if ($rowKey === null) {
+                    continue;
+                }
+
+                // Kontrola KOREŇOVÉHO kľúča nestačí: preklep vnútri riadku
+                // (`items[].tokens_ouT`) prešiel oboma vrstvami a pole ticho zmizlo
+                // z odpovede pre AI — teda presne to, čomu má táto vrstva brániť.
+                $rows = array_values(array_filter((array) $data[$root], 'is_array'));
+
+                if ($rows === []) {
+                    continue;   // prázdna fixture o kľúčoch nič nedokazuje
+                }
+
+                $this->assertArrayHasKey(
+                    $rowKey,
+                    $rows[0],
+                    "Obrazovka {$screen} menuje pre AI riadkový kľúč `{$field}`, ktorý riadok `data()` nedáva.",
                 );
             }
         }
@@ -212,7 +231,12 @@ class ScreenParityTest extends TestCase
 
             $ai = $this->tool($pair['tool'], $pair['args'] ?? []);
 
-            $this->assertParity($human, $ai, "{$screen} → {$pair['tool']}");
+            $this->assertParity(
+                $human,
+                $ai,
+                "{$screen} → {$pair['tool']}",
+                $this->declaredRoots($this->build($pair['serializer'], $pair['args'] ?? [])),
+            );
         }
     }
 
@@ -223,7 +247,7 @@ class ScreenParityTest extends TestCase
         $human = $this->getJson('/api/runs/'.$run->uuid)->assertOk()->json();
         $ai = $this->tool('mind_run', ['uuid' => $run->uuid]);
 
-        $this->assertParity($human, $ai, 'mind_run');
+        $this->assertParity($human, $ai, 'mind_run', $this->declaredRoots(new RunDetailScreen($run)));
     }
 
     public function test_the_detail_tool_refuses_an_unknown_run_instead_of_returning_an_empty_shape(): void
@@ -267,6 +291,54 @@ class ScreenParityTest extends TestCase
         $this->assertTrue($failed, 'Parity test nechytil rozchod hodnôt — potom nemeria nič.');
     }
 
+    public function test_a_truncated_list_is_caught(): void
+    {
+        $screen = new class extends ScreenSerializer
+        {
+            public function data(): array
+            {
+                return ['items' => [['a' => 1], ['a' => 2], ['a' => 3]]];
+            }
+
+            public function fieldsForAi(): array
+            {
+                return ['items[].a'];
+            }
+
+            /** AI dostane dva riadky z troch — obrazovka a tool hovoria iné číslo. */
+            public function forAi(): array
+            {
+                return ['items' => [['a' => 1], ['a' => 3]]];
+            }
+        };
+
+        $this->assertParityFails($screen, 'skrátený zoznam');
+    }
+
+    public function test_a_missing_list_is_caught(): void
+    {
+        $screen = new class extends ScreenSerializer
+        {
+            public function data(): array
+            {
+                return ['total' => 3, 'items' => [['a' => 1]]];
+            }
+
+            public function fieldsForAi(): array
+            {
+                return ['total', 'items[].a'];
+            }
+
+            /** Zoznam vypadol celý; ostal len súčet, ktorý o ňom lže. */
+            public function forAi(): array
+            {
+                return ['total' => 3];
+            }
+        };
+
+        $this->assertParityFails($screen, 'chýbajúci zoznam');
+    }
+
     public function test_a_cosmetic_ui_only_key_does_not_break_parity(): void
     {
         $screen = new class extends ScreenSerializer
@@ -283,10 +355,25 @@ class ScreenParityTest extends TestCase
             }
         };
 
-        $this->assertParity($screen->data(), $screen->forAi(), 'fake');
+        $this->assertParity($screen->data(), $screen->forAi(), 'fake', $this->declaredRoots($screen));
     }
 
     // ---- pomôcky -----------------------------------------------------------
+
+    /**
+     * Parita MUSÍ na tomto serializéri padnúť. Bez tejto pomôcky by sa dôkazy
+     * citlivosti písali `try/catch` päťkrát a jeden z nich by raz stíchol.
+     */
+    private function assertParityFails(ScreenSerializer $screen, string $what): void
+    {
+        try {
+            $this->assertParity($screen->data(), $screen->forAi(), 'fake', $this->declaredRoots($screen));
+        } catch (AssertionFailedError) {
+            return;
+        }
+
+        $this->fail("Parity test nechytil rozchod typu {$what} — potom v tejto vrstve nemeria nič.");
+    }
 
     /**
      * Každý kľúč, ktorý AI dostala, musí mať v ploche človeka identickú hodnotu.
@@ -296,8 +383,30 @@ class ScreenParityTest extends TestCase
      * @param  array<string, mixed>  $human
      * @param  array<string, mixed>  $ai
      */
-    private function assertParity(array $human, array $ai, string $tool, string $path = ''): void
+    private function assertParity(array $human, array $ai, string $tool, array $declaredRoots = [], string $path = ''): void
     {
+        // Iterovanie kľúčov AI samo nestačí: keď z odpovede vypadne CELÝ kľúč,
+        // nie je čo iterovať a rozchod prejde zelene. Deklarované korene sa preto
+        // kontrolujú zvlášť — ak ich obrazovka má a nie sú prázdne, AI ich musí
+        // dostať tiež.
+        if ($path === '') {
+            foreach ($declaredRoots as $root) {
+                // Preskočí sa presne to, čo `dropEmpty()` z odpovede pre AI maže:
+                // `null`, prázdny string a prázdne pole. Inak by test padal na
+                // legitímnom stave — napr. `q` je prázdne, kým sa nehľadá.
+                if (! array_key_exists($root, $human)
+                    || $human[$root] === [] || $human[$root] === null || $human[$root] === '') {
+                    continue;
+                }
+
+                $this->assertArrayHasKey(
+                    $root,
+                    $ai,
+                    "{$tool} nevracia `{$root}`, hoci ho obrazovka má a `fieldsForAi()` ho menuje.",
+                );
+            }
+        }
+
         foreach ($ai as $key => $value) {
             $here = $path === '' ? (string) $key : "{$path}.{$key}";
 
@@ -308,7 +417,19 @@ class ScreenParityTest extends TestCase
             );
 
             if (is_array($value) && is_array($human[$key])) {
-                $this->assertParity($human[$key], $value, $tool, $here);
+                // Iterovať len kľúče AI nestačí: zoznam skrátený o riadok prešiel
+                // zelene, hoci AI by potom o behu tvrdila „sú len dva". `dropEmpty`
+                // riadok, ktorý sa vyprázdni, zahodí a zvyšok preindexuje — keď sa to
+                // stane, nie je to kozmetika, ale zle zvolený `fieldsForAi()`.
+                if (array_is_list($value) && array_is_list($human[$key])) {
+                    $this->assertCount(
+                        count($human[$key]),
+                        $value,
+                        "{$tool} vracia v `{$here}` iný počet riadkov než obrazovka.",
+                    );
+                }
+
+                $this->assertParity($human[$key], $value, $tool, [], $here);
 
                 continue;
             }
@@ -326,6 +447,21 @@ class ScreenParityTest extends TestCase
      * si berie závislosť z kontejnera, zoznamy berú filtre), takže je to match —
      * nový serializér sa tu ohlási pádom, nie tichým prejdením.
      */
+    /**
+     * Koreňové kľúče, ktoré `fieldsForAi()` menuje — `items[].uuid` → `items`.
+     *
+     * @return list<string>
+     */
+    private function declaredRoots(ScreenSerializer $screen): array
+    {
+        $roots = array_map(
+            static fn (string $field): string => explode('[].', $field, 2)[0],
+            $screen->fieldsForAi(),
+        );
+
+        return array_values(array_unique($roots));
+    }
+
     private function build(string $serializer, array $args = []): ScreenSerializer
     {
         return match ($serializer) {

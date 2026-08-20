@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\Console\RunController;
 use App\Models\Run;
 use App\Services\Console\RunRecorder;
 use Illuminate\Console\Command;
@@ -9,7 +10,7 @@ use Illuminate\Console\Command;
 /**
  * Zametanie behov, ktoré zostali visieť v stave `running`.
  *
- * Beh sa uzatvára v `finally` bloku {@see \App\Http\Controllers\Console\RunController},
+ * Beh sa uzatvára v `finally` bloku {@see RunController},
  * takže výnimka ani odchod klienta ho visieť nenechajú. Čo ho nechá visieť, je
  * smrť procesu: `docker compose restart app`, spadnutý PHP worker, vypnutý stroj.
  * Vtedy `finally` nikdy nezbehne.
@@ -36,11 +37,15 @@ class MindReapRuns extends Command
         $minutes = max((int) $this->option('minutes'), 1);
         $cutoff = now()->subMinutes($minutes);
 
+        // Vek sa meria od POSLEDNEJ AKTIVITY (`updated_at`), presne ako v
+        // {@see RunRecorder::reapStale()} — inak by výpis a samotné zametanie
+        // hovorili o inej množine behov. `started_at` je začiatok ťahu a beh
+        // zaparkovaný na potvrdení zápisu ho má legitímne dávno v minulosti.
         $stale = Run::query()
             ->where('status', 'running')
-            ->where('started_at', '<', $cutoff)
+            ->where('updated_at', '<', $cutoff)
             ->orderBy('id')
-            ->get(['id', 'uuid', 'started_at', 'model']);
+            ->get(['id', 'uuid', 'started_at', 'updated_at', 'model']);
 
         if ($stale->isEmpty()) {
             $this->info('Žiadny visiaci beh.');
@@ -52,7 +57,7 @@ class MindReapRuns extends Command
             $this->line(sprintf(
                 '  %s  %s  %s',
                 $run->uuid,
-                $run->started_at?->format('Y-m-d H:i') ?? '?',
+                $run->updated_at?->format('Y-m-d H:i') ?? '?',
                 $run->model ?? '?',
             ));
         }

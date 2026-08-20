@@ -100,6 +100,15 @@ function renderRunsView() {
             if (ev.target.closest('button')) return;
             toggleRun(card.dataset.run);
         };
+        // Karta je `role="button"` s `tabindex="0"`, takže MUSÍ reagovať na Enter
+        // aj Space (WCAG 2.1.1). Bez tohto bol detail behu dosiahnuteľný len myšou,
+        // hoci prvok sa čítačke ohlasoval ako tlačidlo — teda sľuboval, čo nevedel.
+        card.onkeydown = (ev) => {
+            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            if (ev.target.closest('button')) return;
+            ev.preventDefault();            // Space inak odskroluje stránku
+            toggleRun(card.dataset.run);
+        };
     });
     body.querySelectorAll('button[data-rerun]').forEach((b) => {
         b.onclick = () => rerun(b.dataset.rerun, b);
@@ -185,7 +194,7 @@ function runItemHtml(r) {
         + '<span class="run-when">' + esc(timeAgo(r.started_at)) + '</span>'
         + (r.model ? '<span class="run-model">' + esc(r.model) + '</span>' : '')
         + '</div>'
-        + '<p class="run-prompt">' + plainInline(r.prompt || '(bez zadania)') + '</p>'
+        + '<p class="run-prompt">' + esc(plainInline(r.prompt || '(bez zadania)')) + '</p>'
         + costHtml(r)
         + (r.error ? '<p class="run-error">' + esc(r.error) + '</p>' : '')
         + (open ? detailHtml(r, detail) : '')
@@ -257,7 +266,7 @@ function messageStepHtml(e) {
     const who = e.role === 'user' ? 'ty' : 'Charón';
     return '<li class="run-step" data-kind="message" data-role="' + esc(e.role) + '">'
         + '<span class="run-step-who">' + esc(who) + '</span>'
-        + '<div class="run-step-text">' + plainInline(e.text || '(bez textu)') + '</div>'
+        + '<div class="run-step-text">' + esc(plainInline(e.text || '(bez textu)')) + '</div>'
         + '</li>';
 }
 
@@ -273,6 +282,10 @@ function toolStepHtml(e) {
         + (e.arguments ? '<code class="run-args">' + esc(JSON.stringify(e.arguments)) + '</code>' : '')
         + (e.error ? '<p class="run-error">' + esc(e.error) + '</p>' : '')
         + (preview ? '<pre class="run-diff">' + esc(preview) + '</pre>' : '')
+        // Výsledok toolu serializér posiela obom plochám a platí za to strop 4000
+        // znakov. Kým ho UI nekreslilo, človek videl MENEJ než AI — a to je presne
+        // ten rozchod plôch, ktorý má tento šprint rušiť, len obrátený.
+        + (e.result ? '<pre class="run-result">' + esc(e.result) + '</pre>' : '')
         + '</div>'
         + '</li>';
 }

@@ -4477,7 +4477,9 @@ button.danger.armed {
 
 /* Náhľad zápisu sa ukazuje aj po zamietnutí: práve pri zamietnutom zápise chce
    človek najčastejšie vedieť, čo presne odmietol. */
-.run-diff {
+/* `.run-result` je výstup toolu, `.run-diff` náhľad zápisu — čítajú sa rovnako,
+   takže majú rovnaký tvar. Dva selektory, jedno pravidlo: ôsmy dialekt tu netreba. */
+.run-diff, .run-result {
     margin: var(--sp-2) 0 0;
     padding: var(--sp-2);
     max-height: 18rem;

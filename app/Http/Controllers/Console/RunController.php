@@ -100,7 +100,16 @@ class RunController extends Controller
 
         // Beh sa zakladá PRED prúdom, aby existoval aj vtedy, keď model nedá ani
         // prvý rámec — práve taký beh chce človek v logu nájsť.
-        $run = $recorder->open($thread, $data['message'], $options);
+        //
+        // `openExclusive` odmietne druhý súbežný ťah v tom istom vlákne. Bez toho
+        // dva kliky v tej istej sekunde prešli oba (`pendingToolCall()` chráni až
+        // parkujúci zápis) a rozsahy id sa prekryli, takže každý beh hlásil cenu
+        // oboch a v detaile ukázal cudzí ťah.
+        $run = $recorder->openExclusive($thread, $data['message'], $options);
+
+        if ($run === null) {
+            return $this->refuse('V tomto vlákne už jeden beh prebieha. Počkaj, kým dobehne, alebo ho zastav.');
+        }
 
         return $this->stream(fn (callable $emit, callable $aborted) => $runner->run(
             $thread,

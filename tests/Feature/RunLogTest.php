@@ -210,8 +210,10 @@ class RunLogTest extends TestCase
 
         $fresh = $recorder->open($thread, 'práve beží');
         $stale = $recorder->open($thread, 'visí od reštartu');
-        $stale->started_at = now()->subHours(2);
-        $stale->save();
+
+        // Mŕtvy je beh, o ktorom sa dlho NIČ NEOZVALO — nie ten, ktorý dávno začal.
+        // Preto sa posúva `updated_at`, nie `started_at`.
+        $stale->forceFill(['updated_at' => now()->subHours(2)])->saveQuietly();
 
         $this->assertSame(1, $recorder->reapStale());
 
@@ -219,12 +221,108 @@ class RunLogTest extends TestCase
         $this->assertSame('running', $fresh->fresh()->status, 'Rozbehnutý beh sa nesmie zabiť.');
     }
 
+    public function test_a_second_run_in_the_same_thread_is_refused_so_the_id_range_stays_exact(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $recorder = app(RunRecorder::class);
+
+        // Prvý ťah beží (stav `running`, čerstvá aktivita).
+        $first = $recorder->open($thread, 'prvý ťah');
+
+        $this->fakeTools([]);
+        $this->fakeProvider([new LlmResponse(text: 'nemá sa spustiť')]);
+
+        $frames = $this->frames($this->send($thread, 'druhý ťah'));
+
+        // `pendingToolCall()` chráni až parkujúci zápis, takže bez tejto brány by
+        // druhý ťah prešiel a oba behy by si nastavili ten istý `from_message_id` —
+        // každý by potom hlásil cenu oboch a v detaile ukázal cudzí ťah.
+        $this->assertSame('error', $frames[0]['t']);
+        $this->assertStringContainsString('už jeden beh prebieha', $frames[0]['message']);
+        $this->assertSame(1, Run::count(), 'Odmietnutý ťah nesmie založiť druhý beh.');
+        $this->assertSame('running', $first->fresh()->status);
+    }
+
+    public function test_a_thread_whose_run_died_with_the_process_is_not_locked_forever(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $dead = app(RunRecorder::class)->open($thread, 'zomrel s procesom');
+        $dead->forceFill(['updated_at' => now()->subHours(2)])->saveQuietly();
+
+        $this->fakeTools([]);
+        $this->fakeProvider([new LlmResponse(text: 'ide to')]);
+
+        $frames = $this->frames($this->send($thread, 'nový ťah'));
+
+        // Beh v `running`, o ktorom sa dlho nič neozvalo, sa za živý nepočíta —
+        // inak by smrť PHP workera zamkla vlákno až do behu zametača.
+        $this->assertNotSame('error', $frames[0]['t']);
+        $this->assertSame(2, Run::count());
+    }
+
+    public function test_a_resumed_run_is_not_reaped_even_though_it_started_long_ago(): void
+    {
+        [$thread, $callId] = $this->parkedWrite([new LlmResponse(text: 'Zapísané.')]);
+
+        // Človek sa rozhodoval hodinu — beh teda ZAČAL dávno, ale práve ožil.
+        $run = Run::first();
+        $run->forceFill(['started_at' => now()->subHours(1)])->saveQuietly();
+
+        $this->frames($this->decide($thread, $callId, 'allow'));
+
+        $this->assertSame(0, app(RunRecorder::class)->reapStale(), 'Zametač nesmie zabiť práve oživený beh.');
+        $this->assertNotSame('aborted', $run->fresh()->status);
+    }
+
+    public function test_a_reaped_run_keeps_its_messages_and_its_cost(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $this->fakeTools([]);
+        $this->fakeProvider([new LlmResponse(text: 'odpoveď', tokensIn: 90, tokensOut: 12, evalDurationMs: 1000)]);
+
+        $this->frames($this->send($thread, 'úloha'));
+
+        // Beh umelo vrátime do `running` bez rozsahu — tak vyzerá beh, ktorý zomrel
+        // s procesom pred tým, než ho `close()` uzavrel.
+        $run = Run::first();
+        $run->forceFill([
+            'status' => 'running',
+            'to_message_id' => null,
+            'tokens_in' => null,
+            'tokens_out' => null,
+            'updated_at' => now()->subHours(2),
+        ])->saveQuietly();
+
+        app(RunRecorder::class)->reapStale();
+        $run->refresh();
+
+        // Hromadný `update()` by nedoplnil rozsah ani cenu, takže detail by hlásil
+        // prázdnu časovú os a nulové tokeny, hoci správy v DB sú.
+        $this->assertSame('aborted', $run->status);
+        $this->assertNotNull($run->to_message_id);
+        $this->assertSame(90, $run->tokens_in);
+        $this->assertGreaterThan(0, $run->messages()->count());
+    }
+
+    public function test_the_log_survives_the_deletion_of_its_thread(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $run = $this->makeRun(['thread_id' => $thread->id, 'prompt' => 'niečo dôležité']);
+
+        $this->deleteJson('/api/console/threads/'.$thread->uuid)->assertOk();
+
+        // S kaskádou stačil jeden klik v paneli vlákien a celá história behov bola
+        // preč — teda „každý beh je perzistovaný" padalo na jedno kliknutie.
+        $this->assertSame(1, Run::count());
+        $this->assertNull($run->fresh()->thread_id);
+        $this->assertSame('niečo dôležité', $run->fresh()->prompt);
+    }
+
     public function test_the_reap_command_shows_before_it_touches(): void
     {
         $thread = ConsoleThread::create([]);
         $stale = app(RunRecorder::class)->open($thread, 'visí od reštartu');
-        $stale->started_at = now()->subHours(2);
-        $stale->save();
+        $stale->forceFill(['updated_at' => now()->subHours(2)])->saveQuietly();
 
         $this->artisan('mind:reap-runs --dry-run')->assertSuccessful();
         $this->assertSame('running', $stale->fresh()->status, 'Dry-run nesmie nič zmeniť.');
@@ -238,8 +336,8 @@ class RunLogTest extends TestCase
         $thread = ConsoleThread::create([]);
         $parked = app(RunRecorder::class)->open($thread, 'čaká na povolenie');
         $parked->status = 'waiting';
-        $parked->started_at = now()->subDays(2);
         $parked->save();
+        $parked->forceFill(['updated_at' => now()->subDays(2)])->saveQuietly();
 
         $this->artisan('mind:reap-runs')->assertSuccessful();
 

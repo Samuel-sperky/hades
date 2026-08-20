@@ -21,9 +21,15 @@ use Illuminate\Support\Facades\Schema;
  * (vlákno s nedorozhodnutým zápisom odmietne ďalšiu správu — `RunController::run`),
  * takže rozsah je presný, nie približný.
  *
- * Tokeny a `tokens_per_second` sa neprepočítavajú — nesie ich rámec `end`, ktorý
- * `AgentRunner` už dnes posiela. Recorder ich len zbiera, a pri behu rozdelenom
- * na segmenty ich sčíta.
+ * Tokeny a `tokens_per_second` sa **z rámca `end` neberú**, hoci ho `AgentRunner`
+ * posiela: ťah, ktorý zaparkuje na potvrdení zápisu, `end` nikdy nepošle, takže
+ * cena jeho prvého segmentu by z logu vypadla. Sčítavajú sa preto z
+ * `console_messages` ({@see \App\Services\Console\RunRecorder::aggregate()}).
+ *
+ * `thread_id` je `nullOnDelete`, nie `cascadeOnDelete`: log behov má prežiť
+ * zmazanie vlákna. S kaskádou stačil jeden klik v paneli vlákien a celá história
+ * behov bola nenávratne preč — a popis MCP toolu pritom modelu sľubuje, že beh
+ * môže vlákno prežiť.
  */
 return new class extends Migration
 {
@@ -37,7 +43,7 @@ return new class extends Migration
             $table->uuid('uuid')->unique();
 
             $table->foreignId('thread_id')->nullable()
-                ->constrained('console_threads')->cascadeOnDelete();
+                ->constrained('console_threads')->nullOnDelete();
 
             // `console` dnes; `claude-code` a `api` sú miesta, kam môže dorásť
             // druhá session. Preto string, nie enum — enum by si vyžiadal

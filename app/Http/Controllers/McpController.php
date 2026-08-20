@@ -468,8 +468,11 @@ class McpController extends Controller
                     .'clock and so includes the minutes a human spent deciding about a write, which is '
                     .'why it can dwarf the generation time. `tool_calls` of 0 means the model answered '
                     .'from context alone. Filters narrow the list server-side; `q` matches the prompt '
-                    .'text. Read one run whole with mind_run. Empty fields are omitted: no `error` means '
-                    .'the run did not fail, no `thread` means the run outlived its thread.',
+                    .'text — but `counts` always covers the WHOLE table and no filter ever narrows it, '
+                    .'so do not read it as the shape of your filtered result. Read one run whole with '
+                    .'mind_run. Empty fields are omitted: no `error` means the run did not fail, no '
+                    .'`thread` means the run outlived the thread it ran in (threads can be deleted, runs '
+                    .'are kept).',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

@@ -31,29 +31,38 @@ class RunsScreen extends ScreenSerializer
 
         $query = Run::query()->with('thread:id,uuid,title');
 
-        if (($status = $this->filters['status'] ?? null) !== null && $status !== '') {
+        if (($status = self::text($this->filters['status'] ?? null)) !== '') {
             $query->where('status', $status);
         }
 
-        if (($model = $this->filters['model'] ?? null) !== null && $model !== '') {
+        if (($model = self::text($this->filters['model'] ?? null)) !== '') {
             $query->where('model', $model);
         }
 
-        if (($source = $this->filters['source'] ?? null) !== null && $source !== '') {
+        if (($source = self::text($this->filters['source'] ?? null)) !== '') {
             $query->where('source', $source);
         }
 
-        if (($thread = $this->filters['thread'] ?? null) !== null && $thread !== '') {
+        if (($thread = self::text($this->filters['thread'] ?? null)) !== '') {
             $query->whereHas('thread', fn ($q) => $q->where('uuid', $thread));
         }
 
-        if (($since = $this->filters['since'] ?? null) !== null && $since !== '') {
-            $query->where('started_at', '>=', Carbon::parse($since));
+        // `since` prichádza z DVOCH ciest a len jedna z nich validuje: `RunsController`
+        // áno, MCP tool posiela `$args` surové. `Carbon::parse('vcera')` vyhodí
+        // výnimku, ktorú by `tools/call` zabalil do neurčitého `isError` — model by
+        // sa nedozvedel, čo urobil zle. Nevalidný dátum sa preto ticho ignoruje
+        // a filter sa neuplatní.
+        if (($since = self::text($this->filters['since'] ?? null)) !== '') {
+            try {
+                $query->where('started_at', '>=', Carbon::parse($since));
+            } catch (\Throwable) {
+                // neplatný dátum = žiadny filter
+            }
         }
 
         // Hľadanie v zadaní behu. `LIKE` a nie FULLTEXT zámerne: promptov je rádovo
         // menej než uzlov a index by tu bol náklad bez merateľného zisku.
-        if (($q = $this->filters['q'] ?? null) !== null && $q !== '') {
+        if (($q = self::text($this->filters['q'] ?? null)) !== '') {
             $query->where('prompt', 'like', '%'.$q.'%');
         }
 
@@ -118,8 +127,10 @@ class RunsScreen extends ScreenSerializer
     }
 
     /**
-     * Počty podľa stavu. Sú v odpovedi preto, aby filter v UI vedel, čo má zmysel
-     * nabídnuť, a aby AI dostala tvar behu appky jedným volaním.
+     * Počty podľa stavu **nad celou tabuľkou, bez filtrov**. Sú v odpovedi preto,
+     * aby filter v UI vedel, čo má zmysel nabídnuť, a aby AI dostala tvar behu appky
+     * jedným volaním. Popis MCP toolu to musí povedať — model by inak `counts` čítal
+     * ako tvar svojho filtrovaného výsledku.
      *
      * @return array<string, int>
      */
@@ -147,6 +158,16 @@ class RunsScreen extends ScreenSerializer
             ->orderBy($column)
             ->pluck($column)
             ->all();
+    }
+
+    /**
+     * Filter ako text, alebo prázdno. MCP tool posiela argumenty tak, ako ich napísal
+     * model, takže tu môže pristáť pole aj objekt — `(string) []` by bolo varovanie
+     * a `where('status', [])` chyba dopytu.
+     */
+    private static function text(mixed $value): string
+    {
+        return is_scalar($value) ? trim((string) $value) : '';
     }
 
     public static function clip(string $text, int $max): string

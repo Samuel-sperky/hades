@@ -89,8 +89,12 @@ class Run extends Model
     /**
      * Tool cally behu. Viažu sa na `message_id`, nie na vlastný rozsah — tool call
      * vzniká vždy k asistentskej správe, takže rozsah správ ho určí presne aj bez
-     * `run_id`. `whereNull('message_id')` je tam kvôli callom, ktoré vznikli pred
-     * uložením správy: bez nich by zaparkovaný zápis v detaile behu chýbal.
+     * `run_id`.
+     *
+     * Skôr tu bola aj vetva pre `message_id IS NULL` s odôvodnením, že bez nej by
+     * zaparkovaný zápis v detaile chýbal. Nebola pravda: `AgentRunner::enqueue()`
+     * `message_id` nastaví VŽDY, takže sa nikdy nechytila — a keby sa chytila,
+     * ťahala by cudzie parkujúce cally do starších behov. Nevracaj ju.
      *
      * @return Collection<int, ConsoleToolCall>
      */
@@ -102,13 +106,7 @@ class Run extends Model
 
         return ConsoleToolCall::query()
             ->where('thread_id', $this->thread_id)
-            ->where(function (Builder $q): void {
-                $q->whereBetween('message_id', [$this->from_message_id, $this->to_message_id])
-                    ->orWhere(function (Builder $q): void {
-                        $q->whereNull('message_id')
-                            ->where('created_at', '>=', $this->started_at);
-                    });
-            })
+            ->whereBetween('message_id', [$this->from_message_id, $this->to_message_id])
             ->orderBy('id')
             ->get();
     }

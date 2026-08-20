@@ -5,6 +5,7 @@ namespace App\Services\Console;
 use App\Models\ConsoleMessage;
 use App\Models\ConsoleThread;
 use App\Models\Run;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Zapisovateľ behov — jediné miesto, kde vzniká riadok v `runs`.
@@ -30,6 +31,42 @@ class RunRecorder
 {
     /** Rámce, ktoré nesú stav behu. Všetko ostatné (`delta`, `start`, `tool_result`) sa neukládá. */
     private const STATEFUL = ['step', 'tool', 'permission', 'end', 'error'];
+
+    /**
+     * Založí beh, ale len ak vo vlákne žiadny iný práve nebeží.
+     *
+     * Prečo to musí byť atomické: rozsah id je presný len vtedy, keď je ťah vo
+     * vlákne jediný. `pendingToolCall()` v kontroléri chráni až stav, keď zápis
+     * PARKUJE — dva súbežné `POST /console/run` na to isté vlákno ním prejdú oba
+     * a potom si oba nastavia `from_message_id` na to isté číslo, takže každý beh
+     * hlási cenu oboch a v detaile ukáže cudzí ťah. Overené, nie hypotéza.
+     *
+     * Zámok je na riadku VLÁKNA, nie na `runs`: dva requesty sa musia serializovať
+     * ešte pred tým, než ktorýkoľvek z nich beh vytvorí.
+     *
+     * Beh v stave `running`, o ktorom sa už `$staleAfterMinutes` nič neozvalo, sa
+     * za živý NEPOČÍTA — inak by smrť procesu zamkla vlákno až do behu zametača
+     * a človek by nemal ako pokračovať.
+     */
+    public function openExclusive(
+        ConsoleThread $thread,
+        string $prompt,
+        array $options = [],
+        string $source = 'console',
+        int $staleAfterMinutes = 30,
+    ): ?Run {
+        return DB::transaction(function () use ($thread, $prompt, $options, $source, $staleAfterMinutes): ?Run {
+            ConsoleThread::query()->whereKey($thread->id)->lockForUpdate()->first();
+
+            $live = Run::query()
+                ->where('thread_id', $thread->id)
+                ->where('status', 'running')
+                ->where('updated_at', '>=', now()->subMinutes($staleAfterMinutes))
+                ->exists();
+
+            return $live ? null : $this->open($thread, $prompt, $options, $source);
+        });
+    }
 
     /**
      * Nový beh. `from_message_id` je dolná hranica rozsahu: správa, ktorú
@@ -70,6 +107,12 @@ class RunRecorder
         }
 
         $run->status = 'running';
+
+        // `started_at` sa NEPREPISUJE — je to skutočný začiatok ťahu a `duration_ms`
+        // z neho počíta. Zametač preto nesmie merať vek behu od `started_at`, ale od
+        // poslednej aktivity ({@see self::reapStale()}): beh, nad ktorým sa človek
+        // rozhodoval hodinu a potom zápis povolil, je živý, nie mŕtvy.
+        $run->touch();
         $run->save();
 
         return $run;
@@ -109,7 +152,6 @@ class RunRecorder
             'end' => $this->finish($run, $frame),
             default => null,
         };
-
 
         $run->save();
     }
@@ -206,16 +248,23 @@ class RunRecorder
      */
     public function reapStale(int $olderThanMinutes = 30): int
     {
-        // `ended_at` sa dopĺňa hodnotou z PHP, nie `NOW()` v SQL: testy bežia nad
-        // SQLite, ktorá `NOW()` nemá, a beh, ktorý sa nedá otestovať, je beh, ktorý
-        // sa raz ticho pokazí.
-        return Run::query()
+        // Vek sa meria od POSLEDNEJ AKTIVITY, nie od `started_at`. Beh zaparkovaný
+        // na potvrdení zápisu môže legitímne stáť hodiny a `resume()` mu `started_at`
+        // zámerne nemení (to je začiatok ťahu, z ktorého sa počíta trvanie). Keby
+        // zametač meral od `started_at`, zabil by práve rozbehnutý beh, o ktorom sa
+        // človek dlho rozhodoval — overené, stalo sa.
+        $stale = Run::query()
             ->where('status', 'running')
-            ->where('started_at', '<', now()->subMinutes($olderThanMinutes))
-            ->update([
-                'status' => 'aborted',
-                'ended_at' => now(),
-                'updated_at' => now(),
-            ]);
+            ->where('updated_at', '<', now()->subMinutes($olderThanMinutes))
+            ->get();
+
+        // Zametá sa po jednom cez `close()`, nie hromadným `update()`. Hromadný
+        // zápis nedoplní `to_message_id` ani cenu, takže zametaný beh by mal
+        // v detaile prázdnu časovú os a nulové tokeny, hoci správy v DB sú.
+        foreach ($stale as $run) {
+            $this->close($run, aborted: true);
+        }
+
+        return $stale->count();
     }
 }
