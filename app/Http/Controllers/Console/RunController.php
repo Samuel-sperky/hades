@@ -33,6 +33,41 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class RunController extends Controller
 {
+    /**
+     * Slovenské hlášky validátora — ich text ide priamo do toku správ.
+     *
+     * Odmietnutie sa vracia ako rámec `error` ({@see refuse()}) a klient ho
+     * vypisuje slovo za slovom ({@see public/js/console/run.js}, `refusalText`).
+     * Vlastné vety („Také vlákno neexistuje.") sú po slovensky, takže bez tohto
+     * poľa sa v tom istom toku miešali s anglickými vetami validátora — správa
+     * nad 8000 znakov vypísala „The message field must not be greater than 8000
+     * characters."
+     *
+     * Jedno pole pre `run()` aj `decide()`: to isté pole má mať v oboch tú istú
+     * vetu, a kľúč k pravidlu, ktoré endpoint nemá, validátor ignoruje.
+     *
+     * Vety sú písané na pravidlo, nie cez `:attribute`: mená polí sú anglické
+     * (`message`, `thread`, `call`) a v slovenskej vete by trčali.
+     *
+     * @var array<string, string>
+     */
+    private const MESSAGES = [
+        'thread.required' => 'Chýba vlákno, do ktorého beh patrí.',
+        'thread.uuid' => 'Identifikátor vlákna nemá platný tvar.',
+        'message.required' => 'Správa je prázdna — nie je čo odoslať.',
+        'message.string' => 'Správa musí byť text.',
+        'message.max' => 'Správa presahuje 8000 znakov. Beh prijme len kratšiu.',
+        'call.required' => 'Chýba volanie toolu, ku ktorému rozhodnutie patrí.',
+        'call.integer' => 'Identifikátor volania toolu nemá platný tvar.',
+        'decision.required' => 'Chýba rozhodnutie o zápise.',
+        'decision.string' => 'Rozhodnutie o zápise nemá platný tvar.',
+        'decision.in' => 'Také rozhodnutie o zápise neexistuje.',
+        'provider.string' => 'Meno poskytovateľa modelu nemá platný tvar.',
+        'provider.in' => 'Taký poskytovateľ modelu tu nie je.',
+        'model.string' => 'Meno modelu nemá platný tvar.',
+        'model.max' => 'Meno modelu presahuje 120 znakov.',
+    ];
+
     /** Jeden ťah: správa človeka → prúd rámcov protokolu. */
     public function run(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder): StreamedResponse
     {
@@ -41,7 +76,7 @@ class RunController extends Controller
             'message' => 'required|string|max:8000',
             'provider' => 'sometimes|nullable|string|in:'.implode(',', $providers->names()),
             'model' => 'sometimes|nullable|string|max:120',
-        ]);
+        ], self::MESSAGES);
 
         if ($validator->fails()) {
             return $this->refuse($validator->errors()->first());
@@ -89,7 +124,7 @@ class RunController extends Controller
             ]),
             'provider' => 'sometimes|nullable|string|in:'.implode(',', $providers->names()),
             'model' => 'sometimes|nullable|string|max:120',
-        ]);
+        ], self::MESSAGES);
 
         if ($validator->fails()) {
             return $this->refuse($validator->errors()->first());

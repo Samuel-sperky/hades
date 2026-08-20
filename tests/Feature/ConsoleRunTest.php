@@ -348,8 +348,41 @@ class ConsoleRunTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $this->assertSame('error', $this->frames($response)[0]['t']);
+        $frames = $this->frames($response);
+        $this->assertSame('error', $frames[0]['t']);
+        $this->assertSame('Správa presahuje 8000 znakov. Beh prijme len kratšiu.', $frames[0]['message']);
         $this->assertSame(0, ConsoleMessage::count());
+    }
+
+    /**
+     * Hláška validátora sa vypisuje do toho istého toku správ ako vlastné
+     * odmietnutia („Také vlákno neexistuje."), takže musí byť po slovensky.
+     * Bez `MESSAGES` v {@see \App\Http\Controllers\Console\RunController} tam
+     * pribudla anglická veta z Laravelu — teda dvojjazyčné rozhranie.
+     */
+    public function test_validation_refusals_speak_slovak(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $this->fakeTools([]);
+        $this->fakeProvider([new LlmResponse(text: 'nič')]);
+
+        $cases = [
+            ['/api/console/run', [], 'Chýba vlákno, do ktorého beh patrí.'],
+            ['/api/console/run', ['thread' => 'nie-uuid', 'message' => 'Ahoj'], 'Identifikátor vlákna nemá platný tvar.'],
+            ['/api/console/run', ['thread' => $thread->uuid], 'Správa je prázdna — nie je čo odoslať.'],
+            ['/api/console/run', ['thread' => $thread->uuid, 'message' => 'Ahoj', 'provider' => 'vymyslený'], 'Taký poskytovateľ modelu tu nie je.'],
+            ['/api/console/decide', ['thread' => $thread->uuid, 'decision' => 'allow'], 'Chýba volanie toolu, ku ktorému rozhodnutie patrí.'],
+            ['/api/console/decide', ['thread' => $thread->uuid, 'call' => 1, 'decision' => 'zmaž'], 'Také rozhodnutie o zápise neexistuje.'],
+        ];
+
+        foreach ($cases as [$url, $payload, $expected]) {
+            $response = $this->postJson($url, $payload);
+            $response->assertStatus(422);
+
+            $frame = $this->frames($response)[0];
+            $this->assertSame('error', $frame['t'], "Odmietnutie z {$url} nie je rámec `error`.");
+            $this->assertSame($expected, $frame['message']);
+        }
     }
 
     // ---- pomôcky -----------------------------------------------------------

@@ -17,6 +17,28 @@ use Illuminate\Http\Request;
  */
 class ThreadController extends Controller
 {
+    /**
+     * Slovenské hlášky validátora — dôvod je ten istý ako v
+     * {@see RunController::MESSAGES}: rozhranie má hovoriť jedným jazykom, a
+     * validátor bez tohto poľa vracia anglickú vetu.
+     *
+     * Klient dnes telo 422 z týchto rout nečíta (`json()` v
+     * `public/js/console/http.js` vypíše len stav), takže hláška ide do
+     * odpovede „do zásoby" — ale práve preto sa nesmie zabudnúť: keď sa čítanie
+     * tela pridá, jazyk už bude sedieť.
+     *
+     * @var array<string, string>
+     */
+    private const MESSAGES = [
+        'provider.string' => 'Meno poskytovateľa modelu nemá platný tvar.',
+        'provider.in' => 'Taký poskytovateľ modelu tu nie je.',
+        'model.string' => 'Meno modelu nemá platný tvar.',
+        'model.max' => 'Meno modelu presahuje 120 znakov.',
+        'title.string' => 'Názov vlákna musí byť text.',
+        'title.max' => 'Názov vlákna presahuje 200 znakov.',
+        'auto_accept.boolean' => 'Stav brány zápisov musí byť áno alebo nie.',
+    ];
+
     /** Zoznam pre bočný panel — bez správ, len to, čo sa vypisuje v riadku. */
     public function index(): JsonResponse
     {
@@ -43,7 +65,7 @@ class ThreadController extends Controller
             'provider' => 'sometimes|string|in:ollama,anthropic',
             'model' => 'sometimes|nullable|string|max:120',
             'title' => 'sometimes|nullable|string|max:200',
-        ]);
+        ], self::MESSAGES);
 
         $thread = ConsoleThread::create([
             'provider' => $data['provider'] ?? config('hades.console.provider'),
@@ -67,7 +89,7 @@ class ThreadController extends Controller
             'model' => 'sometimes|nullable|string|max:120',
             'title' => 'sometimes|nullable|string|max:200',
             'auto_accept' => 'sometimes|boolean',
-        ]);
+        ], self::MESSAGES);
 
         $thread->fill($data)->save();
 
