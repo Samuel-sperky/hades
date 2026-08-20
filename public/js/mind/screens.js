@@ -63,6 +63,13 @@ export function renderScreenBreadcrumb(name) {
     if (bc) bc.innerHTML = '<span class="current">' + esc(SCREEN_LABELS[name]) + '</span>';
 }
 
+/* Poradie preklikov a rozbehnuté rozšírenie rozsahu pre openNodeFromAnywhere().
+   Deklarované PRED funkciou zámerne: `let` v dočasnej mŕtvej zóne by pri cyklickom
+   importe, kde by niekto zavolal openNodeFromAnywhere() ešte počas vyhodnocovania
+   modulov, spadlo na ReferenceError. V tomto grafe modulov cykly sú. */
+let openSeq = 0;
+let scopeWidening = null;
+
 // Uzol otvorený z ktorejkoľvek obrazovky (Denník/Knižnica/Dnes/Cmd-K) → skoč na Graf a otvor detail.
 // ref môže byť plný načítaný uzol, alebo odľahčený {id,label,type,area_id} z hľadania/knižnice.
 //
@@ -74,6 +81,7 @@ export function renderScreenBreadcrumb(name) {
 export function openNodeFromAnywhere(ref) {
     if (!ref || ref.id == null) return;
     const id = +ref.id;
+    const seq = ++openSeq;
     const loaded = S.byId.get(id);
     setScreen('graf');
     if (loaded) {
@@ -91,15 +99,30 @@ export function openNodeFromAnywhere(ref) {
         area_id: ref.area_id != null ? ref.area_id : null,
     });
 
-    if (S.graphScope === 'all') return; // širšie sa už ísť nedá — uzol na plátne nebude
+    /* Rozšírenie rozsahu je async a dovtedy sa toho môže stať dosť: človek klikne
+       na iný uzol, alebo odíde na inú obrazovku. Bez strážcu by staršia odpoveď
+       dobehla ako posledná a strhla panel späť na predošlý uzol — prípadne ho
+       otvorila na obrazovke, kde detail uzla nemá čo robiť (#node-panel nie je
+       vnorený v .screen, takže ho prepnutie obrazovky samo neskryje).
+       Je to ten istý vzor ako `reloadSeq` v api.js. */
+    const widened = S.graphScope !== 'all';
+    if (!widened && !scopeWidening) return; // širšie sa už ísť nedá a nič nebeží
 
-    setGraphScope('all').then(() => {
+    // druhý preklik nespúšťa druhé rozšírenie, pripojí sa na to bežiace
+    const wait = widened
+        ? (scopeWidening = setGraphScope('all').finally(() => { scopeWidening = null; }))
+        : scopeWidening;
+
+    wait.then(() => {
+        if (seq !== openSeq) return;      // medzitým prišiel novší preklik
+        if (S.screen !== 'graf') return;  // človek medzitým odišiel inam
         const now = S.byId.get(id);
         if (!now) return; // uzol nie je ani v celej sieti (zmazaný medzitým) — detail stačí
-        showToast('Graf rozšírený na celú knižnicu — uzol bol mimo živého pohľadu');
+        if (widened) showToast('Graf rozšírený na celú knižnicu — uzol bol mimo živého pohľadu');
         focusFound(now);
     });
 }
+
 
 /** Zaostrenie na nájdený uzol: priblíž, doleť, otvor detail. */
 function focusFound(node) {

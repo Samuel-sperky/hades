@@ -2805,6 +2805,9 @@ body:not([data-screen="graf"]) #zoomctl,
 body:not([data-screen="graf"]) #btn-up,
 body:not([data-screen="graf"]) #graph-tools,
 body:not([data-screen="graf"]) #header-metrics,
+/* .h-scope patrí k metrike a k plátnu — mimo Grafu nemá čo prepínať. Keď sem
+   pribudne ďalší prvok hlavičky viazaný na graf, patrí do tohto zoznamu tiež. */
+body:not([data-screen="graf"]) .h-scope,
 body:not([data-screen="graf"]) #local-chip { display: none !important; }
 
 /* Chat je schovaný, kým ho v Nastaveniach nezapneš (nefunguje bez API kľúča) */
