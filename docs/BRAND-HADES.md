@@ -110,8 +110,16 @@ Dýchanie jadra je **značkový podpis**, nie ozdoba: perióda 4 s, `core-pulse`
 Rýchlosť nesie stav vedomia — `.asleep` pauzne animáciu a stlmí znak (nie slovo,
 inak wordmark spadne pod 4,5:1).
 
-Intro animácia zrodu znaku patrí do decku a na prvé načítanie, nie do každého
-prekliku.
+**Zrod znaku** (intro) beží raz pri načítaní: prstenec sa obtiahne od dvanástky
+(760 ms, oneskorenie 100 ms), potom naskočí jadro s prekmitom na 1,14 (460 ms,
+oneskorenie 620 ms). Poradie kopíruje vetu značky — najprv hranica vedomia, potom
+jadro. Appka je SPA, takže „raz pri načítaní" znamená raz za sedenie, nie pri
+každom prekliku obrazovky.
+
+Obvod prstenca je 2π × 8,64 = **54,29** a je zapísaný v `stroke-dasharray`. Keď
+zmeníš polomer, prepočítaj ho — inak sa obtiahnutie zastaví v polovici alebo skočí.
+
+`prefers-reduced-motion` vypína obe animácie a znak je rovno hotový, nie neviditeľný.
 
 ---
 

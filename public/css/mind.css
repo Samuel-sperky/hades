@@ -782,6 +782,47 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 }
 #brand-core.asleep svg { opacity: .5; }
 
+/* ZROD ZNAKU — intro animácia (rozhodnutie 15 v docs/BRAND-HADES.md).
+   Prstenec sa obtiahne, potom sa rozsvieti jadro: znak vzniká v tom poradí, v akom
+   ho číta veta značky — najprv hranica vedomia, potom jadro.
+
+   Beží RAZ (`1 both`), nie v slučke. Appka je SPA, takže „raz pri načítaní" naozaj
+   znamená raz za sedenie a nie pri každom prekliku obrazovky — presne ako to žiada
+   manuál. Dýchanie (`core-pulse`) beží na tlačidle a hýbe `filter`om, takže sa
+   s týmto nebije: intro animuje deti SVG, nie tlačidlo.
+
+   Obvod prstenca je 2π × 8,64 = 54,29 — keď zmeníš polomer znaku, prepočítaj aj
+   dasharray, inak sa obtiahnutie zastaví v polovici alebo skočí. */
+#brand-core .bc-ring,
+#back-to-graph .bc-ring {
+    stroke-dasharray: 54.29;
+    stroke-dashoffset: 54.29;
+    /* od 12 hodín, nie od 3 — inak znak vzniká zboku */
+    transform: rotate(-90deg);
+    transform-origin: 12px 12px;
+    animation: bc-draw 760ms var(--ease) 100ms 1 both;
+}
+#brand-core .bc-core,
+#back-to-graph .bc-core {
+    transform-origin: 12px 12px;
+    animation: bc-core-in 460ms var(--ease) 620ms 1 both;
+}
+@keyframes bc-draw {
+    from { stroke-dashoffset: 54.29; }
+    to   { stroke-dashoffset: 0; }
+}
+@keyframes bc-core-in {
+    from { transform: scale(0); }
+    62%  { transform: scale(1.14); }
+    to   { transform: scale(1); }
+}
+/* Bez pohybu je znak rovno hotový — nie neviditeľný. */
+@media (prefers-reduced-motion: reduce) {
+    #brand-core .bc-ring, #back-to-graph .bc-ring,
+    #brand-core .bc-core, #back-to-graph .bc-core { animation: none; }
+    #brand-core .bc-ring, #back-to-graph .bc-ring { stroke-dashoffset: 0; }
+}
+
 @keyframes core-pulse {
     0%, 100% { filter: drop-shadow(var(--core-glow-min)); }
     50%      { filter: drop-shadow(var(--core-glow-max)); }

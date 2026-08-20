@@ -41,8 +41,8 @@
                      vracia do grafu — logo, ktoré vedie domov, je zaužívané. --}}
                 <a href="/" id="back-to-graph" title="Hades — späť do grafu" aria-label="Hades — späť do grafu">
                     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-                        <circle cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
-                        <circle cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
+                        <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                        <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
                     </svg>
                 </a>
                 <button id="new-thread" type="button" title="Nové vlákno (Ctrl+N)">

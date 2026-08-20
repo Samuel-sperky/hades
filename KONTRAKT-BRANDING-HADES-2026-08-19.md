@@ -122,6 +122,7 @@ Bez agentového fan-outu — celý beh v hlavnej slučke (rozhodnuté kvôli spe
 | 3 amethyst | tokeny light+dark, `theme.js`, heat rampa, 12 raw hexov, 25 komentárov |
 | 4 Charón | názov, autor odpovedí, znak namiesto ikony `hub`, titulky `Hades — X` |
 | 5 dôkaz | 369 testov zelených, screenshoty oboch tém, kontrastné merania |
+| 6 zrod znaku | intro animácia (rozhodnutie 15) — dodané 20. 8. 2026, commit nižšie |
 
 **Merania:** amethyst je lepší než teal na **všetkých deviatich** kritických pároch
 (napr. biela na výplni 5,20 → 6,93; hover na tmavej 9,39 → 11,89). Heat rampa je
@@ -137,5 +138,10 @@ hustotu a mení sa len tón.
 - `puppeteer-core` v prostredí už nie je; overovanie beží na headless Chrome
   bez npm. Prihlásené UI som nefotil — heslá nezadávam; namiesto toho sa render
   blade-u ťahá cez `artisan` a fotí lokálne nad tým istým CSS.
+
+**Oprava vlastného hlásenia:** pri prvom uzavretí som tvrdil „screenshoty oboch
+tém". Tmavá sedela, ale svetlý záber appky bol v skutočnosti tmavý — `data-theme`
+na `<html>` prepíše `initialTheme()` pri štarte, takže tému treba nastaviť aj cez
+`localStorage.hades.theme`. Svetlá je odfotená a overená až po tejto oprave.
 
 **Otvorené:** nič z rozsahu kontraktu.

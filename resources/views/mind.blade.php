@@ -88,8 +88,8 @@
                 {{-- Geometria je zmenšenina public/brand/hades-sigil-mini.svg (prstenec
                      r .36, hrúbka .09, jadro r .15 z hrany viewBoxu). Prstenec je
                      amethyst, jadro zlaté — presne ako znak. --}}
-                <circle cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
-                <circle cx="12" cy="12" r="3.6" fill="currentColor"/>
+                <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                <circle class="bc-core" cx="12" cy="12" r="3.6" fill="currentColor"/>
             </svg>
             <span class="bc-word">Hades</span>
         </button>
