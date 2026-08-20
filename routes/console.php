@@ -85,3 +85,12 @@ Schedule::command('mind:rollup')
     ->weeklyOn(0, '05:15')
     ->timezone('Europe/Bratislava')
     ->withoutOverlapping(60);
+
+// Log behov konzoly: uzavrie behy, ktoré zostali visieť v stave `running` po smrti
+// procesu (reštart kontejnera, spadnutý PHP worker) — `finally` v RunController
+// vtedy nezbehne. Nie v nočnom bloku, ale každých 10 minút: obrazovka Runy
+// zobrazuje `running` ako „beží práve teraz", takže mŕtvy beh tam nesmie svietiť
+// do rána. Zaparkované behy (`waiting`) sa nezametajú — čakajú na človeka.
+Schedule::command('mind:reap-runs')
+    ->everyTenMinutes()
+    ->withoutOverlapping(10);

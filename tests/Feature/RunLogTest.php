@@ -216,6 +216,33 @@ class RunLogTest extends TestCase
         $this->assertSame('running', $fresh->fresh()->status, 'Rozbehnutý beh sa nesmie zabiť.');
     }
 
+    public function test_the_reap_command_shows_before_it_touches(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $stale = app(RunRecorder::class)->open($thread, 'visí od reštartu');
+        $stale->started_at = now()->subHours(2);
+        $stale->save();
+
+        $this->artisan('mind:reap-runs --dry-run')->assertSuccessful();
+        $this->assertSame('running', $stale->fresh()->status, 'Dry-run nesmie nič zmeniť.');
+
+        $this->artisan('mind:reap-runs')->assertSuccessful();
+        $this->assertSame('aborted', $stale->fresh()->status);
+    }
+
+    public function test_a_parked_run_is_never_reaped_because_it_waits_for_a_human(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $parked = app(RunRecorder::class)->open($thread, 'čaká na povolenie');
+        $parked->status = 'waiting';
+        $parked->started_at = now()->subDays(2);
+        $parked->save();
+
+        $this->artisan('mind:reap-runs')->assertSuccessful();
+
+        $this->assertSame('waiting', $parked->fresh()->status);
+    }
+
     // ---- obrazovka a jej AI dvojča -----------------------------------------
 
     public function test_the_list_carries_rows_counts_and_filter_options(): void
