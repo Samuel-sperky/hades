@@ -41,6 +41,19 @@
 
     function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
+    /* Zrod grafu: dáta sa kreslia, nie zjavujú. Pohyb je jediný, ktorý si graf
+       smie dovoliť — nesie poradie čítania (donut od dvanástky, krivka zľava,
+       heatmapa od najstaršieho týždňa), nie dekoráciu.
+
+       Stráž je JEDNA a číta sa RAZ pri načítaní: kontrolovať matchMedia v každom
+       vykreslení by pri heatmape znamenalo dopyt na 365 buniek. */
+    const REDUCED = !!(window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    /** Spustí prechod až v ďalšom rámci — inak prehliadač zlúči počiatočný
+        a cieľový stav do jedného štýlu a animácia sa preskočí. */
+    function nextFrame(fn) { requestAnimationFrame(() => requestAnimationFrame(fn)); }
+
     /* -----------------------------------------------------------------------
        AUTO-FIT — grafy berú výšku z REÁLNEHO boxu kontejnera, nie z konštanty.
        Kontejnery sú v CSS flex: 1 1 0 s min-height, takže obsah nemôže tlačiť
@@ -148,6 +161,7 @@
                 grid.appendChild(cell);
             }
         }
+        if (!REDUCED) grid.classList.add('heat-reveal');
         heat.appendChild(grid);
         container.appendChild(heat);
 
@@ -205,6 +219,8 @@
 
         // Rotate so segments start at 12 o'clock and run clockwise.
         const g = svgEl('g', { transform: 'rotate(-90 ' + cx + ' ' + cy + ')' });
+        const pending = [];
+        let drawn = 0;
         if (sum > 0) {
             let start = 0; // cumulative fraction 0..1
             for (const s of segs) {
@@ -212,14 +228,23 @@
                 if (v <= 0) continue;
                 const frac = v / sum;
                 const arc = frac * C;
-                g.appendChild(svgEl('circle', {
+                const seg = svgEl('circle', {
                     cx: cx, cy: cy, r: r, fill: 'none',
                     stroke: certColor(s.cert),
                     'stroke-width': thickness,
                     'stroke-dasharray': arc + ' ' + (C - arc),
                     'stroke-dashoffset': String(-start * C),
-                }));
+                });
+                if (!REDUCED) {
+                    // narastá od svojho začiatku, nie od stredu kruhu
+                    seg.setAttribute('stroke-dasharray', '0 ' + C);
+                    seg.style.transitionDelay = (drawn * 90) + 'ms';
+                    seg.classList.add('seg-draw');
+                    pending.push([seg, arc + ' ' + (C - arc)]);
+                }
+                g.appendChild(seg);
                 start += frac;
+                drawn++;
             }
         }
         svg.appendChild(g);
@@ -235,6 +260,9 @@
         wrap.appendChild(center);
 
         container.appendChild(wrap);
+        if (pending.length) nextFrame(() => {
+            for (const [node, val] of pending) node.setAttribute('stroke-dasharray', val);
+        });
     }
 
     /* -----------------------------------------------------------------------
@@ -283,21 +311,39 @@
         area += 'L' + xAt(n - 1).toFixed(1) + ' ' + (H - pad)
               + 'L' + xAt(0).toFixed(1) + ' ' + (H - pad) + 'Z';
 
-        svg.appendChild(svgEl('path', {
+        const areaEl = svgEl('path', {
             d: area, fill: accent, 'fill-opacity': '0.10', stroke: 'none',
-        }));
-        svg.appendChild(svgEl('path', {
+        });
+        const lineEl = svgEl('path', {
             d: line, fill: 'none', stroke: accent,
             'stroke-width': '2', 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
             'vector-effect': 'non-scaling-stroke',
-        }));
+        });
         // Last-point marker.
-        svg.appendChild(svgEl('circle', {
+        const dotEl = svgEl('circle', {
             cx: xAt(n - 1), cy: yAt(values[n - 1]), r: '2.5',
             fill: accent, 'vector-effect': 'non-scaling-stroke',
-        }));
+        });
+        svg.appendChild(areaEl);
+        svg.appendChild(lineEl);
+        svg.appendChild(dotEl);
 
         container.appendChild(svg);
+
+        if (!REDUCED) {
+            // getTotalLength() potrebuje prvok V DOKUMENTE — preto až po appendChild.
+            const len = lineEl.getTotalLength();
+            lineEl.style.strokeDasharray = len;
+            lineEl.style.strokeDashoffset = len;
+            lineEl.classList.add('line-draw');
+            areaEl.classList.add('chart-fade');
+            dotEl.classList.add('chart-fade', 'chart-fade-late');
+            nextFrame(() => {
+                lineEl.style.strokeDashoffset = '0';
+                areaEl.classList.add('in');
+                dotEl.classList.add('in');
+            });
+        }
 
         // First / last period labels below the chart (muted mono).
         if (labels.length) {

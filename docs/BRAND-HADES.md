@@ -121,6 +121,34 @@ zmeníš polomer, prepočítaj ho — inak sa obtiahnutie zastaví v polovici al
 
 `prefers-reduced-motion` vypína obe animácie a znak je rovno hotový, nie neviditeľný.
 
+### Pohyb v rozhraní
+
+Pravidlo: **pohyb nesie poradie čítania alebo hlási zmenu — nikdy nie je ozdoba.**
+Preto sa animuje geometria (obtiahnutie, odkrytie, narastanie), nie fade celej
+karty; fade hovorí „niečo pribudlo", geometria hovorí „takto to vzniklo".
+
+| Miesto | Pohyb | Trvanie |
+|---|---|---|
+| Znak (rail, Charón, prázdny stav) | prstenec sa obtiahne, potom jadro | 760 + 460 ms |
+| Jadro v raile | dýchanie = stav vedomia (`bdie` / `spí`) | 4 s, slučka |
+| Obrazovka | `rise-fade` pri prepnutí | `--dur-base` |
+| Donut istoty | segmenty sa vykrúžia od dvanástky, stupňovane po 90 ms | 760 ms |
+| Krivka rastu | čiara sa obtiahne zľava, plocha a bodka dobehnú | 900 ms |
+| Heatmapa | odkrytie zľava (od najstaršieho týždňa) | 720 ms |
+| Uzol na plátne | `birthScale()` pri zrode z WS | 0,5 s |
+| Správa v Charónovi | `msg-in` — len pri živom pribudnutí | `--dur-base` |
+
+Dve pasce, na ktorých to inak vyzerá zle:
+
+- **Obnova histórie nie je zrod.** Charón pri otvorení vlákna pridá desiatky blokov
+  naraz; keby každý dostal `msg-in`, história by sa rozhýbala celá. `render.js`
+  preto počas `renderThread()` triedu `is-new` nepridáva.
+- **Heatmapa sa neanimuje po bunkách.** 365 buniek × vlastné oneskorenie = 365
+  inline štýlov; odkrytie beží jednou animáciou nad mriežkou.
+
+Všetko rešpektuje `prefers-reduced-motion` — a v grafoch tak, že `charts.js` triedy
+vôbec nepridá (nie že by ich CSS potom prebíjalo).
+
 ---
 
 ## 3. Farba

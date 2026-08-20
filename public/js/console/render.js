@@ -24,6 +24,28 @@ export function streamEl() {
     return $('#stream');
 }
 
+/** Znak Hadesa — tá istá geometria ako favicon a rail (public/brand/hades-sigil-mini.svg).
+    Prázdny stav je prvá plocha, ktorú človek v Charónovi vidí, a jediná, kde je
+    miesto na značku; hlavička ju nesie len ako 24 px odkaz do grafu. */
+function sigilMark() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', 'empty-sigil');
+    const ring = document.createElementNS(NS, 'circle');
+    ring.setAttribute('class', 'bc-ring');
+    ring.setAttribute('cx', '12'); ring.setAttribute('cy', '12'); ring.setAttribute('r', '8.64');
+    ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'var(--accent)');
+    ring.setAttribute('stroke-width', '2.16');
+    const core = document.createElementNS(NS, 'circle');
+    core.setAttribute('class', 'bc-core');
+    core.setAttribute('cx', '12'); core.setAttribute('cy', '12'); core.setAttribute('r', '3.6');
+    core.setAttribute('fill', 'var(--brand-gold)');
+    svg.append(ring, core);
+    return svg;
+}
+
 /** Prázdny stav — hovorí, ČO konzola vie. Je to prvá vec, ktorú človek vidí. */
 export function renderEmpty() {
     const stream = streamEl();
@@ -32,6 +54,7 @@ export function renderEmpty() {
     stream.innerHTML = '';
 
     const box = el('div', 'empty-state');
+    box.append(sigilMark());
     box.append(el('h2', null, 'Charón'));
     box.append(el('p', null,
         'Napíš úlohu. Charón vidí celú pamäť Hadesa aj súbory projektu — '
@@ -99,12 +122,18 @@ export function paintJump() {
     btn.classList.toggle('hidden', C.follow || distanceFromBottom(stream) < FOLLOW_SLACK);
 }
 
+/* Obnova vlákna pridáva desiatky blokov naraz. Keby každý dostal zrod, história
+   by sa pri otvorení rozhýbala celá — pohyb má hlásiť „toto práve pribudlo",
+   nie „toto tu je". Preto sa počas renderThread() zrod potlačí. */
+let restoring = 0;
+
 /** Prvé pridanie po prázdnom stave musí prázdny stav odstrániť. */
 function appendBlock(node) {
     const stream = streamEl();
     if (!stream) return node;
 
     stream.querySelector('.empty-state')?.remove();
+    if (!restoring) node.classList.add('is-new');
     stream.append(node);
     scrollIfFollowing();
 
@@ -270,6 +299,15 @@ export function renderThread(data) {
     const stream = streamEl();
     if (!stream) return;
 
+    restoring++;
+    try {
+        renderThreadBody(stream, data);
+    } finally {
+        restoring--;
+    }
+}
+
+function renderThreadBody(stream, data) {
     stream.innerHTML = '';
     C.turn = null;
     C.awaiting = null;

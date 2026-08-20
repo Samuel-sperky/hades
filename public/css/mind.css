@@ -2131,6 +2131,45 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     border-radius: var(--r-pill);
     background: var(--gold-text);
 }
+/* ---------------------------------------------------------------------------
+   ZROD GRAFOV — dáta sa kreslia, nie zjavujú.
+
+   Pohyb nesie poradie čítania: donut od dvanástky, krivka zľava doprava,
+   heatmapa od najstaršieho týždňa. Preto sú to prechody na geometrii
+   (dasharray / dashoffset / clip-path), nie fade celej karty — fade by povedal
+   „niečo pribudlo", kým toto hovorí „takto to narástlo".
+
+   Trvania sedia na existujúcom rebríčku (--dur-slow 420 ms je najdlhšie, čo
+   appka inde používa); graf smie ísť ďalej, lebo kreslí dej, ale nad ~900 ms
+   by už zdržiaval. Spúšťa ich charts.js, ktorý pri prefers-reduced-motion
+   triedy vôbec nepridá — preto tu nie je @media blok.
+   --------------------------------------------------------------------------- */
+.donut .seg-draw {
+    transition: stroke-dasharray 760ms var(--ease);
+}
+.line-draw {
+    transition: stroke-dashoffset 900ms var(--ease);
+}
+.chart-fade {
+    opacity: 0;
+    transition: opacity 520ms var(--ease) 240ms;
+}
+.chart-fade-late {
+    transition-delay: 760ms;
+}
+.chart-fade.in {
+    opacity: 1;
+}
+/* Heatmapa: odkrytie zľava jednou animáciou nad mriežkou. Per-bunkové oneskorenie
+   by pri 365 bunkách znamenalo 365 inline štýlov a prekreslenie na každý rámec. */
+.heat-grid.heat-reveal {
+    animation: heat-reveal 720ms var(--ease) both;
+}
+@keyframes heat-reveal {
+    from { clip-path: inset(0 100% 0 0); }
+    to   { clip-path: inset(0 0 0 0); }
+}
+
 @keyframes load-breathe {
     0%, 100% { transform: scale(.84); }
     50%      { transform: scale(1); }
