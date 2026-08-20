@@ -281,30 +281,31 @@ export function syncCardHtml(dash) {
     // Jeden zdroj: koreňový kľúč. Server ho už zrovnal s tým v `sync`.
     const guardOn = !!dash.brain_write_enabled;
 
-    const rowStyle = 'display:flex;align-items:center;gap:var(--sp-1);';
     const bits = [
         ['+' + (sync.created ?? 0), 'nových'],
         ['~' + (sync.updated ?? 0), 'zmien'],
         ['−' + (sync.deleted ?? 0), 'zmazaných'],
         ['»' + (sync.skipped ?? 0), 'preskočených'],
     ];
-    const stats = '<div style="display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);'
-        + 'font-family:var(--mono);font-size:var(--fs-small);color:var(--muted);">'
-        + bits.map((b) => '<span><strong style="color:var(--text-secondary);">' + esc(b[0]) + '</strong> '
-            + esc(b[1]) + '</span>').join('') + '</div>';
+    /* Vzhľad drží CSS (.sync-*), nie inline štýly. Bola to jediná karta na Dnes,
+       ktorá si ho skládala v JS — zmena rozloženia by sa tu musela robiť v inom
+       jazyku než vo zvyšku obrazovky. */
+    const stats = '<div class="sync-stats">'
+        + bits.map((b) => '<span><strong>' + esc(b[0]) + '</strong> ' + esc(b[1]) + '</span>').join('')
+        + '</div>';
 
     return '<div class="dash-card"><div class="dash-head">'
         + '<span class="dash-title">Synchronizácia</span>'
         + '<span class="dash-note">' + (sync.finished_at ? esc(timeAgo(sync.finished_at)) : '—') + '</span>'
         + '</div>'
-        + '<div style="' + rowStyle + 'font-size:var(--fs-small);color:var(--text-secondary);">'
+        + '<div class="sync-row sync-state">'
         + '<span class="status-dot" data-status="' + status + '"></span><span>' + esc(statusLabel) + '</span></div>'
-        + (sync.message ? '<p style="font-size:var(--fs-small);color:var(--muted);margin:0;">' + esc(sync.message) + '</p>' : '')
+        + (sync.message ? '<p class="sync-msg">' + esc(sync.message) + '</p>' : '')
         + stats
-        + '<div style="' + rowStyle + 'font-family:var(--mono);font-size:var(--fs-caption);color:var(--muted);">'
-        + '<span class="ms" aria-hidden="true" style="font-size:var(--icon-sm);">' + (guardOn ? 'lock_open' : 'lock') + '</span>'
-        + 'Zápis do playbookov: <strong style="color:var(--text-secondary);">' + (guardOn ? 'zapnutý' : 'vypnutý') + '</strong></div>'
-        + '<button type="button" id="sync-now" class="primary" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;">'
+        + '<div class="sync-row sync-guard">'
+        + '<span class="ms" aria-hidden="true">' + (guardOn ? 'lock_open' : 'lock') + '</span>'
+        + 'Zápis do playbookov: <strong>' + (guardOn ? 'zapnutý' : 'vypnutý') + '</strong></div>'
+        + '<button type="button" id="sync-now" class="primary sync-btn">'
         + '<span class="ms" aria-hidden="true">sync</span> Synchronizovať</button>'
         + '</div>';
 }

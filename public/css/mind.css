@@ -3887,6 +3887,34 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
 .queue-actions button.act-resolve:hover { color: var(--accent-ink); background: var(--accent-softer); }
 .queue-actions button.act-skip:hover { color: var(--danger); background: var(--danger-soft); }
 .queue-actions button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* DOTYK NA PLÁTNE — gestá si berie graf, nie prehliadač.
+   Viazané na obrazovku zámerne: plátno je `position: fixed; inset: 0` POD obsahom,
+   takže natvrdo `touch-action: none` na #mind by na dotyku zabilo scrollovanie
+   stránky všade, kde sa prst trafí mimo textu. Mimo Grafu preto gestá patria
+   prehliadaču. Do 20. 8. 2026 sa to nastavovalo z JS cez MutationObserver — sem
+   to patrí, je to vlastnosť plochy, nie správanie.
+   `-webkit-touch-callout` bráni iOS vyvolať výber/callout pri dlhom podržaní,
+   ktoré je tu legitímne gesto (ťahanie uzla). */
+body[data-screen="graf"] #mind {
+    touch-action: none;
+    -webkit-touch-callout: none;
+}
+
+/* Karta synchronizácie — vyňaté z inline štýlov v dnes.js (5.5). Hodnoty sú
+   znak po znaku tie isté, čo tam boli; je to presun jazyka, nie zmena vzhľadu. */
+.sync-row { display: flex; align-items: center; gap: var(--sp-1); }
+.sync-state { font-size: var(--fs-small); color: var(--text-secondary); }
+.sync-msg { font-size: var(--fs-small); color: var(--muted); margin: 0; }
+.sync-stats {
+    display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2);
+    font-family: var(--mono); font-size: var(--fs-small); color: var(--muted);
+}
+.sync-stats strong { color: var(--text-secondary); }
+.sync-guard { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); }
+.sync-guard .ms { font-size: var(--icon-sm); }
+.sync-guard strong { color: var(--text-secondary); }
+.sync-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+
 /* Vstup vo filtračnom rade nesmie brať celú šírku. Základné `input { width: 100% }`
    ho inak roztiahne cez celý riadok a poznámku („Zobrazených 100 zo 140") vytlačí
    na okraj. Nahrádza dva inline štýly — v Kontrole a v Rozhodnutiach. */

@@ -83,14 +83,16 @@ export function setupInput() {
         canvas.classList.remove('dragging');
     };
 
-    canvas.addEventListener('mousedown', (e) => {
-        if (e.button !== 0) return;   // len ľavé tlačidlo — pravé/stredné inak štartovalo drag, ktorý sa nikdy neskončil
-        dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
+    // Telo gesta vytiahnuté z myšacích handlerov, aby ho vedel volať aj dotyk.
+    // Prst a kurzor majú robiť to isté; keby to boli dve kópie, rozídu sa pri
+    // prvej zmene ťahania a jedna z ciest ostane s odpojeným uzlom na fx/fy.
+    const beginDragAt = (px, py) => {
+        dragging = true; moved = false; lx = px; ly = py;
         S._interacting = true;
         canvas.style.cursor = '';
         dragNode = null;
-        if (!S.connectFrom && !pickHub(e.clientX, e.clientY)) {
-            const n = pick(e.clientX, e.clientY);
+        if (!S.connectFrom && !pickHub(px, py)) {
+            const n = pick(px, py);
             if (n) {
                 dragNode = n;
                 n.fx = n.x; n.fy = n.y;
@@ -99,6 +101,60 @@ export function setupInput() {
         }
         canvas.classList.add('dragging');
         requestDraw();
+    };
+
+    const moveDragTo = (px, py) => {
+        const dx = px - lx, dy = py - ly;
+        if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+        if (dragNode) {
+            const w = screenToWorld(px, py);
+            // fx/fy pre fyziku, x/y priamo — aby ťahanie fungovalo aj vtedy,
+            // keď sa d3 nenačítalo a simulácia neexistuje
+            dragNode.fx = w.x; dragNode.fy = w.y;
+            dragNode.x = w.x; dragNode.y = w.y;
+        } else {
+            S.cam.x += dx; S.cam.y += dy;
+            S._camTween = null;      // ručný pan preruší tween kamery
+            S._fitOnSettle = false;  // ...aj automatické dorovnanie po usadení
+        }
+        lx = px; ly = py;
+        requestDraw();
+    };
+
+    // Vyhodnotenie kliku/klepnutia bez posunu (výber, zanorenie, spájanie).
+    const resolveClick = (px, py) => {
+        const hit = pickTarget(px, py);
+        if (S.connectFrom) {
+            // connect mode: klik na iný uzol prepája, klik do prázdna ruší
+            if (hit && hit.type === 'node' && hit.id !== S.connectFrom) createEdge(S.connectFrom, hit.id);
+            else if (!hit) cancelConnect();
+        } else if (hit) {
+            // W2a: klik na hub/uzol ZANORÍ; detail uzla sa otvorí spolu s tým
+            if (hit.type === 'node') selectNode(hit.node);
+            goInto(hit);
+        } else {
+            // klik do prázdna → o úroveň von (a zavri detail)
+            closeNodePanel();
+            goUp();
+        }
+    };
+
+    // Zoom ukotvený v danom bode obrazovky: svetový bod pod kurzorom (resp. pod
+    // stredom pinch gesta) musí po zmene mierky ostať na tom istom pixeli, inak
+    // scéna pod prstami uteká.
+    const zoomAt = (px, py, factor) => {
+        const before = screenToWorld(px, py);
+        S.cam.k = Math.min(3.2, Math.max(0.14, S.cam.k * factor));
+        const after = screenToWorld(px, py);
+        S.cam.x += (after.x - before.x) * S.cam.k;
+        S.cam.y += (after.y - before.y) * S.cam.k;
+        S._camTween = null;
+        S._fitOnSettle = false;   // ručný zoom má prednosť pred dorovnaním po usadení
+    };
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;   // len ľavé tlačidlo — pravé/stredné inak štartovalo drag, ktorý sa nikdy neskončil
+        beginDragAt(e.clientX, e.clientY);
     });
 
     canvas.addEventListener('mouseleave', () => { S.cursor.on = false; });
@@ -117,21 +173,7 @@ export function setupInput() {
         S.cursor.sx = e.clientX; S.cursor.sy = e.clientY;
         S.cursor.on = !dragging;
         if (dragging) {
-            const dx = e.clientX - lx, dy = e.clientY - ly;
-            if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-            if (dragNode) {
-                const w = screenToWorld(e.clientX, e.clientY);
-                // fx/fy pre fyziku, x/y priamo — aby ťahanie fungovalo aj vtedy,
-                // keď sa d3 nenačítalo a simulácia neexistuje
-                dragNode.fx = w.x; dragNode.fy = w.y;
-                dragNode.x = w.x; dragNode.y = w.y;
-            } else {
-                S.cam.x += dx; S.cam.y += dy;
-                S._camTween = null;      // ručný pan preruší tween kamery
-                S._fitOnSettle = false;  // ...aj automatické dorovnanie po usadení
-            }
-            lx = e.clientX; ly = e.clientY;
-            requestDraw();
+            moveDragTo(e.clientX, e.clientY);
         } else {
             const prevHover = S.hover;
             const hub = pickHub(e.clientX, e.clientY);
@@ -153,22 +195,7 @@ export function setupInput() {
         const wasDragging = dragging, wasMoved = moved;
         releaseDrag();   // uvoľní uzol aj príznaky; klik vyhodnotíme z uložených hodnôt
         if (!graphActive()) return;   // klik mimo Grafu nesmie vyberať uzly
-        if (wasDragging && !wasMoved) {
-            const hit = pickTarget(e.clientX, e.clientY);
-            if (S.connectFrom) {
-                // connect mode: klik na iný uzol prepája, klik do prázdna ruší
-                if (hit && hit.type === 'node' && hit.id !== S.connectFrom) createEdge(S.connectFrom, hit.id);
-                else if (!hit) cancelConnect();
-            } else if (hit) {
-                // W2a: klik na hub/uzol ZANORÍ; detail uzla sa otvorí spolu s tým
-                if (hit.type === 'node') selectNode(hit.node);
-                goInto(hit);
-            } else {
-                // klik do prázdna → o úroveň von (a zavri detail)
-                closeNodePanel();
-                goUp();
-            }
-        }
+        if (wasDragging && !wasMoved) resolveClick(e.clientX, e.clientY);
         dragging = false;
         requestDraw();
     });
@@ -181,17 +208,113 @@ export function setupInput() {
 
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const factor = Math.pow(1.0015, -e.deltaY);
-        const before = screenToWorld(e.clientX, e.clientY);
-        S.cam.k = Math.min(3.2, Math.max(0.14, S.cam.k * factor));
-        const after = screenToWorld(e.clientX, e.clientY);
-        S.cam.x += (after.x - before.x) * S.cam.k;
-        S.cam.y += (after.y - before.y) * S.cam.k;
-        S._camTween = null;
-        S._fitOnSettle = false;   // ručný zoom má prednosť pred dorovnaním po usadení
+        zoomAt(e.clientX, e.clientY, Math.pow(1.0015, -e.deltaY));
         requestDraw();
     }, { passive: false });
 
+    /* ---------- dotyk ----------
+
+       PREČO touch* vedľa myši a nie prepis na Pointer Events: myšacia cesta nesie
+       veci, ktoré dotyk nemá vôbec — hover kartu, `S.cursor` pre gravitáciu kurzora
+       a tvar kurzora. V pointermove by sa aj tak muselo vetviť na `pointerType`,
+       takže sľubovaná „jedna cesta pre oboje" by bola tá istá dvojkoľajnosť, len
+       schovaná vnútri handlera — a zaplatená prepisom overaného ovládania myšou,
+       ktoré je tu primárne. Spoločné je to podstatné (beginDragAt / moveDragTo /
+       resolveClick / zoomAt), rozdielne ostáva rozdielne.
+
+       Stav gesta sa ZDIEĽA s myšou (dragging, moved, dragNode, lx, ly): jedna ruka
+       nerobí oboje naraz a vďaka tomu ťahaný uzol pustia aj existujúce záchytné
+       body (pointercancel, contextmenu z dlhého podržania, blur). */
+    let pinch = null;                 // predchádzajúci stav dvojprstového gesta
+    let lastTapT = 0, lastTapX = 0, lastTapY = 0;
+
+    const pinchOf = (touches) => {
+        const a = touches[0], b = touches[1];
+        return {
+            d: Math.max(1, Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)),
+            cx: (a.clientX + b.clientX) / 2,
+            cy: (a.clientY + b.clientY) / 2,
+        };
+    };
+
+    canvas.addEventListener('touchstart', (e) => {
+        if (!graphActive()) return;   // mimo Grafu plátno len presvitá pod obsahom — gesto patrí stránke
+        e.preventDefault();           // ...a tu naopak potlačí scroll, dvojklep-zoom aj syntetické myšacie udalosti
+        // Dotyk nemá hover; keby po prechode z myši ostal zapnutý, karta by visela
+        // nad scénou a gravitácia kurzora by ťahala k poslednej polohe myši.
+        S.cursor.on = false;
+        $('hover-card').classList.remove('show');
+        if (e.touches.length === 1) {
+            pinch = null;
+            beginDragAt(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (e.touches.length >= 2) {
+            releaseDrag();            // druhý prst mení pan/ťahanie uzla na pinch
+            pinch = pinchOf(e.touches);
+            S._interacting = true;
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (!graphActive()) return;
+        e.preventDefault();
+        if (pinch && e.touches.length >= 2) {
+            const p = pinchOf(e.touches);
+            zoomAt(p.cx, p.cy, p.d / pinch.d);
+            // Stred gesta sa medzitým mohol posunúť — dvomi prstami sa má dať aj
+            // panovať, inak zoom „drží" scénu na mieste a pôsobí zaseknuto.
+            S.cam.x += p.cx - pinch.cx;
+            S.cam.y += p.cy - pinch.cy;
+            pinch = p;
+            moved = true;
+            requestDraw();
+            return;
+        }
+        if (dragging && e.touches.length === 1) moveDragTo(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+        if (e.touches.length >= 2) { pinch = pinchOf(e.touches); return; }
+        if (e.touches.length === 1) {
+            // Z pinchu ostal jeden prst → plynulo pokračuj panom. `moved` ostáva
+            // true, aby sa koniec gesta nevyhodnotil ako klepnutie.
+            pinch = null;
+            lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+            dragging = true; moved = true;
+            S._interacting = true;
+            return;
+        }
+        const wasDragging = dragging, wasMoved = moved, wasPinch = !!pinch;
+        const t = e.changedTouches[0];
+        releaseDrag();
+        pinch = null;
+        if (!graphActive() || !t) { requestDraw(); return; }
+        if (wasDragging && !wasMoved && !wasPinch) {
+            const now = performance.now();
+            const isDouble = now - lastTapT < 300
+                && Math.hypot(t.clientX - lastTapX, t.clientY - lastTapY) < 30;
+            lastTapT = now; lastTapX = t.clientX; lastTapY = t.clientY;
+            // Dvojklep = dvojklik: do prázdna zruší celý filter. Vlastná detekcia,
+            // lebo preventDefault na touchstart syntetický dblclick nevygeneruje.
+            if (isDouble && !pickTarget(t.clientX, t.clientY)) {
+                lastTapT = 0;         // tretí klep nech neruší filter znova
+                clearFilter();
+            } else {
+                resolveClick(t.clientX, t.clientY);
+            }
+        }
+        requestDraw();
+    }, { passive: false });
+
+    canvas.addEventListener('touchcancel', () => {
+        pinch = null;
+        releaseDrag();
+        requestDraw();
+    });
+
+    // `touch-action` je v mind.css, viazané na body[data-screen="graf"] — musí byť
+    // podmienené, lebo plátno je fixed pod obsahom a natvrdo vypnuté gestá by mimo
+    // Grafu zabili scrollovanie stránky všade, kde sa prst trafí mimo textu.
+    // Guard graphActive() v handleroch je na tom nezávislý a zostáva.
 }
 
 export function updateHoverCard(e, hub) {
