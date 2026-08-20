@@ -336,11 +336,14 @@ class McpToolsTest extends TestCase
         $tools = $this->rpc('tools/list')->assertOk()->json('result.tools');
         $names = collect($tools)->pluck('name')->all();
 
-        // pôvodných deväť v pôvodnom poradí — nové sa len pridali na koniec
+        // Pôvodných deväť v pôvodnom poradí — nové sa len pridávajú na koniec.
+        // Zoznam je zámerne presný, nie „obsahuje": preradenie toolov mení to, čo
+        // vidí živá session, a to sa nemá stať nepozorovane.
         $this->assertSame([
             'mind_learn', 'mind_recall', 'mind_read', 'mind_activate', 'mind_overview',
             'mind_decision', 'mind_rename', 'mind_move', 'mind_delete',
             'mind_update', 'mind_link', 'mind_hygiene',
+            'mind_runs', 'mind_run',
         ], $names);
 
         $link = collect($tools)->firstWhere('name', 'mind_link');

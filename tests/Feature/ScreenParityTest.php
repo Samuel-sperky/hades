@@ -1,0 +1,285 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\ConsoleThread;
+use App\Models\Run;
+use App\Serializers\Screen\RunDetailScreen;
+use App\Serializers\Screen\RunsScreen;
+use App\Serializers\ScreenSerializer;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+/**
+ * Dvojitá plocha: obrazovka a MCP tool musia hovoriť to isté.
+ *
+ * Audit 19. 8. 2026 našiel, že appka má dnes tri miesta, kde sa plocha človeka
+ * a plocha AI rozišli bez toho, aby to niekto zbadal — Smernica si markdown
+ * skladá v prehliadači, hoci ho server posiela; Denník počíta projekty z 50
+ * načítaných záznamov namiesto zo všetkých; `mind_recall` existuje v dvoch
+ * implementáciách. Vždy to bola tá istá príčina: **dve implementácie jedného
+ * obsahu.** Tento test je brána proti tretej.
+ *
+ * Stráži štyri veci:
+ *
+ *  1. **Pokrytie** — každá obrazovka v registri má serializér aj MCP tool.
+ *  2. **Hodnoty** — tool a endpoint nad tou istou fixture: každý zdieľaný kľúč
+ *     musí byť identický. Druhá implementácia = pád.
+ *  3. **Kontrakt výberu** — `fieldsForAi()` nesmie menovať kľúč, ktorý `data()`
+ *     nedáva. Preklep v zozname by inak ticho vyhodil pole z odpovede pre AI.
+ *  4. **Citlivosť testu samého** — dokazuje sa OBOMA smermi: úmyselný rozchod
+ *     musí padnúť, kozmetická zmena UI nesmie. Bez tejto štvrtej vrstvy by test
+ *     mohol byť zelený aj vtedy, keby nemeral nič — presne tá pasca, na ktorú
+ *     tento projekt už raz naletel (merač kreslenia obaľoval `clearRect`, ktorý
+ *     render nepoužíva, a vracal vždy 0).
+ *
+ * Zámerne NEtestuje DOM, screenshoty, plurály, `timeAgo`, farby ani poradie
+ * heatmapy — kozmetická zmena UI ho nesmie zhodiť, inak ho niekto vypne.
+ */
+class ScreenParityTest extends TestCase
+{
+    use RefreshDatabase;
+
+    /**
+     * Register obrazoviek v parite. Nová obrazovka sa pridá SEM a test si ju
+     * vynúti — to je jediné miesto, kde sa parita deklaruje.
+     *
+     * @return array<string, array{serializer: class-string<ScreenSerializer>, tool: string, route: string}>
+     */
+    private function registry(): array
+    {
+        return [
+            'runy' => [
+                'serializer' => RunsScreen::class,
+                'tool' => 'mind_runs',
+                'route' => 'api/runs',
+            ],
+            'run-detail' => [
+                'serializer' => RunDetailScreen::class,
+                'tool' => 'mind_run',
+                'route' => 'api/runs/{uuid}',
+            ],
+        ];
+    }
+
+    // ---- 1. pokrytie -------------------------------------------------------
+
+    public function test_every_screen_in_parity_has_both_a_tool_and_a_route(): void
+    {
+        $tools = collect($this->mcp('tools/list')['result']['tools'] ?? [])->pluck('name');
+        $routes = collect(app('router')->getRoutes())->map(fn ($r) => $r->uri());
+
+        foreach ($this->registry() as $screen => $pair) {
+            $this->assertTrue(
+                $tools->contains($pair['tool']),
+                "Obrazovka {$screen} nemá MCP tool {$pair['tool']} — AI ju nevidí.",
+            );
+            $this->assertTrue(
+                $routes->contains($pair['route']),
+                "Obrazovka {$screen} nemá routu {$pair['route']} — človek ju nevidí.",
+            );
+        }
+    }
+
+    // ---- 3. kontrakt výberu (pred hodnotami: lacnejší a presnejší nález) ----
+
+    public function test_the_ai_field_list_never_names_a_key_the_screen_does_not_have(): void
+    {
+        $this->seedRun();
+
+        foreach ($this->registry() as $screen => $pair) {
+            $serializer = $this->build($pair['serializer']);
+            $data = $serializer->data();
+
+            foreach ($serializer->fieldsForAi() as $field) {
+                [$root] = explode('[].', $field, 2);
+
+                $this->assertArrayHasKey(
+                    $root,
+                    $data,
+                    "Obrazovka {$screen} menuje pre AI kľúč `{$field}`, ktorý `data()` nedáva. ".
+                    'Preklep v zozname by pole ticho vyhodil z odpovede pre AI.',
+                );
+            }
+        }
+    }
+
+    // ---- 2. hodnoty --------------------------------------------------------
+
+    public function test_the_list_endpoint_and_the_list_tool_agree_on_every_shared_key(): void
+    {
+        $this->seedRun();
+
+        $human = $this->getJson('/api/runs')->assertOk()->json();
+        $ai = $this->tool('mind_runs', []);
+
+        $this->assertParity($human, $ai, 'mind_runs');
+    }
+
+    public function test_the_detail_endpoint_and_the_detail_tool_agree_on_every_shared_key(): void
+    {
+        $run = $this->seedRun();
+
+        $human = $this->getJson('/api/runs/'.$run->uuid)->assertOk()->json();
+        $ai = $this->tool('mind_run', ['uuid' => $run->uuid]);
+
+        $this->assertParity($human, $ai, 'mind_run');
+    }
+
+    public function test_the_detail_tool_refuses_an_unknown_run_instead_of_returning_an_empty_shape(): void
+    {
+        $answer = $this->mcp('tools/call', ['name' => 'mind_run', 'arguments' => ['uuid' => 'nie-je']]);
+
+        $this->assertTrue($answer['result']['isError'], 'Neznámy beh musí byť chyba, nie prázdny detail.');
+    }
+
+    // ---- 4. citlivosť testu samého -----------------------------------------
+
+    public function test_a_deliberate_divergence_is_caught(): void
+    {
+        $screen = new class extends ScreenSerializer
+        {
+            public function data(): array
+            {
+                return ['status' => 'done', 'tokens_out' => 42];
+            }
+
+            public function fieldsForAi(): array
+            {
+                return ['status', 'tokens_out'];
+            }
+
+            /** Druhá implementácia — presne to, čo má test chytiť. */
+            public function forAi(): array
+            {
+                return ['status' => 'done', 'tokens_out' => 41];
+            }
+        };
+
+        $failed = false;
+
+        try {
+            $this->assertParity($screen->data(), $screen->forAi(), 'fake');
+        } catch (\PHPUnit\Framework\AssertionFailedError) {
+            $failed = true;
+        }
+
+        $this->assertTrue($failed, 'Parity test nechytil rozchod hodnôt — potom nemeria nič.');
+    }
+
+    public function test_a_cosmetic_ui_only_key_does_not_break_parity(): void
+    {
+        $screen = new class extends ScreenSerializer
+        {
+            public function data(): array
+            {
+                // `thread_title` a `spark` sú pre oko; AI ich nedostane a nemá to byť chyba.
+                return ['status' => 'done', 'thread_title' => 'Ladenie grafu', 'spark' => [1, 2, 3]];
+            }
+
+            public function fieldsForAi(): array
+            {
+                return ['status'];
+            }
+        };
+
+        $this->assertParity($screen->data(), $screen->forAi(), 'fake');
+    }
+
+    // ---- pomôcky -----------------------------------------------------------
+
+    /**
+     * Každý kľúč, ktorý AI dostala, musí mať v ploche človeka identickú hodnotu.
+     * Opačný smer sa nekontroluje zámerne — plocha človeka smie mať navyše
+     * (`thread_title`, iskra do grafu), to je celý zmysel `fieldsForAi()`.
+     *
+     * @param  array<string, mixed>  $human
+     * @param  array<string, mixed>  $ai
+     */
+    private function assertParity(array $human, array $ai, string $tool, string $path = ''): void
+    {
+        foreach ($ai as $key => $value) {
+            $here = $path === '' ? (string) $key : "{$path}.{$key}";
+
+            $this->assertArrayHasKey(
+                $key,
+                $human,
+                "{$tool} vracia `{$here}`, ktoré obrazovka nemá — to je druhá implementácia.",
+            );
+
+            if (is_array($value) && is_array($human[$key])) {
+                $this->assertParity($human[$key], $value, $tool, $here);
+
+                continue;
+            }
+
+            $this->assertSame(
+                $human[$key],
+                $value,
+                "{$tool} a obrazovka sa rozišli na `{$here}`.",
+            );
+        }
+    }
+
+    private function build(string $serializer): ScreenSerializer
+    {
+        if ($serializer === RunDetailScreen::class) {
+            return new RunDetailScreen(Run::query()->latest('id')->firstOrFail());
+        }
+
+        return new $serializer([]);
+    }
+
+    private function seedRun(): Run
+    {
+        $thread = ConsoleThread::create([]);
+
+        return Run::create([
+            'thread_id' => $thread->id,
+            'source' => 'console',
+            'status' => 'done',
+            'prompt' => 'nájdi poznatok o Dockeri',
+            'provider' => 'ollama',
+            'model' => 'qwen3:8b',
+            'steps' => 2,
+            'tool_calls' => 1,
+            'tokens_in' => 3100,
+            'tokens_out' => 240,
+            'tokens_per_second' => 8.9,
+            'duration_ms' => 27000,
+            'stop_reason' => 'stop',
+            'started_at' => now()->subMinute(),
+            'ended_at' => now(),
+        ]);
+    }
+
+    /**
+     * Volanie MCP toolu tak, ako ho volá živá session — cez JSON-RPC, nie priamo
+     * na metódu. Keby test volal metódu, prešel by aj vtedy, keď tool nie je
+     * v `tools/list` a teda pre AI neexistuje.
+     *
+     * @return array<string, mixed>
+     */
+    private function tool(string $name, array $arguments): array
+    {
+        $answer = $this->mcp('tools/call', ['name' => $name, 'arguments' => $arguments]);
+
+        $this->assertFalse(
+            $answer['result']['isError'] ?? true,
+            "Tool {$name} vrátil chybu: ".($answer['result']['content'][0]['text'] ?? '?'),
+        );
+
+        return json_decode($answer['result']['content'][0]['text'], true);
+    }
+
+    /** @return array<string, mixed> */
+    private function mcp(string $method, array $params = []): array
+    {
+        return $this->postJson('/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => $method,
+            'params' => $params,
+        ], ['Authorization' => 'Bearer '.config('hades.mcp_token')])->json();
+    }
+}

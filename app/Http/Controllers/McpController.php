@@ -7,7 +7,10 @@ use App\Models\Area;
 use App\Models\Decision;
 use App\Models\Edge;
 use App\Models\Node;
+use App\Models\Run;
 use App\Models\Tag;
+use App\Serializers\Screen\RunDetailScreen;
+use App\Serializers\Screen\RunsScreen;
 use App\Services\Brain\SecretScanner;
 use App\Services\MindService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -445,6 +448,58 @@ class McpController extends Controller
                     ],
                 ],
             ],
+            [
+                'name' => 'mind_runs',
+                'description' => 'List the console runs — what the local agent was asked to do and how it '
+                    .'went. Use it when the user asks what the console has been doing, why a run stopped, '
+                    .'or what a task cost; and use it before repeating work, because a failed run tells '
+                    .'you what has already been tried. One row per turn, newest first. `status` is the '
+                    .'whole story of a run: `done` finished, `failed` carries an `error`, `waiting` is '
+                    .'parked on a write the human has not decided yet, `aborted` means the human walked '
+                    .'away or the app restarted mid-turn, `running` is live right now. `stop_reason` says '
+                    .'why generation ended — a run that hit the step cap is NOT a finished answer, it is '
+                    .'a truncated one. `tokens_out` and `duration_ms` are the price: duration is wall '
+                    .'clock and so includes the minutes a human spent deciding about a write, which is '
+                    .'why it can dwarf the generation time. `tool_calls` of 0 means the model answered '
+                    .'from context alone. Filters narrow the list server-side; `q` matches the prompt '
+                    .'text. Read one run whole with mind_run. Empty fields are omitted: no `error` means '
+                    .'the run did not fail, no `thread` means the run outlived its thread.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'status' => [
+                            'type' => 'string',
+                            'enum' => ['running', 'waiting', 'done', 'aborted', 'failed'],
+                            'description' => 'Only runs in this state',
+                        ],
+                        'model' => ['type' => 'string', 'description' => 'Only runs of this model, e.g. qwen3:8b'],
+                        'thread' => ['type' => 'string', 'description' => 'Uuid of one console thread'],
+                        'q' => ['type' => 'string', 'description' => 'Substring of the prompt'],
+                        'since' => ['type' => 'string', 'description' => 'Only runs started at or after this date (YYYY-MM-DD)'],
+                        'limit' => ['type' => 'integer', 'description' => 'Max rows (default 50, max 200)'],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'mind_run',
+                'description' => 'Read one console run whole: its prompt, its cost, and the timeline of '
+                    .'what actually happened, step by step. Identify it by the `uuid` from mind_runs. '
+                    .'`timeline` is ordered as it happened and mixes two kinds of entry: `message` (a '
+                    .'turn of the conversation, with `role` user or assistant) and `tool` (one tool call, '
+                    .'with `name`, `arguments`, `status` and `result`). A tool `status` of `denied` is the '
+                    .'most informative entry in the mind: it is a write the human refused, so do not '
+                    .'propose the same write again without saying why it is different this time. '
+                    .'`pending` is a write still waiting for a decision. The system directive is left out '
+                    .'of the timeline on purpose — it is configuration, not a step, and it would swamp '
+                    .'the answer. Long tool results are cut; the whole text lives in the thread.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'uuid' => ['type' => 'string', 'description' => 'Uuid of the run, from mind_runs'],
+                    ],
+                    'required' => ['uuid'],
+                ],
+            ],
         ];
     }
 
@@ -467,6 +522,8 @@ class McpController extends Controller
                 'mind_update' => $this->toolUpdate($args, $mind),
                 'mind_link' => $this->toolLink($args, $mind),
                 'mind_hygiene' => $this->toolHygiene($args),
+                'mind_runs' => $this->toolRuns($args),
+                'mind_run' => $this->toolRun($args),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {
@@ -495,6 +552,36 @@ class McpController extends Controller
             ]],
             'isError' => false,
         ];
+    }
+
+    /**
+     * Log behov pre AI — TÁ ISTÁ trieda, z ktorej čítá obrazovka Runy.
+     *
+     * `forAi()` je len `data()` prefiltrované deklarovaným zoznamom kľúčov, takže
+     * medzi tým, čo vidí človek, a tým, čo dostane AI, nestojí druhá
+     * implementácia. Keď sa obrazovka zmení, AI to dostane zadarmo — a keď sa
+     * niekto pokúsi jednu z plôch dopočítať zvlášť, zhodí to parity test.
+     */
+    protected function toolRuns(array $args): array
+    {
+        return (new RunsScreen($args))->forAi();
+    }
+
+    protected function toolRun(array $args): array
+    {
+        $uuid = trim((string) ($args['uuid'] ?? ''));
+
+        if ($uuid === '') {
+            throw new \InvalidArgumentException('mind_run needs the uuid of a run — list them with mind_runs.');
+        }
+
+        $run = Run::query()->with('thread:id,uuid,title')->where('uuid', $uuid)->first();
+
+        if ($run === null) {
+            throw new \InvalidArgumentException("No run with uuid {$uuid}.");
+        }
+
+        return (new RunDetailScreen($run))->forAi();
     }
 
     protected function toolLearn(array $args, MindService $mind): array
