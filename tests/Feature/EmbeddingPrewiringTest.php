@@ -77,6 +77,42 @@ class EmbeddingPrewiringTest extends TestCase
         $this->assertTrue((bool) $edge->auto);
     }
 
+    /**
+     * Záznamy o Claude Code sessions sa nespájajú, ani keď sú ich vektory blízko.
+     *
+     * Nález prvého merania na živých dátach (20. 8. 2026): medzi 566 pármi bol
+     * `intelligent-gould-a0ae51 ↔ intelligent-murdock-c8bcce` s podobnosťou 0,85.
+     * Nespája ich téma, ale to, že sumár session má vždy tú istú štruktúru — takže
+     * si ich embeddingy sadnú blízko bez ohľadu na obsah. Pri ~8 % takých párov by
+     * job pridal do siete ~45 hrán, ktoré nesú len „oba sú záznam".
+     */
+    public function test_session_records_are_never_paired_by_vectors(): void
+    {
+        $a = $this->node('intelligent-gould-a0ae51');
+        $b = $this->node('intelligent-murdock-c8bcce');
+
+        // Zámerne TIE ISTÉ vektory, teda podobnosť 1,0: keby filter nebol, hrana
+        // vznikne určite a test by prešiel len omylom.
+        $this->vector($a, self::V_BASE);
+        $this->vector($b, self::V_BASE);
+
+        $this->rewire();
+
+        $this->assertEdgeCount(0);
+
+        // A skutočný projekt s pomlčkami vzoru nesedí — filter nesmie byť taký
+        // široký, aby zmietol aj `sperky-ai` alebo `feat-hades-klient`.
+        $c = $this->node('sperky-ai');
+        $d = $this->node('hades-klient-web');
+
+        $this->vector($c, self::V_BASE);
+        $this->vector($d, self::V_NEAR);
+
+        $this->rewire();
+
+        $this->assertTrue($this->linked($c, $d), 'projekt s pomlčkami sa spájať MÁ');
+    }
+
     public function test_similarity_below_the_threshold_creates_nothing(): void
     {
         $a = $this->node('Docker');

@@ -717,6 +717,27 @@ class MindRewire extends Command
      * @param  array<string, true>  $linked  snapshot existujúcich hrán ('source:target')
      * @return array<int, array{a: Node, b: Node, similarity: float}>
      */
+    /**
+     * Uzol, ktorý je záznamom o Claude Code session (`intelligent-gould-a0ae51`).
+     *
+     * Z vektorovej vetvy sú takéto uzly VON a je to nález merania, nie opatrnosť:
+     * v prvom behu (20. 8. 2026, 2694 uzlov) sa medzi 566 pármi objavil
+     * `intelligent-gould-a0ae51 ↔ intelligent-murdock-c8bcce` s podobnosťou 0,85.
+     * Nespája ich téma — spája ich to, že sumár session má vždy tú istú štruktúru
+     * („**Čo:** … **Výsledok:** … **Technológie:** …"), takže si ich embeddingy sadnú
+     * blízko bez ohľadu na to, o čom tie sessions boli. Pri ~8 % takých párov by job
+     * do siete pridal ~45 hrán, ktoré nesú len „oba sú záznam".
+     *
+     * Rozpoznáva sa podľa MENA, nie podľa oddelenia: oddelenie „Záznamy — X" nesie
+     * jeho potomstvo, ale samotný projektový uzol sedí inde. Vzor je meno, ktoré
+     * generuje Claude Code (`prídavné-meno-hex6`), a je dosť úzky na to, aby netrafil
+     * skutočný projekt: `feat/hades-klient` ani `sperky-ai` mu nesedia.
+     */
+    protected function isSessionRecord(Node $node): bool
+    {
+        return preg_match('/^[a-z]+-[a-z]+-[0-9a-f]{6}$/', (string) $node->label) === 1;
+    }
+
     protected function vectorPairs(EmbeddingSimilarity $vectors, array $linked, ?float $min = null): array
     {
         $nodes = Node::query()->orderBy('id')->get();
@@ -737,8 +758,15 @@ class MindRewire extends Command
                 continue;
             }
 
+            if ($this->isSessionRecord($node)) {
+                continue;
+            }
+
             $filter = function (Node $cand) use ($node, $linked, &$seen, &$degree) {
                 if ($cand->id === $node->id || $cand->type === 'core') {
+                    return false;
+                }
+                if ($this->isSessionRecord($cand)) {
                     return false;
                 }
                 if (($degree[$cand->id] ?? 0) >= self::MAX_VECTOR_LINKS_PER_NODE) {

@@ -119,11 +119,44 @@ ale zaplatilo sa tým, že tri veci musel spojiť niekto, kto vidí celok:
    headless okruh zápisové tooly vôbec nenakladal; P3 to medzitým zmenil na návrhy. Toto je
    cena paralelnej práce nad jedným systémom a je to práca integrátora, nie chyba pracovníka.
 
-### Poctivá poznámka k P2
+### P2 — meranie na živých dátach (20. 8. 2026)
 
-Meranie na živých dátach (`mind:rewire --dry-run`, 2679 uzlov) **v čase písania stále beží** —
-je to O(n²) kosínus nad 1024-rozmernými vektormi v PHP plus TF-IDF vetva, ktorá je sama
-dokumentovaná na ~55 minút. To je samo o sebe zistenie: ako nočný job to znesie, ako
-interaktívna operácia nie. Číslo (koľko hrán pridala vektorová vetva, ktoré TF-IDF nenašla,
-a či sú na vzorke zmysluplné) sa dopíše sem, keď beh dobehne — vrátane prípadu, že zdvih
-nebude žiadny. Do tej chvíle je vetva **vypnutá** a nič v grafe nezmenila.
+`mind:rewire --dry-run`, **2694 uzlov, 8390 existujúcich hrán**, TF-IDF prah 0,20 (top 3/uzol),
+vektorový prah 0,72 (max 3/uzol). Beh trval **~30 minút** a nič nezapísal.
+
+| | páry |
+|---|---|
+| vektorová vetva | **566** |
+| TF-IDF vetva | 19 |
+| **prienik** | **0** |
+| len vektor | 566 |
+| len TF-IDF | 19 |
+
+**Prienik nula je hlavný výsledok.** Tie dve vetvy nehľadajú to isté inak — hľadajú niečo
+iné. TF-IDF má po mesiacoch nočných behov svoju prácu hotovú (19 párov je zvyšok), takže
+vektorová vetva je čisto aditívna: +566 hrán na 8390, teda **+6,7 %**.
+
+**Vzorka 12 párov posúdená ručne** (nie len číslo — to bola podmienka zadania):
+
+- **8 z 12 sú duplikáty poznania**, nie príbuznosť: `Pasca: slovenská diakritika fontov` ↔
+  `Diakritika vo fontoch pasca` (0,846), `Register technického dlhu` ↔ `Tech dlh register`
+  (0,839), `Optimistické mutácie Query` ↔ `TanStack optimistic updates` (0,858),
+  `Freshdesk cenník 2026` ↔ `Helpdesk výber 2026` (0,848).
+- **3 z 12 sú legitímne príbuzné projekty**: `AI-mind` ↔ `Widget AI`, `AI-mind` ↔ `AuraAI`,
+  `MCP - Šperky` ↔ `Šperky KPI`.
+- **1 z 12 bol ŠUM** — a stálo za to ho nájsť: `intelligent-gould-a0ae51` ↔
+  `intelligent-murdock-c8bcce` (0,851). Sú to **záznamy o Claude Code sessions**; nespája ich
+  téma, ale to, že sumár session má vždy tú istú štruktúru, takže si ich embeddingy sadnú
+  blízko bez ohľadu na obsah. Pri ~8 % takých párov by job pridal ~45 hrán, ktoré nesú len
+  „oba sú záznam". Odfiltrované (`MindRewire::isSessionRecord()`), s testom, ktorý zároveň
+  overuje, že filter netrafí skutočný projekt s pomlčkami (`sperky-ai`).
+
+**Zistenie navrch, ktoré do tohto šprintu nepatrí a je flagnuté zvlášť:** tie duplikáty by
+mal chytať nočný `mind:automerge`, a nechytá ich, pretože porovnáva slová. To nie je hrana,
+ktorá chýba — to je uzol, ktorý existuje dvakrát. Merge ale MAŽE dáta, takže to nepatrí do
+behu, ktorý sa robí mimochodom.
+
+**Verdikt:** vetva dáva zmysel a zapnúť sa dá (`HADES_EMBED_PREWIRE=true`), ale **nechávam ju
+vypnutú**, kým jej čísla neuvidíš — pridáva 566 trvalých hrán do živej pamäte a to nie je
+rozhodnutie, ktoré má spraviť merge. Prah 0,72 je z tohto merania obhájiteľný: najslabší pár
+vzorky mal 0,839, takže priestor nad prahom ešte je.
