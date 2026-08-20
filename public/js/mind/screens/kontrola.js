@@ -21,7 +21,11 @@ export async function renderKontrola() {
     try {
         const d = await getJson('/api/review/queue');
         kontrolaState.items = d.queue || [];
-        kontrolaState.total = d.total != null ? d.total : kontrolaState.items.length;
+        // `total` je serverové číslo a nesie ho rail. Fallback na `items.length`
+        // tu bol tichá lož: fronta má strop 100, takže pri 140 čakajúcich uzloch
+        // by rail hlásil 100. Server ho posiela vždy (App\Serializers\Screen\
+        // KontrolaScreen) a je zámerne NEfiltrovaný.
+        kontrolaState.total = d.total || 0;
         kontrolaState.idx = 0;
         rerenderKontrola();
     } catch (e) {
@@ -129,12 +133,18 @@ export function kontrolaMove(delta) {
     markKontrolaSelected(true);
 }
 
-// Odober položku z fronty; decBadge=true znižuje rail počítadlo (server-affecting).
-export function removeKontrolaItem(id, decBadge) {
+/* Odober položku z fronty. `serverTotal` je nová dĺžka fronty, ako ju ohlásil
+   server (`queue_total` v odpovedi na verify / resolve-review) — nie odhad.
+
+   Predtým sa tu počítadlo v raile dopočítavalo (`total - 1`). To je správne len
+   vtedy, keď je táto session jediný pisateľ; pri paralelnom `mind_learn` z inej
+   AI alebo pri mutácii, ktorá zhodí viac než jeden uzol, rail lhal až do ďalšieho
+   načítania obrazovky. Server to vie povedať presne za jednu `COUNT(*)`. */
+export function removeKontrolaItem(id, serverTotal) {
     const i = kontrolaState.items.findIndex((n) => n.id === id);
     if (i < 0) return;
     kontrolaState.items.splice(i, 1);
-    if (decBadge) kontrolaState.total = Math.max(0, kontrolaState.total - 1);
+    if (typeof serverTotal === 'number') kontrolaState.total = Math.max(0, serverTotal);
     if (kontrolaState.idx > i) kontrolaState.idx--;
     rerenderKontrola(true);
 }
@@ -146,7 +156,7 @@ export async function kontrolaVerify(id) {
             const res = await fetch('/api/nodes/' + id + '/verify', { method: 'POST' });
             const j = await res.json().catch(() => ({}));
             if (!res.ok) { showToast(j.message || j.error || 'Overenie zlyhalo', null, 'error'); return; }
-            removeKontrolaItem(id, true);
+            removeKontrolaItem(id, j.queue_total);
             const warns = j.warnings || [];
             showToast(warns.length ? ('Overené — ' + warns[0]) : 'Overené', null, 'success');
         } catch (e) { showToast('Overenie zlyhalo', null, 'error'); }
@@ -160,7 +170,7 @@ export async function kontrolaResolve(id) {
             const res = await fetch('/api/nodes/' + id + '/resolve-review', { method: 'POST' });
             const j = await res.json().catch(() => ({}));
             if (!res.ok) { showToast(j.message || j.error || 'Akcia zlyhala', null, 'error'); return; }
-            removeKontrolaItem(id, true);
+            removeKontrolaItem(id, j.queue_total);
             showToast('Vyriešené', null, 'success');
         } catch (e) { showToast('Akcia zlyhala', null, 'error'); }
     }, '…');
@@ -223,7 +233,10 @@ export async function kontrolaDelete(id) {
             S.byId.delete(id);
             if (S.local && S.local.rootId === id) clearLocal();
         }
-        removeKontrolaItem(id, true);
+        // JEDINÉ miesto, kde sa dĺžka fronty dopočítava. `DELETE /api/nodes/{id}`
+        // je zdieľaný s grafom a o fronte kontroly nehovorí nič — a zmazaný uzol
+        // z nej vypadne presne raz, takže „−1" je tu dokázateľné, nie odhad.
+        removeKontrolaItem(id, Math.max(0, kontrolaState.total - 1));
         showToast('Uzol zmazaný', null, 'success');
     } catch (e) {
         showToast('Nepodarilo sa zmazať', null, 'error');

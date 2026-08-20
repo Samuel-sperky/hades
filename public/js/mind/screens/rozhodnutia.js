@@ -6,10 +6,20 @@ import { $, busy, emptyHtml, esc, getJson, plainBlock, plainInline, renderEmpty,
 
 /* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
    Časová os rozhodnutí zoskupená po mesiacoch (.dtl*), filtre obdobie/oblasť
-   (reuse .chip v .dtl-filter, filtrovanie klientsky nad jedným fetchom),
-   detail/expand dôvodu klikom na kartu a manuálne pridanie → POST /api/decisions. */
+   (reuse .chip v .dtl-filter, prepínanie filtra klientsky nad jedným fetchom),
+   detail/expand dôvodu klikom na kartu a manuálne pridanie → POST /api/decisions.
 
-export const decisionsState = { all: [], year: null, areaId: null, adding: false };
+   DÁTA SÚ SERVEROVÉ. Obrazovka si nič nedopočítava: os rokov (`years`), os
+   oblastí (`areas`), počty (`counts`), názov oblasti riadku (`area`) aj mesiac
+   pre hlavičku bloku (`month`) prichádzajú z `App\Serializers\Screen\
+   RozhodnutiaScreen` — tej istej triedy, z ktorej čerpá MCP. Predtým sa roky
+   aj počty počítali tu z načítaných riadkov a názov oblasti sa bral z GRAFOVÉHO
+   payloadu (`S.areas`), takže človek videl oblasť, AI to isté rozhodnutie bez
+   nej, a bez načítaného grafu svietilo „#7". Nedávaj to sem späť. */
+
+export const decisionsState = {
+    all: [], years: [], areas: [], counts: {}, year: null, areaId: null, adding: false,
+};
 
 export async function renderDecisions() {
     const body = $('rozhodnutia-body');
@@ -18,6 +28,9 @@ export async function renderDecisions() {
     try {
         const d = await getJson('/api/decisions');
         decisionsState.all = d.decisions || [];
+        decisionsState.years = d.years || [];
+        decisionsState.areas = d.areas || [];
+        decisionsState.counts = d.counts || {};
         pruneDecisionFilters();
         renderDecisionsView();
     } catch (e) {
@@ -31,13 +44,12 @@ export async function renderDecisions() {
    zruší. Denník to isté robí pri projektoch (journalProject sa vynuluje) — tu to
    dosiaľ sľuboval len komentár. */
 export function pruneDecisionFilters() {
-    const all = decisionsState.all;
     if (decisionsState.year !== null
-        && !all.some((x) => (x.decided_on || '').slice(0, 4) === decisionsState.year)) {
+        && !decisionsState.years.some((y) => String(y.year) === decisionsState.year)) {
         decisionsState.year = null;
     }
     if (decisionsState.areaId !== null
-        && !all.some((x) => x.area_id === decisionsState.areaId)) {
+        && !decisionsState.areas.some((a) => a.id === decisionsState.areaId)) {
         decisionsState.areaId = null;
     }
 }
@@ -54,9 +66,12 @@ export function renderDecisionsView() {
     const body = $('rozhodnutia-body');
     if (!body) return;
     const all = decisionsState.all;
-
-    const years = [...new Set(all.map((x) => (x.decided_on || '').slice(0, 4)).filter(Boolean))].sort().reverse();
-    const areaIds = [...new Set(all.map((x) => x.area_id).filter((v) => v != null))];
+    // Os období aj os oblastí prichádzajú zo servera už zoradené a s počtami nad
+    // CELÝM korpusom. Počítať ich tu z `all` znamenalo, že nad stropom 500 by čip
+    // hlásil iné číslo než realita — a AI by o osi nevedela nič.
+    const years = decisionsState.years;
+    const areas = decisionsState.areas;
+    const total = decisionsState.counts.total != null ? decisionsState.counts.total : all.length;
 
     /* Akcia „Pridať rozhodnutie" stála na SAMOSTATNOM riadku nad filtrami, takže
        medzi podtitulom a čipmi zostal celý prázdny pás — Denník aj Knižnica dávajú
@@ -67,34 +82,19 @@ export function renderDecisionsView() {
         + '<span class="ms" aria-hidden="true">' + (decisionsState.adding ? 'close' : 'add') + '</span>'
         + (decisionsState.adding ? 'Zrušiť' : 'Pridať rozhodnutie') + '</button>';
 
-    // Filtre obdobie / oblasť — s počtami, ako v Denníku
-    const yearN = new Map();
-    for (const x of all) {
-        const y = (x.decided_on || '').slice(0, 4);
-        if (y) yearN.set(y, (yearN.get(y) || 0) + 1);
-    }
-    const areaN = new Map();
-    for (const x of all) {
-        if (x.area_id == null) continue;
-        areaN.set(x.area_id, (areaN.get(x.area_id) || 0) + 1);
-    }
+    // Filtre obdobie / oblasť — s počtami, ako v Denníku. Roky idú chronologicky
+    // (je to os, nie množina), oblasti podľa počtu zhora; obe poradia určuje
+    // server, aby ich AI videla tak, ako človek.
     const rows = [];
     if (years.length > 1) {
-        // Roky zostávajú chronologicky — je to os, nie množina, ktorú by sa dalo
-        // preusporiadať podľa frekvencie bez toho, aby prestala byť čitateľná.
-        rows.push(decChip('Celé obdobie', decisionsState.year === null, 'data-year=""', all.length)
-            + years.map((y) => decChip(y, decisionsState.year === y, 'data-year="' + y + '"', yearN.get(y) || 0)).join(''));
+        rows.push(decChip('Celé obdobie', decisionsState.year === null, 'data-year=""', total)
+            + years.map((y) => decChip(String(y.year), decisionsState.year === String(y.year),
+                'data-year="' + y.year + '"', y.count)).join(''));
     }
-    if (areaIds.length > 1) {
-        // Oblasti podľa počtu zhora, ako projekty v Denníku: v rade tak ostanú tie,
-        // ktoré sa reálne používajú, nie tie, čo prišli v dátach prvé.
-        const sortedAreas = [...areaIds].sort((a, b) => (areaN.get(b) || 0) - (areaN.get(a) || 0));
-        rows.push(decChip('Všetky oblasti', decisionsState.areaId === null, 'data-area=""', all.length)
-            + sortedAreas.map((aid) => {
-                const a = S.areas.get(aid);
-                return decChip(a ? a.name : ('#' + aid), decisionsState.areaId === aid,
-                    'data-area="' + aid + '"', areaN.get(aid) || 0);
-            }).join(''));
+    if (areas.length > 1) {
+        rows.push(decChip('Všetky oblasti', decisionsState.areaId === null, 'data-area=""', total)
+            + areas.map((a) => decChip(a.name, decisionsState.areaId === a.id,
+                'data-area="' + a.id + '"', a.count)).join(''));
     }
 
     let h = '';
@@ -125,6 +125,10 @@ export function renderDecisionsView() {
 }
 
 export function decAddFormHtml() {
+    // Tu `S.areas` ZOSTÁVA a je to zámer: formulár potrebuje VŠETKY oblasti, aj
+    // tie, ktoré ešte žiadne rozhodnutie nemajú. Serverová os `areas` nesie len
+    // oblasti s rozhodnutím, pretože to je filtračná os obrazovky, nie zoznam
+    // oblastí vedomia. Sú to dve rôzne veci, nie dva zdroje tej istej.
     const areaOpts = '<option value="">— oblasť (voliteľné) —</option>'
         + [...S.areas.values()].map((a) => '<option value="' + a.id + '">' + esc(a.name) + '</option>').join('');
     const today = new Date().toISOString().slice(0, 10);
@@ -139,15 +143,16 @@ export function decAddFormHtml() {
 }
 
 export function decisionsTimelineHtml(list) {
-    const sorted = [...list].sort((a, b) => (b.decided_on || '').localeCompare(a.decided_on || ''));
+    // Poradie je serverové (`decided_on` zhora, pri rovnakom dni `id` zhora) —
+    // filter ho zachováva, takže vlastný `sort()` tu bol len druhá kópia pravidla.
     // Mesiac ostáva hlavičkou nad blokom; rozhodnutia vnútri mesiaca tečú do
     // viacstĺpcového bloku (.dtl-group), aby široké okno nesla obsah a nie prázdno.
     // Multi-column (nie grid): text v kartách je rôzne dlhý, tak sa stĺpce doplnia
     // bez ragged riadkov a časová os beží chronologicky DOLE po každom stĺpci.
     let out = '<div class="dtl">';
     let curMonth = null;
-    for (const dec of sorted) {
-        const ym = (dec.decided_on || '').slice(0, 7);
+    for (const dec of list) {
+        const ym = dec.month || '';
         if (ym !== curMonth) {
             if (curMonth !== null) out += '</div>';
             curMonth = ym;
@@ -172,7 +177,10 @@ export function fmtDecDate(iso) {
 }
 
 export function decisionCardHtml(dec) {
-    const area = dec.area_id != null ? S.areas.get(dec.area_id) : null;
+    // Názov oblasti dáva SERVER (kľúč `area`). Predtým sa čítal z grafového
+    // payloadu, takže obrazovka závisela od toho, či je graf načítaný, a AI
+    // dostávala to isté rozhodnutie bez oblasti.
+    const area = dec.area || null;
     const hasReason = !!(dec.reason && String(dec.reason).trim());
     // Text aj dôvod chodia z mind_decision tak, ako ich zapísal Claude Code — a nesú
     // `backticky` okolo identifikátorov (zmerané na 4 zo 41 živých rozhodnutí).
@@ -187,7 +195,7 @@ export function decisionCardHtml(dec) {
         + '<span class="dtl-text">' + esc(plainInline(dec.text)) + '</span></div>'
         + (hasReason ? '<div class="dtl-reason hidden">' + esc(plainBlock(dec.reason)) + '</div>' : '')
         + '<div class="dtl-meta">' + originBadge(dec.origin)
-        + (area ? '<span class="tag">' + esc(area.name) + '</span>' : '')
+        + (area ? '<span class="tag">' + esc(area) + '</span>' : '')
         + (dec.node_id != null ? '<span class="tag muted">uzol #' + dec.node_id + '</span>' : '')
         // Šípka je JEDINÝ indikátor toho, či je dôvod rozbalený — statické „▾" na
         // rozbalenej karte tvrdilo, že sa dá rozbaliť ešte raz.

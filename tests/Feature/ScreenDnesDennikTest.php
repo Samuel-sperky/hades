@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Node;
 use App\Serializers\Screen\DennikScreen;
 use App\Serializers\Screen\DnesScreen;
-use App\Serializers\ScreenSerializer;
 use App\Support\ProjectGroup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;

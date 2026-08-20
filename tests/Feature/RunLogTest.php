@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\ConsoleMessage;
 use App\Models\ConsoleThread;
 use App\Models\Run;
+use App\Serializers\Screen\RunsScreen;
+use App\Serializers\ScreenSerializer;
 use App\Services\Console\RunRecorder;
 use App\Services\Console\ToolRegistry;
 use App\Services\Console\ToolResult;
@@ -15,6 +17,7 @@ use App\Services\Llm\LlmToolCall;
 use App\Services\Llm\OllamaProvider;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -291,7 +294,7 @@ class RunLogTest extends TestCase
 
     public function test_an_unknown_run_is_a_404_not_an_empty_detail(): void
     {
-        $this->getJson('/api/runs/'.\Illuminate\Support\Str::uuid()->toString())->assertStatus(404);
+        $this->getJson('/api/runs/'.Str::uuid()->toString())->assertStatus(404);
     }
 
     public function test_rerun_returns_the_prompt_instead_of_starting_a_second_path_to_the_model(): void
@@ -310,8 +313,8 @@ class RunLogTest extends TestCase
     {
         $this->makeRun(['status' => 'done', 'model' => 'qwen3:8b', 'prompt' => 'nájdi Docker', 'tokens_out' => 42]);
 
-        $human = (new \App\Serializers\Screen\RunsScreen([]))->data();
-        $ai = (new \App\Serializers\Screen\RunsScreen([]))->forAi();
+        $human = (new RunsScreen([]))->data();
+        $ai = (new RunsScreen([]))->forAi();
 
         // Rovnaké hodnoty, menej kľúčov — a ani jeden kľúč navyše.
         $this->assertSame($human['items'][0]['uuid'], $ai['items'][0]['uuid']);
@@ -326,7 +329,7 @@ class RunLogTest extends TestCase
     public function test_zero_survives_the_empty_field_pruning(): void
     {
         // Nula tool callov je informácia („beh nič nevolal"), nie prázdno.
-        $pruned = \App\Serializers\ScreenSerializer::dropEmpty(['tool_calls' => 0, 'error' => null, 'name' => '']);
+        $pruned = ScreenSerializer::dropEmpty(['tool_calls' => 0, 'error' => null, 'name' => '']);
 
         $this->assertSame(['tool_calls' => 0], $pruned);
     }

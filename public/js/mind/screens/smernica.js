@@ -5,15 +5,23 @@ import { $, busy, emptyCardHtml, esc, getJson, plainText, renderEmpty, renderLoa
 
 /* ---------- obrazovka Smernica (/api/directive/*) ----------
    Prompt builder: úloha → Hades poskladá KDE ČO NÁJDE (skilly, projekty,
-   fakty, pravidlá). Návrh je editovateľný checklist; náhľad smernice sa
-   prestavuje klientsky z vybraných položiek (aby unchecked ostalo unchecked).
+   fakty, pravidlá). Návrh je editovateľný checklist.
+
+   MARKDOWN SKLADÁ SERVER. Táto obrazovka ho len zobrazuje. Do 20. 8. 2026 si ho
+   prehliadač skladal sám (zrkadlo `DirectiveController::buildMarkdown`) a texty
+   sa reálne rozišli: na troch úlohách 15–23 z ~45 riadkov, lebo PHP kráti na
+   `...` a JS krátil na `…`. Človek si teda kopíroval iný prompt, než aký by
+   dostala AI. Keď človek položku odškrtne, výber ide na server ako
+   `include_ids` — nedopočítava sa tu.
+
    Uloženie zapíše directives/<slug>.md cez /api/directive/save. */
 
-export let directiveData = null;         // posledný /build výsledok { task, suggested }
+export let directiveData = null;         // posledný /build výsledok { task, suggested, counts, markdown, selected_ids }
 export const directiveSel = new Set();   // node_id zahrnuté v smernici (zaškrtnuté)
 export let directiveTemplates = null;    // cache šablón (/api/directive/templates)
-export let directiveMarkdown = '';       // aktuálny markdown náhľadu (na copy/save)
+export let directiveMarkdown = '';       // markdown zo servera (na copy/save) — nikdy nie skladaný tu
 export let directiveBuildSeq = 0;        // ochrana proti pretekaniu odpovedí
+export let directivePreviewSeq = 0;      // to isté pre dopočet náhľadu k výberu
 
 export const DIR_SECTIONS = [
     { key: 'skills', title: 'Skilly', icon: 'bolt' },
@@ -130,7 +138,13 @@ export async function runDirectiveBuild(task) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         if (seq !== directiveBuildSeq) return;
-        directiveData = { task: data.task || task, suggested: data.suggested || {} };
+        directiveData = {
+            task: data.task || task,
+            suggested: data.suggested || {},
+            counts: data.counts || {},
+            // hotový markdown pre PLNÝ výber — presne ten, ktorý dostane AI
+            markdown: data.markdown || '',
+        };
         directiveSel.clear();
         for (const sec of DIR_SECTIONS) {
             for (const it of (directiveData.suggested[sec.key] || [])) directiveSel.add(+it.id);
@@ -146,7 +160,10 @@ export function renderDirectiveSuggest() {
     const wrap = $('dir-suggest');
     if (!wrap || !directiveData) return;
     const sug = directiveData.suggested || {};
-    const total = DIR_SECTIONS.reduce((n, s) => n + ((sug[s.key] || []).length), 0);
+    // Počty hlási server (`counts`), nedopočítavajú sa tu — inak by obrazovka
+    // a AI vedeli o návrhu iné číslo, presne ako to robil Denník nad 50 riadkami.
+    const counts = directiveData.counts || {};
+    const total = counts.total || 0;
     if (!total) { renderEmpty(wrap, 'search_off', 'Nič relevantné sa nenašlo', 'Opíš úlohu inými slovami.'); return; }
 
     let h = '';
@@ -155,7 +172,7 @@ export function renderDirectiveSuggest() {
         if (!items.length) continue;
         h += '<div class="dir-group"><div class="dir-group-head">'
             + '<span class="ms" aria-hidden="true">' + sec.icon + '</span>' + esc(sec.title)
-            + '<span class="dir-group-n">' + items.length + '</span></div>'
+            + '<span class="dir-group-n">' + (counts[sec.key] ?? items.length) + '</span></div>'
             + items.map((it) => dirItem(sec.key, it)).join('')
             + '</div>';
     }
@@ -196,9 +213,10 @@ export function dirItem(key, it) {
         + sub + '</span></label>';
 }
 
-export function renderDirectivePreview() {
+export async function renderDirectivePreview() {
     const pv = $('dir-preview');
     if (!pv) return;
+    const seq = ++directivePreviewSeq;
     if (!directiveData) {
         directiveMarkdown = '';
         // Nad kartou stojí nadpis „Náhľad smernice", takže 28px ikona pod ním hovorí
@@ -206,103 +224,47 @@ export function renderDirectivePreview() {
         pv.innerHTML = emptyCardHtml('Napíš úlohu a poskladaj smernicu');
         return;
     }
-    directiveMarkdown = buildDirectiveMarkdown();
-    pv.innerHTML = mdToHtml(directiveMarkdown);
+
+    const md = await directiveMarkdownForSelection();
+    // Odškrtávanie je rýchlejšie než sieť; staršia odpoveď nesmie prepísať novší výber.
+    if (seq !== directivePreviewSeq || md === null) return;
+    directiveMarkdown = md;
+    const box = $('dir-preview');
+    if (box) box.innerHTML = mdToHtml(md);
 }
 
-// Klientsky rebuild markdownu z vybraných položiek — zrkadlí
-// DirectiveController::buildMarkdown(). Keď meníš jedno, zmeň aj druhé:
-// používateľ kopíruje TENTO výstup, server ten svoj, a rozdiel by nikto nevidel.
-export function buildDirectiveMarkdown() {
-    const task = (directiveData.task || '').trim();
-    const taskLine = task !== '' ? task : 'Nešpecifikovaná úloha';
-    const skills = dirSelected('skills');
-    const pitfalls = dirSelected('pitfalls');
-    const projects = dirSelected('projects');
-    const facts = dirSelected('facts');
-    const rules = dirSelected('rules');
-    const verified = skills.filter((s) => s.verified && s.path);
-    const others = skills.filter((s) => !(s.verified && s.path));
+/* Markdown pre AKTUÁLNY výber. Skladá ho server — tu sa len rozhoduje, či
+   stačí ten, ktorý už prišiel s /build (plný výber), alebo treba dopočet
+   pre podmnožinu. Vráti null, keď sa dopočet nepodaril: starý náhľad je
+   pravdivejší než náhľad poskladaný v prehliadači. */
+export async function directiveMarkdownForSelection() {
+    const all = dirAllIds();
+    const sel = all.filter((id) => directiveSel.has(id));
 
-    const L = [];
-    L.push('# Smernica: ' + taskLine, '');
-    L.push('## Zadanie', taskLine, '');
-    L.push('## Ako s tým pracovať');
-    for (const line of dirHowTo(verified, projects, pitfalls)) L.push('- ' + line);
-    L.push('');
+    if (sel.length === all.length) return directiveData.markdown || '';
 
-    if (verified.length) {
-        L.push('## Použi tieto skilly');
-        for (const s of verified) L.push('- ' + s.label + ' — `' + s.path + '`');
-        L.push('');
+    try {
+        const res = await fetch('/api/directive/build', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task: directiveData.task || '', include_ids: sel }),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        return data.markdown || '';
+    } catch (e) {
+        showToast('Náhľad sa nepodarilo prepočítať');
+        return null;
     }
-    if (pitfalls.length) {
-        L.push('## Pasce — čo nerobiť');
-        for (const t of pitfalls) {
-            const s = dirOneLine(t.snippet);
-            const path = t.path ? ' (`' + t.path + '`)' : '';
-            L.push('- ' + t.label + path + (s !== '' ? ': ' + s : ''));
-        }
-        L.push('');
-    }
-    if (projects.length) {
-        L.push('## Súvisiace projekty');
-        for (const p of projects) L.push('- ' + p.label + dirInfoSuffix(p.info));
-        L.push('');
-    }
-    if (facts.length) {
-        L.push('## Kľúčové fakty');
-        for (const f of facts) {
-            const s = dirOneLine(f.snippet);
-            L.push('- ' + f.label + (s !== '' ? ': ' + s : ''));
-        }
-        L.push('');
-    }
-    if (rules.length) {
-        L.push('## Pravidlá a preferencie');
-        for (const r of rules) {
-            const s = dirOneLine(r.snippet);
-            L.push('- ' + r.label + (s !== '' ? ': ' + s : ''));
-        }
-        L.push('');
-    }
-    if (others.length) {
-        L.push('## Ďalšie relevantné skilly (bez .md v repo)');
-        for (const s of others) {
-            const sn = dirOneLine(s.snippet);
-            L.push('- ' + s.label + (sn !== '' ? ': ' + sn : ''));
-        }
-        L.push('');
-    }
-
-    return L.join('\n').replace(/\n+$/, '') + '\n';
 }
 
-export function dirSelected(key) {
-    return (directiveData.suggested[key] || []).filter((it) => directiveSel.has(+it.id));
-}
-
-// Pokyny „Ako s tým pracovať" — len tie, na ktoré v smernici naozaj niečo je.
-// Pokyn na sekciu, ktorá v dokumente nie je, je horší než žiadny: AI ju hľadá.
-export function dirHowTo(verified, projects, pitfalls) {
-    const out = ['Toto je kontext z Hadesa (trvalá pamäť Claude Code), nie zadanie samo o sebe.'];
-    if (verified.length) out.push('Skilly nižšie majú cestu k .md — prečítaj si ich pred prvým riadkom kódu.');
-    if (pitfalls.length) out.push('Pasce sú overené chyby z minulosti; neopakuj ich.');
-    if (projects.length) out.push('Pri projektoch je adresár alebo popis — over stav priamo v ňom.');
-    out.push('Keď niečo chýba, dotiahni si to MCP nástrojmi `mind_recall` a `mind_read`.');
+// Všetky id, ktoré server v návrhu poslal — v poradí sekcií.
+export function dirAllIds() {
+    const out = [];
+    for (const sec of DIR_SECTIONS) {
+        for (const it of (directiveData.suggested[sec.key] || [])) out.push(+it.id);
+    }
     return out;
-}
-
-// Adresár do backtickov, prózu nie — AI má vidieť, čo je cesta.
-export function dirInfoSuffix(info) {
-    const t = String(info || '').trim();
-    if (t === '') return '';
-    return /^([A-Za-z]:[\\/]|\/)/.test(t) ? ' — `' + t + '`' : ': ' + dirOneLine(t);
-}
-
-export function dirOneLine(text) {
-    const t = String(text || '').replace(/\s+/g, ' ').trim();
-    return t.length > 160 ? t.slice(0, 160) + '…' : t;
 }
 
 export async function copyDirective() {
@@ -351,6 +313,9 @@ export async function openSavedDirective(name) {
     try {
         const d = await getJson('/api/directive/' + encodeURIComponent(name));
         if (!d || !d.markdown) { showToast('Smernica sa nenašla'); return; }
+        // Uložená smernica prekrýva náhľad, takže rozbehnutý dopočet výberu už
+        // nesmie dosadnúť po nej.
+        directivePreviewSeq++;
         directiveMarkdown = d.markdown;
         const pv = $('dir-preview');
         if (pv) pv.innerHTML = mdToHtml(d.markdown);

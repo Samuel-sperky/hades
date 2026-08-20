@@ -11,8 +11,12 @@ use App\Models\Run;
 use App\Models\Tag;
 use App\Serializers\Screen\DennikScreen;
 use App\Serializers\Screen\DnesScreen;
+use App\Serializers\Screen\KniznicaScreen;
+use App\Serializers\Screen\KontrolaScreen;
+use App\Serializers\Screen\RozhodnutiaScreen;
 use App\Serializers\Screen\RunDetailScreen;
 use App\Serializers\Screen\RunsScreen;
+use App\Serializers\Screen\SmernicaScreen;
 use App\Services\Brain\SecretScanner;
 use App\Services\MindService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -556,6 +560,128 @@ class McpController extends Controller
                     ],
                 ],
             ],
+            [
+                'name' => 'mind_directive',
+                'description' => 'Assemble the whole Hades context for one task into a single ready prompt '
+                    .'— the same document the human gets on the Smernica screen and pastes into a session. '
+                    .'Give it a plain-language `task` (Slovak or English; keywords are enough): it searches '
+                    .'the mind, drops noise nodes, and sorts what is left into verified skills WITH their '
+                    .'.md paths, pitfalls, related projects, key facts and standing rules. Reach for it at '
+                    .'the start of unfamiliar work INSTEAD of several mind_recall calls: one round trip, '
+                    .'and it already says which files to read first. `markdown` is context, not the task '
+                    .'itself. Its section "Pasce — čo nerobiť" holds verified past mistakes and is the most '
+                    .'valuable part of the answer; do not repeat them. `counts` is how much the mind really '
+                    .'had per category, so `counts.total` of 0 means Hades knows nothing here — say so '
+                    .'instead of inventing. Skills under "bez .md v repo" have no file on disk, only a '
+                    .'description; read them with mind_read. `node_ids` pins nodes you already know matter '
+                    .'(ids from mind_recall) and those are never discarded as noise. Read-only: saving a '
+                    ."directive to disk stays the human's action.",
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task' => ['type' => 'string', 'description' => 'What you are about to work on, in plain words'],
+                        'node_ids' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'integer'],
+                            'description' => 'Node ids to include no matter what (from mind_recall), max 50',
+                        ],
+                    ],
+                    'required' => ['task'],
+                ],
+            ],
+            [
+                'name' => 'mind_library',
+                'description' => 'List the playbooks (skill nodes) the mind holds, grouped by area, each '
+                    .'with the path to its .md file. Use it before writing something down yourself, or when '
+                    .'the user asks what Hades knows about a field: mind_recall answers a question with a '
+                    .'handful of nodes, this answers "everything in this area, with the files" in one call. '
+                    .'Narrow it — `area` takes an area slug or name from mind_overview, `q` matches Slovak '
+                    .'inflected forms too. Unnarrowed you get the first 200 skills and `truncated` is true, '
+                    .'which means you are holding a sample, not the library. `count` per area is how many '
+                    .'skills matched, not how many rows you got, so a `count` above the rows you see is the '
+                    .'rest of that area. `path` is where the playbook actually lives — read the file, never '
+                    .'guess it from the label; a skill with no `path` has no file at all and mind_read '
+                    .'gives you its description instead. `certainty` of `pasca` marks a mistake to avoid, '
+                    .'not a recommendation.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'area' => ['type' => 'string', 'description' => 'Area slug or name, e.g. vyvoj-kod'],
+                        'q' => ['type' => 'string', 'description' => 'Filter by word in the label or description'],
+                        'limit' => ['type' => 'integer', 'description' => 'Max skills across areas (default 200, max 2000)'],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'mind_decisions',
+                'description' => 'List the decisions recorded in the mind: what was decided, when, and '
+                    .'why. Use it before proposing a direction the user may already have settled, and '
+                    .'whenever the user asks why something is the way it is — a decision carries its '
+                    .'`reason`, which is the part no code comment holds. Newest first. `area` is the '
+                    ."area's name, not an id. `month` is the grouping key of the timeline. `origin` says "
+                    .'where the record lives: `session` is a database-only note an AI wrote, `brain` is '
+                    .'mirrored into a markdown file that `source_file` points at — a `brain` decision '
+                    .'outranks a `session` one, because a human keeps that file. `counts` covers the whole '
+                    .'corpus while `years` and `areas` are the axes with their own counts, so one call '
+                    .'gives you both the decisions and their shape. Filters narrow server-side; `area` '
+                    .'takes a slug from `areas`. Record a new decision with mind_decision. Empty fields '
+                    .'are omitted: no `reason` means none was written down, no `area` means the decision '
+                    .'is filed under none, no `source_file` means there is no markdown mirror.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'year' => ['type' => 'integer', 'description' => 'Only decisions decided in this year'],
+                        'area' => ['type' => 'string', 'description' => 'Only this area — slug from `areas`, or its name'],
+                        'origin' => [
+                            'type' => 'string',
+                            'enum' => ['session', 'brain'],
+                            'description' => 'Only records of this provenance',
+                        ],
+                        'q' => ['type' => 'string', 'description' => 'Substring of the decision text or its reason'],
+                        'limit' => ['type' => 'integer', 'description' => 'Max rows (default 500, max 500)'],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'mind_review',
+                'description' => 'Read the review queue: knowledge the mind has learned but a human has '
+                    .'not confirmed. Use it at the start of a session to see what you left unverified '
+                    .'last time, and before learning something again — an entry already in this queue does '
+                    .'not need a second mind_learn, it needs the human. Newest first. This tool is '
+                    .'READ-ONLY and there is deliberately no verify counterpart: confirming a knowledge is '
+                    ."the human's act, and an AI that approves its own memory has no external truth left. "
+                    .'`total` is the whole queue and no filter ever narrows it, so that is the number to '
+                    .'report; `counts.shown` is how many rows you actually got. `counts` breaks the queue '
+                    .'down by type, certainty and origin (`bez` = not set) — that is what tells you '
+                    .'whether traps are waiting or just unfiled memories. A `certainty` of `pasca` is a '
+                    .'trap and worth raising first. Filters narrow server-side; `area` takes a slug from '
+                    .'`areas`. Empty fields are omitted: no `description` means a bare label, which wants '
+                    .'fixing rather than verifying; no `source_file` means the entry lives only in the '
+                    .'index, not in a markdown file.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'area' => ['type' => 'string', 'description' => 'Only this area — slug from `areas`, or its name'],
+                        'type' => [
+                            'type' => 'string',
+                            'enum' => ['memory', 'skill', 'project', 'core'],
+                            'description' => 'Only nodes of this type',
+                        ],
+                        'certainty' => [
+                            'type' => 'string',
+                            'enum' => ['overene', 'hypoteza', 'pasca'],
+                            'description' => 'Only nodes with this certainty',
+                        ],
+                        'origin' => [
+                            'type' => 'string',
+                            'enum' => ['session', 'brain'],
+                            'description' => 'Only nodes of this provenance',
+                        ],
+                        'q' => ['type' => 'string', 'description' => 'Substring of the label or the description'],
+                        'limit' => ['type' => 'integer', 'description' => 'Max rows (default 100, max 500)'],
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -582,6 +708,10 @@ class McpController extends Controller
                 'mind_run' => $this->toolRun($args),
                 'mind_today' => app(DnesScreen::class)->forAi(),
                 'mind_journal' => (new DennikScreen($args))->forAi(),
+                'mind_directive' => (new SmernicaScreen($args))->forAi(),
+                'mind_library' => (new KniznicaScreen($args))->forAi(),
+                'mind_decisions' => (new RozhodnutiaScreen($args))->forAi(),
+                'mind_review' => (new KontrolaScreen($args))->forAi(),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {

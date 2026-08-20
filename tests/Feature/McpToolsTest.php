@@ -344,6 +344,7 @@ class McpToolsTest extends TestCase
             'mind_decision', 'mind_rename', 'mind_move', 'mind_delete',
             'mind_update', 'mind_link', 'mind_hygiene',
             'mind_runs', 'mind_run', 'mind_today', 'mind_journal',
+            'mind_directive', 'mind_library', 'mind_decisions', 'mind_review',
         ], $names);
 
         $link = collect($tools)->firstWhere('name', 'mind_link');

@@ -6,10 +6,16 @@ use App\Models\ConsoleThread;
 use App\Models\Run;
 use App\Serializers\Screen\DennikScreen;
 use App\Serializers\Screen\DnesScreen;
+use App\Serializers\Screen\KniznicaScreen;
+use App\Serializers\Screen\KontrolaScreen;
+use App\Serializers\Screen\RozhodnutiaScreen;
 use App\Serializers\Screen\RunDetailScreen;
 use App\Serializers\Screen\RunsScreen;
+use App\Serializers\Screen\SmernicaScreen;
 use App\Serializers\ScreenSerializer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\AssertionFailedError;
 use Tests\TestCase;
 
 /**
@@ -71,6 +77,43 @@ class ScreenParityTest extends TestCase
                 'tool' => 'mind_journal',
                 'route' => 'api/journal',
             ],
+            // Knižnica MUSÍ dostať na oboch stranách ten istý strop. Endpoint pre
+            // človeka posiela všetko (1667 skillov, 508 kB), tool má vlastný
+            // `AI_LIMIT` — porovnávať ich bez parametra by legitímne padlo na
+            // `truncated` a `counts.shown`, čo nie je rozchod plôch, ale rozdiel
+            // otázky. Test, ktorý padá na svojom vlastnom nastavení, sa vypne.
+            'kniznica' => [
+                'serializer' => KniznicaScreen::class,
+                'tool' => 'mind_library',
+                'route' => 'api/library',
+                'query' => ['limit' => 200],
+                'args' => ['limit' => 200],
+            ],
+            // Smernica stojí na `MindService::searchNodes`, ktorý používa
+            // MariaDB-only `COLLATE utf8mb4_unicode_ci` (accent-insensitive LIKE).
+            // Na sqlite padne celý dopyt, nie parita — preto sa preskakuje LEN
+            // táto jedna obrazovka a len na sqlite, nie celý test. Na MariaDB
+            // (`phpunit.mariadb.xml`) beží normálne a paritu Smernice navyše
+            // testuje `ScreenSmernicaKniznicaTest` znak za znakom.
+            'smernica' => [
+                'serializer' => SmernicaScreen::class,
+                'tool' => 'mind_directive',
+                'route' => 'api/directive/build',
+                'method' => 'post',
+                'payload' => ['task' => 'docker'],
+                'args' => ['task' => 'docker'],
+                'requires_mariadb' => true,
+            ],
+            'rozhodnutia' => [
+                'serializer' => RozhodnutiaScreen::class,
+                'tool' => 'mind_decisions',
+                'route' => 'api/decisions',
+            ],
+            'kontrola' => [
+                'serializer' => KontrolaScreen::class,
+                'tool' => 'mind_review',
+                'route' => 'api/review/queue',
+            ],
         ];
     }
 
@@ -85,8 +128,23 @@ class ScreenParityTest extends TestCase
     {
         return array_filter(
             $this->registry(),
-            static fn (array $pair): bool => ! str_contains($pair['route'], '{'),
+            fn (array $pair): bool => ! str_contains($pair['route'], '{') && $this->runnableHere($pair),
         );
+    }
+
+    /**
+     * Obrazovka, ktorá na tomto ovládači DB vôbec nemôže odpovedať, sa preskočí —
+     * jedna taká nesmie zhodiť paritu ostatných siedmich.
+     *
+     * @param  array<string, mixed>  $pair
+     */
+    private function runnableHere(array $pair): bool
+    {
+        if (($pair['requires_mariadb'] ?? false) !== true) {
+            return true;
+        }
+
+        return DB::connection()->getDriverName() !== 'sqlite';
     }
 
     // ---- 1. pokrytie -------------------------------------------------------
@@ -115,7 +173,11 @@ class ScreenParityTest extends TestCase
         $this->seedRun();
 
         foreach ($this->registry() as $screen => $pair) {
-            $serializer = $this->build($pair['serializer']);
+            if (! $this->runnableHere($pair)) {
+                continue;
+            }
+
+            $serializer = $this->build($pair['serializer'], $pair['args'] ?? []);
             $data = $serializer->data();
 
             foreach ($serializer->fieldsForAi() as $field) {
@@ -138,8 +200,17 @@ class ScreenParityTest extends TestCase
         $this->seedRun();
 
         foreach ($this->listScreens() as $screen => $pair) {
-            $human = $this->getJson('/'.$pair['route'])->assertOk()->json();
-            $ai = $this->tool($pair['tool'], []);
+            $url = '/'.$pair['route'];
+
+            if (($pair['query'] ?? []) !== []) {
+                $url .= '?'.http_build_query($pair['query']);
+            }
+
+            $human = (($pair['method'] ?? 'get') === 'post'
+                ? $this->postJson($url, $pair['payload'] ?? [])
+                : $this->getJson($url))->assertOk()->json();
+
+            $ai = $this->tool($pair['tool'], $pair['args'] ?? []);
 
             $this->assertParity($human, $ai, "{$screen} → {$pair['tool']}");
         }
@@ -189,7 +260,7 @@ class ScreenParityTest extends TestCase
 
         try {
             $this->assertParity($screen->data(), $screen->forAi(), 'fake');
-        } catch (\PHPUnit\Framework\AssertionFailedError) {
+        } catch (AssertionFailedError) {
             $failed = true;
         }
 
@@ -255,12 +326,12 @@ class ScreenParityTest extends TestCase
      * si berie závislosť z kontejnera, zoznamy berú filtre), takže je to match —
      * nový serializér sa tu ohlási pádom, nie tichým prejdením.
      */
-    private function build(string $serializer): ScreenSerializer
+    private function build(string $serializer, array $args = []): ScreenSerializer
     {
         return match ($serializer) {
             RunDetailScreen::class => new RunDetailScreen(Run::query()->latest('id')->firstOrFail()),
             DnesScreen::class => app(DnesScreen::class),
-            default => new $serializer([]),
+            default => new $serializer($args),
         };
     }
 

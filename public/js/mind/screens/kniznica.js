@@ -9,9 +9,16 @@ import { $, esc, getJson, plainInline, plainText, renderEmpty, renderLoading } f
 
 
 // F4: meta riadok skillu v Knižnici — origin + cert (icon) + značky (chipy).
+//
+// Značky NEREŽEME tu. Strop je na serveri (`KniznicaScreen::TAG_CAP`), lebo
+// `slice(0, 5)` v tomto riadku bola tichá strata dát v pohľade: uzol s ôsmimi
+// značkami vyzeral ako uzol s piatimi, kým AI z tej istej odpovede dostala
+// všetkých osem. Server teraz pošle päť a povie `tags_more`, takže obe plochy
+// čítajú to isté a človek vidí, že tam ešte niečo je.
 export function libMeta(s) {
     const tags = Array.isArray(s.tags) ? s.tags : [];
-    const chips = tags.slice(0, 5).map((t) => '<span class="tag">' + esc(t) + '</span>').join('');
+    const chips = tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('')
+        + (s.tags_more ? '<span class="tag">+' + s.tags_more + '</span>' : '');
     const cert = s.certainty ? certBadge(s.certainty, true) : '';
     const parts = originBadge(s.origin) + cert + chips;
     return '<span class="lib-skill-meta">' + parts + '</span>';
@@ -49,7 +56,8 @@ export async function renderLibrary() {
         body.innerHTML = areas.map((a) =>
             '<section class="lib-area"><h2>'
             + '<span class="lib-dot" style="background:' + esc(a.color ? mutedColor(a.color) : 'var(--muted)') + '"></span>'
-            + esc(a.name) + '<span class="lib-count">' + (a.skills ? a.skills.length : 0) + '</span></h2>'
+            // počet hlási server (`count`), nedopočítava sa z načítaných kariet
+            + esc(a.name) + '<span class="lib-count">' + (a.count ?? 0) + '</span></h2>'
             + '<div class="lib-skills">'
             + (a.skills || []).map((s) =>
                 '<div class="li-wrap lib-wrap">'

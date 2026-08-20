@@ -6,6 +6,7 @@ use App\Events\MindPulse;
 use App\Http\Controllers\Api\Concerns\HandlesBrainErrors;
 use App\Http\Controllers\Controller;
 use App\Models\Node;
+use App\Serializers\Screen\KontrolaScreen;
 use App\Services\Brain\BrainWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,23 +30,18 @@ class ReviewController extends Controller
     /**
      * GET — fronta uzlov na kontrolu (needs_review = true), od najnovších.
      * `total` slúži rail počítadlu (#dest-kontrola .count), `queue` zoznamu.
+     *
+     * Tvar odpovede drží {@see KontrolaScreen} — tá istá trieda, z ktorej čerpá
+     * MCP tool `mind_review`. Do vlny E vedelo MCP z celej tejto obrazovky vrátiť
+     * jedno číslo, takže AI frontu plnila a nevidela ju.
+     *
+     * Parametre filtrov sa **nevalidujú, ale sanitizujú** v serializéri: endpoint
+     * ich doteraz nepoznal a mlčky zahadzoval, takže 422 by bola zmena chovania
+     * externého mirroru `/api/v1/review/queue`.
      */
     public function queue(Request $request): JsonResponse
     {
-        $limit = max(1, min((int) $request->integer('limit', 100), 500));
-
-        $nodes = Node::query()
-            ->with('tags')
-            ->where('needs_review', true)
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
-
-        return response()->json([
-            'queue' => $nodes->map->toApi()->all(),
-            'total' => (int) Node::where('needs_review', true)->count(),
-        ]);
+        return response()->json((new KontrolaScreen($request->query()))->data());
     }
 
     /**
@@ -72,6 +68,7 @@ class ReviewController extends Controller
                     'source_file' => $result['source_file'],
                     'warnings' => $result['warnings'],
                     'sync' => $result['sync'],
+                    'queue_total' => $this->queueTotal(),
                 ]);
             });
         }
@@ -88,6 +85,7 @@ class ReviewController extends Controller
         return response()->json([
             'node' => ($node->fresh() ?? $node)->load('tags')->toApi(),
             'warnings' => $warnings,
+            'queue_total' => $this->queueTotal(),
         ]);
     }
 
@@ -102,7 +100,25 @@ class ReviewController extends Controller
         $fresh = $node->fresh() ?? $node;
         MindPulse::dispatch('node.updated', ['node' => $fresh->load('tags')->toApi()]);
 
-        return response()->json(['node' => $fresh->load('tags')->toApi()]);
+        return response()->json([
+            'node' => $fresh->load('tags')->toApi(),
+            'queue_total' => $this->queueTotal(),
+        ]);
+    }
+
+    /**
+     * Dĺžka fronty PO tejto mutácii.
+     *
+     * Aditívny kľúč, ktorý nesie konkrétny rozchod: obrazovka si počítadlo v raile
+     * po každej akcii **dopočítavala sama** (`kontrola.js:137`, `total - 1`), takže
+     * po paralelnej session, po `mind_learn` z inej AI alebo po mutácii, ktorá
+     * zhodila viac než jeden uzol, ukazoval rail iné číslo než server. Jedna
+     * `COUNT(*)` v odpovedi na mutáciu je lacnejšia než refetch celej fronty
+     * a pravdivejšia než odčítanie jednotky.
+     */
+    private function queueTotal(): int
+    {
+        return (int) Node::query()->where('needs_review', true)->count();
     }
 
     /**

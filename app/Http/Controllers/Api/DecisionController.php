@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\BrainFileNotFoundException;
+use App\Exceptions\BrainWriteDisabledException;
+use App\Exceptions\SecretsDetectedException;
 use App\Http\Controllers\Api\Concerns\HandlesBrainErrors;
 use App\Http\Controllers\Controller;
-use App\Models\Area;
 use App\Models\Decision;
+use App\Serializers\Screen\RozhodnutiaScreen;
 use App\Services\Brain\BrainText;
 use App\Services\Brain\BrainWriter;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +26,15 @@ class DecisionController extends Controller
 
     /**
      * GET — filtre: year (rok decided_on), area (slug|id), origin (session|brain).
+     *
+     * Tvar odpovede drží {@see RozhodnutiaScreen} — tá istá trieda, z ktorej čerpá
+     * MCP tool `mind_decisions`. Kontrolér sám neserializuje nič: keby si odpoveď
+     * skládal, plocha človeka a plocha AI by sa rozišli pri prvej zmene obrazovky
+     * (a raz už sa tak rozišli — názov oblasti brala obrazovka z grafu).
+     *
+     * `q` a `limit` sa **nevalidujú**, ale sanitizujú v serializéri. Doteraz ich
+     * endpoint nepoznal a mlčky zahadzoval; zaviesť na nich 422 by bola zmena
+     * chovania externého mirroru `/api/v1/decisions`.
      */
     public function index(Request $request): JsonResponse
     {
@@ -32,25 +44,10 @@ class DecisionController extends Controller
             'origin' => 'nullable|in:session,brain',
         ]);
 
-        $query = Decision::query()->orderByDesc('decided_on')->orderByDesc('id');
-
-        if (! empty($validated['year'])) {
-            $query->whereYear('decided_on', (int) $validated['year']);
-        }
-
-        if (! empty($validated['area'])) {
-            $areaId = $this->resolveAreaId($validated['area']);
-            // neexistujúca oblasť → prázdny výsledok (nie všetky)
-            $query->where('area_id', $areaId ?? -1);
-        }
-
-        if (! empty($validated['origin'])) {
-            $query->where('origin', $validated['origin']);
-        }
-
-        return response()->json([
-            'decisions' => $query->limit(500)->get()->map->toApi()->all(),
-        ]);
+        return response()->json((new RozhodnutiaScreen($validated + [
+            'q' => $request->query('q'),
+            'limit' => $request->query('limit'),
+        ]))->data());
     }
 
     /**
@@ -96,9 +93,9 @@ class DecisionController extends Controller
                     // len „žiadny writable zdroj" a pod. → fallback na DB session.
                     // Secrets/BrainWriteDisabled/Lock sú tiež RuntimeException, ale
                     // tie chceme mapovať — preto ich prehodíme ďalej.
-                    if ($e instanceof \App\Exceptions\SecretsDetectedException
-                        || $e instanceof \App\Exceptions\BrainWriteDisabledException
-                        || $e instanceof \App\Exceptions\BrainFileNotFoundException) {
+                    if ($e instanceof SecretsDetectedException
+                        || $e instanceof BrainWriteDisabledException
+                        || $e instanceof BrainFileNotFoundException) {
                         throw $e;
                     }
                 }
@@ -119,17 +116,15 @@ class DecisionController extends Controller
         });
     }
 
-    /** Oblasť podľa id (numerické) alebo slug/mena. Vráti area_id alebo null. */
+    /**
+     * Oblasť podľa id (numerické) alebo slug/mena. Vráti area_id alebo null.
+     *
+     * Jediná implementácia žije v serializéri — zápis a filter musia rozumieť
+     * tomu istému menu, inak by rozhodnutie uložené pod „Vývoj / kód" nebolo
+     * nájditeľné filtrom `area=vyvoj-kod` a nikto by to nezbadal.
+     */
     private function resolveAreaId(string $area): ?int
     {
-        if (ctype_digit($area)) {
-            return Area::whereKey((int) $area)->value('id');
-        }
-
-        $slug = \Illuminate\Support\Str::slug($area);
-
-        return Area::where('slug', $slug)
-            ->orWhereRaw('LOWER(name) = ?', [mb_strtolower(trim($area))])
-            ->value('id');
+        return RozhodnutiaScreen::resolveAreaId($area);
     }
 }
