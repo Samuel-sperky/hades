@@ -285,3 +285,55 @@ export async function resolveThread(client, { thread = null, fresh = false, mode
 
   return client.post('/api/console/cli/threads', created);
 }
+
+/**
+ * Rozhodnutia, ktoré front odložených zápisov pozná.
+ *
+ * Biely zoznam, a nie prepísanie toho, čo prišlo z príkazovej riadky, do URL:
+ * `decision` sa lepí do CESTY requestu, takže hocijaká hodnota by z neho vedela
+ * urobiť iný endpoint. Ten istý dôvod, prečo je klietka `bash` biela, nie čierna.
+ */
+export const PENDING_DECISIONS = ['approve', 'deny'];
+
+/**
+ * Otvorený front odložených zápisov — to, čo agent navrhol v behu bez človeka.
+ *
+ * Zúženie na vlákno ide ako query parameter, nie ako iná routa: front je jedna
+ * vec (čo čaká na rozhodnutie) a `--thread` je jeho filter.
+ *
+ * @param {ReturnType<typeof createClient>} client
+ * @param {{thread?: string|null, limit?: number|null}} [options]
+ */
+export async function listPending(client, { thread = null, limit = null } = {}) {
+  const query = new URLSearchParams();
+
+  if (typeof thread === 'string' && thread.trim() !== '') query.set('thread', thread.trim());
+  if (limit !== null && Number.isFinite(Number(limit))) query.set('limit', String(Math.trunc(Number(limit))));
+
+  const suffix = query.toString() === '' ? '' : `?${query.toString()}`;
+
+  return client.get(`/api/console/cli/pending${suffix}`);
+}
+
+/**
+ * Rozhodnutie o jednom návrhu.
+ *
+ * Vykonanie robí server tou istou cestou, akou ho robí povolenie v UI; klient len
+ * povie, o ktorom návrhu sa rozhodlo. Druhé volanie nad tým istým id je bezpečné —
+ * front je idempotentný a tool sa druhýkrát nevykoná.
+ *
+ * @param {ReturnType<typeof createClient>} client
+ * @param {string} uuid
+ * @param {'approve'|'deny'} decision
+ */
+export async function decidePending(client, uuid, decision) {
+  if (!PENDING_DECISIONS.includes(decision)) {
+    throw new Error(`Neznáme rozhodnutie „${decision}". Poznám: ${PENDING_DECISIONS.join(', ')}.`);
+  }
+
+  const id = encodeURIComponent(String(uuid ?? '').trim());
+
+  if (id === '') throw new Error('Chýba id návrhu.');
+
+  return client.post(`/api/console/cli/pending/${id}/${decision}`);
+}

@@ -20,9 +20,12 @@
 
 import {
   HadesHttpError,
+  PENDING_DECISIONS,
   TURN_END,
   createClient,
+  decidePending,
   driveTurn,
+  listPending,
   resolveThread,
 } from './lib/api.mjs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -31,7 +34,8 @@ import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 import { resolveConfig, setupHint } from './lib/config.mjs';
-import { createRenderer, describeHttpError, describeNetworkError } from './lib/render.mjs';
+import { createRenderer, describeHttpError, describeNetworkError, detectColor } from './lib/render.mjs';
+import { formatDecision, formatProposals } from './lib/pending.mjs';
 import { startRepl } from './lib/repl.mjs';
 
 const VERSION = '1.0.0';
@@ -47,6 +51,9 @@ const USAGE = `hades ${VERSION} — konzola vedomia Hades v termináli
   hades run "<otázka>"           jeden ťah, text ide na stdout
   hades run "<otázka>" --json    jeden ťah bez interakcie, na stdout čistý JSON
   hades threads                  zoznam vlákien
+  hades pending                  front odložených zápisov (čo navrhol beh bez človeka)
+  hades pending approve <id>     povolí návrh — vykoná sa až teraz
+  hades pending deny <id>        zahodí návrh
   hades models                   modely a čo je nedostupné
   hades doctor                   odkiaľ má adresu a token (token sa nevypisuje)
   hades gui                      otvorí konzolu v desktopovom okne (Electron)
@@ -200,6 +207,9 @@ export async function main(argv = process.argv.slice(2), io = {}) {
         return EXIT_OK;
       }
 
+      case 'pending':
+        return await pending({ client, flags, rest, out, err });
+
       case 'gui':
         return gui({ out, err });
 
@@ -289,6 +299,66 @@ async function runHeadless({ client, flags, message, out, err }) {
       // 422 je „ťah neprebehol" (HeadlessController). Nenulový exit je tu
       // podstatnejší než telo: skript sa rozhoduje podľa kódu.
       err.write(`Ťah neprebehol: ${error.serverMessage ?? 'server neposlal dôvod.'}\n`);
+
+      return EXIT_FAIL;
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * `pending` — front odložených zápisov a rozhodovanie o nich.
+ *
+ * Prečo to má vlastný príkaz a nie prepínač k `run`: návrhy vznikajú v behu,
+ * pri ktorom nikto nebol (nočný rozvrh, `run --json`, MCP), a rozhodujú sa
+ * NESKÔR a inokedy. Zviazať ich s ťahom by znamenalo, že si ich človek prečíta
+ * len vtedy, keď náhodou spustí ďalší beh.
+ *
+ * Výpis ide na stdout (ako `threads` a `models`), chyby na stderr. S `--json` je
+ * na stdout IBA JSON — to je pravidlo klienta, nie vlastnosť jedného príkazu.
+ */
+async function pending({ client, flags, rest, out, err }) {
+  const [sub, id] = rest;
+  const color = flags.json ? false : detectColor({ stream: out });
+
+  if (sub === undefined) {
+    const payload = await listPending(client, { thread: flags.thread });
+
+    out.write((flags.json ? JSON.stringify(payload) : formatProposals(payload, { color })) + '\n');
+
+    return EXIT_OK;
+  }
+
+  if (!PENDING_DECISIONS.includes(sub)) {
+    err.write(`Neznámy podpríkaz „${sub}". Poznám: ${PENDING_DECISIONS.join(', ')}.\n`
+      + '  hades pending                 vypíše front\n'
+      + '  hades pending approve <id>    povolí návrh\n');
+
+    return EXIT_FAIL;
+  }
+
+  if (id === undefined || id.trim() === '') {
+    err.write(`Chýba id návrhu: hades pending ${sub} <id>\n`
+      + '  · id vypíše `hades pending` (je to uuid, nie číslo v zozname).\n');
+
+    return EXIT_FAIL;
+  }
+
+  try {
+    const payload = await decidePending(client, id, sub);
+
+    out.write((flags.json ? JSON.stringify(payload) : formatDecision(payload, sub)) + '\n');
+
+    return EXIT_OK;
+  } catch (error) {
+    // 404 tu má dve príčiny a obe treba povedať: buď také id vo fronte nie je,
+    // alebo na tejto adrese beží vetva, ktorá front ešte nemá. Bez druhej vety
+    // sa druhá príčina hľadá v zlom mieste.
+    if (error instanceof HadesHttpError && error.status === 404) {
+      err.write(`Taký návrh vo fronte nie je: ${id}\n`
+        + '  · `hades pending` vypíše, čo tam čaká,\n'
+        + '  · a keď je výpis prázdny aj tak, na tejto adrese možno beží vetva bez frontu návrhov.\n');
 
       return EXIT_FAIL;
     }

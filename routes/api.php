@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\Console\HeadlessController as ConsoleHeadlessController;
 use App\Http\Controllers\Console\ModelController as ConsoleModelController;
+use App\Http\Controllers\Console\PendingController as ConsolePendingController;
 use App\Http\Controllers\Console\RunController as ConsoleRunController;
 use App\Http\Controllers\Console\ThreadController as ConsoleThreadController;
 use App\Http\Controllers\ContextController;
@@ -167,6 +168,12 @@ Route::middleware('auth.console')->group(function (): void {
 
         Route::post('/run', [ConsoleRunController::class, 'run'])->middleware('throttle:20,1');
         Route::post('/decide', [ConsoleRunController::class, 'decide']);
+
+        // Front odložených zápisov: čo navrhol beh bez človeka. `approve` zápis
+        // vykoná až tu — dovtedy návrh nič nezmenil.
+        Route::get('/pending', [ConsolePendingController::class, 'index']);
+        Route::post('/pending/{uuid}/{decision}', [ConsolePendingController::class, 'decide'])
+            ->where('decision', 'approve|deny');
     });
 });
 

@@ -18,6 +18,9 @@ node bin/hades/hades.mjs --new                 # interaktívne, nové vlákno
 node bin/hades/hades.mjs run "koľko je uzlov?" # jeden ťah, text na stdout
 node bin/hades/hades.mjs run "…" --json        # jeden ťah, na stdout čistý JSON
 node bin/hades/hades.mjs threads               # zoznam vlákien
+node bin/hades/hades.mjs pending               # front odložených zápisov
+node bin/hades/hades.mjs pending approve <id>  # povolí návrh — vykoná sa až teraz
+node bin/hades/hades.mjs pending deny <id>     # zahodí návrh
 node bin/hades/hades.mjs models                # modely a čo je nedostupné (a prečo)
 node bin/hades/hades.mjs doctor                # odkiaľ má adresu a token
 ```
@@ -110,6 +113,29 @@ zúži na vzor, nie na celé vlákno.
 Slash príkazy: `/new`, `/threads`, `/thread <uuid>`, `/model <id>`, `/models`,
 `/help`, `/exit`.
 
+## Front odložených zápisov (`pending`)
+
+V behu bez človeka (nočný rozvrh, `run --json`, MCP `console_run`) sa zápisový
+tool **nevykoná ani nezaparkuje vlákno** — zaznamená sa ako **návrh** s náhľadom
+(pri súboroch diff) a ťah skončí normálne. Bez toho by rozvrh nedokázal navrhnúť
+zmenu, len napísať report: parkovanie čaká na klik, ktorý v noci nemá kto urobiť,
+a zaparkované vlákno je zablokované natrvalo.
+
+```bash
+hades pending                    # čo čaká, s diffom a id
+hades pending --thread <uuid>    # len návrhy jedného vlákna
+hades pending approve <id>       # TERAZ sa tool vykoná
+hades pending deny <id>          # návrh sa zahodí
+hades pending --json             # front ako JSON (na stdout iba JSON)
+```
+
+`id` je **uuid návrhu**, nie číslo v zozname — poradie sa medzi výpismi mení.
+
+Rozhodnutie je **idempotentné**: druhé `approve` na ten istý návrh tool
+nevykoná druhýkrát (pri `write_file` alebo `mind_delete` je to rozdiel medzi
+„nič" a „škoda"). Server vracia stav, ktorý naozaj platí, a klient vypíše jeho —
+nie to, o čo bol požiadaný.
+
 ## Súbory
 
 | Súbor | Zodpovednosť |
@@ -118,6 +144,7 @@ Slash príkazy: `/new`, `/threads`, `/thread <uuid>`, `/model <id>`, `/models`,
 | `lib/config.mjs` | odkiaľ adresa a token (a odkiaľ presne) |
 | `lib/api.mjs` | HTTP, čítanie NDJSON, `driveTurn()` vrátane parkovania |
 | `lib/render.mjs` | ANSI výpis, karty toolov, diff, skracovanie |
+| `lib/pending.mjs` | výpis frontu odložených zápisov a rozhodnutí |
 | `lib/repl.mjs` | interaktívna smyčka, klávesnica, potvrdzovanie |
 
 ## Testy

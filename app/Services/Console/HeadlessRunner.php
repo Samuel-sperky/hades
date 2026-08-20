@@ -32,6 +32,12 @@ use App\Services\Llm\ProviderFactory;
  * Sada sa nevypisuje menami: keď v `TOOLS` pribudne zápisový tool, počíta sa
  * z `isWrite()` znova a nikto na jeho pridanie do zoznamu nezabudne.
  *
+ * Od 20. 8. 2026 sa zápisový tool nezahodí úplne: obalí sa do NÁVRHU
+ * ({@see WriteProposals}), ktorý sa namiesto zápisu uloží do frontu a čaká, kým ho
+ * človek potvrdí (`hades pending approve`). Ťah tým nezaparkuje — obal sa netvári
+ * ako zápis — a rozvrh, ktorý beží v noci, vie ráno predložiť zmenu namiesto toho,
+ * aby o nej len napísal do reportu.
+ *
  * ── 2. Výsledok je pre STROJ, nie pre obrazovku ────────────────────────────
  *
  * Rámce sa nezbierajú všetky. `delta` rámce sú po štvoriciach znakov to isté,
@@ -79,7 +85,7 @@ final class HeadlessRunner
         // Vlastná instancia smyčky, nie tá z kontejnera: `AgentRunner` si register
         // berie v konštruktore, takže read-only sada sa inak nedá podstrčiť bez
         // toho, aby sa prepísal register aj pre prehliadačový okruh.
-        $runner = new AgentRunner($this->providers, $this->prompt, $this->registry());
+        $runner = new AgentRunner($this->providers, $this->prompt, $this->registry($thread));
 
         $runner->run(
             $thread,
@@ -108,22 +114,59 @@ final class HeadlessRunner
     }
 
     /**
-     * Sada toolov programového behu — kánon z {@see ToolRegistry::TOOLS} bez
-     * zápisových. Verejná preto, že „ani jeden zápisový tool" je vlastnosť, ktorú
-     * má zmysel overiť testom, nie prečítať v komentári.
+     * Sada toolov programového behu.
+     *
+     * Bez vlákna: kánon z {@see ToolRegistry::TOOLS} bez zápisových. Verejná preto,
+     * že „ani jeden tool, ktorý by ťah zaparkoval" je vlastnosť, ktorú má zmysel
+     * overiť testom, nie prečítať v komentári.
+     *
+     * S vláknom: zápisový tool sa NEVYHODÍ, ale obalí sa do NÁVRHU
+     * ({@see WriteProposals::proposalTool()}). Obal má `isWrite() === false`, takže
+     * ťah nezaparkuje, a jeho `execute()` namiesto zápisu založí riadok v
+     * `console_write_proposals`. Bez toho nočný rozvrh nedokáže navrhnúť zmenu, len
+     * napísať report — a kontrakt §4 pritom sľubuje, že „čokoľvek zápisové sa odloží
+     * do frontu potvrdení".
+     *
+     * Obal do `ToolRegistry::TOOLS` NEPATRÍ a nesmie sa tam dostať: v prehliadačovom
+     * okruhu by tichom vypnul potvrdzovanie zápisov, pretože sa netvári ako zápis.
+     * Preto sa skladá tu, na jedno použitie, a nie v registri.
      */
-    public function registry(): ToolRegistry
+    public function registry(?ConsoleThread $thread = null): ToolRegistry
     {
-        return $this->readOnly ??= new ToolRegistry(array_values(array_filter(
-            array_map(static fn (string $class): ConsoleTool => app($class), ToolRegistry::TOOLS),
+        if ($thread === null) {
+            return $this->readOnly ??= new ToolRegistry($this->tools(null));
+        }
+
+        return new ToolRegistry($this->tools($thread));
+    }
+
+    /**
+     * @return array<int, ConsoleTool>
+     */
+    private function tools(?ConsoleThread $thread): array
+    {
+        $proposals = $thread === null ? null : app(WriteProposals::class);
+        $out = [];
+
+        foreach (ToolRegistry::TOOLS as $class) {
+            $tool = app($class);
+
             // `isWrite()` neznamená „mení dáta", ale „ťah sa zaparkuje a čaká na
             // človeka" — a to je presne to, čo tu nesmie nastať. Tool označený
             // {@see SafeUnattended} zapisuje len do svojho vlastného miesta
-            // (`storage/app/reports`), takže sa vykonať smie: bez neho by nočný
-            // rozvrh nemal ako vyrobiť report, čo je jeho jediný zmysluplný výstup,
-            // a kontrakt §4 to sľubuje.
-            static fn (ConsoleTool $tool): bool => ! $tool->isWrite() || $tool instanceof SafeUnattended,
-        )));
+            // (`storage/app/reports`), takže sa vykonať smie.
+            if (! $tool->isWrite() || $tool instanceof SafeUnattended) {
+                $out[] = $tool;
+
+                continue;
+            }
+
+            if ($proposals !== null) {
+                $out[] = $proposals->proposalTool($tool, $thread);
+            }
+        }
+
+        return $out;
     }
 
     /**
