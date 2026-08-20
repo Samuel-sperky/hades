@@ -319,7 +319,41 @@ neurobil: worktree `.claude/worktrees/hades-klient` má `vendor` ako symlink na
 tento checkout a v tom čase tam bežala paralelná session. Flagnuté ako
 samostatná úloha.
 
-### Prečo vlna B a Runy nedobehli
+### Dodatok (20. 8. 2026, neskôr): obrazovka Runy DOBEHLA
+
+Branding session medzitým `mind.css` aj `mind.blade.php` commitla, čím sa otvorilo
+okno na dizajnové súbory. Obrazovka **Runy** je hotová (`7bbf3a4`): časová os
+behov po dňoch, filtre stav/model zo serverových počtov, detail s krokmi, tool
+callmi a diffom, „spustiť znovu".
+
+Postavená je **takmer celá na existujúcich komponentoch** (`.dtl*`, `.chip`,
+`.badge`) — nová obrazovka nemá priniesť ôsmy dialekt. To je vlna B vyjadrená
+zdržanlivosťou, nie novým CSS.
+
+Dve chyby, ktoré našlo overenie, a obe len preto, že sa merač **kalibroval**
+namiesto toho, aby sa mu verilo:
+
+1. **Stavové farby padali na svetlej téme.** Ako text na tinte badge dávali
+   `waiting` 2,80, `done` 3,76, `failed` 3,85 a `.run-error` 4,38:1 — pod AA.
+   Pridané `--success-ink`, `--danger-ink`, `--warn-ink` podľa vzoru, ktorý už
+   zaviedol `--accent-ink`, s odmeranou hodnotou v komentári pri každej. Po oprave
+   je na svetlej aj tmavej téme **pod AA nič**.
+2. **Zlá slovenčina:** „3 krokov" namiesto „3 kroky" — kód mal dva tvary množného
+   čísla, slovenčina má tri (1 / 2–4 / 5+).
+
+Merač sám dvakrát klamal a oba razy sa to dalo zistiť len kalibráciou: (a) prvá
+verzia neskládala poloprehľadné vrstvy pozadia a hlásila badge 1,92–2,80:1, teda
+falošný pád na funkčných farbách; (b) pri prepnutí témy v tom istom synchronnom
+bloku čítala farby **rozbehnutého prechodu** a hlásila `.run-prompt` 1,22:1.
+Presne to, na čo CLAUDE.md upozorňuje pri `cssswap.js`.
+
+Screenshot v tomto prostredí nešiel — Browser pane nekompozituje rámce — takže
+dôkaz je zmeraný DOM a computed style, nie obrázok.
+
+**Zostáva z vlny B:** zjednotenie duplikátov komponentov naprieč grafom a
+konzolou a density prepínač. To sa má robiť nad finálnou paletou.
+
+### Prečo vlna B nedobehla
 
 Nie pre rozsah ani pre chybu. V hlavnom checkoute paralelne bežal **schválený
 branding šprint** (`KONTRAKT-BRANDING-HADES-2026-08-19.md`, strop 600k), ktorý
