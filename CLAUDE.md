@@ -237,6 +237,74 @@ zámerne neexistuje** — appka je verejne tunelovaná cez ngrok.
 v každom requeste, obyčajný ťah ~3k, ťah ktorý prečíta `CLAUDE.md` ~15k pri
 `num_ctx` 16384. Trinásty nástroj alebo druhé čítanie celého súboru narazí.
 
+### Log behov (`runs`, obrazovka Runy)
+
+**Beh je agregát nad existujúcimi tabuľkami, nie tretia kópia dát.** `runs` drží
+stav a cenu ťahu, ale členstvo správ nesie **rozsah id**
+(`from_message_id` – `to_message_id`), nie stĺpec `run_id`. Vlákno beží jeden ťah
+naraz (`RunController::run` odmietne správu, kým čaká nedorozhodnutý zápis), takže
+rozsah je presný, nie približný.
+
+**`RunRecorder` visí na `$emit`, nie v `AgentRunner`i** — vznikol tak, aby sa
+nedotkol súboru, ktorý paralelne prepisovala iná session, a ukázalo sa to ako
+lepší návrh: recorder je testovateľný bez modelu, stačí mu poslať rámce.
+`AgentRunner.php` je preto v celom diffe logu behov nezmenený a **má taký zostať**.
+
+**Tokeny sa NEBERÚ z rámca `end`.** Ťah, ktorý zaparkuje na potvrdení zápisu,
+`end` **nikdy nepošle**, takže cena jeho prvého segmentu by z logu vypadla.
+Sčítavajú sa z `console_messages`, kde `duration_ms` je **generovací** čas
+(`AgentRunner` doňho ukládá `evalDurationMs`). Dôsledok, ktorý treba poznať:
+`runs.duration_ms` je **wall clock** a obsahuje minúty, kým sa človek rozhodoval
+o zápise, kým `tokens_per_second` je z generovacieho času. Sú to dva rôzne údaje
+a **ani jeden nie je chyba** — preto sú v UI vedľa seba a pomenované inak.
+
+Beh, ktorý zostal visieť v `running` po smrti procesu (reštart kontejnera), zametá
+`mind:reap-runs` každých 10 minút, strop 30 minút. Zaparkované (`waiting`) sa
+nezametajú nikdy — čakajú na človeka a môžu tak čakať dni. `finally` v
+`RunController` pokryje výnimku aj odchod klienta; smrť procesu nie.
+
+**„Spustiť znovu" nič nespúšťa.** Vráti zadanie a nový ťah ide bežnou cestou cez
+`/console/run`. Druhá cesta k modelu, ktorá obchádza dvojfázovú bránu, je presne
+to, čo tu nesmie vzniknúť.
+
+### Dvojitá plocha: UI = MCP
+
+**Každá z 8 obrazoviek má jeden serializér v `app/Serializers/Screen/`.** Endpoint
+vráti `data()`, MCP tool vráti `dropEmpty(project(data(), fieldsForAi()))`. Rozdiel
+medzi plochou človeka a plochou AI je **deklarovaný zoznam kľúčov, nie druhá
+implementácia**. Nová obrazovka = serializér + **jeden riadok** do
+`ScreenParityTest::registry()`; test si zvyšok vynúti sám.
+
+Prečo to existuje: audit 19. 8. 2026 našiel šesť miest, kde sa plochy už rozišli,
+a vždy z tej istej príčiny — dve implementácie jedného obsahu. Smernica skladala
+markdown na serveri aj v prehliadači a texty sa líšili na **20 zo 48 riadkov**
+(PHP kráti na `...`, JS krátil na `…`). Denník počítal čipy projektov z 50
+načítaných záznamov, takže čip sľuboval číslo, ktoré zoznam nedal. Kontrola mala
+fallback `total ?? items.length`, čo bola tichá lož pri fronte nad 100.
+
+Pravidlo, ktoré z toho platí: **dátové veci na server, slová do prehliadača.**
+Počty, skupiny, filtre, kľúč dňa a krátenie textu sú dáta. Popisok „dnes/včera",
+formát trvania, `timeAgo` a šírka baru v pixeloch sú slová a vizuál — tie do
+serializéra nepatria.
+
+`ScreenParityTest` má **štvrtú vrstvu, ktorá dokazuje vlastnú citlivosť** (úmyselný
+rozchod musí padnúť, kozmetický UI kľúč nie). Nezahoď ju — bez nej môže byť test
+zelený a nemerať nič, čo je pasca, na ktorú tento projekt už raz naletel.
+
+Obrazovka **Smernica** má v registri `requires_mariadb`, pretože `searchNodes`
+používa `COLLATE utf8mb4_unicode_ci`. Na sqlite sa preskočí **len ona**, nie celý
+test; overuj ju cez `phpunit.mariadb.xml` (tam je 344 asercií proti 322).
+
+**`mind_recall` má stále DVA tvary** (`McpController.php` × `MindRecallTool.php`)
+a už sa rozišli — konzola má `id`, nemá `strength/department/verified/origin/semantic`.
+Nezjednotilo sa to zámerne (kontrolér mala rozpracovaný iná session). Detail je
+v `docs/UX-AUDIT-2026-08-19.md`.
+
+**Nové vystavenie:** `mind_runs` a `mind_run` sprístupňujú cez MCP texty promptov
+a výsledky toolov, kam MCP predtým nevidelo. Dáta nové nie sú, ale ak sa do promptu
+vloží tajomstvo, vedie k nemu odteraz aj táto cesta. Redakcia cez `SecretScanner`
+sa nezaviedla — na ploche AI by rozbila paritu.
+
 ## Overenie UI
 
 Docker servuje repo z jeho koreňa, takže **worktree na 8080 neuvidíš**. Postup,
@@ -244,6 +312,35 @@ ktorý funguje (prehliadače v tomto prostredí blokujú `file://` aj `localhost
 headless Chrome cez `puppeteer-core` (`C:\Program Files\Google\Chrome\Application\chrome.exe`,
 node na `C:\Program Files\nodejs\node.exe`). Pre worktree si postav malý statický
 server, ktorý servuje `public/` a `/api` proxuje na 8080.
+
+**Druhá cesta, overená 20. 8. 2026 a bez závislostí: reverzný proxy + Browser
+pane.** Appka je za `auth.ui`, takže sa treba odomknúť — a `?token=...` v URL je
+zlé, pretože token skončí v histórii prehliadača, v access logu aj v transkripte
+session. Postav preto malý node proxy (~40 riadkov, len `http`), ktorý si token
+prečíta z `.env` **sám** a pridá ho ako hlavičku `X-Hades-Ui-Token`; potom otvor
+`http://127.0.0.1:<port>` nástrojmi `mcp__Claude_Browser__*`. Daj mu
+`/__whoami` a `accept-encoding: identity`. Vzor býva v scratchpade ako
+`uiproxy.js`. Pozor: WebSocket sa takto neupgraduje, takže konzolové chyby
+`ws://.../app/...` sú limit harnessu, nie chyba appky.
+
+**Screenshot v tomto prostredí NEFUNGUJE** — Browser pane nekompozituje rámce
+a `computer{action:"screenshot"}` padne na timeout. Dôkaz o UI je preto **zmeraný
+DOM a computed style**, nie obrázok. Nesnaž sa to obchádzať; zmerané číslo je aj
+tak silnejší dôkaz než snímka.
+
+**Merač kontrastu má dve pasce a obe dávajú falošný PÁD** (teda by ťa donútili
+„opravovať" funkčný dizajn):
+
+1. **Pozadie treba SKLÁDAŤ.** Zbieraj vrstvy od prvku nahor po prvú
+   NEPRIEHĽADNÚ a potom ich zlož zdola (alfa kompozícia). Verzia, ktorá vzala
+   prvú nájdenú `background-color`, hlásila badge 1,92–2,80:1 na farbách, ktoré
+   mali 5–7:1.
+2. **Po prepnutí témy nechaj DOSADNÚŤ.** `data-theme` spustí CSS prechod; meranie
+   v tom istom synchronnom bloku prečíta farby rozbehnutého prechodu — vyšlo
+   `.run-prompt` 1,22:1 namiesto 17,3:1. Prepni v jednom volaní, meraj v ďalšom.
+
+A vždy **kalibruj na známom stave**: zmeraj aj `body` (~16:1). Keď to nesedí,
+ostatným číslam sa nedá veriť.
 
 Onboarding karta sa vypína `localStorage.setItem('hades.hints2', 'done')` **pred**
 loadom (`evaluateOnNewDocument`) — klik na `#hint-skip` po loade ju nespoľahlivo skryje
