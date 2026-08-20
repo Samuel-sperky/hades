@@ -231,6 +231,123 @@ Kritérium §7/1 („žiadne nové dvojice") sa meria voči **týmto** číslam.
 | Dvojitá plocha sa rozíde | Dva zdroje pravdy | Jeden serializér + parity test, nie dve implementácie |
 | Rast rozsahu | Päť vĺn | Pri prekročení odhadu o > 30 % zastaviť a ozvať sa |
 
-## 9. Výsledok
+## 9. Výsledok (20. 8. 2026)
 
-_(dopíše sa po dobehnutí šprintu)_
+**Hotové: vlny A, C, E. Zaparkované: vlna B a obrazovka Runy. Vlna F čiastočne.**
+
+### Čo stojí v kóde
+
+| Commit | Čo |
+|---|---|
+| `318fe2b` | Audit troch optík + zúžený kontrakt |
+| `0c845a4` | Tabuľka `runs`, `RunRecorder`, endpointy, `ScreenSerializer`, 16 testov |
+| `b42915f` | MCP `mind_runs` / `mind_run` + parity test (7 testov) |
+| `196fe04` | `mind:reap-runs` + scheduler |
+| `1e3dd66` | Dnes + Denník na serializér, `mind_today` / `mind_journal` |
+| `e340983` | Knižnica, Smernica, Rozhodnutia, Kontrola + ich štyri MCP dvojčatá |
+
+**Testy: 421 passed, 45 skipped, 0 failed** (107 s). Parity test aj proti MariaDB:
+7 testov, 344 asercií (na sqlite 322 — tých 22 navyše je porovnanie Smernice,
+ktoré sqlite nezvládne pre `COLLATE utf8mb4_unicode_ci` v `searchNodes`).
+
+**Parita plôch: z ~15 % na 8 obrazoviek z 8.** MCP má 20 toolov (12 nad uzlom
++ 8 nad obrazovkami). Každá obrazovka číta ten istý `data()` ako jej MCP dvojča;
+rozdiel plôch je deklarovaný zoznam kľúčov, nie druhá implementácia.
+
+### Splnené kritériá
+
+4 (nálezy prístupnosti — čiastočne, audit nedobehol), 5 (`AgentRunner.php`
+v celom diffe nedotknutý), 6, 7 (citlivosť dokázaná oboma smermi), 8, 9.
+**Nesplnené: 1, 2, 3** — všetky tri sú vlna B a obrazovka Runy.
+
+### Zabité rozchody plôch, každý s číslom
+
+- **Smernica** bola najhoršia: server skladal markdown, prehliadač ho zahodil
+  a poskladal si vlastný. Zmerané pred zmenou na troch úlohách: líšili sa na
+  **20/48, 15/42 a 23/46 riadkoch** (PHP kráti na `...`, JS krátil na `…`).
+  Dokument, ktorý si človek skopíroval, a dokument pre AI boli iné texty.
+  Serverovi chýbal jediný údaj — výber v checklistoch — takže sa doplnil, nie
+  že by sa klientsky builder zachoval.
+- **Denník** počítal čipy projektov z 50 načítaných záznamov, takže čip sľuboval
+  číslo, ktoré zoznam nedal. Skupina „bez projektu" bola klientska heuristika:
+  človek videl jednu skupinu, AI 12 uzlov typu `mystifying-mclaren-23750a`.
+- **Dnes** dostávalo 8 sessions a kreslilo 6 — dve existovali len pre AI.
+  Neznámy stav synchronizácie sa mlčky prekresľoval na „v poriadku".
+- **Rozhodnutia** brali názov oblasti z grafového payloadu, lebo vlastný
+  endpoint ho nevracal.
+- **Kontrola** mala fallback `total ?? items.length`, čo bola tichá lož pri
+  fronte nad 100.
+- **Knižnica** krátila tagy na 5 v pohľade: uzol s 8 tagmi vyzeral ako s 5, kým
+  AI dostala všetkých 8. Po oprave sa objavilo **197 čipov „+N"**, ktoré človek
+  dovtedy nikdy nevidel.
+- Knižnica pre AI je **13,5 kB proti 508 kB** pre človeka (2,7 %) — ten istý
+  serializér odpovedá na užšiu otázku, nie druhý endpoint na inú.
+
+### Dve veci, ktoré návrh zmenila kolízia, a obe k lepšiemu
+
+1. **Cena behu sa sčítava z `console_messages`, neberie sa z rámca `end`.**
+   Vzniklo to ako obchádzka `AgentRunner`a a ukázalo sa ako jediná správna
+   voľba: ťah, ktorý zaparkuje na potvrdení zápisu, `end` **nikdy nepošle**,
+   takže cena jeho prvého segmentu by z logu vypadla. Vedľajší efekt je pravdivé
+   tok/s — správy nesú generovací čas, beh nesie wall clock.
+2. **Členstvo správ v behu nesie rozsah id**, nie stĺpec `run_id`. Žiadna
+   migrácia na dvoch hot tabuľkách, žiadny zápis v hot ceste.
+
+### Bezpečnosť
+
+`/api/runs`, `/api/runs/{uuid}`, `/api/runs/{uuid}/rerun` majú poradie
+cookies → session → `auth.ui` → CSRF a **nie sú** v externom Bearer mirrore
+`/api/v1/*` (overené `route:list`). „Spustiť znovu" vedome nespúšťa nič — vracia
+zadanie a nový ťah ide bránou cez `/console/run`, aby nevznikla druhá cesta
+k modelu, ktorá obchádza potvrdzovanie zápisov.
+
+**Nové vystavenie, ktoré treba vedieť:** `mind_runs` a `mind_run` sprístupňujú
+cez MCP **texty promptov a výsledky toolov z konzoly**, ku ktorým MCP predtým
+nemalo prístup. Dáta samotné nie sú nové (`AgentRunner` ich do
+`console_messages` ukládá tak či tak) a čitateľom je ten istý človek, ktorý drží
+UI token. Ale ak sa niekedy do promptu vloží tajomstvo, odteraz vedie k nemu aj
+cesta cez MCP. Redakcia cez `SecretScanner` sa **nezaviedla** — na ploche AI by
+rozbila paritu, na oboch plochách by menila to, čo človek vidí, a pôvodné
+uloženie tým nezmizne. Je to otvorený bod, nie hotová vec.
+
+`composer audit`: jeden medium nález, `league/commonmark` 2.8.3,
+CVE-2026-71478 (`AttributesExtension` unsafe-link bypass). **V tejto appke
+nevyužiteľný** — knižnica je tranzitívna, grep na `AttributesExtension`,
+`CommonMark`, `Str::markdown` a `commonmark` naprieč `app/`, `config/`
+a `resources/views/` nedal ani jeden zásah. Update `vendor/` sa vedome
+neurobil: worktree `.claude/worktrees/hades-klient` má `vendor` ako symlink na
+tento checkout a v tom čase tam bežala paralelná session. Flagnuté ako
+samostatná úloha.
+
+### Prečo vlna B a Runy nedobehli
+
+Nie pre rozsah ani pre chybu. V hlavnom checkoute paralelne bežal **schválený
+branding šprint** (`KONTRAKT-BRANDING-HADES-2026-08-19.md`, strop 600k), ktorý
+prefarbuje akcent na amethyst, mení znak a premenúva konzolu na **Charón** —
+teda prepisuje presne tie tokeny, na ktorých vlna B stála. Zdieľaný pracovný
+adresár znamená, že tam nie je merge, ale **posledný zápis vyhráva bez
+varovania**, takže `public/css/mind.css`, `resources/views/mind.blade.php` ani
+`console.blade.php` som neotvoril na zápis vôbec.
+
+**Dva padnuté audity (čitateľnosť a hustota, prístupnosť) sa vedome nespúšťali
+znova** — merali by kontrast palety, ktorá sa práve mení. Po dosadnutí brandingu
+budú tie čísla platné; teraz by boli odpad.
+
+### Ďalší krok
+
+1. Nechať dobehnúť branding, potom pustiť tie dva audity nad **finálnou** paletou.
+2. Vlna B nad finálnymi tokenmi + obrazovka Runy (backend na ňu čaká hotový:
+   `/api/runs*` aj `mind_runs`/`mind_run` bežia a sú otestované).
+3. Vlna F dokončiť: preklik so screenshotmi pred/po, review agent `effort: high`.
+
+### Otvorené body
+
+- Redakcia tajomstiev v logu behov (viď Bezpečnosť).
+- `KniznicaScreen::pathFor()` × `MindService::sourcePathOf()` — dve implementácie
+  cesty k .md; zjednotenie by dnes otvorilo v overlay cudzí dokument. Flagnuté.
+- `mind_recall` má **dva tvary** (`McpController.php` × `MindRecallTool.php`) a už
+  sa rozišli. Z rozsahu vypadlo, lebo `McpController` mala rozpracovaný druhá
+  session. Detail je v `docs/UX-AUDIT-2026-08-19.md`.
+- Definície toolov v každom MCP requeste narástli o 8 nástrojov. Konzolový
+  kontextový strop to nezasahuje (to je `ToolRegistry`, iná sada), ale sessions
+  Claude Code platia väčší tool list.
