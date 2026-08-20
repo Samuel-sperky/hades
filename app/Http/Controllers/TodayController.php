@@ -2,66 +2,27 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Node;
+use App\Http\Controllers\Api\StatsController;
+use App\Serializers\Screen\DnesScreen;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
 
+/**
+ * Zdroj pre obrazovku Dnes — `GET /api/today`.
+ *
+ * Kontrolér sám nič neserializuje: tvar odpovede drží {@see DnesScreen}, tá istá
+ * trieda, z ktorej čítá MCP tool `mind_today`. Keby si kontrolér skladal odpoveď
+ * sám, plochy človeka a AI by sa rozišli pri prvej zmene obrazovky — a audit
+ * 19. 8. 2026 našiel, že presne to sa už na štyroch miestach stalo.
+ *
+ * Odpoveď je od 20. 8. 2026 **celá obrazovka**, teda pôvodné ľahké zoznamy plus
+ * agregáty, ktoré si prehliadač dovtedy dopĺňal druhým volaním na
+ * `/api/dashboard`. Ten endpoint žije ďalej nezmenený (má externý mirror
+ * `/api/v1/stats`); dôvod zlúčenia je v docblocku {@see DnesScreen}.
+ */
 class TodayController extends Controller
 {
-    /**
-     * Zdroj pre obrazovku Dnes — prehľad posledných dní práce vedomia:
-     *   - recent_sessions: posledných 8 session/digest záznamov (dátum + projekt)
-     *   - week_added: koľko uzlov a sessions pribudlo za 7 dní
-     *   - top_projects: projekty podľa počtu záznamov
-     *   - recent_records: posledné záznamy s titulom a úryvkom
-     */
-    public function index(): JsonResponse
+    public function index(StatsController $stats): JsonResponse
     {
-        $weekAgo = now()->subDays(7);
-
-        $recentSessions = Node::whereIn('source', ['session', 'digest'])
-            ->orderByDesc('created_at')
-            ->limit(8)
-            ->get()
-            ->map(fn (Node $n) => [
-                'id' => $n->id,
-                'label' => $n->label,
-                'source' => $n->source,
-                'project' => is_array($n->meta) ? ($n->meta['project'] ?? null) : null,
-                'created_at' => $n->created_at?->toIso8601String(),
-            ]);
-
-        $topProjects = Node::where('source', 'session')
-            ->selectRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.project')), 'projekt') as project, COUNT(*) as c")
-            ->groupBy('project')
-            ->orderByDesc('c')
-            ->limit(6)
-            ->get()
-            ->map(fn ($row) => ['project' => $row->project, 'count' => (int) $row->c]);
-
-        $recentRecords = Node::whereIn('source', ['session', 'digest'])
-            ->orderByDesc('created_at')
-            ->limit(6)
-            ->get()
-            ->map(fn (Node $n) => [
-                'id' => $n->id,
-                'label' => $n->label,
-                'project' => is_array($n->meta) ? ($n->meta['project'] ?? null) : null,
-                'snippet' => $n->description
-                    ? Str::limit(trim(preg_replace('/\s+/u', ' ', $n->description)), 140)
-                    : null,
-                'created_at' => $n->created_at?->toIso8601String(),
-            ]);
-
-        return response()->json([
-            'recent_sessions' => $recentSessions,
-            'week_added' => [
-                'nodes' => Node::where('created_at', '>=', $weekAgo)->count(),
-                'sessions' => Node::where('created_at', '>=', $weekAgo)
-                    ->whereIn('source', ['session', 'digest'])->count(),
-            ],
-            'top_projects' => $topProjects,
-            'recent_records' => $recentRecords,
-        ]);
+        return response()->json((new DnesScreen($stats))->data());
     }
 }

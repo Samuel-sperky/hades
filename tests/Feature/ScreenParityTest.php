@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\ConsoleThread;
 use App\Models\Run;
+use App\Serializers\Screen\DennikScreen;
+use App\Serializers\Screen\DnesScreen;
 use App\Serializers\Screen\RunDetailScreen;
 use App\Serializers\Screen\RunsScreen;
 use App\Serializers\ScreenSerializer;
@@ -59,7 +61,32 @@ class ScreenParityTest extends TestCase
                 'tool' => 'mind_run',
                 'route' => 'api/runs/{uuid}',
             ],
+            'dnes' => [
+                'serializer' => DnesScreen::class,
+                'tool' => 'mind_today',
+                'route' => 'api/today',
+            ],
+            'dennik' => [
+                'serializer' => DennikScreen::class,
+                'tool' => 'mind_journal',
+                'route' => 'api/journal',
+            ],
         ];
+    }
+
+    /**
+     * Obrazovky, ktorých endpoint sa dá zavolať bez parametra — tie sa porovnávajú
+     * generickou smyčkou, takže nová obrazovka v registri je pokrytá automaticky.
+     * Detail s `{uuid}` má vlastný test, ktorý si fixture vyrobí sám.
+     *
+     * @return array<string, array{serializer: class-string<ScreenSerializer>, tool: string, route: string}>
+     */
+    private function listScreens(): array
+    {
+        return array_filter(
+            $this->registry(),
+            static fn (array $pair): bool => ! str_contains($pair['route'], '{'),
+        );
     }
 
     // ---- 1. pokrytie -------------------------------------------------------
@@ -106,14 +133,16 @@ class ScreenParityTest extends TestCase
 
     // ---- 2. hodnoty --------------------------------------------------------
 
-    public function test_the_list_endpoint_and_the_list_tool_agree_on_every_shared_key(): void
+    public function test_every_listed_screen_agrees_with_its_tool_on_every_shared_key(): void
     {
         $this->seedRun();
 
-        $human = $this->getJson('/api/runs')->assertOk()->json();
-        $ai = $this->tool('mind_runs', []);
+        foreach ($this->listScreens() as $screen => $pair) {
+            $human = $this->getJson('/'.$pair['route'])->assertOk()->json();
+            $ai = $this->tool($pair['tool'], []);
 
-        $this->assertParity($human, $ai, 'mind_runs');
+            $this->assertParity($human, $ai, "{$screen} → {$pair['tool']}");
+        }
     }
 
     public function test_the_detail_endpoint_and_the_detail_tool_agree_on_every_shared_key(): void
@@ -221,13 +250,18 @@ class ScreenParityTest extends TestCase
         }
     }
 
+    /**
+     * Serializér v testovacom stave. Konstruktory sa líšia (detail chce beh, Dnes
+     * si berie závislosť z kontejnera, zoznamy berú filtre), takže je to match —
+     * nový serializér sa tu ohlási pádom, nie tichým prejdením.
+     */
     private function build(string $serializer): ScreenSerializer
     {
-        if ($serializer === RunDetailScreen::class) {
-            return new RunDetailScreen(Run::query()->latest('id')->firstOrFail());
-        }
-
-        return new $serializer([]);
+        return match ($serializer) {
+            RunDetailScreen::class => new RunDetailScreen(Run::query()->latest('id')->firstOrFail()),
+            DnesScreen::class => app(DnesScreen::class),
+            default => new $serializer([]),
+        };
     }
 
     private function seedRun(): Run

@@ -2,7 +2,7 @@ import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere, setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
-import { $, busy, emptyCardHtml, emptyHtml, esc, fmtNum, plainText, prettyLabel, prettyProject, renderEmpty, timeAgo } from '../util.js';
+import { $, busy, emptyCardHtml, emptyHtml, esc, fmtNum, getJson, prettyLabel, renderEmpty, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
 
@@ -38,21 +38,22 @@ export async function renderToday() {
     // nie inline max-width — inak dashboard nikdy nevyužije široké okno.
     body.innerHTML = todaySkeleton();
 
-    // /api/today je ľahký (sessions/records/projekty); ťažké agregáty sú v /api/dashboard (§4.1).
-    // res.ok kontrolujeme explicitne: 500 s JSON telom by inak prešlo ako úspech a
-    // obrazovka by mlčky ukázala nuly namiesto toho, aby priznala chybu.
-    const okJson = (r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); };
-    const [todayRes, dashRes] = await Promise.allSettled([
-        fetch('/api/today').then(okJson),
-        fetch('/api/dashboard').then(okJson),
-    ]);
-
-    if (todayRes.status !== 'fulfilled') {
+    /* JEDNO volanie na celú obrazovku. Do 20. 8. 2026 sa Dnes skládalo z dvoch
+       (`/api/today` + `/api/dashboard`), takže obsah obrazovky nemal jeden zdroj —
+       a MCP tool, ktorý je vždy jedno volanie, by si ho musel skládať po svojom.
+       `DnesScreen` na serveri vracia oboje; `/api/dashboard` žije ďalej pre
+       externý mirror. res.ok kontrolujeme explicitne: 500 s JSON telom by inak
+       prešlo ako úspech a obrazovka by mlčky ukázala nuly namiesto chyby. */
+    let d;
+    try {
+        d = await getJson('/api/today');
+    } catch (e) {
         renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať prehľad', 'Skús obnoviť stránku.');
         return;
     }
-    const d = todayRes.value;
-    const dash = dashRes.status === 'fulfilled' ? dashRes.value : null;
+    // `dash` je ten istý objekt — agregáty sú v koreni odpovede pod tými istými
+    // kľúčmi, aké mal /api/dashboard, takže dashboardHtml() sa nemenil.
+    const dash = d.counts ? d : null;
     const wb = d.week_added || {};
 
     /* Veľké hľadacie pole je ODTIAĽ PREČ. Otvárelo presne tú istú Cmd-K paletu ako
@@ -79,24 +80,30 @@ export async function renderToday() {
     }
 
     // ---- Naposledy / záznamy / projekty (z /api/today) ----
+    // Bez `.slice()`: strop drží server (DnesScreen.RECENT_SESSIONS). Kým bol tu,
+    // posielalo sa osem a kreslilo šesť, takže AI videla dve session, ktoré na
+    // obrazovke neboli — a to je celý mechanizmus, ktorým sa plochy rozchádzajú.
     const sessions = d.recent_sessions || [];
     if (sessions.length) {
         h += '<section class="today-sec"><h2>Naposledy si robil na…</h2><div class="today-grid">'
-            + sessions.slice(0, 6).map((s) => todaySessionCard(s)).join('')
+            + sessions.map((s) => todaySessionCard(s)).join('')
             + '</div></section>';
     }
 
     const records = d.recent_records || [];
     if (records.length) {
         h += '<section class="today-sec"><h2>Posledné záznamy</h2><div class="today-list">'
-            + records.map((r) => todayRow('article', r.id, r.label, r.project, r.snippet, r.created_at)).join('')
+            + records.map((r) => todayRow('article', r)).join('')
             + '</div></section>';
     }
 
+    // `p.label` je zo servera: strojové názvy adresárov sú tam už zlúčené do jednej
+    // skupiny „bez projektu". Kým to robil prehliadač (prettyProject), stálo v rade
+    // vedľa seba niekoľko čipov s tým istým popiskom a rôznymi počtami.
     const projects = d.top_projects || [];
     if (projects.length) {
         h += '<section class="today-sec"><h2>Aktívne projekty</h2><div class="today-chips">'
-            + projects.map((p) => '<span class="today-chip">' + esc(prettyProject(p.project))
+            + projects.map((p) => '<span class="today-chip">' + esc(p.label || p.project || '')
                 + '<span class="n">' + (p.count || 0) + '</span></span>').join('')
             + '</div></section>';
     }
@@ -218,7 +225,12 @@ export function certLegend(cert) {
         + '</div>';
 }
 
-// Bary per oblasť — farba oblasti cez inline --lobe (dedí sa na dot aj fill).
+/* Bary per oblasť — farba oblasti cez inline --lobe (dedí sa na dot aj fill).
+
+   `max` a percento ZOSTÁVAJÚ tu zámerne: nie je to údaj, ale šírka v pixeloch
+   voči najvyššiemu baru. Čísla, ktoré bar podpisujú (`a.count`), prichádzajú zo
+   servera a prehliadač ich neprepočítava — presun tejto škály na server by len
+   presunul kresbu, nie pravdu. */
 export function perAreaHtml(areas) {
     if (!areas.length) return emptyCardHtml('Zatiaľ žiadne oblasti');
     const max = Math.max.apply(null, areas.map((a) => +a.count || 0).concat([1]));
@@ -235,10 +247,18 @@ export function perAreaHtml(areas) {
 
 // Sync karta — stav (status-dot), štatistiky posledného behu, brain-write guard, „Sync teraz".
 export function syncCardHtml(dash) {
+    /* Stav rozhoduje server (`sync.state`), tu sa už len prekladá na slovo. Kým to
+       robil prehliadač, mapoval `null` aj čokoľvek neznáme na „ok", takže vedomie,
+       ktoré sa nikdy nesynchronizovalo, hlásilo „v poriadku". `none`/`unknown` CSS
+       nepozná a `.status-dot` im dá sivú — čo je presne to, čo majú znamenať. */
     const sync = dash.sync || {};
-    const status = ['ok', 'partial', 'error', 'running'].includes(sync.status) ? sync.status : 'ok';
-    const statusLabel = { ok: 'v poriadku', partial: 'čiastočne', error: 'chyba', running: 'prebieha' }[status];
-    const guardOn = !!(dash.brain_write_enabled != null ? dash.brain_write_enabled : sync.brain_write_enabled);
+    const status = sync.state || 'none';
+    const statusLabel = {
+        ok: 'v poriadku', partial: 'čiastočne', error: 'chyba', running: 'prebieha',
+        none: 'nikdy nebežala', unknown: 'neznámy stav',
+    }[status] || 'neznámy stav';
+    // Jeden zdroj: koreňový kľúč. Server ho už zrovnal s tým v `sync`.
+    const guardOn = !!dash.brain_write_enabled;
 
     const rowStyle = 'display:flex;align-items:center;gap:var(--sp-1);';
     const bits = [
@@ -337,29 +357,31 @@ export function plural(n, one, few, many) {
    strojových názvov dočasných adresárov („mystifying-mclaren-23750a — práca
    13.8.2026"). data-label zostáva SUROVÝ (je to identita uzla pre panel detailu a
    balík), mení sa len to, čo číta človek. */
+/* `project_label` chodí zo servera (skupina projektu), `project` zostáva surové —
+   je to identita záznamu a `prettyLabel` z neho odsekáva prefix v názve. */
 export function todaySessionCard(s) {
     return '<div class="today-card-wrap">'
         + '<button type="button" class="today-card-link" data-id="' + s.id + '" data-label="' + esc(s.label || '') + '">'
         + '<span class="tcl-title">' + esc(prettyLabel(s.label, s.project)) + '</span>'
         + '<span class="tcl-meta">'
-        + (s.project ? '<span class="tcl-proj">' + esc(prettyProject(s.project)) + '</span>' : '')
+        + (s.project ? '<span class="tcl-proj">' + esc(s.project_label || '') + '</span>' : '')
         + (s.created_at ? '<span class="tcl-time">' + esc(timeAgo(s.created_at)) + '</span>' : '')
         + '</span></button>'
         + packBtn(s.id, s.label) + '</div>';
 }
 
-export function todayRow(icon, id, label, project, snippet, iso) {
-    // plainText: snippet je markdown z popisu uzla, takže bez neho tu svietilo
-    // „**Čo:** …" — surová syntax vystavená používateľovi.
-    const snip = plainText(snippet);
+/* Riadok záznamu. Berie celý záznam zo servera, nie šesť rozbalených argumentov:
+   `snippet` už prichádza bez markdownu (predtým ho tu čistil `plainText`, takže
+   človek videl vetu a AI surové „**Čo:** …") a `project_label` je hotová skupina. */
+export function todayRow(icon, r) {
     return '<div class="li-wrap">'
-        + '<button type="button" class="today-item" data-id="' + id + '" data-label="' + esc(label || '') + '">'
+        + '<button type="button" class="today-item" data-id="' + r.id + '" data-label="' + esc(r.label || '') + '">'
         + '<span class="ms ti-ico" aria-hidden="true">' + icon + '</span>'
-        + '<span class="ti-text"><span class="ti-title">' + esc(prettyLabel(label, project)) + '</span>'
-        + (snip ? '<span class="ti-snip">' + esc(snip) + '</span>' : '')
+        + '<span class="ti-text"><span class="ti-title">' + esc(prettyLabel(r.label, r.project)) + '</span>'
+        + (r.snippet ? '<span class="ti-snip">' + esc(r.snippet) + '</span>' : '')
         + '</span>'
-        + (project ? '<span class="ti-tag">' + esc(prettyProject(project)) + '</span>' : '')
-        + (iso ? '<span class="ti-time">' + esc(timeAgo(iso)) + '</span>' : '')
+        + (r.project ? '<span class="ti-tag">' + esc(r.project_label || '') + '</span>' : '')
+        + (r.created_at ? '<span class="ti-time">' + esc(timeAgo(r.created_at)) + '</span>' : '')
         + '</button>'
-        + packBtn(id, label) + '</div>';
+        + packBtn(r.id, r.label) + '</div>';
 }

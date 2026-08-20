@@ -1,14 +1,19 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeFromAnywhere } from '../screens.js';
-import { $, esc, getJson, isMachineName, prettyLabel, prettyProject, renderEmpty, renderLoading, ts } from '../util.js';
+import { $, esc, getJson, prettyLabel, renderEmpty, renderLoading } from '../util.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
     'júla', 'augusta', 'septembra', 'októbra', 'novembra', 'decembra'];
 
 export let journalRecords = [];
+// Skupiny projektov a celkový počet chodia zo SERVERA (DennikScreen). Do 20. 8. 2026
+// si ich obrazovka počítala z 50 načítaných záznamov, takže čip tvrdil iné číslo než
+// server — a AI, ktorá čítala serverové počty, tretie. Počítanie je údaj, nie kresba.
+export let journalGroups = [];
+export let journalTotal = 0;
 export let journalProject = null;
-// Projektov je bežne ~28 — všetky naraz sa lámu na dva riadky chipov nad obsahom.
+// Projektov je bežne ~23 — všetky naraz sa lámu na dva riadky chipov nad obsahom.
 // Preto zbalený rad: najčastejšie projekty + „viac".
 export let journalChipsOpen = false;
 export const JOURNAL_CHIPS_TOP = 8;
@@ -27,12 +32,27 @@ export function timeHM(iso) {
     return new Date(iso).toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
 }
 
+/* Filtruje SERVER, nie prehliadač. Kľúč skupiny („#bez-projektu") ide ako query
+   parameter, takže počet na čipe a počet záznamov po kliknutí je to isté číslo —
+   kým sa filtrovalo nad oknom 50 záznamov, čip sľuboval 22 a zoznam dal 9. */
 export async function renderJournal() {
     const list = $('journal-list');
     renderLoading(list, 'Načítavam denník…');
     try {
-        const data = await getJson('/api/journal');
+        const q = journalProject ? '?project=' + encodeURIComponent(journalProject) : '';
+        const data = await getJson('/api/journal' + q);
         journalRecords = data.records || [];
+        journalGroups = data.project_groups || [];
+        journalTotal = data.total || 0;
+
+        // Aktívny filter, ktorý v skupinách zo servera už nie je (posledný záznam
+        // projektu sa premenoval), by zamkol prázdnu obrazovku — zruš ho a načítaj
+        // znova. Druhýkrát sa to stať nemôže, filter je vtedy prázdny.
+        if (journalProject && !journalGroups.some((g) => g.key === journalProject)) {
+            journalProject = null;
+            return renderJournal();
+        }
+
         renderJournalFilter();
         renderJournalList();
     } catch (e) {
@@ -40,46 +60,30 @@ export async function renderJournal() {
     }
 }
 
-/* Sessions bez projektu majú v dátach každá svoj strojový názov („mystifying-
-   mclaren-23750a"), takže filter z nich robil rad jednopočetných čipov — a po
-   preklade na ľudský text tri čipy „bez projektu 1" vedľa seba. Patria do JEDNEJ
-   skupiny: „bez projektu". Kľúč skupiny je sentinel, ktorý sa nemôže zhodovať so
-   žiadnym názvom projektu (mriežka nie je v adresárových názvoch). */
+/* Skupinu „bez projektu" tvorí server ({@see App\Support\ProjectGroup}): sessions
+   z dočasných adresárov majú v dátach každá svoj strojový názov („mystifying-
+   mclaren-23750a") a kým ich zlučoval prehliadač, človek videl jednu skupinu, ale
+   AI dvanásť uzlov so strojovými menami. Sentinel je tu už len na porovnanie. */
 export const JOURNAL_NO_PROJECT = '#bez-projektu';
-
-function journalKey(project) {
-    if (!project) return null;
-    return isMachineName(project) ? JOURNAL_NO_PROJECT : project;
-}
-
-function journalKeyLabel(key) {
-    return key === JOURNAL_NO_PROJECT ? 'bez projektu' : prettyProject(key);
-}
 
 export function renderJournalFilter() {
     const wrap = $('journal-filter');
-    // Poradie podľa počtu záznamov — v zbalenom rade tak ostanú tie, ktoré sa reálne
-    // používajú, nie tie, čo prišli v dátach prvé.
-    const counts = new Map();
-    for (const r of journalRecords) {
-        const k = journalKey(r.project);
-        if (!k) continue;
-        counts.set(k, (counts.get(k) || 0) + 1);
-    }
-    const projects = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || a.localeCompare(b, 'sk'));
-    if (journalProject && !projects.includes(journalProject)) journalProject = null;
-    if (!projects.length) { wrap.innerHTML = ''; return; }
+    // Poradie aj počty sú zo servera (podľa počtu záznamov v CELOM denníku), takže
+    // v zbalenom rade ostanú tie projekty, ktoré sa reálne používajú.
+    const groups = journalGroups;
+    if (!groups.length) { wrap.innerHTML = ''; return; }
 
-    const hiddenCount = Math.max(0, projects.length - JOURNAL_CHIPS_TOP);
+    const hiddenCount = Math.max(0, groups.length - JOURNAL_CHIPS_TOP);
     // aktívny filter musí byť vždy vidieť, aj keď je mimo najčastejších
-    if (journalProject && projects.indexOf(journalProject) >= JOURNAL_CHIPS_TOP) journalChipsOpen = true;
-    const shown = journalChipsOpen ? projects : projects.slice(0, JOURNAL_CHIPS_TOP);
+    if (journalProject && groups.findIndex((g) => g.key === journalProject) >= JOURNAL_CHIPS_TOP) journalChipsOpen = true;
+    const shown = journalChipsOpen ? groups : groups.slice(0, JOURNAL_CHIPS_TOP);
 
-    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '" data-project="">Všetky</button>'
-        + shown.map((p) =>
+    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '" data-project="">'
+        + 'Všetky<span class="chip-n">' + journalTotal + '</span></button>'
+        + shown.map((g) =>
             // data-project nesie KĽÚČ skupiny (filtruje sa ním), popisok ľudský text
-            '<button type="button" class="chip' + (journalProject === p ? ' active' : '') + '" data-project="' + esc(p) + '">'
-            + esc(journalKeyLabel(p)) + '<span class="chip-n">' + counts.get(p) + '</span></button>'
+            '<button type="button" class="chip' + (journalProject === g.key ? ' active' : '') + '" data-project="' + esc(g.key) + '">'
+            + esc(g.label) + '<span class="chip-n">' + g.count + '</span></button>'
         ).join('')
         + (hiddenCount ? '<button type="button" class="chip chip-more" id="journal-chips-more">'
             + (journalChipsOpen ? 'menej' : '+' + hiddenCount + ' viac') + '</button>' : '');
@@ -90,8 +94,7 @@ export function renderJournalFilter() {
     wrap.querySelectorAll('.chip[data-project]').forEach((chip) => {
         chip.onclick = () => {
             journalProject = chip.dataset.project || null;
-            renderJournalFilter();
-            renderJournalList();
+            renderJournal();
         };
     });
 }
@@ -100,20 +103,13 @@ export function renderJournalList() {
     const list = $('journal-list');
 
     if (!journalRecords.length) {
-        renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy', 'Pribudnú, keď si Hades zapamätá prvý poznatok.');
+        if (journalProject) renderEmpty(list, 'filter_alt_off', 'Žiadne záznamy pre tento projekt', 'Zruš filter a uvidíš celý denník.');
+        else renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy', 'Pribudnú, keď si Hades zapamätá prvý poznatok.');
         return;
     }
 
-    const records = journalProject
-        ? journalRecords.filter((r) => journalKey(r.project) === journalProject)
-        : journalRecords;
-
-    if (!records.length) {
-        renderEmpty(list, 'filter_alt_off', 'Žiadne záznamy pre tento projekt', 'Zruš filter a uvidíš celý denník.');
-        return;
-    }
-
-    const sorted = [...records].sort((a, b) => ts(b.created_at) - ts(a.created_at));
+    // Filtruje a radí server; obrazovka záznamy len zoskupí po dňoch.
+    const sorted = journalRecords;
 
     // Dni sú štruktúra (zostávajú v jednom stĺpci pod sebou); záznamy VNÚTRI dňa
     // idú do fluidnej mriežky (.rec-grid), takže na širokom okne sa šírka vyplní
@@ -133,10 +129,12 @@ export function renderJournalList() {
         // zjedol šírku (a názov by sa preto skrátil). V takom prípade chip vynecháme.
         const titleHasProject = r.project && r.label
             && r.label.toLowerCase().startsWith(String(r.project).toLowerCase());
-        if (r.project && !titleHasProject) badges.push('<span class="tag">' + esc(prettyProject(r.project)) + '</span>');
+        if (r.project && !titleHasProject) badges.push('<span class="tag">' + esc(r.project_label || '') + '</span>');
         if (r.file_count) badges.push('<span class="tag muted">' + r.file_count + ' súb.</span>');
-        if (r.commits && r.commits.length) {
-            const c = r.commits.length;
+        // `commit_count` dáva server (rovnako ako `file_count`); prehliadač si ho
+        // dopočítaval z pola, ktoré na obrazovke nikto nevidí.
+        if (r.commit_count) {
+            const c = r.commit_count;
             const word = c === 1 ? 'commit' : (c >= 2 && c <= 4 ? 'commity' : 'commitov');
             badges.push('<span class="tag muted">' + c + ' ' + word + '</span>');
         }

@@ -2,56 +2,29 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Node;
+use App\Serializers\Screen\DennikScreen;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+/**
+ * Denník automatických záznamov zo sessions (+ týždenné súhrny) — `GET /api/journal`.
+ *
+ * Kontrolér sám nič neserializuje: tvar odpovede drží {@see DennikScreen}, tá istá
+ * trieda, z ktorej čítá MCP tool `mind_journal`.
+ *
+ * `project` je **kľúč skupiny**, nie surová hodnota z `meta`: `#bez-projektu`
+ * zachytí prázdny projekt aj každý strojový názov adresára. Dovtedy tú skupinu
+ * skládal prehliadač, takže sa dala vidieť, ale nedala filtrovať.
+ *
+ * Vstupy sa **nevalidujú, ale zvierajú** (`limit` v serializéri): endpoint dovtedy
+ * na `?limit=999` vrátil 50 a odpovedať naň 422 by bola zmena zmluvy, nie oprava.
+ */
 class JournalController extends Controller
 {
-    /** Denník automatických záznamov zo sessions (+ týždenné súhrny). */
     public function index(Request $request): JsonResponse
     {
-        $query = Node::query()
-            ->whereIn('source', ['session', 'digest'])
-            ->orderByDesc('created_at');
-
-        if ($project = $request->query('project')) {
-            $query->where('meta->project', $project);
-        }
-
-        $limit = max(1, min(50, (int) $request->query('limit', 50)));
-
-        $records = $query->limit($limit)->get()->map(function (Node $n) {
-            $m = $n->meta ?? [];
-
-            return [
-                'id' => $n->id,
-                'source' => $n->source,
-                'label' => $n->label,
-                'description' => $n->description,
-                'project' => $m['project'] ?? null,
-                'created_at' => $n->created_at?->toIso8601String(),
-                'prompt_count' => $m['prompt_count'] ?? null,
-                'file_count' => $m['file_count'] ?? null,
-                'commits' => $m['commits'] ?? [],
-                'files' => $m['files'] ?? [],
-                'tools' => $m['tools'] ?? [],
-                'prompts' => $m['prompts'] ?? [],
-                'final' => $m['final'] ?? null,
-            ];
-        });
-
-        $projects = Node::where('source', 'session')
-            ->selectRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.project')), 'projekt') as project, COUNT(*) as c")
-            ->groupBy('project')
-            ->orderByDesc('c')
-            ->get()
-            ->mapWithKeys(fn ($row) => [$row->project => (int) $row->c]);
-
-        return response()->json([
-            'records' => $records,
-            'projects' => $projects,
-            'total' => Node::whereIn('source', ['session', 'digest'])->count(),
-        ]);
+        return response()->json(
+            (new DennikScreen($request->only(['project', 'limit'])))->data()
+        );
     }
 }

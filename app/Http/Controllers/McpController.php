@@ -9,6 +9,8 @@ use App\Models\Edge;
 use App\Models\Node;
 use App\Models\Run;
 use App\Models\Tag;
+use App\Serializers\Screen\DennikScreen;
+use App\Serializers\Screen\DnesScreen;
 use App\Serializers\Screen\RunDetailScreen;
 use App\Serializers\Screen\RunsScreen;
 use App\Services\Brain\SecretScanner;
@@ -500,6 +502,60 @@ class McpController extends Controller
                     'required' => ['uuid'],
                 ],
             ],
+            [
+                'name' => 'mind_today',
+                'description' => "Read the mind's dashboard — the screen the human opens first. Use it at "
+                    .'the start of a session to learn the shape of the memory before you search it, and '
+                    .'when the user asks how big the mind is, what it has been doing lately, or what is '
+                    .'waiting to be checked. Returns `counts` (nodes, edges, decisions, and the split of '
+                    .'`brain` — playbook nodes backed by a .md file — versus `session`, learned in '
+                    .'conversation), `certainty` (overene/hypoteza/pasca/bez plus `needs_review`, the '
+                    .'queue only a human may clear — you cannot verify a node), `per_area` with that same '
+                    .'split per area, which is the map of where knowledge actually sits, `week_added` for '
+                    .'the last 7 days, `growth` (cumulative node count per month, oldest first), '
+                    .'`recent_sessions` and `recent_records` (what was worked on last, newest first; pass '
+                    .'`id` to mind_read), `top_projects`, and `sync` (last playbook sync). The year '
+                    .'activity heatmap is left out on purpose: 365 cells are a picture, not a fact. '
+                    .'`#bez-projektu` in a project field is not a project name — it is the group of '
+                    .'sessions that ran in a temporary directory. In `sync`, `state` is `none` when sync '
+                    .'never ran and `unknown` for a state this app does not know; trust `state`, not '
+                    .'`status`. Empty fields are omitted: no `snippet` means the record has no '
+                    .'description, no `message` means the sync run said nothing.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                ],
+            ],
+            [
+                'name' => 'mind_journal',
+                'description' => "Read the mind's journal — the chronology of work, newest first. Use it "
+                    .'when the answer depends on WHEN something happened or on what was done in one '
+                    .'project: mind_recall finds knowledge but says nothing about order, so this is the '
+                    .'only way to get a timeline. Use it also before starting work on a project, because '
+                    .'the newest records say where the previous session stopped. Returns `records` (one '
+                    .'per Claude Code session or weekly digest: `label`, `created_at`, `prompt_count`, '
+                    .'`file_count`, `commit_count`, `project_key`), `project_groups` (every project with '
+                    .'its record count over the WHOLE journal, largest first — these `key` values are '
+                    .'exactly what `project` accepts), `total` and `filtered_total` (how many records the '
+                    .'filter matched, which can exceed the rows returned; `limit` caps at 50). A '
+                    .'`project_key` of `#bez-projektu` is not a project: it is the group of sessions whose '
+                    .'working directory was a generated name like `mystifying-mclaren-23750a`, which means '
+                    .'nothing. The full text of a record — its markdown description, the prompts, the '
+                    .'file list — is NOT here, because one answer would eat the context window; read one '
+                    .'whole with mind_read on its `id`. Empty fields are omitted, so a missing `project` '
+                    .'means the session had no project name at all; `commit_count` of 0 is present and '
+                    .'means the session committed nothing.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'project' => [
+                            'type' => 'string',
+                            'description' => 'Only records of this project — pass a `key` from project_groups, e.g. `#bez-projektu`',
+                        ],
+                        'limit' => ['type' => 'integer', 'description' => 'Max records (default 50, max 50)'],
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -524,6 +580,8 @@ class McpController extends Controller
                 'mind_hygiene' => $this->toolHygiene($args),
                 'mind_runs' => $this->toolRuns($args),
                 'mind_run' => $this->toolRun($args),
+                'mind_today' => app(DnesScreen::class)->forAi(),
+                'mind_journal' => (new DennikScreen($args))->forAi(),
                 default => throw new \InvalidArgumentException("Unknown tool: {$name}"),
             };
         } catch (Throwable $e) {
