@@ -129,4 +129,53 @@ každá vlna.** Paralelní agenti by si ho prepísali. Preto:
 
 ## 7. Výsledok
 
-_(dopĺňa sa po behu)_
+**Hotové 20. 8. 2026**, vetva `feat/hades-ux`. Všetkých 5 vĺn, 33 nálezov.
+
+| Vlna | Stav | Commit |
+|---|---|---|
+| 1 — rozhranie nesmie klamať | 5/5 | `01dcc35` |
+| 2 — slepé uličky | 10/10 | pohltené `7bbf3a4` (viď nižšie) |
+| 3 — dotyk a responzivita | 5/5 | `c7cc2c2` + vlna 1 |
+| 4 — stavy, fokus, hlas | 8/8 | rozdelené medzi vlny |
+| 5 — upratanie | 5/5 | rozdelené medzi vlny |
+
+**Testy:** 438 prešlo (na začiatku 421), 0 padlo. Pribudlo 7 testov na nové
+`destroy` endpointy + testy paralelnej session.
+
+### Čo sa merelo, nie tvrdilo
+
+- **Pinch-to-zoom:** drift svetového bodu pod stredom gesta **0.000**; kotva
+  v strede plátna by ho posunula o ~365 jednotiek sveta.
+- **Ikony:** všetkých **32** ikon použitých v kóde je v subsete Material Symbols.
+  Prvý merač hlásil 32 chýbajúcich — čítal GSUB zle. Prepísané na meranie šírky
+  vykresleného glyfu s kalibráciou na známych prípadoch (`hub` 18 px = je,
+  `terminal` 144 px = nie je).
+- **Kontrast, fokus, stavy:** overené v prehliadači, nie od oka.
+
+### Zamietnuté nálezy (3)
+
+| Nález | Prečo nie |
+|---|---|
+| „Knižnica kreslí 1660 kariet naraz" | `LibraryController.php:20` to popisuje ako **vedomé rozhodnutie o UI**. Prevzatá len užšia časť (chýbajúce chipy oblastí). |
+| „Smernica mieša dva prázdne štýly" | Rozdiel karta vs. obrazovka je zdokumentovaný v `util.js:426`. |
+| „Dva breakpointy bez dôvodu (860/900)" | Obe hranice sa používajú **konzistentne v oboch stylesheetoch** ako dve úrovne zalomenia. CSS premenné v `@media` nefungujú, takže token sa spraviť nedá — namiesto prepisu pribudol komentár, ktorý ich pomenúva. |
+
+### Odchýlky
+
+- **Úprava textu rozhodnutia** sa nerobila, len mazanie: `.dtl-card` je `<button>`,
+  editačné pole doň nejde bez prestavby karty, a `PATCH` nad `origin=brain`
+  rozhodnutím by rozsynchronizoval DB s markdown zrkadlom. Je to rozhodnutie
+  o dátach, nie o UI.
+- **Filter oblasti v Knižnici je klientsky**, nie serverový: `limit => null`
+  znamená, že všetky karty už na klientovi sú, a serverová odpoveď s `?area=`
+  vracia v `areas` len tú jednu oblasť, čím by sa rad čipov zrútil na jeden.
+- **Mazacie endpointy nie sú v `/api/v1/*`** — mazanie pamäte na Bearer token je
+  väčšia plocha, než nález žiadal.
+
+### Kolízia dvoch sessions
+
+Vlna 2 sa **nedostala do vlastného commitu**: paralelná session bežiaca v tom
+istom pracovnom strome commitla (`7bbf3a4`) v momente, keď bola moja práca
+v indexe, a vzala ju so sebou. Nič sa nestratilo — celá vlna 2 je v tom commite
+spolu s ich obrazovkou Runy. Pri ďalších sprintoch v tomto repozitári treba buď
+worktree, alebo dohodu, kto commituje.
