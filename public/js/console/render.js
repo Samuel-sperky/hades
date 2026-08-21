@@ -14,7 +14,8 @@
 import { C } from './state.js';
 import { $, el, num } from './dom.js';
 import { renderMarkdown } from './markdown.js';
-import { historyCard, permissionCard } from './tools.js';
+import { historyCard, permissionCard, writeAsk } from './tools.js';
+import { costLabel, runNote } from './runstate.js';
 
 /* Koľko pixelov nad spodkom sa ešte považuje za „stojím na spodku". Menej než
    riadok textu by follow vypínalo pri doskrolovaní o pol riadka. */
@@ -67,7 +68,7 @@ export function renderEmpty() {
         ['memory', 'Hľadá v pamäti — uzly, hrany, oblasti, rozhodnutia.'],
         ['search', 'Prehľadáva projekt cez ripgrep a číta súbory.'],
         ['edit', 'Zápisy do súborov aj do pamäte najprv ukáže ako diff a čaká na Povoliť.'],
-        ['bolt', 'Príkazy: /recall, /read, /model, /clear, /new, /help.'],
+        ['bolt', 'Príkazy: /recall, /read, /model, /tools, /cost, /clear, /new, /help.'],
     ].forEach(([icon, text]) => {
         const li = el('li');
         const mark = el('span', 'ms', icon);
@@ -248,6 +249,17 @@ function assistantShell(meta = {}) {
     const who = el('span', 'who');
     who.append(el('span', null, 'Charón'));
     if (meta.model) who.append(el('span', 'who-model', meta.model));
+
+    // Cena odpovede zostáva PRI ODPOVEDI. `#run-stats` v hlavičke ju drží len
+    // do ďalšieho ťahu a po obnove stránky bola prázdna, takže sa hodinu stará
+    // odpoveď nedala oceniť vôbec — hoci `console_messages` tie čísla nesie.
+    const cost = costLabel({
+        tokens_out: meta.tokens_out,
+        tokens_per_second: meta.tokens_per_second,
+    }, num);
+
+    if (cost !== '') who.append(el('span', 'who-cost', cost));
+
     box.append(who);
     box.append(el('div', 'bubble md'));
 
@@ -385,6 +397,15 @@ function renderThreadBody(stream, data) {
         byMessage.get(key).push(call);
     });
 
+    // Log behov tohto vlákna. Beh sa v toku ohlási na svojej POSLEDNEJ správe —
+    // vtedy je pod ním presne to, čoho sa hlásenie týka.
+    const closers = new Map();
+
+    (data.runs || []).forEach((run) => {
+        const note = runNote(run);
+        if (note !== '' && run.to_message_id) closers.set(run.to_message_id, note);
+    });
+
     (data.messages || []).forEach((msg) => {
         if (msg.role === 'user') {
             pushUser(msg.content);
@@ -392,22 +413,48 @@ function renderThreadBody(stream, data) {
             // Ťah, ktorý bol len volaním nástroja, nemá text a prázdna bublina
             // by v toku vyzerala ako stratená odpoveď.
             if ((msg.content || '').trim() !== '') pushAssistant(msg.content, msg);
-        } else if (msg.role === 'system') {
-            pushNotice(msg.content);
         }
-        // role 'tool' sa nekreslí ako bublina — výsledok sedí na karte volania
+        // role 'tool' sa nekreslí ako bublina — výsledok sedí na karte volania.
+        // role 'system' sem NEPRÍDE: `ThreadController::payload()` ju už
+        // neposiela. Bola to konfigurácia behu, nie krok konverzácie, a tok ju
+        // vypisoval ako 1 370-znakovú bublinu Charóna.
 
         (byMessage.get(msg.id) || []).forEach((call) => appendBlock(historyCard(call)));
         byMessage.delete(msg.id);
+
+        // Dôvod ukončenia až PO kartách nástrojov toho istého ťahu — inak by
+        // veta „beh narazil na strop krokov" stála nad krokmi, ktoré urobil.
+        const note = closers.get(msg.id);
+        if (note) {
+            pushNotice(note);
+            closers.delete(msg.id);
+        }
     });
+
+    // Beh, ktorého poslednú správu tok nevykreslil (ťah bez textu, zmazaná
+    // správa) — hlásenie sa nesmie stratiť, patrí na koniec.
+    closers.forEach((note) => pushNotice(note));
 
     // Volania bez správy (zaparkovaný zápis pred zápisom hlavičky) idú na konec.
     [...byMessage.values()].flat().forEach((call) => appendBlock(historyCard(call)));
 
     if (data.awaiting) {
         const pending = (data.tool_calls || []).find((call) => call.id === data.awaiting);
-        if (pending) appendBlock(permissionCard(pending));
+
+        if (pending) {
+            appendBlock(permissionCard(pending));
+            // Otvorené vlákno so zaparkovaným zápisom je to isté rozhodnutie ako
+            // za živého behu, len prišlo po obnove stránky — a čítačka o ňom
+            // dovtedy nedostala ani slovo.
+            announce(writeAsk(pending));
+        }
     }
+
+    // Hlavička po obnove hovorí cenu POSLEDNÉHO ZAZNAMENANÉHO behu, nie nulu.
+    // Číslo sa neprepočítava z bublín — berie sa z logu behov, ktorý je preň
+    // jediný zdroj (`runs`, agregované v RunRecorder::aggregate()).
+    C.stats = lastRunCost(data.runs);
+    C.step = null;
 
     if (!stream.children.length) renderEmpty();
 
@@ -420,6 +467,21 @@ function renderThreadBody(stream, data) {
 export function clearView() {
     renderEmpty();
     pushNotice('Zobrazenie je vyčistené. História vlákna zostáva v pamäti — obnov stránku a je späť.');
+}
+
+/**
+ * Cena posledného behu, ktorý v logu naozaj niečo stál. Ide sa od konca, nie od
+ * `runs.at(-1)`: posledný riadok môže byť práve založený beh bez tokenov a
+ * hlavička by po obnove stránky zhasla, hoci predchádzajúci ťah cenu má.
+ */
+function lastRunCost(runs) {
+    const list = Array.isArray(runs) ? runs : [];
+
+    for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i]?.tokens_out) return list[i];
+    }
+
+    return null;
 }
 
 /** Riadok stavu behu. Pri 9 tok/s je pohyb v ňom jediný dôkaz, že sa niečo deje. */
@@ -435,11 +497,11 @@ export function paintStats() {
     if (C.step) bits.push(`krok ${C.step.n}/${C.step.of}`);
     if (C.running && C.turn?.raw) bits.push(`${num(C.turn.raw.length, 0)} znakov`);
 
-    if (C.stats && !C.running) {
-        if (C.stats.tokens_out) {
-            bits.push(`${num(C.stats.tokens_in || 0, 0)}↑ ${num(C.stats.tokens_out, 0)}↓ tok`);
-        }
-        if (C.stats.tps) bits.push(`${num(C.stats.tps)} tok/s`);
+    // Cena sa skládá tým istým `costLabel()` ako bublina odpovede — hlavička
+    // a tok nesmú hovoriť to isté číslo dvoma tvarmi.
+    if (!C.running) {
+        const cost = costLabel(C.stats, num);
+        if (cost !== '') bits.push(cost);
     }
 
     out.textContent = bits.join(' · ');

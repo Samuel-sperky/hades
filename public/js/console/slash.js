@@ -11,10 +11,19 @@
    histórie nevedel, čo model naozaj dostal.
    =========================================================================== */
 
-import { $, el } from './dom.js';
+import { C } from './state.js';
+import { $, el, num } from './dom.js';
 import { clearView, pushSystem } from './render.js';
 import { newThread } from './main.js';
+import { setModel } from './models.js';
 
+/* Čo tu SMIE byť: príkaz, ktorý naozaj niečo urobí. Príkaz, ktorý sa len tvári,
+   je horší než chýbajúci — presne to bol `/model` bez argumentu, ktorý argument
+   zahodil a len dal fokus na `<select>`.
+
+   `arg` s hviezdičkou (`argOptional`) znamená „argument môže byť, ale bez neho
+   má príkaz iné zmysluplné chovanie" — `/model` bez argumentu vypíše, na čom
+   vlákno beží, s argumentom model prepne. */
 const CMDS = [
     {
         cmd: '/recall',
@@ -30,7 +39,16 @@ const CMDS = [
         help: 'Prečítaj jeden uzol celý',
         expand: (arg) => `Prečítaj uzol ${arg} z pamäte a vypíš jeho popis, tagy a spojenia.`,
     },
-    { cmd: '/model', arg: '', icon: 'memory', help: 'Prepni model v hlavičke', local: focusModel },
+    {
+        cmd: '/model',
+        arg: '<model>',
+        argOptional: true,
+        icon: 'memory',
+        help: 'Prepni model vlákna',
+        local: switchModel,
+    },
+    { cmd: '/tools', arg: '', icon: 'bolt', help: 'Čo beh naozaj vie zavolať', local: showTools },
+    { cmd: '/cost', arg: '', icon: 'memory', help: 'Spotreba tohto vlákna', local: showCost },
     { cmd: '/clear', arg: '', icon: 'close', help: 'Vyčisti zobrazenie (história zostáva)', local: clearView },
     { cmd: '/new', arg: '', icon: 'add', help: 'Nové vlákno', local: () => { newThread(); } },
     { cmd: '/help', arg: '', icon: 'help', help: 'Čo konzola vie', local: showHelp },
@@ -96,7 +114,7 @@ function onKey(event) {
 
         // Hotový príkaz (aj s argumentom) sa vykoná; nedopísaný sa najprv doplní,
         // aby Enter nikdy neposlal modelu polovicu skratky.
-        if (exact && (exact.arg === '' || firstArg(typed) !== '')) return;
+        if (exact && (exact.arg === '' || exact.argOptional || firstArg(typed) !== '')) return;
 
         event.preventDefault();
         event.stopPropagation();
@@ -142,6 +160,10 @@ function openPalette(matches) {
         const item = el('div', 'sp-item');
         item.dataset.cmd = entry.cmd;
         item.setAttribute('role', 'option');
+        // `id` je jediné, čím sa dá možnosť pomenovať v `aria-activedescendant`.
+        // Bez neho bola paleta `listbox`, ktorý nikto nevlastní: pohyb kurzora
+        // prepínal `aria-selected`, ale čítačka nemala ako vedieť, na čom stojí.
+        item.id = `sp-${entry.cmd.replace(/[^\w-]/g, '')}`;
 
         const mark = el('span', 'ms', entry.icon);
         mark.setAttribute('aria-hidden', 'true');
@@ -161,6 +183,7 @@ function openPalette(matches) {
     });
 
     box.classList.remove('hidden');
+    $('#prompt')?.setAttribute('aria-expanded', 'true');
     paintCursor($$items());
 }
 
@@ -169,6 +192,13 @@ function paintCursor(items) {
         item.classList.toggle('on', i === cursor);
         item.setAttribute('aria-selected', i === cursor ? 'true' : 'false');
     });
+
+    // Fokus zostáva na textarei (to je správne — píše sa do nej), takže kurzor
+    // v palete nesie výhradne `aria-activedescendant`.
+    const prompt = $('#prompt');
+    const active = items[cursor];
+
+    if (prompt && active) prompt.setAttribute('aria-activedescendant', active.id);
 }
 
 export function closePalette() {
@@ -178,6 +208,15 @@ export function closePalette() {
     box.classList.add('hidden');
     box.innerHTML = '';
     cursor = 0;
+
+    const prompt = $('#prompt');
+
+    if (prompt) {
+        prompt.setAttribute('aria-expanded', 'false');
+        // Atribút sa MAŽE, nenastavuje na prázdno: `aria-activedescendant=""`
+        // je pre časť čítačiek platná hodnota ukazujúca na nič a hlásia ju.
+        prompt.removeAttribute('aria-activedescendant');
+    }
 }
 
 /**
@@ -215,7 +254,7 @@ export function tryRunCommand(text) {
 
     const arg = firstArg(text);
 
-    if (entry.arg && arg === '') {
+    if (entry.arg && !entry.argOptional && arg === '') {
         pushSystem('Príkaz', `<p><code>${entry.cmd}</code> potrebuje argument: <code>${entry.cmd} ${escapeArg(entry.arg)}</code></p>`);
 
         return true;
@@ -230,7 +269,10 @@ export function tryRunCommand(text) {
 
 function runEntry(entry, arg) {
     if (entry.local) {
-        entry.local();
+        // Argument sa lokálnemu príkazu POSIELA. Dovtedy sa zahadzoval, takže
+        // `/model qwen3:8b` nič neprepol — a to je práve ten „ovládač, ktorý nič
+        // nerobí", ktorý je horší než chýbajúci.
+        entry.local(arg);
 
         return;
     }
@@ -242,17 +284,122 @@ function escapeArg(text) {
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function focusModel() {
-    const select = $('#model-select');
+/**
+ * `/model` bez argumentu povie, na čom vlákno beží; `/model <id>` model PREPNE.
+ * Prepnutie robí `models.js` cez `PATCH /api/console/threads/{uuid}` — ten istý
+ * okruh, aký použije prepínač v hlavičke, takže druhá cesta k tomu istému stavu
+ * nevzniká.
+ */
+async function switchModel(arg) {
+    const wanted = String(arg ?? '').trim();
+    const running = C.thread?.model || C.defaultModel || '';
 
-    if (!select || select.options.length <= 1) {
-        pushSystem('Model', '<p>Iný model nie je k dispozícii — konzola beží na tom, čo je stiahnuté v Ollame.</p>');
+    if (wanted === '') {
+        const list = C.models.length
+            ? `<p>K dispozícii: ${C.models.map((m) => `<code>${escapeArg(m.id)}</code>`).join(', ')}.</p>`
+            : '<p>Zoznam modelov konzola nedostala — beží na tom, čo je v konfigurácii.</p>';
+
+        pushSystem('Model', `<p>Vlákno beží na <code>${escapeArg(running || 'predvolenom modeli')}</code>.</p>${list}
+            <p>Prepneš ho príkazom <code>/model &lt;model&gt;</code> alebo prepínačom v hlavičke.</p>`);
 
         return;
     }
 
-    select.focus();
-    pushSystem('Model', '<p>Prepínač modelu je v hlavičke a má fokus — vyber šípkami.</p>');
+    const done = await setModel(wanted);
+
+    if (!done.ok) {
+        pushSystem('Model', `<p>${escapeArg(done.reason)}</p>`);
+
+        return;
+    }
+
+    pushSystem('Model', `<p>Vlákno beží od tejto chvíle na <code>${escapeArg(done.model)}</code>.</p>`);
+}
+
+/**
+ * Nástroje behu. Zoznam nesie HTML (`#console-tools`, plní ho ToolRegistry),
+ * nie tento súbor — inak by pri pridaní toolu paleta tvrdila starú pravdu.
+ * Slovenská veta ku každému je UI text a žije tu; tool bez vety sa aj tak
+ * vypíše, len bez popisu. Anglické popisy z registra sú písané pre model
+ * a do rozhrania nepatria.
+ */
+const TOOL_NOTE = {
+    mind_recall: 'nájde v pamäti uzly k téme',
+    mind_read: 'prečíta jeden uzol celý',
+    mind_overview: 'vypíše štruktúru pamäte (oblasti, typy, počty)',
+    grep: 'hľadá v súboroch projektu regulárnym výrazom',
+    glob: 'vypíše súbory podľa vzoru cesty',
+    read_file: 'prečíta súbor projektu s číslami riadkov',
+    mind_learn: 'zapíše nový poznatok do pamäte',
+    mind_rename: 'premenuje uzol (oprava odpadového labelu)',
+    mind_move: 'presune uzol do inej oblasti',
+    mind_delete: 'zmaže uzol z pamäte',
+    edit_file: 'prepíše presný úsek v jednom súbore',
+    write_file: 'založí súbor alebo prepíše celý jeho obsah',
+};
+
+function consoleTools() {
+    try {
+        const raw = document.getElementById('console-tools')?.textContent || '[]';
+        const list = JSON.parse(raw);
+
+        return Array.isArray(list) ? list : [];
+    } catch {
+        return [];
+    }
+}
+
+function showTools() {
+    const tools = consoleTools();
+
+    if (tools.length === 0) {
+        pushSystem('Nástroje', '<p>Zoznam nástrojov sa nepodarilo prečítať zo stránky. Obnov ju.</p>');
+
+        return;
+    }
+
+    const rows = tools.map((t) => {
+        const note = TOOL_NOTE[t.name] || '';
+        const gate = t.write ? ' <em>— zápis, pýta sa pred vykonaním</em>' : '';
+
+        return `<li><code>${escapeArg(t.name)}</code>${note ? ` — ${note}` : ''}${gate}</li>`;
+    }).join('');
+
+    const writes = tools.filter((t) => t.write).length;
+
+    pushSystem('Nástroje', `
+        <p>Beh má ${tools.length} nástrojov; ${writes} z nich zapisuje a každý taký
+        zápis ti Charón ukáže dopredu a čaká na Povoliť.</p>
+        <ul class="help-list">${rows}</ul>
+        <p class="help-keys">Shell tool tu zámerne nie je — appka je verejne tunelovaná.</p>`);
+}
+
+/**
+ * Spotreba vlákna. Čísla sa NEPOČÍTAJÚ na klientovi: `usage` v payloade vlákna
+ * je súčet nad logom behov (`runs`), teda ten istý zdroj, z ktorého číta
+ * obrazovka Runy. Dve kópie tej istej agregácie by sa rozišli.
+ */
+function showCost() {
+    const usage = C.thread?.usage;
+
+    if (!usage || !usage.runs) {
+        pushSystem('Spotreba', '<p>V tomto vlákne ešte nebežal ani jeden ťah, takže nič nestálo.</p>');
+
+        return;
+    }
+
+    const seconds = usage.duration_ms ? `${num(usage.duration_ms / 1000, 1)} s` : 'neznámy čas';
+
+    pushSystem('Spotreba', `
+        <p>${num(usage.runs, 0)} ${plural(usage.runs)} · ${num(usage.tokens_in, 0)} tokenov na vstupe ·
+        ${num(usage.tokens_out, 0)} na výstupe · ${num(usage.steps, 0)} krokov · ${seconds} behu.</p>
+        <p class="help-keys">Čísla sú z logu behov, nie z obrazovky — po obnove stránky platia ďalej.</p>`);
+}
+
+function plural(count) {
+    if (count === 1) return 'beh';
+
+    return count >= 2 && count <= 4 ? 'behy' : 'behov';
 }
 
 function showHelp() {

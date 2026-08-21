@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Console\ToolRegistry;
 use Illuminate\Support\Facades\Route;
 
 // Dashboard je od 13. 8. 2026 pod tým istým UI guardom ako interné /api/*.
@@ -8,12 +9,27 @@ use Illuminate\Support\Facades\Route;
 // ďalej drží session cookie; na verejnej ceste hlavičku vkladá Caddy.
 Route::get('/', fn () => view('mind'))->middleware('auth.ui');
 
-// Konzola vedomia — samostatné rozhranie, nie obrazovka v raile grafu. Vlákno má
+// Charón — samostatné rozhranie, nie obrazovka v raile grafu. Vlákno má
 // vlastnú URL (/console/<uuid>), aby sa dalo poslať odkazom a otvoriť po reštarte.
 // Pod tým istým guardom ako dashboard: konzola vie zapisovať do pamäte aj do
 // súborov, takže bez guardu by bola najsilnejší vstup do appky.
-Route::get('/console', fn () => view('console'))->middleware('auth.ui');
-Route::get('/console/{uuid}', fn () => view('console'))
+// Zoznam nástrojov ide do HTML, nie na nový endpoint: prázdny stav konzoly
+// sľuboval „vidí pamäť aj súbory", ale KTORÉ nástroje to sú, sa z UI nedalo
+// zistiť nikdy (nález A19). Register je jediný zdroj členstva v zozname —
+// keď tool pribudne, `/tools` ho vypíše bez toho, aby to niekto pamätal.
+// Posiela sa len meno a či zapisuje; popisy toolov sú anglický text pre model
+// a do rozhrania nepatria.
+$console = function (ToolRegistry $tools) {
+    return view('console', [
+        'consoleTools' => array_map(
+            fn (string $name) => ['name' => $name, 'write' => $tools->isWrite($name)],
+            $tools->names(),
+        ),
+    ]);
+};
+
+Route::get('/console', $console)->middleware('auth.ui');
+Route::get('/console/{uuid}', $console)
     ->where('uuid', '[0-9a-fA-F-]{36}')
     ->middleware('auth.ui');
 

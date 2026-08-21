@@ -335,7 +335,7 @@ Poctivý zoznam. Nič z toho nie je aktuálne exploitované, ale všetko je reá
     `provider=ollama` (default konzoly) neodchádza nič — model beží v kontejneri
     na tom istom stroji. Rozdiel je vidno v UI (prepínač modelu) a je to jediná
     vec, ktorá určuje, či pamäť opustí počítač.
-11. **Konzola vedomia (`/console`) je najsilnejší vstup do appky.** Jej tooly
+11. **Charón (`/console`) je najsilnejší vstup do appky.** Jej tooly
     vedia pamäť čítať aj prepisovať a siahajú na súbory v `hades.console.files_root`.
     Čo ju drží:
     - Celý okruh `/console` + `/api/console/*` je za `AuthenticateUi` + CSRF

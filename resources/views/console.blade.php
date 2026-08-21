@@ -109,8 +109,17 @@
                     <span class="ms flip" aria-hidden="true">arrow_upward</span>
                 </button>
                 <div class="composer-row">
+                    {{-- Paletu príkazov MUSÍ vlastniť toto pole. Do 20. 8. 2026 bola
+                         `#slash-palette` `role="listbox"`, ktorý nikto nevlastnil:
+                         textarea nemala `role`, `aria-expanded` ani
+                         `aria-activedescendant`, takže otvorenie palety, počet
+                         možností ani pohyb kurzora sa k čítačke nedostali vôbec.
+                         `aria-expanded` je tu preto natvrdo `false` — slash.js ho
+                         prepína a nesmie ho pri prvom otvorení zakladať. --}}
                     <textarea id="prompt" rows="1" placeholder="Napíš úlohu pre vedomie… (/ pre príkazy, Enter pošle)"
-                              aria-label="Správa pre Charóna"></textarea>
+                              aria-label="Správa pre Charóna"
+                              role="combobox" aria-expanded="false" aria-controls="slash-palette"
+                              aria-autocomplete="list" aria-haspopup="listbox"></textarea>
                     <button type="submit" id="send" title="Poslať (Enter)" aria-label="Poslať">
                         <span class="ms" aria-hidden="true">arrow_upward</span>
                     </button>
@@ -126,7 +135,8 @@
                     <span class="hint-keys"><kbd>Enter</kbd> pošle · <kbd>Shift</kbd>+<kbd>Enter</kbd> nový riadok · </span>
                     <kbd>/</kbd> príkazy<span class="hint-keys"> · <kbd>Esc</kbd> zastaví beh</span>
                 </p>
-                {{-- Paleta slash príkazov — /recall, /read, /model, /clear, /new, /help --}}
+                {{-- Paleta slash príkazov. Zoznam žije v public/js/console/slash.js;
+                     vlastníkom palety je #prompt (role="combobox" vyššie). --}}
                 <div id="slash-palette" class="hidden" role="listbox" aria-label="Príkazy"></div>
             </form>
 
@@ -134,6 +144,13 @@
             <p id="run-announce" class="sr-only" aria-live="polite"></p>
         </main>
     </div>
+
+    {{-- Nástroje, ktoré beh naozaj má — vypisuje ich príkaz /tools. Zoznam
+         skládá ToolRegistry (routes/web.php), nie klient: prázdny stav sľubuje
+         „vidí pamäť aj súbory" a ktorých dvanásť toolov to je, sa z UI dovtedy
+         nedalo zistiť. Nie je to endpoint zámerne — je to statický fakt o behu,
+         ktorý sa medzi dvoma requestami nemení. --}}
+    <script type="application/json" id="console-tools">@json($consoleTools ?? [])</script>
 
     <script type="module" src="/js/console/main.js"></script>
 </body>

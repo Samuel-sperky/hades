@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Console;
 
 use App\Http\Controllers\Controller;
 use App\Models\ConsoleThread;
+use App\Models\Run;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -116,7 +117,14 @@ class ThreadController extends Controller
             'provider' => $thread->provider,
             'model' => $thread->model,
             'auto_accept' => $thread->auto_accept,
-            'messages' => $thread->messages->map(fn ($m) => array_filter([
+            // Systémová správa sa NEPOSIELA. Je to konfigurácia behu (systémový
+            // prompt, ktorý `AgentRunner` zapíše raz na vlákno), nie krok
+            // konverzácie — a klient ju vypisoval ako 1 370-znakovú bublinu
+            // „Charón" medzi otázkou a odpoveďou, takže obnovené vlákno
+            // NEVYZERALO ako to, ktoré človek videl. Filtruje sa tu a nie v UI:
+            // interná pamäť vlákna nemá dôvod opustiť server. `history()`
+            // v AgentRunneri si ju čítá z DB sama, takže model o nič neprichádza.
+            'messages' => $thread->messages->reject(fn ($m) => $m->role === 'system')->map(fn ($m) => array_filter([
                 'id' => $m->id,
                 'role' => $m->role,
                 'content' => $m->content,
@@ -124,7 +132,11 @@ class ThreadController extends Controller
                 'stop_reason' => $m->stop_reason,
                 'tokens_out' => $m->tokens_out,
                 'tokens_per_second' => $m->tokensPerSecond(),
-            ], fn ($v) => $v !== null))->all(),
+                // `values()` je povinné: `reject()` drží pôvodné kľúče a
+                // `all()` by z poľa správ urobil JSON OBJEKT s dierami v
+                // indexoch, takže `data.messages.forEach` na klientovi by
+                // spadol na `undefined`.
+            ], fn ($v) => $v !== null))->values()->all(),
             'tool_calls' => $thread->toolCalls->map(fn ($c) => array_filter([
                 'id' => $c->id,
                 'message_id' => $c->message_id,
@@ -138,6 +150,80 @@ class ThreadController extends Controller
             ], fn ($v) => $v !== null))->all(),
             // beh, ktorý čaká na rozhodnutie — klient podľa toho vykreslí prompt
             'awaiting' => $thread->pendingToolCall()?->id,
+            'runs' => $this->runs($thread),
+            'usage' => $this->usage($thread),
+        ];
+    }
+
+    /**
+     * Log behov tohto vlákna — dôvod ukončenia a cena každého ťahu.
+     *
+     * Prečo to ide z tabuľky `runs` a nie z rámcov, ktoré si klient pamätá:
+     * dôvod ukončenia, počet krokov a spotreba majú mať JEDEN zdroj. Klient si
+     * ich do 20. 8. 2026 držal len v `C.stats` / `C.step`, takže po obnove
+     * stránky boli prázdne (A21) a ťah zrezaný stropom krokov vyzeral po F5
+     * presne ako dokončená odpoveď (A16). Keby sa to dopočítalo druhýkrát
+     * v prehliadači, dve kópie tej istej pravdy sa rozídu pri prvej zmene
+     * agregácie v {@see \App\Services\Console\RunRecorder::aggregate()}.
+     *
+     * Rozsah `from_message_id`–`to_message_id` sa posiela zámerne: je to jediné,
+     * čím klient priradí beh k správe v toku bez toho, aby si `runs` musel
+     * dotiahnuť druhým dopytom.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function runs(ConsoleThread $thread): array
+    {
+        return Run::query()
+            ->where('thread_id', $thread->id)
+            ->orderBy('id')
+            ->get([
+                'uuid', 'status', 'stop_reason', 'error', 'steps', 'tool_calls',
+                'tokens_in', 'tokens_out', 'tokens_per_second', 'duration_ms',
+                'from_message_id', 'to_message_id',
+            ])
+            ->map(fn (Run $run) => array_filter([
+                'uuid' => $run->uuid,
+                'status' => $run->status,
+                'stop_reason' => $run->stop_reason,
+                'error' => $run->error,
+                'steps' => $run->steps,
+                'tool_calls' => $run->tool_calls,
+                'tokens_in' => $run->tokens_in,
+                'tokens_out' => $run->tokens_out,
+                'tokens_per_second' => $run->tokens_per_second,
+                'duration_ms' => $run->duration_ms,
+                'from_message_id' => $run->from_message_id,
+                'to_message_id' => $run->to_message_id,
+                // Prázdne polia sa nevynechávajú kvôli estetike: klient rozlišuje
+                // „beh nemá dôvod ukončenia" od „dôvod je end_turn", a `null`
+                // v JSONe je 20 B za nulovú informáciu na každom behu.
+            ], fn ($v) => $v !== null))
+            ->all();
+    }
+
+    /**
+     * Spotreba celého vlákna — súčet nad logom behov, nie nad správami.
+     *
+     * Sčítava sa v SQL a nie na klientovi: `/cost` v palete príkazov a hlavička
+     * majú hovoriť to isté číslo ako obrazovka Runy, a to je práve to číslo,
+     * ktoré drží `runs`.
+     *
+     * @return array<string, int|float|null>
+     */
+    private function usage(ConsoleThread $thread): array
+    {
+        $totals = Run::query()
+            ->where('thread_id', $thread->id)
+            ->selectRaw('COUNT(*) as runs, SUM(tokens_in) as tin, SUM(tokens_out) as tout, SUM(duration_ms) as ms, SUM(steps) as steps')
+            ->first();
+
+        return [
+            'runs' => (int) ($totals?->runs ?? 0),
+            'tokens_in' => $totals?->tin !== null ? (int) $totals->tin : 0,
+            'tokens_out' => $totals?->tout !== null ? (int) $totals->tout : 0,
+            'duration_ms' => $totals?->ms !== null ? (int) $totals->ms : 0,
+            'steps' => $totals?->steps !== null ? (int) $totals->steps : 0,
         ];
     }
 }

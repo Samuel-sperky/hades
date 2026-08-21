@@ -15,8 +15,9 @@ import { renderBreadcrumb } from './util.js';
 
    Simuláciu tikáme SAMI (sim.stop() hneď po vytvorení) v rAF pumpe, ktorá:
      • mimo obrazovky Graf nešahá na requestAnimationFrame vôbec (kritérium
-       „rAF mimo Grafu = 0") a ani netiká — len raz za 400 ms pozrie, či sa už
-       máme prebudiť,
+       „rAF mimo Grafu = 0") — dosadá ticho v dávkach cez setTimeout,
+     • pri prefers-reduced-motion: reduce dosadá ticho aj NA Grafe a kreslí až
+       hotový stav (WCAG 2.2.2 / 2.3.3); výnimka je ťahanie uzla,
      • po usadení (alpha < alphaMin) skončí, takže v pokoji je CPU ticho.
 
    Zanorenie je LEN filter: go() nastaví S.nav, prepočíta prezentáciu (kind/dim)
@@ -210,15 +211,41 @@ function easeFit(t) {
     S.cam.k += (c.k - S.cam.k) * t;
 }
 
+// Ukázali sme už používateľovi aktuálny stav v tichom režime? (viď pump())
+let quietShown = false;
+
 function pump() {
     if (!S.sim) { pumping = false; return; }
-    // Mimo Grafu sa NEKRESLÍ a nesiahame na rAF, ale tikať musíme — inak alpha
-    // nikdy neklesne a nastanú dve veci naraz: (1) tento setTimeout sa preplanuje
-    // navždy, (2) `warm` v buildSim() zostane false, takže každý WS zrod uzla
-    // zaplatí studený burst ~150 ms na zablokovanom vlákne. Appka pritom štartuje
-    // na Dnes, takže to je bežný stav, nie okrajový. Dosadíme teda ticho: tiky
-    // v krátkych dávkach cez setTimeout, žiadny requestAnimationFrame.
-    if (!graphActive()) {
+    // TICHÉ DOSADNUTIE — dva nezávislé dôvody netikať na requestAnimationFrame:
+    //
+    //  (1) MIMO GRAFU sa NEKRESLÍ a nesiahame na rAF, ale tikať musíme — inak alpha
+    //      nikdy neklesne a nastanú dve veci naraz: (a) tento setTimeout sa preplanuje
+    //      navždy, (b) `warm` v buildSim() zostane false, takže každý WS zrod uzla
+    //      zaplatí studený burst ~150 ms na zablokovanom vlákne. Appka pritom štartuje
+    //      na Dnes, takže to je bežný stav, nie okrajový.
+    //
+    //  (2) prefers-reduced-motion: reduce — plátno nesmie ukazovať usadzovanie
+    //      priebežne (WCAG 2.2.2 / 2.3.3). Do 20. 8. 2026 tu stráž nebola vôbec:
+    //      utíšený bol len ambient (rAF v pokoji 360 → 20), kým fyzika sa hýbala
+    //      ako inak — zmerané posun uzlov 48,33 → 48,34 sveta a rAF 293 → 215.
+    //      Fyzika teda ostáva (rozloženie nie je ozdoba, je to obsah), len DOSADNE
+    //      A ZASTANE: kreslí sa hotový stav, nie cesta k nemu.
+    //      Výnimka je ťahanie uzla (S._interacting): to je pohyb, ktorý si používateľ
+    //      práve robí rukou, a bez priebežného kreslenia by ťahanie stratilo spätnú
+    //      väzbu. WCAG mieri na pohyb, ktorý sa spustí sám.
+    //
+    // V oboch prípadoch tikáme v krátkych dávkach cez setTimeout.
+    const shown = graphActive();
+    if (!shown || (REDUCED_MOTION && !S._interacting)) {
+        // Bez pohybu by používateľ na Grafe kukal ~4 s na neusadenú scénu s
+        // nezameranou kamerou. Raz teda ukážeme, kde vec stojí (skok, nie pohyb),
+        // a konečný stav dokreslí finishSettle().
+        if (shown && !quietShown) {
+            quietShown = true;
+            syncLayout(S.layout);
+            if (S._fitOnSettle) { const c = fitTarget(); S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k; }
+            requestDraw();
+        }
         pumping = true;
         setTimeout(() => {
             pumping = false;
@@ -235,7 +262,12 @@ function pump() {
             if (S.gview === 'layers') clampBands();
             S._simAlpha = S.sim.alpha();
             if (S.sim.alpha() > S.sim.alphaMin()) pump();
-            else finishSettle();
+            else {
+                // Na Grafe treba pozície preniesť do layoutu — v rAF ceste to robí
+                // pump() každé kolo, tu nikto.
+                if (graphActive()) syncLayout(S.layout);
+                finishSettle();
+            }
         }, 50);
         return;
     }
@@ -332,6 +364,7 @@ export function buildSim() {
     sim.alpha(warm ? PHYS.alphaWarm : PHYS.alphaCold);
 
     S._simSettled = false;
+    quietShown = false;
     if (held) sim.alpha(Math.max(sim.alpha(), HOLD_ALPHA));
     if (!warm) { S._simTicks = 0; S._fitOnSettle = true; }
     // Tichý rozbeh, nech prvý frame nie je chaos. Pri teplom rebuilde (zrod uzla

@@ -544,8 +544,15 @@ export const SLEEP_DIM = 0.78;
 
 export function draw() {
     const targetDim = isAwake() ? 1 : SLEEP_DIM;
-    S.dim += (targetDim - S.dim) * 0.02;
-    if (Math.abs(targetDim - S.dim) < 0.001) S.dim = targetDim;
+    // Stav vedomia (bdie / spí) je INFORMÁCIA, nie prechod. Pri prefers-reduced-motion
+    // teda skočíme do cieľa: krok 0,02 je exponenciálne dobiehanie, ktoré na rozsahu
+    // 1 → 0,78 potrebuje ~270 rámcov, a práve tie držali rAF živý ešte 4 s po tom,
+    // čo fyzika (pump()) už ticho dosadla — utíšené plátno by sa nedopočítalo pokoja.
+    if (REDUCED_MOTION) S.dim = targetDim;
+    else {
+        S.dim += (targetDim - S.dim) * 0.02;
+        if (Math.abs(targetDim - S.dim) < 0.001) S.dim = targetDim;
+    }
 
     ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
     ctx.fillStyle = T.paper;

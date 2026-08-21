@@ -114,6 +114,49 @@ export function paintModels() {
     });
 }
 
+/**
+ * Prepne model vlákna podľa mena (slash `/model <id>`).
+ *
+ * Vracia dôvod zlyhania, nie boolean: paleta z neho skládá vetu do toku a
+ * „nepodarilo sa" bez dôvodu je pri modeli, ktorý na stroji nie je stiahnutý,
+ * horšie než nič. Zhoda je tolerantná — človek napíše `qwen3` a myslí
+ * `qwen3:8b`, ale iba ak je taký jediný; pri dvoch kandidátoch sa NEHÁDA.
+ */
+export async function setModel(wanted) {
+    const want = String(wanted ?? '').trim().toLowerCase();
+    if (want === '') return { ok: false, reason: 'Chýba meno modelu.' };
+
+    const exact = C.models.find((m) => m.id.toLowerCase() === want);
+    const near = C.models.filter((m) => m.id.toLowerCase().startsWith(want));
+    const pick = exact || (near.length === 1 ? near[0] : null);
+
+    if (!pick) {
+        const known = C.models.map((m) => m.id).join(', ') || 'zoznam modelov konzola nedostala';
+
+        return {
+            ok: false,
+            reason: near.length > 1
+                ? `Meno „${wanted}" sedí na viac modelov: ${near.map((m) => m.id).join(', ')}.`
+                : `Model „${wanted}" tu nie je. K dispozícii: ${known}.`,
+        };
+    }
+
+    if (!C.thread) return { ok: false, reason: 'Vlákno ešte neexistuje — najprv pošli správu.' };
+
+    const body = { model: pick.id };
+    if (pick.provider) body.provider = pick.provider;
+
+    const data = await json(`/api/console/threads/${C.thread.uuid}`, { method: 'PATCH', body });
+
+    if (!data) return { ok: false, reason: 'Prepnutie modelu sa neuložilo.' };
+
+    C.thread.model = data.model;
+    if (data.provider) C.thread.provider = data.provider;
+    paintModels();
+
+    return { ok: true, model: data.model };
+}
+
 async function saveModel(select) {
     if (!C.thread) return;
 

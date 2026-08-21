@@ -315,11 +315,22 @@
        svetlej a 4.64:1 na tmavej — nad WCAG AA 4.5:1. Vyššia opacity to zhodí. */
     --graph-mute: blur(12px) saturate(.5) opacity(.18);
 
-    /* ---- motion ---- */
+    /* ---- motion ----
+       Rebrík má päť priečok a každá má prácu. --dur-press je stlačenie: musí byť
+       POD hranicou, kde sa pohyb ešte vníma ako prechod (~100 ms), inak tlačidlo
+       reaguje „až potom". --dur-pulse je perióda NEURČITÉHO čakania (bodky
+       premýšľania, dýchajúci znak načítania, shimmer, bežiaci beh) — dovtedy tu
+       boli tri rôzne hodnoty (1,2 / 1,4 / 1,8 s) pre jeden a ten istý význam,
+       takže tri indikátory toho istého stavu tikali každý inak.
+       Značkové trvania (dýchanie jadra 4 s, zrod znaku 760 + 460 ms, zrod grafov
+       760 / 900 / 720 ms) tu ZÁMERNE nie sú: sú menované v docs/BRAND-HADES.md §2
+       ako podpis značky, nie ako priečka rebríka rozhrania. */
+    --dur-press: 80ms;
     --dur-fast: 150ms;
     --dur-base: 180ms;
     --dur-slow: 200ms;
     --dur-ambient: 400ms;
+    --dur-pulse: 1.4s;
     --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
     --motion-shift: 8px;
@@ -374,7 +385,7 @@
        --fs-metric: 24px duplikovalo --fs-headline a --fs-h2: 16px duplikovalo
        --fs-title — dve mená pre tú istú veľkosť, ktoré sa mohli rozísť. */
     --fs-metric: var(--fs-headline);      /* readouts v paneloch (dock, karty) */
-    --fs-h1: 28px;                        /* screen title (serif) — vlastná, mimo škály */
+    --fs-h1: 28px;                        /* screen title (Geist) — vlastná, mimo škály */
     --fs-h2: var(--fs-title);             /* dashboard block / section heading */
 
     /* ---- spacing extras ---- */
@@ -531,16 +542,20 @@ body {
    čítalo ako dve samostatné čísla. Slovenská sadzba tu chce úzku medzeru; U+202F
    ani U+2009 však v Geiste NIE SÚ (overené v cmape), takže zmena znaku by odsek
    poslala do cudzieho fontu. Zúžime ju teda opticky, znak zostáva. −.34em vezme
-   monobunku (~.6em) na ~.26em, čo je šírka úzkej medzery. */
-.hero-val,
+   monobunku (~.6em) na ~.26em, čo je šírka úzkej medzery.
+
+   .hero-val tu ZÁMERNE NIE JE: od 20. 8. 2026 je to Playfair (manuál §4 — serif
+   drží hero metriku), a tam medzera meria .239em, teda už je to tá úzka medzera.
+   S −.34em by vyšla na −.10em a číslice by sa zliali. Zmerané renderom, nie
+   z tabuliek: mono .600em / Playfair .239em / Geist .236em na 44 px. */
 .kpi-val,
 .metric-val,
 .tc-val { word-spacing: -.34em; }
 /* Tesnenie platí LEN na samo číslo (holý textový uzol v obale). Do vnorených
-   popiskov sa dediť nesmie — .hero-unit je „uzlov vo vedomí" a pri −.34em z toho
-   bolo zliate „uzlovvedomí". Preto reset na všetkých potomkoch, nie výpis tried:
-   ten by pri pridaní ďalšieho popisku (napr. .kpi-suffix) tichu vypadol. */
-.hero-val *,
+   popiskov sa dediť nesmie — .kpi-val má popisky rovnako ako .hero-unit a pri
+   −.34em by z „uzlov vo vedomí" bolo zliate „uzlovvedomí". Preto reset na všetkých
+   potomkoch, nie výpis tried: ten by pri pridaní ďalšieho popisku (napr.
+   .kpi-suffix) tichu vypadol. */
 .kpi-val *,
 .metric-val *,
 .tc-val * { word-spacing: normal; }
@@ -684,7 +699,7 @@ button {
                 box-shadow var(--dur-fast) var(--ease);
 }
 button:hover { background: var(--hover-fill); border-color: var(--border-strong); }
-button:active { background: var(--accent-soft); transition-duration: 80ms; }
+button:active { background: var(--accent-soft); transition-duration: var(--dur-press); }
 button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 button:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
 
@@ -860,7 +875,16 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     background: var(--line-soft);
 }
 
-#rail .rail-group button {
+/* Vzhľad destinácie railu nedáva `.dest`, ale TENTO blok plus globálny reset
+   `button` — preto sa `:is(button, a)` musí objaviť aj tu, inak odkaz na Charóna
+   zdedí len rozmery a zostane UA modrý s podčiarknutím (namerané 1,87:1).
+   `text-decoration: none` je tu kvôli odkazu; na tlačidle je inertné. */
+#rail .rail-group :is(button, a) {
+    text-decoration: none;
+    /* `display` dával doteraz globálny reset `button` — odkaz ho nedostal a zostal
+       blokový, takže label aj ikona sedeli inak než na tlačidlách. Na tlačidle je
+       táto deklarácia inertná (majú `inline-flex` z resetu). */
+    display: inline-flex; align-items: center; justify-content: center;
     position: relative;
     background: none; border: none;
     border-radius: var(--r-md);
@@ -872,14 +896,14 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
                 box-shadow var(--dur-fast) var(--ease);
 }
-#rail .rail-group button:hover { background: var(--hover-fill); color: var(--text); }
-#rail .rail-group button:active { background: var(--accent-soft); }
-#rail .rail-group button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+#rail .rail-group :is(button, a):hover { background: var(--hover-fill); color: var(--text); }
+#rail .rail-group :is(button, a):active { background: var(--accent-soft); }
+#rail .rail-group :is(button, a):focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Active state — len akcent (ikona + text + pill), bez výplne a bez prstenca */
-#rail .rail-group button.active { color: var(--accent); }
-#rail .rail-group button.active:hover { background: var(--hover-fill); }
+#rail .rail-group :is(button, a).active { color: var(--accent); }
+#rail .rail-group :is(button, a).active:hover { background: var(--hover-fill); }
 /* persistent left active-pill — jediný nosič aktívneho stavu */
-#rail .rail-group button.active::before {
+#rail .rail-group :is(button, a).active::before {
     content: "";
     position: absolute;
     left: -6px; top: 50%;
@@ -890,7 +914,12 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 }
 
 /* FÁZA SHELL: pomenované destinácie — ikona + text pod ňou */
-#rail .rail-group button.dest {
+/* `:is(button, a)` a nie len `button`: Charón je samostatná plocha na vlastnej URL,
+   takže v raile je to ODKAZ, nie tlačidlo. Viazané na `button` by zostal
+   nenastylovaný — tá istá chyba, akú urobil `.ghost` pri „Otvoriť vlákno" (svietil
+   UA modrou na 1,87:1). `:is()` má špecificitu svojho najsilnejšieho argumentu,
+   teda elementu, takže sa tu nič neprebíja inak než predtým. */
+#rail .rail-group :is(button, a).dest {
     width: 68px; height: auto; min-height: 52px;
     flex-direction: column;
     justify-content: center;
@@ -898,8 +927,8 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     padding: var(--sp-1) 2px;
     border-radius: var(--r-md);
 }
-#rail .rail-group button.dest .ms { font-size: var(--icon-lg); line-height: 1; }
-#rail .rail-group button.dest .lbl {
+#rail .rail-group :is(button, a).dest .ms { font-size: var(--icon-lg); line-height: 1; }
+#rail .rail-group :is(button, a).dest .lbl {
     font-size: var(--fs-micro);
     font-weight: var(--fw-medium);
     letter-spacing: 0.01em;
@@ -911,7 +940,7 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     text-overflow: ellipsis;
 }
 /* denník unread dot — small amethyst marker on the destination */
-#rail .rail-group button.dest .dot {
+#rail .rail-group :is(button, a).dest .dot {
     position: absolute;
     top: 6px; right: 10px;
     width: 6px; height: 6px;
@@ -1665,11 +1694,13 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .msg.thinking { color: var(--muted); font-style: normal; }
 .msg.thinking .dot {
     display: inline-block;
-    animation: thinking-pulse 1.2s var(--ease) infinite;
+    animation: thinking-pulse var(--dur-pulse) var(--ease) infinite;
     opacity: .25;
 }
-.msg.thinking .dot:nth-child(2) { animation-delay: .2s; }
-.msg.thinking .dot:nth-child(3) { animation-delay: .4s; }
+/* Stagger je ZLOMOK periódy, nie absolútne číslo — inak sa pri zmene --dur-pulse
+   rozpadne rytmus a tri bodky začnú blikať naraz. */
+.msg.thinking .dot:nth-child(2) { animation-delay: calc(var(--dur-pulse) / 6); }
+.msg.thinking .dot:nth-child(3) { animation-delay: calc(var(--dur-pulse) / 3); }
 @keyframes thinking-pulse {
     0%, 100% { opacity: .25; }
     50%      { opacity: .8; }
@@ -2138,7 +2169,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     width: 26px; height: 26px;
     border-radius: var(--r-pill);
     border: 2px solid var(--accent);
-    animation: load-breathe 1.8s var(--ease) infinite;
+    animation: load-breathe var(--dur-pulse) var(--ease) infinite;
 }
 .empty.empty-loading .load-mark::after {
     content: "";
@@ -2157,10 +2188,12 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
    (dasharray / dashoffset / clip-path), nie fade celej karty — fade by povedal
    „niečo pribudlo", kým toto hovorí „takto to narástlo".
 
-   Trvania sedia na existujúcom rebríčku (--dur-slow 420 ms je najdlhšie, čo
-   appka inde používa); graf smie ísť ďalej, lebo kreslí dej, ale nad ~900 ms
-   by už zdržiaval. Spúšťa ich charts.js, ktorý pri prefers-reduced-motion
-   triedy vôbec nepridá — preto tu nie je @media blok.
+   Trvania sú ZNAČKOVÉ, nie priečky rebríka rozhrania: 760 / 900 / 720 ms sú
+   menované v docs/BRAND-HADES.md §2 („Pohyb v rozhraní"), preto tu stoja ako
+   čísla a nie ako --dur-* tokeny. Rebrík rozhrania končí na --dur-ambient
+   (400 ms); graf smie ísť ďalej, lebo kreslí dej, ale nad ~900 ms by zdržiaval.
+   Spúšťa ich charts.js, ktorý pri prefers-reduced-motion triedy vôbec nepridá
+   (nie že by ich CSS potom prebíjalo) — preto tu nie je @media blok.
    --------------------------------------------------------------------------- */
 .donut .seg-draw {
     transition: stroke-dasharray 760ms var(--ease);
@@ -2213,7 +2246,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     justify-content: center;
 }
 
-/* Hero nad plátnom (prázdna sieť / chyba štartu) — jediný serif moment */
+/* Hero nad plátnom (prázdna sieť / chyba štartu) */
 .empty.empty-network {
     position: fixed; inset: 0;
     justify-content: center;
@@ -2230,9 +2263,11 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
    nad vlastným titulkom, takže farbu netreba stlmovať do dekorácie. */
 .empty.empty-network .ms { font-size: 48px; color: var(--danger); opacity: 1; }
 .empty.empty-network .title {
-    font-family: var(--serif);
-    /* Kánon nadpisov: 660 / −.025em — to isté, čo .screen-head h1 (predtým tu bolo
-       600 bez trackingu, teda dva rôzne serifové nadpisy v jednej appke). */
+    /* Kánon nadpisov: Geist 660 / −.025em — to isté, čo .screen-head h1. Serif tu
+       bol do 20. 8. 2026; manuál (§4) ho vyhradzuje hero metrikám, a toto je titulok,
+       nie číslo. Naviac je to CHYBOVÁ hláška — mýtické písmo v texte, ktorý má
+       človek použiť na opravu, je presne to, čo §6 zakazuje. */
+    font-family: var(--font);
     font-weight: var(--fw-heading);
     letter-spacing: var(--ls-heading);
     font-size: var(--fs-h1);
@@ -2273,11 +2308,22 @@ body.ambient #toasts {
 /* ---------------------------------------------------------------------------
    REDUCED MOTION
    --------------------------------------------------------------------------- */
+/* Plošná stráž. Trvanie sa nuluje na .01ms (nie na 0) zámerne: prvok tak DOBEHNE
+   do koncového stavu a `transitionend` / `animationend` sa vydá, takže JS, ktorý
+   na koniec prechodu čaká, sa nezasekne.
+   Oneskorenia sa nulujú tiež — bez toho ostal pohyb síce nulový, ale prvok visel
+   v počiatočnom stave (pri `fill-mode: both` teda neviditeľný) celý delay. Presne
+   to menuje manuál (§2): „znak je rovno hotový, nie neviditeľný".
+   Plátno tento blok NEDOSIAHNE — canvas nie je DOM prechod. Fyziku stráži
+   pump() v public/js/mind/sim.js (dosadne ticho a kreslí až hotový stav),
+   ambient život anim.js cez REDUCED_MOTION a zrod grafov charts.js. */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: .01ms !important;
         animation-iteration-count: 1 !important;
+        animation-delay: 0s !important;
         transition-duration: .01ms !important;
+        transition-delay: 0s !important;
         scroll-behavior: auto !important;
     }
 }
@@ -2297,10 +2343,11 @@ body.ambient #toasts {
     border-radius: var(--r-md);
     padding: 12px var(--sp-2);
 }
-/* Číslo v paneli je ODPOČET, nie nadpis: mono + tabular-nums ako každý iný odpočet
-   v appke (--fs-hero / --fs-kpi / #header-metrics). Playfair tu bol jediné miesto,
-   kde serif nesie číslicu — a práve to z neho robilo ozdobu namiesto systému.
-   Serif v appke drží NÁZVY (nadpis obrazovky, titulok prázdneho stavu), nič iné. */
+/* Číslo v paneli je ODPOČET, nie hero metrika: mono + tabular-nums ako každý iný
+   odpočet v appke (--fs-kpi / #header-metrics / .tc-val). Serif má v celej appke
+   jediné miesto — .hero-val, teda JEDNO primárne číslo obrazovky (manuál §4).
+   Keby serif nesol aj druhý a tretí rad čísel, prestal by hovoriť „toto je to
+   hlavné" a stal by sa ozdobou. */
 .metric-val {
     font-family: var(--mono);
     font-size: var(--fs-metric);
@@ -2834,11 +2881,15 @@ body[data-screen="graf"] #screens { display: none; }
 .screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
 
 .screen-head { margin-bottom: var(--sp-3); }
-/* Kánon: nadpis weight ~660, letter-spacing −.025em. Serif (Playfair) je štandard
-   APPIEK rodiny Aura (reporty používajú Inter — to je iný štandard, nezamieňať).
-   Veľkosť ide cez --fs-h1, ktorý bol deklarovaný, ale nikde sa nepoužíval. */
+/* Kánon: nadpis weight ~660, letter-spacing −.025em, veľkosť --fs-h1.
+   PÍSMO JE GEIST, nie serif — docs/BRAND-HADES.md §4: „Serif je vzácny, a preto
+   významný: len hero metriky. Nadpisy obrazoviek sú Geist." Do 20. 8. 2026 tu bol
+   Playfair so zdôvodnením „serif je štandard APPIEK rodiny Aura"; to zdôvodnenie
+   protirečilo hlavičke manuálu („Hades je samostatná značka, nemení sa s Aurou")
+   a naviac malo role vymenené — serif nesol nadpis a hero metrika bežala v mono.
+   Manuál je zdroj pravdy, takže serif sa presunul na .hero-val. */
 .screen-head h1 {
-    font-family: var(--serif);
+    font-family: var(--font);
     font-size: var(--fs-h1); font-weight: var(--fw-heading);
     letter-spacing: var(--ls-heading);
     color: var(--text); line-height: 1.2;
@@ -3443,7 +3494,7 @@ label.check.dir-check.off { opacity: .5; }
     position: absolute; inset: 0;
     transform: translateX(-100%);
     background: linear-gradient(90deg, transparent, var(--shimmer-sheen), transparent);
-    animation: hades-shimmer 1.4s var(--ease) infinite;
+    animation: hades-shimmer var(--dur-pulse) var(--ease) infinite;
 }
 @media (prefers-reduced-motion: reduce) {
     .shimmer::after { animation: none; }
@@ -3502,10 +3553,18 @@ select {
     gap: var(--sp-2) var(--gutter);
 }
 .hero-main { min-width: 0; }
+/* HERO METRIKA — jediný serif v celej appke (docs/BRAND-HADES.md §4: „Serif je
+   vzácny, a preto významný: len hero metriky"). Do 20. 8. 2026 tu bežalo Geist Mono
+   a Playfair nesol nadpis obrazovky, teda presne opačne než manuál; manuál je zdroj
+   pravdy. Serif tu má prácu: odlišuje JEDNO primárne číslo obrazovky od radu
+   monospace odpočtov pod ním (--fs-kpi, .metric-val, #header-metrics), takže
+   hierarchiu nesie aj rez písma, nie len veľkosť.
+   Tabulárne číslice drží globálny font-variant-numeric z body; word-spacing tu
+   NIE JE (viď blok o nezlomiteľnej medzere vyššie — v Playfaire je už úzka). */
 .hero-val {
     display: flex; align-items: baseline; gap: var(--sp-1);
     flex-wrap: wrap;
-    font-family: var(--mono);
+    font-family: var(--serif);
     font-size: var(--fs-hero); line-height: var(--lh-hero);
     font-weight: var(--fw-semibold);
     font-variant-numeric: tabular-nums;
@@ -3982,7 +4041,7 @@ button.danger.armed {
 /* ---------------------------------------------------------------------------
    RAIL BADGE COUNT — #dest-kontrola .count (review-queue size on the nav dest)
    --------------------------------------------------------------------------- */
-#rail .rail-group button.dest .count {
+#rail .rail-group :is(button, a).dest .count {
     position: absolute;
     top: 4px; right: 8px;
     min-width: 16px; height: 16px;
@@ -3996,8 +4055,8 @@ button.danger.armed {
     font-variant-numeric: tabular-nums;
     line-height: 1;
 }
-#rail .rail-group button.dest .count:empty,
-#rail .rail-group button.dest .count[data-count="0"] { display: none; }
+#rail .rail-group :is(button, a).dest .count:empty,
+#rail .rail-group :is(button, a).dest .count[data-count="0"] { display: none; }
 
 /* ---------------------------------------------------------------------------
    SYNC STATUS DOT (.status-dot) — shared indicator for the Dnes Sync card
@@ -4012,7 +4071,7 @@ button.danger.armed {
 .status-dot[data-status="error"] { background: var(--danger); }
 .status-dot[data-status="running"] {
     background: var(--accent);
-    animation: sync-pulse 1.2s var(--ease) infinite;
+    animation: sync-pulse var(--dur-pulse) var(--ease) infinite;
 }
 @keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) {

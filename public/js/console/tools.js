@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Konzola vedomia — karty nástrojov a potvrdzovanie zápisov.
+   Charón — karty nástrojov a potvrdzovanie zápisov.
 
    Karta je zložená z hlavičky (ikona, meno, argumenty na jednom riadku, stav) a
    tela s výsledkom. Telo je zložené na pár riadkov: výsledok grepu má bežne
@@ -14,7 +14,7 @@
 
 import { el, clip, num } from './dom.js';
 import { escapeHtml } from './markdown.js';
-import { pushBlock, scrollIfFollowing } from './render.js';
+import { announce, pushBlock, scrollIfFollowing } from './render.js';
 
 /* Koľko riadkov výsledku sa vidí bez rozbalenia. Šesť je jeden „odsek" — dosť
    na to, aby bolo vidno, či nástroj našiel to, čo mal. */
@@ -432,6 +432,33 @@ const DECISION_LABEL = {
     deny: 'Zamietnuté',
 };
 
+/* Čo čítačka povie, keď brána zápisov požiada o rozhodnutie.
+
+   Do 20. 8. 2026 povedala len „Nástroj mind_learn čaká na povolenie." — teda
+   MENO NÁSTROJA a ani slovo o tom, čo sa má zapísať. Meno pritom odznelo aj tak
+   dvakrát (raz z vety, raz z `aria-label` karty, ktorá si berie fokus), kým
+   obsah, o ktorom sa rozhoduje, v AX strome celý JE. Karta pribúda ešte pod
+   `aria-busy="true"`, takže `role="log"` ju sám neohlási: táto jedna veta je
+   jediný kanál, ktorý o zápise povie. */
+export function writeAsk(frame) {
+    const name = frame.name || 'nástroj';
+    const what = argsSummary(frame.arguments);
+    const where = firstLine(frame.preview);
+    const bits = [`Zápis: ${name}`];
+
+    if (what !== '') bits.push(what);
+    // Prvý riadok náhľadu nesie u pamäťových zápisov typ a názov uzla, u
+    // súborových cestu — teda presne to, čo argumenty nemusia mať v poradí,
+    // v akom o zápise rozhoduje človek.
+    else if (where !== '') bits.push(where);
+
+    return `${bits.join(' — ')}. Enter povolí, Esc zamietne.`;
+}
+
+function firstLine(text) {
+    return clip(String(text ?? '').split(/\r?\n/).find((line) => line.trim() !== '') || '', 90);
+}
+
 function decide(card, decision) {
     if (card.classList.contains('decided')) return;
 
@@ -441,6 +468,12 @@ function decide(card, decision) {
 
     const done = el('p', 'pc-done', DECISION_LABEL[decision] || decision);
     card.querySelector('.pc-actions').replaceWith(done);
+
+    // Rozhodnutie o zápise do pamäte nesmie zostať nedopovedané: `#run-announce`
+    // dovtedy ostal na „čaká na povolenie", teda kanál vyhradený pre
+    // rozhodnutia o výsledku mlčal. Meno nástroja je vo vete zámerne — od
+    // ohlásenia žiadosti mohla prejsť minúta.
+    announce(`${DECISION_LABEL[decision] || decision} — ${card.dataset.name || 'zápis'}.`);
 
     document.dispatchEvent(new CustomEvent('console:decide', {
         detail: { id: Number(card.dataset.id), decision },

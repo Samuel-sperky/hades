@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * Toolová vrstva konzoly vedomia.
+ * Toolová vrstva Charóna.
  *
  * Toto je súbor, ktorý si prečíta bezpečnostná prehliadka, takže je usporiadaný
  * podľa toho, čo sa môže pokaziť, nie podľa toho, ako sú napísané triedy:

@@ -111,7 +111,7 @@ Route::middleware([
     Route::post('/nodes/{node}/resolve-review', [ReviewController::class, 'resolveReview']);
 
     // -----------------------------------------------------------------------
-    // Konzola vedomia — vlákna a agentový beh. Zámerne v TOM ISTOM guardovanom
+    // Charón — vlákna a agentový beh. Zámerne v TOM ISTOM guardovanom
     // okruhu ako zvyšok interného API: tooly konzoly vedia zapisovať do pamäte
     // aj do súborov, takže vlastný, voľnejší okruh by bol obchádzka guardu.
     //

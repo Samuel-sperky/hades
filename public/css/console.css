@@ -16,6 +16,16 @@
    nič — zdedí sa, takže na tmavej téme bol text čierny na čiernom.
    =========================================================================== */
 
+/* Šírka toku. Bola 5× natvrdo `820px` (tok, bublina, composer, nápoveda,
+   paleta) a jediná z tých piatich hodnôt, ktorá sa dala zmeniť samostatne, bola
+   chyba. 820 z 1920 px je 42,7 % — miera riadku, ktorá sa číta, nie šírka okna.
+   Patrí to do `:root` v mind.css k ostatným tokenom; kým je ten súbor v cudzích
+   rukách, žije tu — a keď sa presúva, musí zmiznúť ODTIAĽTO, nie vzniknúť
+   druhýkrát tam. */
+:root {
+    --stream-w: 820px;
+}
+
 .console-body {
     margin: 0;
     background: var(--bg);
@@ -24,6 +34,43 @@
     font-size: var(--fs-base);
     /* konzola nikdy neskroluje telom — skroluje tok správ vo svojom kontejneri */
     overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   JEDEN POMENOVANÝ RESET CHRÓMU TLAČIDIEL
+
+   `mind.css` dáva každému bare `<button>` panelové pozadie, rám, zaoblenie,
+   padding, `min-height: 32px` a vlastnú typografiu (r. 667–684). Konzola má
+   klikacích prvkov, ktoré NIE SÚ tlačidlá v tom vizuálnom zmysle — riadok
+   vlákna, hlavička karty nástroja, gombík na spodok — a tie si to celé
+   vypínali každý sám: `font: inherit` bolo v tomto súbore 7×,
+   `background: transparent` 9×, `border: 0` 4×.
+
+   Preto jeden zoznam selektorov namiesto ôsmich kópií. Stojí ZÁMERNE hore:
+   bloky nižšie si z neho berú, čo im vyhovuje, a čím sa líšia, to si prepíšu —
+   a prepíšu, pretože sú v kaskáde za ním.
+
+   `min-height` tu NIE JE: `.pc-btn` (tlačidlá potvrdenia zápisu) stojí na
+   32 px z mind.css a padding by mu dal 31 px. Kto ho potrebuje zrušiť, ruší si
+   ho sám (`.tr-act`).
+   --------------------------------------------------------------------------- */
+.rail-top a,
+.rail-top button,
+.rail-retry,
+.tr-open,
+.tr-act,
+#rail-toggle,
+.tc-head,
+.tc-more,
+.pc-btn,
+#send,
+#stop,
+#to-bottom {
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
 }
 
 #console-app {
@@ -97,11 +144,7 @@ kbd {
     padding: 6px 10px;
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text);
-    font: inherit;
     font-size: var(--fs-body);
-    cursor: pointer;
     text-decoration: none;
 }
 
@@ -171,14 +214,9 @@ kbd {
        ho mal aj pôvodný riadok, keď bol celý jedným tlačidlom. */
     display: block;
     padding: var(--sp-1) 10px;
-    border: 0;
     border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text);
-    font: inherit;
     font-size: var(--fs-body);
     text-align: left;
-    cursor: pointer;
     /* dlhý titulok sa nezalomí do troch riadkov — panel má držať rytmus */
     overflow: hidden;
 }
@@ -215,14 +253,12 @@ kbd {
        také gombíky vyzerali ako druhá lišta. */
     min-height: 0;
     height: 26px;
-    padding: 0 4px;
+    padding: 0 var(--sp-0);
     border: 1px solid transparent;
     border-radius: var(--r-sm);
-    background: transparent;
     color: var(--muted);
-    font-size: 16px;
+    font-size: var(--icon-xs);
     line-height: 1;
-    cursor: pointer;
 }
 
 .tr-act:hover { border-color: var(--border); color: var(--text); }
@@ -279,14 +315,11 @@ kbd {
 .rail-error .rail-msg { padding: 0; color: var(--text); }
 
 .rail-retry {
-    padding: 4px 10px;
+    padding: var(--sp-0) 10px;
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
-    background: transparent;
     color: var(--accent-ink);
-    font: inherit;
     font-size: var(--fs-caption);
-    cursor: pointer;
 }
 
 .rail-retry:hover { border-color: var(--border-accent); background: var(--accent-softer); }
@@ -348,12 +381,9 @@ kbd {
 #rail-toggle {
     display: none;
     align-items: center;
-    padding: 4px 6px;
+    padding: var(--sp-0) 6px;
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
 }
 
 #thread-title {
@@ -638,14 +668,9 @@ kbd {
     align-items: center;
     gap: var(--sp-1);
     width: 100%;
-    padding: 8px 12px;
-    border: 0;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
+    padding: var(--sp-1) var(--sp-2h);
     font-size: var(--fs-body);
     text-align: left;
-    cursor: pointer;
 }
 
 .tc-head:hover { background: var(--hover-fill); }
@@ -718,15 +743,12 @@ kbd {
 }
 
 .tc-more {
-    margin-top: 8px;
-    padding: 3px 8px;
+    margin-top: var(--sp-1);
+    padding: 3px var(--sp-1);
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: transparent;
     color: var(--accent-ink);
-    font: inherit;
     font-size: var(--fs-caption);
-    cursor: pointer;
 }
 
 .tc-more:hover { border-color: var(--border-accent); background: var(--accent-softer); }
@@ -804,35 +826,26 @@ kbd {
 
 .pc-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 
+/* Vzhľad tlačidiel nesú varianty z mind.css (`button.primary` / `.ghost` /
+   `.danger`) — `.pc-btn` len tvaruje trojicu v karte. Do 20. 8. 2026 tu bola
+   vlastná trojica `.btn-primary` / `.btn-ghost` / `.btn-danger`, ktorá bola
+   hodnota za hodnotou tá istá vec pod iným menom, a volalo ju jediné miesto
+   v repe (tools.js). Dva slovníky pre jeden vzhľad sa rozídu pri prvej zmene
+   akcentu. Čo tu zostáva, je špecifické pre kartu: `kbd` VNÚTRI tlačidla. */
 .pc-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 12px;
+    padding: 7px var(--sp-2h);
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text);
-    font: inherit;
     font-size: var(--fs-body);
-    cursor: pointer;
 }
 
 .pc-btn kbd { background: transparent; border-color: var(--border); }
-.pc-btn:disabled { opacity: .5; cursor: default; }
+.pc-btn:disabled { opacity: .5; }
 
-.pc-btn.btn-primary {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--on-accent);
-}
-
-.pc-btn.btn-primary kbd { color: var(--on-accent); border-color: var(--on-accent); }
-.pc-btn.btn-primary:hover:not(:disabled) { background: var(--accent-600); border-color: var(--accent-600); }
-.pc-btn.btn-ghost:hover:not(:disabled) { border-color: var(--border-accent); background: var(--accent-softer); }
-
-.pc-btn.btn-danger { color: var(--danger); border-color: var(--danger-border); }
-.pc-btn.btn-danger:hover:not(:disabled) { border-color: var(--danger-border-hover); background: var(--danger-soft); }
+.pc-btn.primary kbd { color: var(--on-accent); border-color: var(--on-accent); }
 
 .pc-done {
     margin: 0;
@@ -908,14 +921,12 @@ kbd {
     flex: none;
     width: 30px;
     height: 30px;
-    border: 0;
     border-radius: var(--r-sm);
     background: var(--accent);
     color: var(--on-accent);
-    cursor: pointer;
 }
 
-#send:disabled { opacity: .45; cursor: default; }
+#send:disabled { opacity: .45; }
 #stop { background: var(--danger); color: var(--on-accent); }
 
 #composer-hint {
@@ -941,9 +952,7 @@ kbd {
     border: 1px solid var(--border);
     border-radius: var(--r-pill);
     background: var(--panel-solid);
-    color: var(--text);
     box-shadow: var(--elev-1);
-    cursor: pointer;
     z-index: 3;
 }
 

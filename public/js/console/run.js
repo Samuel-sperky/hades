@@ -22,7 +22,8 @@ import {
     appendDelta, beginTurn, closeBubble, endTurn, paintStats, pushBlock,
     pushError, pushNotice, pushUser, announce, scrollIfFollowing, waitStart,
 } from './render.js';
-import { markResult, permissionCard, pendingCard, decidePending, toolCard } from './tools.js';
+import { markResult, permissionCard, pendingCard, decidePending, toolCard, writeAsk } from './tools.js';
+import { cleanStop, stopNote } from './runstate.js';
 
 let ticker = 0;
 
@@ -53,7 +54,20 @@ export async function sendTurn(text) {
     const message = String(text ?? '').trim();
     if (message === '') return;
 
-    if (C.running || C.booting) return;
+    if (C.booting) return;
+
+    // Písanie počas behu bolo do 20. 8. 2026 TICHÝ no-op: `#send` nie je
+    // `disabled` (je len skrytý), takže Enter neurobil nič a neoznámil nič —
+    // pri modeli na 9 tok/s je pritom napísať si ďalší krok dopredu tá
+    // najprirodzenejšia vec. Front správ tu ZÁMERNE nie je: bola by to nová
+    // funkcia so stavom, ktorá má vzniknúť až s logom behov, aby sa zaradená
+    // správa dala aj zaznamenať. Text v poli zostáva — odoslať sa dá po behu.
+    if (C.running) {
+        pushNotice('Beh ešte beží — zastav ho klávesou Esc, alebo počkaj, kým dobehne. Text zostáva napísaný.');
+        announce('Beh ešte beží. Správa neodišla.');
+
+        return;
+    }
 
     if (C.awaiting) {
         pushNotice('Najprv rozhodni o čakajúcom zápise — Povoliť alebo Zamietnuť.');
@@ -170,6 +184,13 @@ async function stream(url, body) {
         }
     } finally {
         C.abort = null;
+
+        // Krok sa nuluje TU a nie v case `end`: pri Stope (aj pri spadnutom
+        // serveri) rámec `end` nikdy nepríde, takže hlavička ostávala navždy na
+        // „krok 1/12" nad ničím, čo by bežalo. Zaparkovaný beh je jediná
+        // výnimka — tam krok stále platí, beh len čaká na rozhodnutie.
+        if (!C.awaiting) C.step = null;
+
         setRunning(false, !!C.awaiting);
 
         endTurn();
@@ -332,7 +353,9 @@ function route(frame) {
             // sekúnd dobehne až v `finally`, a do vtedy by hlavička tvrdila, že
             // model ešte píše.
             paintStats();
-            announce(`Nástroj ${frame.name} čaká na povolenie.`);
+            // Ohlási sa ZÁPIS, nie nástroj — vetu skladá `writeAsk()` v tools.js
+            // z tých istých argumentov, aké vidí človek na karte.
+            announce(writeAsk(frame));
 
             return true;
 
@@ -343,10 +366,14 @@ function route(frame) {
             return false;
 
         case 'end':
+            // Kľúče sa menujú PRESNE ako v logu behov (`runs`) a v payloade
+            // vlákna — `paintStats()` skladá ten istý reťazec z oboch zdrojov
+            // a preklad `tps` ↔ `tokens_per_second` bol jediný dôvod, prečo by
+            // to nešlo.
             C.stats = {
                 tokens_in: frame.tokens_in,
                 tokens_out: frame.tokens_out,
-                tps: frame.tokens_per_second,
+                tokens_per_second: frame.tokens_per_second,
             };
             C.step = null;
             noteStop(frame.stop_reason);
@@ -377,36 +404,21 @@ function endAnnounce(frame) {
 }
 
 /**
- * Dôvody, po ktorých je odpoveď naozaj celá. Všetko ostatné, čo môže v rámci
- * `end` prísť, znamená zrezaný ťah: `max_steps` posiela AgentRunner po dosiahnutí
- * stropu kôl, `max_tokens` hlási model, ktorý minul okno, a Ollama si vyhradzuje
- * právo poslať vlastný `done_reason`, ktorý sa prekladom nestratí.
- */
-const CLEAN_STOP = ['end_turn', 'stop_sequence'];
-
-const STOP_NOTE = {
-    max_steps: 'Beh narazil na strop krokov — úloha mohla zostať nedokončená. Pokračovať sa dá ďalšou správou.',
-    max_tokens: 'Model minul okno odpovede — text je zrezaný, nie dokončený. Pokračovať sa dá ďalšou správou.',
-};
-
-function cleanStop(reason) {
-    return CLEAN_STOP.includes(String(reason || 'end_turn'));
-}
-
-/**
  * Neriadne ukončený ťah vyzeral v toku PRESNE ako dokončená odpoveď: klient
  * z rámca `end` čítal len tokeny a `stop_reason` zahadzoval. Človek tak nemal
  * ako rozoznať odpoveď od behu zrezaného na dvanástom kroku.
+ *
+ * Text vety NIE JE tu, ale v `runstate.js`: tú istú vetu musí po obnove stránky
+ * povedať aj log behov, a dve kópie by sa rozišli.
  */
 function noteStop(reason) {
-    if (cleanStop(reason)) return;
-
-    const stop = String(reason || '');
+    const note = stopNote(reason);
+    if (note === '') return;
 
     // Karta / bublina sa uzavrie sama až v `finally`; bez tohto by poznámka
     // pristála doprostred rozpísaného odseku modelu.
     closeBubble();
-    pushNotice(STOP_NOTE[stop] || `Beh sa skončil neriadne (${stop}) — úloha mohla zostať nedokončená.`);
+    pushNotice(note);
 }
 
 /**

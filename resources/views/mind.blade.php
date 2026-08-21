@@ -130,6 +130,24 @@
             </button>
         </div>
 
+        {{-- Charón — AI chat nad vedomím. Vlastná skupina, pretože to NIE JE obrazovka
+             grafu, ale samostatná plocha na vlastnej URL; `<a>` a nie `<button>`,
+             aby to bol odkaz aj pre čítačku, prostredné kliknutie a klávesnicu.
+
+             Do 20. 8. 2026 sem neviedol ani jeden odkaz (nález A1 auditu): konzola
+             existovala, ale z grafu sa k nej nedalo dostať klikom vôbec — človek
+             musel poznať URL. V lokálnej appke (`bin/hades.cmd`) nie je adresný
+             riadok, takže bez tohto odkazu by bola nedosiahnuteľná úplne.
+
+             Ikona: `send` je v subsete overená (je v kóde použitá). Vlastný glyf pre
+             chat (`forum`, `chat`) by si vyžiadal regeneráciu subsetu — viď
+             docs/BRAND-HADES.md §5. Význam nesie label, ikona je druhá. --}}
+        <div class="rail-group" role="group" aria-label="Charón">
+            <a href="/console" class="dest" aria-label="Charón — chat s vedomím">
+                <span class="ms" aria-hidden="true">send</span><span class="lbl">Charón</span>
+            </a>
+        </div>
+
         <div class="rail-group bottom" role="group" aria-label="Systém">
             <button id="btn-settings" class="dest" type="button" aria-label="Nastavenia">
                 <span class="ms" aria-hidden="true">tune</span><span class="lbl">Nastavenia</span>

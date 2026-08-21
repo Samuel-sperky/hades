@@ -9,7 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Konzola vedomia (`/console`) je najsilnejší vstup do appky: jej tooly vedia
+ * Charón (`/console`) je najsilnejší vstup do appky: jej tooly vedia
  * čítať a prepisovať pamäť aj súbory projektu. Preto sedí v tom istom guardovanom
  * okruhu ako dashboard a interné `/api/*` — a preto to testujeme zvlášť.
  *
