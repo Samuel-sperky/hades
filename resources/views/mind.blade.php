@@ -273,6 +273,19 @@
                 <span id="theme-toggle-label">Tmavý režim</span>
                 <button id="theme-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="theme-toggle-label"></button>
             </div>
+            {{-- Hustota zobrazenia — tri stupne jednej osi, preto segmentovaný
+                 ovládač (role="radiogroup"), nie prepínač ani select. Stojí pri
+                 téme, lebo je to ten istý druh voľby: ako appka vyzerá, nie čo
+                 v nej je. Predvoľby (#presets) zámerne na hustotu nesiahajú —
+                 tie riešia sieť na plátne, toto rozloženie obrazoviek. --}}
+            <div class="switch-row" id="density-row">
+                <span id="density-label">Hustota</span>
+            </div>
+            <div id="density" role="radiogroup" aria-labelledby="density-label">
+                <button type="button" class="dens" data-density="comfortable" role="radio" aria-checked="false">Pohodlné</button>
+                <button type="button" class="dens" data-density="cozy" role="radio" aria-checked="true">Cozy</button>
+                <button type="button" class="dens" data-density="compact" role="radio" aria-checked="false">Kompaktné</button>
+            </div>
             <div class="row" id="ambient-row">
                 <button id="btn-ambient" class="ghost" type="button">Spustiť na celú obrazovku</button>
             </div>

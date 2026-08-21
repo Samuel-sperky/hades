@@ -120,18 +120,24 @@
     --text: #101d1b;                      /* --ink (15.8:1 on paper) */
     --text-secondary: #2d3a38;            /* --ink-soft (11.3:1) */
     --muted: #566964;                     /* --muted (5.3:1, passes AA) */
+    /* D19: 0 volajúcich, ZOSTÁVA — je to stupeň úplného rebríka (text → secondary →
+       muted-strong → muted). Diera v škále je horšia než nepoužitý stupeň. */
     --muted-strong: #2d3a38;
     --on-accent: #ffffff;                 /* white on #6d3fb5, 6,93:1, passes AA at 13px/600 */
 
     /* ---- amethyst accent ramp (ONE ramp, chrome only) ---- */
     --accent-300: #a97ded;                /* svetlý amethyst, hover ink */
-    --accent-400: #a97ded;
+    /* --accent-400 tu bolo a je zmazané: po prefarbení na amethyst mala PRESNE tú
+       istú hodnotu ako --accent-300 (na oboch témach) a nula volajúcich. Nie je to
+       diera v rebríku ako pri --accent-press — duplikovaný stupeň rebrík nerobí. */
     --accent: #6d3fb5;                    /* amethyst — 6,36:1 na paperi (teal dával 4,77) */
     --accent-600: #58309a;                /* pressed/darker accent FILL */
     --accent-ink: var(--accent-600);      /* TEXT na akcentovom tinte (6,98:1 na --accent-soft) */
     --accent-rgb: 109, 63, 181;            /* JS-facing triplet: slider fill, msg.me, rings */
     --accent-soft: #e9dcfa;               /* --accent-soft, solid tint for active pills */
     --accent-softer: #f4eefc;             /* --accent-tint */
+    /* D19: 0 volajúcich, ZOSTÁVA — stupeň „pressed" v úplnom rebríku stavov
+       (softer → soft → press). Diera v škále je horšia než nepoužitý stupeň. */
     --accent-press: #c9b0ee;              /* --accent-line, pressed */
     --border-accent: #c9b0ee;             /* --accent-line */
     /* Alfa .28 dávala voči --surface-2 len 1,48:1, WCAG 2.4.11 žiada 3:1 pre
@@ -140,6 +146,7 @@
     --focus-ring: 0 0 0 3px rgba(109, 63, 181, .85);
     /* glows are now soft amethyst-tinted RINGS/SHADOWS, never additive blooms */
     --glow-accent: 0 1px 2px rgba(15, 40, 38, .05), 0 6px 18px -10px rgba(109, 63, 181, .30);
+    /* D19: 0 volajúcich, ZOSTÁVA — druhý (väčší) stupeň dvojstupňového glow rebríka. */
     --glow-accent-lg: 0 8px 24px -12px rgba(109, 63, 181, .28);
 
     /* ---- KÁNON AKCENTU: zlatá je VYHRADENÁ, amethyst je PRIMÁRNY ----
@@ -161,9 +168,17 @@
 
     /* ---- semantic (read on paper) ---- */
     --success: #0f8c5a;                   /* --ok */
+    /* D19 hlásil 0 volajúcich, ale to bol zastaraný grep: `.diff .df-add`
+       v console.css ho číta. Nie je mŕtvy. */
     --success-soft: #dcf3e8;
     --danger: #d64545;
-    --danger-rgb: 214, 69, 69;            /* JS/derived triplet: msg.sys--error, danger btn */
+    /* D19: 0 volajúcich — pôvodný komentár tu tvrdil „JS/derived triplet:
+       msg.sys--error, danger btn", a to je nepravda: `msg.sys--error` ani žiadne
+       tlačidlo tento token nikdy nečítalo (grep nad public/ + resources/ + app/
+       vracia nulu). ZOSTÁVA napriek tomu: --danger-border a --danger-border-hover
+       hneď nižšie skladajú presne túto trojicu natvrdo, takže je to hotová
+       polovica opravy D15 (alfa komponovaná z natvrdo zapísaných hodnôt). */
+    --danger-rgb: 214, 69, 69;
     --danger-soft: #fde8e8;
     --danger-border: rgba(214, 69, 69, .34);
     --danger-border-hover: rgba(214, 69, 69, .60);
@@ -237,9 +252,12 @@
        jediný zdroj pravdy: micro → caption → small → body → base → title →
        display, plus dva zvlášť pomenované displeje (--fs-kpi, --fs-metric). */
     /* Škála je PÁROVÁ (veľkosť + jej prokládka) a je to ÚPLNÁ škála, nie zoznam
-       použitých hodnôt. --lh-micro, --lh-small a --sp-5 dnes nič nevolá; nemaž ich —
+       použitých hodnôt. --lh-micro a --sp-5 dnes nič nevolá; nemaž ich —
        diera v škále je horšia než nepoužitý stupeň, lebo ďalší človek na jej mieste
-       zadrôtuje číslo. Overené: všetkých 13 --fs-* má aspoň jedného volajúceho. */
+       zadrôtuje číslo. Overené: všetkých 13 --fs-* má aspoň jedného volajúceho.
+       (--lh-small volajúceho MÁ od 21. 8. 2026: nález R3 odhalil, že form
+       controls bežali na UA `normal`, takže dátové telá kariet a technické
+       výpisy musia svoju prokládku deklarovať nahlas.) */
     --fs-micro: 10px;     --lh-micro: 1.3;
     --fs-caption: 11px;   --lh-caption: 1.4;
     --fs-small: 12px;     --lh-small: 1.4;
@@ -337,6 +355,8 @@
 
     /* ---- z-index ladder ---- */
     --z-canvas: 0;
+    /* D19: 0 volajúcich, ZOSTÁVA — priečka rebríka. Zmazať ju znamená, že ďalšia
+       vrstva nad plátnom si vymyslí vlastné číslo mimo tohto rebríka. */
     --z-vignette: 1;
     --z-chrome: 10;
     --z-panel: 20;
@@ -354,17 +374,35 @@
     --surface-raised: #f1ebef;            /* fill above white panels: kpi inner, shimmer base */
     --track: #ece4ea;                     /* inset track for dbar / progress (neutral, bez akcentu) */
 
-    /* ---- certainty ramp (semantic, reads >=4.5:1 on paper AND white)
-           overene 4.88 · hypoteza 5.30 · pasca 4.98 · none 5.35 on paper ---- */
+    /* ---- certainty ramp (semantic, third role — ani interaktívna, ani značková)
+           Základné hodnoty čítajú >=4,5:1 na čistom paperi (overene 4,88 ·
+           hypoteza 5,30 · pasca 4,98 · none 5,35), takže sú správne ako VÝPLŇ
+           (swatch legendy, donut) a ako text na nezafarbenom povrchu. ---- */
     --cert-overene: #1f7a4d;              /* ✅ overené — deep green */
     --cert-hypoteza: #8f5a12;             /* 🧪 hypotéza — deep amber */
     --cert-pasca: #c0392f;                /* ⚠️ pasca — deep red */
     --cert-none: #566964;                 /* structured, no certainty — muted ink */
-    /* soft badge fills — low-alpha hue washes, text color stays the cert-* above */
+    /* soft badge fills — low-alpha hue washes; text na nich je --cert-*-ink nižšie */
     --cert-overene-soft: rgba(31, 122, 77, .12);
     --cert-hypoteza-soft: rgba(143, 90, 18, .12);
     --cert-pasca-soft: rgba(192, 57, 47, .12);
     --cert-none-soft: rgba(86, 105, 100, .10);
+    /* PRAVIDLO (rovnaké ako pri --accent-ink a --success/--danger/--warn-ink):
+       ZÁKLADNÁ hodnota je pre VÝPLŇ — na nej je text --on-accent, resp. je to
+       swatch bez textu. -INK varianta je pre TEXT na papieri, teda aj na tinte
+       badge, kde je pozadie zložené z *-soft nad panelom alebo nad --bg.
+       Prečo to tu treba: nad zloženým pozadím badge (*-soft .12 nad bielym
+       panelom / nad paperom #f8f4f7) dávajú základné hodnoty overene 4,52/4,17 ·
+       hypoteza 4,88/4,51 · pasca 4,54/4,19 — teda na paperi pod AA a nad panelom
+       bez akejkoľvek rezervy. Prepočítané z tokenov (WCAG relatívna luminancia,
+       alfa kompozícia zdola) 21. 8. 2026; formát „na paneli / na paperi".
+       --cert-none je jediná, ktorá aj v základe prechádza s rezervou (5,10/4,70),
+       preto je jej ink alias — token existuje, aby komponent nemusel vedieť,
+       ktorý stupeň rebríka práve kreslí. */
+    --cert-overene-ink: #15603b;          /* 6,45 / 5,95:1 */
+    --cert-hypoteza-ink: #7a4c0e;         /* 6,20 / 5,72:1 */
+    --cert-pasca-ink: #9c2a22;            /* 6,35 / 5,86:1 */
+    --cert-none-ink: var(--cert-none);    /* 5,10 / 4,70:1 — základ stačí */
 
     /* ---- activity heat ramp (0 = empty neutral, 1..4 = amethyst saturation climb)
        Luminancia každého stupňa je zhodná s pôvodnou tealovou rampou (odchýlka
@@ -391,7 +429,152 @@
     /* ---- spacing extras ---- */
     --sp-0h: 6px;                         /* half-step between sp-0(4) and sp-1(8) */
     --sp-2h: 12px;                        /* half-step between sp-1(8) and sp-2(16) */
-    --gutter: 20px;                       /* dashboard grid gutter */
+    --gutter: 20px;                       /* dashboard grid gutter — HUSTOTA ho mení */
+
+    /* ======================================================================
+       HUSTOTA (density) — rozmerové tokeny, ktoré prepína data-density
+       ======================================================================
+       Doteraz tu tieto mená NEBOLI (overené: 0 definícií) a hodnoty žili
+       roztrúsené v pravidlách nižšie. Bez pomenovania nemal prepínač hustoty
+       čo prepnúť — preto sú tokeny podmienka R6/R10, nie ich kozmetika.
+
+       KRITÉRIUM: hodnoty tu sú ODČÍTANÉ z toho, čo súbor už dnes kreslí, nie
+       vymyslené. Pri chýbajúcom atribúte data-density (= „cozy") sa preto
+       nesmie zmeniť ani jeden pixel. Odchýlky sú len v dvoch blokoch nižšie
+       (`comfortable` / `compact`) a menia sa v nich VÝHRADNE tokeny, ktoré sa
+       medzi škálami naozaj líšia.
+
+       Čo hustota ZÁMERNE nemení:
+       - --control-h / --field-h (zásahové ciele). Kompaktné zobrazenie nesmie
+         zmenšiť klikaciu plochu — to je nález prístupnosti, ktorý ide proti
+         hustote, a prístupnosť vyhráva. Tokeny existujú preto, aby 32/34 px
+         mali jedno pomenované miesto (audit menoval konflikt 32 vs 30 px).
+       - typografickú škálu a --lh-* (to je R7/R3, iná úloha) — hustota je
+         priestor, nie veľkosť písma. Keby menila oboje, nedalo by sa merať,
+         čo z posunu spôsobil ktorý prepínač. */
+
+    /* Vnútorný priestor karty. Základ je tu (dosiahnuteľný a prepínateľný),
+       zoznamový riadok má vlastný stupeň — list riadky sú o pol kroku
+       kompaktnejšie než dashboardové bloky (viď sekcia JEDNA KARTA nižšie). */
+    --card-pad: var(--sp-2);              /* 16px — bloky */
+    --card-pad-row: var(--sp-2h);         /* 12px — zoznamové riadky */
+    /* Vnútorný priestor RIADKA v zoznamoch a stromoch. Odčítané z 9 výskytov
+       `padding: var(--sp-1) 10px` (.stat-row, .legend-row, .search-item,
+       .pb-item, .tree-row, …) — tá dvojica bola dosiaľ najčastejší
+       nepomenovaný rozmer súboru. */
+    --row-pad-y: var(--sp-1);             /* 8px */
+    --row-pad-x: 10px;
+    /* Medzera medzi sekciami obrazovky — odčítané z #dnes-body/#library-body/
+       #directive-body { gap } a .screen-head { margin-bottom }. */
+    --section-gap: var(--sp-3);           /* 24px */
+    /* Minimálna šírka stĺpca fluidných mriežok (minmax v repeat(auto-fit/fill)).
+       Odčítané: .kpi-grid 160px, .dash-grid 280px, .rec-grid 640px.
+       Toto je páka R10 — v kompaktnej škále spadne .rec-grid na ~420px, čím sa
+       na 1920 zdvojnásobí počet viditeľných riadkov Denníka BEZ zmeny výšky
+       riadku (a bez toho, aby sa dotkla predvolená „cozy" škála). */
+    --kpi-cols: 160px;
+    --dash-cols: 280px;
+    --rec-cols: 640px;                    /* .rec-grid a .today-list */
+    --card-cols: 300px;                   /* .lib-skills, .today-grid, .dir-saved */
+
+    /* ---- rozmery ovládacích prvkov — jedno pomenované miesto ----
+       Audit hlásil konflikt „32 vs 30 px" (mind.css dáva každému <button>
+       min-height: 32px, console.css niekde deklaruje height: 30px, ktoré
+       min-height prebíja). Pravda je 32; token to hovorí nahlas.
+       --field-h je vyššie zámerne — textové polia a selecty majú vlastný
+       rytmus (34px), aby text nesedel na ráme. */
+    --control-h: 32px;
+    --field-h: 34px;
+    /* Riadkovanie JEDNORIADKOVÉHO ovládacieho prvku (nález R3). Do 21. 8. 2026
+       ho na form controls nedeklarovalo nič a platila UA hodnota `normal`, teda
+       číslo, ktoré závisí od metrík fontu a nikto ho nezvolil.
+       1,2 je zvolené tak, aby zmena bola čo najbližšie k nule: `normal` je pre
+       Geist ~1,2, takže výška tlačidla sa má pohnúť o menej než pixel. Presný
+       posun sa MUSÍ odmerať v prehliadači (computed height `button`,
+       `#cmdk-trigger`, `.chip`) — tu je to voľba hodnoty, nie zmerané číslo,
+       a tento súbor si už raz zaplatil vetu, ktorá to zamieňala.
+       Prečo NIE --lh-base (1,5): 13px text by dal 19,5 px riadok namiesto
+       15,6 px, teda +~4 px na každom tlačidle appky — hlavičku vrátane, a jej
+       výšku číta plátno z --header-h. Preto sú to dve roly: chróm drží
+       --lh-control, próza a dátové telá kariet svoj stupeň z --lh-* škály. */
+    --lh-control: 1.2;
+
+    /* ---- ČITATEĽNÁ MIERA (nález R8) ----
+       Strop riadkovej dĺžky. `ch` a nie px: miera sa drží znakov, nie okna.
+       Dva stupne, pretože súbor už dnes používa dva a oba majú dôvod:
+       --measure je strop SAMOSTATNÉHO odstavca (odčítané z .run-prompt, ktorý
+       si 90ch vybral po zmeraní 260 znakov na riadok), --measure-prose je
+       tesnejšia miera pre text, ktorý tečie do viacstĺpcových blokov
+       (odčítané z .dtl-text/.dtl-reason/.queue-text/.dir-preview = 72ch).
+       Nezavádzam tretiu hodnotu — dve pravdy v súbore už boli, tokeny ich len
+       pomenovali. */
+    --measure: 90ch;
+    --measure-prose: 72ch;
+
+    /* ---- grafy (charts.js) ----
+       Rozmer buniek heatmapy počíta charts.js z reálnej výšky kontejnera a
+       píše ho do --heat-cell-w/h; tieto tokeny sú FALLBACK (keď JS nebeží) a
+       medzera mriežky, ktorá bola dosiaľ 3× natvrdo.
+       --chart-1..8 tu ZÁMERNE nie sú: grafy tejto appky nekreslia kategórie,
+       ale rampy, ktoré už tokeny majú (--cert-* pre donut, --heat-* pre
+       heatmapu, --accent pre krivku rastu). Osemfarebná kategoriálna škála by
+       bola NOVÁ paleta, a tú kontrakt §4 zakazuje. */
+    --chart-cell: 12px;
+    --chart-gap: 3px;
+
+    /* ---- aliasy pre názvoslovie rodiny Aura (audit §9/3: aliasy, NIE prepis) ----
+       Rovnaká hodnota, druhé meno. Nie sú to nové stupne a nedržia vlastnú
+       hodnotu — ukazujú na existujúci token, takže sa nemôžu rozísť. Sú tu,
+       aby komponent prenesený z inej appky rodiny nemusel prekladať mená.
+       Volajúceho má dnes len --card-radius (sekcia JEDNA KARTA). Zvyšok je
+       zámerne bez volajúceho: prepisovať ~100 deklarácií `transition` alebo
+       typografických veľkostí na druhé meno by bol plošný reformát bez zmeny
+       vzhľadu — presne to, čo tento súbor zakazuje. --page-h1 a --kpi-value
+       navyše zostávajú NEPOUŽITÉ vedome, aby úloha typografickej škály (R7)
+       menila jedno meno (--fs-h1 / --fs-kpi), nie dve. */
+    --card-radius: var(--r-md);
+    --shadow-1: var(--elev-1);
+    --shadow-2: var(--elev-2);
+    --shadow-3: var(--elev-3);
+    --transition-fast: var(--dur-fast) var(--ease);
+    --transition-base: var(--dur-base) var(--ease);
+    --transition-slow: var(--dur-slow) var(--ease);
+    --page-h1: var(--fs-h1);
+    --kpi-value: var(--fs-kpi);
+}
+
+/* ===========================================================================
+   TRI ŠKÁLY HUSTOTY — stampuje ich controls.js na :root ako data-density
+   ===========================================================================
+   Bez atribútu = „cozy" (predvolená, zhodná s dnešným vzhľadom do pixela).
+   Nižšie sú len ODCHÝLKY: token, ktorý sa medzi škálami nelíši, sa tu
+   nepíše — inak by sa hodnota zdvojila a jedna z kópií by zastarala.
+   --------------------------------------------------------------------------- */
+:root[data-density="comfortable"] {
+    --card-pad: var(--sp-3);              /* 16 → 24 */
+    --card-pad-row: var(--sp-2);          /* 12 → 16 */
+    --row-pad-y: var(--sp-2h);            /*  8 → 12 */
+    --row-pad-x: var(--sp-2h);            /* 10 → 12 */
+    --section-gap: var(--sp-4);           /* 24 → 32 */
+    --gutter: var(--sp-3);                /* 20 → 24 */
+    --kpi-cols: 200px;
+    --dash-cols: 320px;
+    --rec-cols: 720px;
+    --card-cols: 340px;
+}
+:root[data-density="compact"] {
+    --card-pad: var(--sp-2h);             /* 16 → 12 */
+    --card-pad-row: var(--sp-1);          /* 12 →  8 */
+    --row-pad-y: var(--sp-0);             /*  8 →  4 */
+    --row-pad-x: var(--sp-1);             /* 10 →  8 */
+    --section-gap: var(--sp-2);           /* 24 → 16 */
+    --gutter: var(--sp-2);                /* 20 → 16 */
+    --kpi-cols: 140px;
+    --dash-cols: 240px;
+    /* 420px je hodnota, ktorú nález R10 vypočítal: na 1920 vyjdú štyri stĺpce
+       namiesto dvoch, a 25-znakový titulok Denníka sa doňho ešte zmestí. */
+    --rec-cols: 420px;
+    --card-cols: 260px;
 }
 
 /* Dark theme — tokens are the only switch point, no selector renames.
@@ -428,7 +611,6 @@
     --muted-strong: #b9c7c4;
     --on-accent: #0e1413;
     --accent-300: #d0b8f8;
-    --accent-400: #d0b8f8;
     --accent: #c4a2f5;
     /* --accent-600 je (po prepnutí textových miest na --accent-ink) už LEN
        hover/active VÝPLŇ. Na tmavej téme preto ROZSVECUJE, nie stmavuje: tmavšia
@@ -487,6 +669,13 @@
     --cert-hypoteza-soft: rgba(216, 184, 120, .16);
     --cert-pasca-soft: rgba(240, 117, 117, .16);
     --cert-none-soft: rgba(154, 161, 173, .14);
+    /* Na tmavej téme sú základné hodnoty ako text v poriadku (6,26–9,21:1 na tinte
+       badge), takže ink je tá istá farba — presne ako pri --success/--danger/--warn-ink.
+       Tmavej sa tu nedotýkame; pád je výhradne na svetlej. */
+    --cert-overene-ink: var(--cert-overene);
+    --cert-hypoteza-ink: var(--cert-hypoteza);
+    --cert-pasca-ink: var(--cert-pasca);
+    --cert-none-ink: var(--cert-none);
 
     /* heat ramp — dark cells climb from a low neutral to bright accent amethyst */
     --heat-0: #28232c;
@@ -501,6 +690,17 @@
    --------------------------------------------------------------------------- */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Fokus je vidieť VŠADE, na jednom mieste. Do 21. 8. 2026 to bolo 32 znak-po-znaku
+   rovnakých pravidiel po celom súbore a jedno z nich bolo `button:focus-visible`,
+   takže `<a class="ghost">` v detaile behu nedostal prsteň vôbec (audit meral
+   1,08:1). Špecificita 0,1,0 je zámer: každé špecifickejšie pravidlo nižšie
+   (#brand-core, input, slider) ho ďalej prebíja bez zásahu.
+   `border-radius` tu ZÁMERNE NIE JE, hoci console.css ho v tom istom pravidle má:
+   selektor `button` má špecificitu 0,0,1, takže pseudotrieda 0,1,0 ho prebije bez
+   ohľadu na poradie a --r-sm by prepísal --r-md každému obyčajnému tlačidlu
+   v okamihu fokusu. */
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
 html, body { height: 100%; overflow: hidden; }
 
 body {
@@ -511,8 +711,27 @@ body {
     line-height: var(--lh-base);
     /* Kánon rodiny Aura: tabular-nums GLOBÁLNE. Doteraz to bolo dopísané na ~15
        jednotlivých miestach, takže čísla v zoznamoch a čipoch (počty, dátumy,
-       „× 3") pri zmene hodnoty poskakovali do strán. Jedna deklarácia tu drží
-       celú appku a lokálne opakovania sú od teraz len zbytočné, nie potrebné. */
+       „× 3") pri zmene hodnoty poskakovali do strán.
+
+       POZOR — do 21. 8. 2026 tu stálo „jedna deklarácia tu drží celú appku
+       a lokálne opakovania sú od teraz len zbytočné, nie potrebné". Nález R2 tú
+       vetu vyvrátil MERANÍM a je to presne ten druh tvrdenia, na aké tento
+       projekt už raz naletel. Deklarácia na `body` sa síce dedí, ale
+       NEDOSAHUJE dve triedy prvkov:
+
+       1. **form controls** — UA `font` shorthand na <button>/<input>/<select>/
+          <textarea> prepíše celý `font`, teda aj `font-variant-numeric`, na
+          `normal`. A dátové riadky tejto appky sú <button> (Denník `.record`,
+          Knižnica `.lib-skill`, číselné readouty). Zmerané 20. 8. 2026:
+          **3255 prvkov v 19 podpisoch malo `normal`.**
+       2. **plátno (canvas)** — `ctx.font` je vlastný kreslovací kontext, CSS
+          dedičnosť doňho nevedie vôbec. Číslice v grafe si tabulárnosť musí
+          zabezpečiť sama.
+
+       Opravné pravidlo je preto v sekcii „Číselné readouty v dátových riadkoch"
+       na konci súboru. A dôsledok, ktorý sa nesmie stratiť: lokálne opakovania
+       `font-variant-numeric` sa NEMAŽÚ paušálne — tri zo štrnástich nie sú
+       inertné a sú jediné, čo tie miesta drží. */
     font-variant-numeric: tabular-nums;
     user-select: none;
     -webkit-font-smoothing: antialiased;
@@ -520,6 +739,20 @@ body {
 }
 
 .hidden { display: none !important; }
+
+/* Text len pre čítačky obrazovky (ARIA live oblasti, popisky ikonových tlačidiel).
+   Do 21. 8. 2026 to bola utilita, ktorú mala len konzola. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
 
 .ms {
     font-family: 'Material Symbols Rounded';
@@ -671,8 +904,6 @@ body:not([data-screen="graf"]) #mind { visibility: hidden; }
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 #local-chip .lc-close:hover { background: var(--hover-fill); color: var(--text); }
-#local-chip .lc-depth:focus-visible,
-#local-chip .lc-close:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 body.ambient #local-chip { opacity: 0; pointer-events: none; transition: opacity var(--dur-ambient) var(--ease); }
 
 /* ---------------------------------------------------------------------------
@@ -684,7 +915,9 @@ button {
     border: 1px solid var(--border);
     border-radius: var(--r-md);
     padding: var(--sp-1) 12px;
-    min-height: 32px;
+    /* Zásahová plocha. Token drží 32 px na VŠETKÝCH škálach hustoty — kompaktné
+       zobrazenie zhusťuje priestor medzi prvkami, nie klikaciu plochu. */
+    min-height: var(--control-h);
     font-size: var(--fs-body);
     font-weight: var(--fw-medium);
     font-family: var(--font);
@@ -700,7 +933,6 @@ button {
 }
 button:hover { background: var(--hover-fill); border-color: var(--border-strong); }
 button:active { background: var(--accent-soft); transition-duration: var(--dur-press); }
-button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 button:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
 
 /* Accent-filled primary action */
@@ -721,6 +953,9 @@ button.primary:disabled { background: rgba(var(--accent-rgb), .35); border-color
    ak ho nesie odkaz, musí vyzerať rovnako. */
 button.ghost, a.ghost { background: none; border: none; color: var(--muted); }
 button.ghost:hover, a.ghost:hover { background: var(--accent-softer); color: var(--text); }
+/* Odkaz nemá základ `button`, takže mu chýba aj radius — bez neho je hoverová
+   výplň aj globálny fokusový prsteň ostrý štvorec. */
+a.ghost { border-radius: var(--r-sm); }
 
 /* Quiet destructive */
 button.danger {
@@ -745,7 +980,6 @@ button.close {
 }
 button.close:hover { background: var(--hover-fill); color: var(--text); border-color: transparent; }
 button.close:active { background: var(--accent-soft); }
-button.close:focus-visible { box-shadow: var(--focus-ring); }
 
 /* ---------------------------------------------------------------------------
    LEFT RAIL (#rail) — crisp white slab, gold breathing core, amethyst active-pill
@@ -898,7 +1132,6 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
 }
 #rail .rail-group :is(button, a):hover { background: var(--hover-fill); color: var(--text); }
 #rail .rail-group :is(button, a):active { background: var(--accent-soft); }
-#rail .rail-group :is(button, a):focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Active state — len akcent (ikona + text + pill), bez výplne a bez prstenca */
 #rail .rail-group :is(button, a).active { color: var(--accent); }
 #rail .rail-group :is(button, a).active:hover { background: var(--hover-fill); }
@@ -998,7 +1231,6 @@ button.close:focus-visible { box-shadow: var(--focus-ring); }
     color: var(--muted);
 }
 #breadcrumb .crumb:hover { background: var(--hover-fill); color: var(--text); }
-#breadcrumb .crumb:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Aktuálne miesto je jediná vec, ktorú hlavička hovorí o obsahu (mimo Grafu je to
    názov obrazovky), takže má váhu — pri 12 px vedľa stavového čipu sa strácalo. */
 #breadcrumb .current {
@@ -1184,7 +1416,7 @@ input[type="range"]::-webkit-slider-thumb:hover,
 input[type="range"]::-webkit-slider-thumb:active { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .16); }
 input[type="range"]::-moz-range-thumb:hover,
 input[type="range"]::-moz-range-thumb:active { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .16); }
-input[type="range"]:focus-visible { outline: none; }
+input[type="range"]:focus-visible { outline: none; box-shadow: none; }   /* prsteň nesie thumb nižšie, nie celé pole */
 input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .30); }
 input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .30); }
 input[type="range"]:disabled { opacity: .5; }
@@ -1241,7 +1473,6 @@ button.switch:hover { border-color: var(--border-strong); background: var(--hove
 button.switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
 button.switch[aria-checked="true"]:hover { background: var(--accent-600); border-color: var(--accent-600); }
 button.switch[aria-checked="true"]::after { transform: translateX(14px); }
-button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---------------------------------------------------------------------------
    BADGE + SWATCH (node-type identity via colored dot, never amethyst chrome)
@@ -1283,7 +1514,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .stat-row {
     display: flex; align-items: center; justify-content: space-between;
     font-size: var(--fs-body);
-    padding: var(--sp-1) 10px;
+    padding: var(--row-pad-y) var(--row-pad-x);
     border-radius: var(--r-md);
 }
 .stat-row .val { color: var(--text); font-weight: var(--fw-semibold); }
@@ -1291,7 +1522,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .legend-row {
     display: flex; align-items: center; gap: 10px;
     font-size: var(--fs-body);
-    padding: var(--sp-1) 10px;
+    padding: var(--row-pad-y) var(--row-pad-x);
     border-radius: var(--r-md);
     color: var(--text-secondary);
 }
@@ -1323,7 +1554,7 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .search-item {
     display: flex; align-items: center; gap: 10px;
-    padding: var(--sp-1) 10px;
+    padding: var(--row-pad-y) var(--row-pad-x);
     border-radius: var(--r-md);
     cursor: pointer;
     font-size: var(--fs-body);
@@ -1331,7 +1562,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     transition: background var(--dur-fast) var(--ease);
 }
 .search-item:hover { background: var(--hover-fill); }
-.search-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .search-item .sub { color: var(--muted); font-size: var(--fs-caption); margin-left: auto; }
 
 /* Fulltext results — mono uppercase divider + playbook rows */
@@ -1358,13 +1588,12 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     width: 100%; text-align: left;
     background: none; border: none;
     border-radius: var(--r-md);
-    padding: var(--sp-1) 10px;
+    padding: var(--row-pad-y) var(--row-pad-x);
     min-height: auto;
     cursor: pointer;
     transition: background var(--dur-fast) var(--ease);
 }
 .pb-item:hover { background: var(--hover-fill); }
-.pb-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .pb-item .ms { font-size: var(--icon-sm); color: var(--muted); flex-shrink: 0; margin-top: 1px; }
 .pb-item .pb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pb-item .pb-title {
@@ -1413,7 +1642,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* W3b: --accent-600 ako TEXT dával nad --accent-softer 2,5–3,3:1; --accent-ink 6,4:1 */
 .chip:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent-ink); }
 .chip:active { background: var(--accent-soft); transform: scale(.97); }
-.chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* History rows */
 .hist {
@@ -1484,7 +1712,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .sug-add:hover { background: var(--accent-softer); color: var(--accent-ink); }   /* W3b: 2,83:1 → ink */
-.sug-add:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .sug-add:disabled { opacity: .5; pointer-events: none; }
 
 /* ---------------------------------------------------------------------------
@@ -1541,7 +1768,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 #zoomctl button:hover { background: var(--hover-fill); color: var(--text); }
 #zoomctl button:active { background: var(--accent-soft); }
-#zoomctl button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #zoomctl button:disabled { opacity: .4; pointer-events: none; }
 
 /* ---------------------------------------------------------------------------
@@ -1615,7 +1841,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     color: var(--on-accent);
 }
 #prompt-form.has-text button:hover { background: var(--accent-600); border-color: var(--accent-600); }
-#prompt-form button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---------------------------------------------------------------------------
    CHAT LOG (#chat-log) — unified with prompt into one white-glass surface
@@ -1747,7 +1972,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .ctx-x:hover { background: var(--accent-soft); color: var(--accent-ink); }   /* W3b: 2,58:1 → ink */
-.ctx-x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .ctx-clear {
     background: none; border: none;
     color: var(--muted);
@@ -1758,7 +1982,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
     transition: color var(--dur-fast) var(--ease);
 }
 .ctx-clear:hover { color: var(--text); }
-.ctx-clear:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---------------------------------------------------------------------------
    POTVRDZOVACIA KARTA (.suggest-card) — „Zapamätať" v chate (E2)
@@ -1851,7 +2074,6 @@ button.switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .toast .ms { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
 .toast strong { color: var(--text); font-weight: var(--fw-semibold); }
 .toast:hover { border-color: var(--border-accent); background: var(--panel-solid); }
-.toast:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .toast.leaving {
     opacity: 0;
     transform: translateY(var(--motion-shift));
@@ -2388,8 +2610,16 @@ body.ambient #toasts {
 .record:hover { border-left-color: var(--accent); background: var(--surface-2); }
 .record-head { display: flex; align-items: center; gap: var(--sp-1); }
 .rec-ico { font-size: var(--icon-xs); color: var(--accent); flex-shrink: 0; }
-.record-title { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.record-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+/* Riadkovanie je tu deklarované, nie zdedené: `.record` je <button>, takže do
+   21. 8. 2026 bežal celý riadok Denníka na UA `normal` (nález R3). Titulok je
+   TITULOK, teda --lh-title (1,3), nie prózová miera — riadok je jednoriadkový
+   (`nowrap` + ellipsis) a prózové 1,5 by ho len zvýšilo. Výšku riadku aj tak
+   určuje `.tag` v `.record-tags` (11px + 1px padding + 1px rám), nie titulok. */
+.record-title { flex: 1; min-width: 0; font-size: var(--fs-body); line-height: var(--lh-title); font-weight: var(--fw-medium); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* R7: čas záznamu je DÁTA, nie popisok — 11px bola podlaha, na ktorej bolo
+   85,6 % textu appky. 12px (--fs-small) drží hierarchiu voči 13px titulku
+   a `flex-shrink: 0` znamená, že o šírku sa podelí titulok, nie rozloženie. */
+.record-time { font-family: var(--mono); font-size: var(--fs-small); line-height: var(--lh-small); color: var(--muted); flex-shrink: 0; }
 .record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: 6px; }
 
 /* .tag — NEUTRAL at rest (business-clean); amethyst only as --accent / active.
@@ -2463,7 +2693,7 @@ body.ambient #toasts {
    čas) nekráti — pod tým by mriežka len vymenila prázdno za elipsy. */
 .rec-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 640px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--rec-cols)), 1fr));
     gap: var(--sp-1);
     align-items: stretch;
 }
@@ -2547,7 +2777,7 @@ body.ambient #toasts {
     position: relative;
     display: flex; align-items: center; gap: 10px;
     width: 100%;
-    padding: var(--sp-1) 10px;
+    padding: var(--row-pad-y) var(--row-pad-x);
     border-radius: var(--r-md);
     font-size: var(--fs-body);
     color: var(--text);
@@ -2555,7 +2785,6 @@ body.ambient #toasts {
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .tree-row:hover { background: var(--hover-fill); }
-.tree-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .tree-row.area .t-name { font-weight: var(--fw-medium); }
 .tree-row.dept { padding-left: 28px; color: var(--text-secondary); }
 .tree-row .t-name {
@@ -2603,7 +2832,7 @@ body.ambient #toasts {
 .tree-muted {
     display: flex; align-items: center; justify-content: space-between;
     gap: var(--sp-2);
-    padding: var(--sp-1) 10px;
+    padding: var(--row-pad-y) var(--row-pad-x);
     font-size: var(--fs-body);
     color: var(--muted);
 }
@@ -2768,7 +2997,6 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
     transition: background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
 }
 #legend-areas .legend-area:hover { background: var(--hover-fill); }
-#legend-areas .legend-area:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #legend-areas .legend-area .la-name {
     flex: 1; min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -2880,7 +3108,7 @@ body[data-screen="graf"] #screens { display: none; }
 .screen { display: none; width: 100%; }
 .screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
 
-.screen-head { margin-bottom: var(--sp-3); }
+.screen-head { margin-bottom: var(--section-gap); }
 /* Kánon: nadpis weight ~660, letter-spacing −.025em, veľkosť --fs-h1.
    PÍSMO JE GEIST, nie serif — docs/BRAND-HADES.md §4: „Serif je vzácny, a preto
    významný: len hero metriky. Nadpisy obrazoviek sú Geist." Do 20. 8. 2026 tu bol
@@ -2937,7 +3165,6 @@ body[data-screen="graf"] #screens { display: none; }
     background: var(--accent-soft); color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--border-accent);
 }
-#graph-tools button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---- Cmd-K trigger v hlavičke ---- */
 #app-header .h-right { flex: 0 0 auto; display: flex; align-items: center; }
@@ -2953,7 +3180,6 @@ body[data-screen="graf"] #screens { display: none; }
                 border-color var(--dur-fast) var(--ease);
 }
 #cmdk-trigger:hover { border-color: var(--border-accent); color: var(--text); background: var(--accent-softer); }
-#cmdk-trigger:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #cmdk-trigger .ms { font-size: var(--icon-sm); }
 #cmdk-trigger kbd {
     font-family: var(--mono); font-size: var(--fs-micro);
@@ -3065,12 +3291,11 @@ body[data-screen="graf"] #screens { display: none; }
     transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .today-chip:hover { border-color: var(--border-accent); background: var(--accent-softer); }
-.today-chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Fluidná mriežka — riadok záznamu potrebuje ~640px (názov + značka + čas), tak sa
    šírka doleje ďalším stĺpcom namiesto prázdna medzi názvom a časom. */
 .today-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 640px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--rec-cols)), 1fr));
     gap: 2px var(--sp-1);
     align-items: stretch;
 }
@@ -3105,7 +3330,7 @@ body[data-screen="graf"] #screens { display: none; }
 .lib-count { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
 .lib-skills {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-cols), 1fr));
     gap: var(--sp-2);
     align-items: stretch;
 }
@@ -3121,11 +3346,25 @@ body[data-screen="graf"] #screens { display: none; }
    v jednom pravidle s `outline: none`, takže klávesnicový fokus vyzeral presne ako
    prejdenie myšou — a natívny prstenec bol pritom zmazaný. Farbu si stavy delia,
    ale POLOHU fokusu nesie výhradne --focus-ring, ktorý je kontrastne premeraný
-   (viď docs/BRAND-HADES.md §3). */
-.lib-skill:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.lib-skill-label { font-size: var(--fs-body); font-weight: var(--fw-medium); }
+   (viď docs/BRAND-HADES.md §3). Od 21. 8. 2026 ten prsteň dodáva globálne
+   `:focus-visible` v RESET & BASE, takže tu vlastné pravidlo už netreba. */
+/* Riadkovanie deklarované, nie zdedené (nález R3): `.lib-skill` je <button>,
+   takže celé telo karty Knižnice bežalo na UA `normal`. Prepočet výšky karty je
+   POVINNÁ druhá polovica tejto opravy — bez neho by sa mriežka rozsypala:
+     .lib-skill-label  13px × 1,3 (--lh-title)  = 16,9 px  (bolo ~15,6–16,6)
+     .lib-skill-snip   12px × 1,4 (--lh-small)  = 16,8 px na riadok
+                                                 → 2 riadky (clamp) 33,6 px
+                                                   (bolo ~28,8–30)
+     .lib-skill-meta   .tag drží 11px × --lh-control + 4 px rámu = ~17,2 px
+   Karta teda narastie o ~4–5 px. Je to zámer, nie regresia: dva riadky prózy
+   na 12px pri `normal` boli najtesnejší text v celej appke. Mriežka je
+   `auto-fill` + `align-items: stretch`, takže výšku prevezme celý rad naraz
+   a nič sa nepretŕha; `-webkit-line-clamp: 2` platí ďalej (klipuje na riadky,
+   nie na pixely).
+   Titulok je --lh-title, nie prózová 1,5: je to titulok karty, nie odstavec. */
+.lib-skill-label { font-size: var(--fs-body); line-height: var(--lh-title); font-weight: var(--fw-medium); }
 .lib-skill-snip {
-    font-size: var(--fs-small); color: var(--muted);
+    font-size: var(--fs-small); line-height: var(--lh-small); color: var(--muted);
     overflow: hidden; text-overflow: ellipsis;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
@@ -3144,7 +3383,7 @@ body[data-screen="graf"] #screens { display: none; }
 /* Dnes: "Naposledy si robil na…" — karty sessions */
 .today-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-cols), 1fr));
     gap: var(--sp-2);
     align-items: stretch;
 }
@@ -3158,8 +3397,7 @@ body[data-screen="graf"] #screens { display: none; }
 .today-card-link:hover, .today-card-link:focus-visible {
     border-color: var(--border-accent); background: var(--accent-softer);
 }
-/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
-.today-card-link:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
 .tcl-title {
     font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text);
     overflow: hidden; text-overflow: ellipsis;
@@ -3244,7 +3482,6 @@ body[data-screen="graf"] #screens { display: none; }
     transition: background var(--dur-fast) var(--ease);
 }
 #pack-trigger:hover { background: var(--accent-softer); }
-#pack-trigger:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #pack-trigger .ms { font-size: var(--icon-sm); }
 #pack-count { font-variant-numeric: tabular-nums; }
 
@@ -3328,8 +3565,7 @@ body[data-screen="graf"] #screens { display: none; }
 .dir-tpl:hover, .dir-tpl:focus-visible {
     border-color: var(--border-accent); background: var(--accent-soft); color: var(--text);
 }
-/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
-.dir-tpl:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
 .dir-tpl .ms { font-size: var(--icon-sm); color: var(--accent); }
 
 /* Vstup úlohy + tlačidlo Poskladať */
@@ -3426,7 +3662,7 @@ label.check.dir-check.off { opacity: .5; }
 /* Uložené smernice */
 .dir-saved {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-cols), 1fr));
     gap: var(--sp-1);
 }
 .dir-saved-item {
@@ -3437,8 +3673,7 @@ label.check.dir-check.off { opacity: .5; }
 .dir-saved-item:hover, .dir-saved-item:focus-visible {
     border-color: var(--border-accent); background: var(--accent-softer);
 }
-/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
-.dir-saved-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
 .dir-saved-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .dsi-text { display: flex; flex-direction: column; min-width: 0; }
 .dsi-title { font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3506,7 +3741,7 @@ label.check.dir-check.off { opacity: .5; }
    --------------------------------------------------------------------------- */
 input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
 select {
-    min-height: 34px;
+    min-height: var(--field-h);
 }
 
 /* ---------------------------------------------------------------------------
@@ -3514,7 +3749,7 @@ select {
    --------------------------------------------------------------------------- */
 .dash-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(var(--dash-cols), 1fr));
     gap: var(--gutter);
     margin-bottom: var(--gutter);
     align-items: stretch;          /* zarovnané spodky — ruší dieru pod „Istota" */
@@ -3599,7 +3834,6 @@ select {
     font-variant-numeric: tabular-nums;
 }
 button.hero-action:hover { border-color: var(--accent); }
-button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Prázdna fronta nie je akcia — nesmie vyzerať ako tlačidlo ani kričať akcentom. */
 .hero-action.is-clear {
     background: none;
@@ -3612,7 +3846,7 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
    --------------------------------------------------------------------------- */
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(var(--kpi-cols), 1fr));
     gap: var(--sp-1);
     margin-bottom: var(--gutter);
 }
@@ -3656,18 +3890,19 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
    --------------------------------------------------------------------------- */
 .heat { overflow-x: auto; padding-bottom: var(--sp-0); }
 /* Rozmer buniek počíta charts.js z reálnej výšky kontejnera a píše ho do
-   --heat-cell-w/h; fallback 12px platí, keď JS nebeží (W3b). */
+   --heat-cell-w/h; fallback --chart-cell (12px) platí, keď JS nebeží (W3b).
+   Medzera mriežky bola 3× natvrdo — teraz je to --chart-gap. */
 .heat-grid {
     display: grid;
     grid-auto-flow: column;
-    grid-template-rows: repeat(7, var(--heat-cell-h, 12px));
-    gap: 3px;
+    grid-template-rows: repeat(7, var(--heat-cell-h, var(--chart-cell)));
+    gap: var(--chart-gap);
     width: max-content;
 }
 .heat-cell {
-    width: var(--heat-cell-w, 12px);
-    height: var(--heat-cell-h, 12px);
-    border-radius: max(2.5px, calc(var(--heat-cell-w, 12px) / 5));
+    width: var(--heat-cell-w, var(--chart-cell));
+    height: var(--heat-cell-h, var(--chart-cell));
+    border-radius: max(2.5px, calc(var(--heat-cell-w, var(--chart-cell)) / 5));
     background: var(--heat-0);
 }
 .heat-cell.l1 { background: var(--heat-1); }
@@ -3680,7 +3915,7 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
 .heat-months {
     display: grid;
     grid-auto-flow: column;
-    gap: 3px;
+    gap: var(--chart-gap);
     margin-bottom: var(--sp-0);
     font-family: var(--mono);
     font-size: var(--fs-micro);
@@ -3790,16 +4025,18 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
     font-size: var(--fs-caption);
     letter-spacing: var(--ls-mono);
     white-space: nowrap;
-    color: var(--cert-none);
+    color: var(--cert-none-ink);
     background: var(--cert-none-soft);
 }
 .cert .ms { font-size: var(--icon-2xs); line-height: 1; }
-.cert[data-cert="overene"] { color: var(--cert-overene); background: var(--cert-overene-soft); }
-.cert[data-cert="hypoteza"] { color: var(--cert-hypoteza); background: var(--cert-hypoteza-soft); }
-.cert[data-cert="pasca"] { color: var(--cert-pasca); background: var(--cert-pasca-soft); }
+/* R4: TEXT na tinte badge ide cez -ink, VÝPLŇ zostáva *-soft zo základu.
+   Základné hodnoty dávali nad zloženým pozadím 4,17–4,51:1 na paperi. */
+.cert[data-cert="overene"] { color: var(--cert-overene-ink); background: var(--cert-overene-soft); }
+.cert[data-cert="hypoteza"] { color: var(--cert-hypoteza-ink); background: var(--cert-hypoteza-soft); }
+.cert[data-cert="pasca"] { color: var(--cert-pasca-ink); background: var(--cert-pasca-soft); }
 .cert[data-cert="bez"],
 .cert[data-cert="none"],
-.cert[data-cert="pending"] { color: var(--cert-none); background: var(--cert-none-soft); }
+.cert[data-cert="pending"] { color: var(--cert-none-ink); background: var(--cert-none-soft); }
 /* Icon-only — strips the pill, keeps just the colored glyph */
 .cert.cert--icon {
     padding: 0; gap: 0;
@@ -3882,8 +4119,7 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
 .dtl-card:hover, .dtl-card:focus-visible {
     border-color: var(--border-accent); background: var(--accent-softer);
 }
-/* Fokus nesie --focus-ring, nie farbu — viď poznámku pri .lib-skill. */
-.dtl-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
 .dtl-card .dtl-head {
     display: flex; align-items: baseline; gap: var(--sp-1);
 }
@@ -3927,7 +4163,6 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
     box-shadow: inset 0 0 0 1px var(--border-accent);
     background: var(--accent-softer);
 }
-.queue-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .queue-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .queue-meta {
     display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0) var(--sp-1);
@@ -3948,11 +4183,11 @@ button.hero-action:focus-visible { outline: none; box-shadow: var(--focus-ring);
     border-radius: var(--r-sm);
 }
 .queue-actions button:hover { background: var(--hover-fill); color: var(--text); }
-.queue-actions button.act-verify:hover { color: var(--cert-overene); background: var(--cert-overene-soft); }
+/* R4: ten istý pár ako badge istoty — text na tinte, teda -ink (5,95:1 na paperi) */
+.queue-actions button.act-verify:hover { color: var(--cert-overene-ink); background: var(--cert-overene-soft); }
 /* W3b: --accent-ink (6,4:1) namiesto --accent-600 nad --accent-softer */
 .queue-actions button.act-resolve:hover { color: var(--accent-ink); background: var(--accent-softer); }
 .queue-actions button.act-skip:hover { color: var(--danger); background: var(--danger-soft); }
-.queue-actions button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* DOTYK NA PLÁTNE — gestá si berie graf, nie prehliadač.
    Viazané na obrazovku zámerne: plátno je `position: fixed; inset: 0` POD obsahom,
    takže natvrdo `touch-action: none` na #mind by na dotyku zabilo scrollovanie
@@ -4090,8 +4325,14 @@ button.danger.armed {
    ########################################################################### */
 
 /* ---------------------------------------------------------------------------
-   1) JEDNA KARTA — spoločný základ. --card-pad je lokálny prepínač varianty,
-      nie globálny token (list riadky sú o pol kroku kompaktnejšie než bloky).
+   1) JEDNA KARTA — spoločný základ. --card-pad je od vlny hustoty token v
+      :root (dosiahnuteľný a prepínateľný cez data-density); tu zostáva len
+      VARIANTA pre zoznamové riadky, ktoré sú o pol kroku kompaktnejšie než
+      dashboardové bloky.
+      Prečo sa základ presunul: kým bol deklarovaný len tu, na `:root` sa
+      `var(--card-pad)` nedalo dosiahnuť a prepínač hustoty nemal čo prepnúť.
+      Presun je inertný — overené, že žiadna z týchto kariet nie je vnorená
+      v inej (inak by dedila padding rodiča namiesto vlastného).
    --------------------------------------------------------------------------- */
 .today-card,
 .today-card-link,
@@ -4104,11 +4345,10 @@ button.danger.armed {
 .dir-group,
 .dir-preview-wrap,
 .dir-saved-item {
-    --card-pad: var(--sp-2);
     padding: var(--card-pad);
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: var(--r-md);
+    border-radius: var(--card-radius);
     box-shadow: none;
     /* Všetok text v karte vľavo. UA štýl <button> nesie align-items/text-align
        center — to centrovalo krátke popisky a v tej istej karte mieša zarovnania
@@ -4116,11 +4356,13 @@ button.danger.armed {
     text-align: left;
 }
 
-/* Zoznamové riadky — kompaktnejší vnútorný priestor než dashboardové bloky */
+/* Zoznamové riadky — kompaktnejší vnútorný priestor než dashboardové bloky.
+   Varianta prepisuje --card-pad hodnotou svojho stupňa; oba stupne sú v :root,
+   takže hustota mení oba naraz a ich vzájomný pomer zostáva. */
 .lib-skill,
 .record,
 .dtl-card,
-.dir-saved-item { --card-pad: var(--sp-2h); }
+.dir-saved-item { --card-pad: var(--card-pad-row); }
 
 /* Karty so stĺpcovým obsahom — deti na celú šírku karty (ruší UA centrovanie).
    .kpi-card tu už NIE JE: je to jednoriadkový strip so zarovnaním na účiaru
@@ -4179,7 +4421,7 @@ button.danger.armed {
 #directive-body {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-3);
+    gap: var(--section-gap);
 }
 #dnes-body > .today-line,
 #dnes-body > .kpi-grid,
@@ -4232,7 +4474,7 @@ button.danger.armed {
 .dtl-card .dtl-text,
 .dtl-card .dtl-reason,
 .queue-text,
-.dir-preview.md-body > * { max-width: 72ch; }
+.dir-preview.md-body > * { max-width: var(--measure-prose); }
 
 /* ---------------------------------------------------------------------------
    5) ROZHODNUTIA — mesiac je skupina, rozhodnutia vnútri mesiaca tečú do
@@ -4338,7 +4580,6 @@ button.danger.armed {
                 border-color var(--dur-fast) var(--ease);
 }
 #btn-up:hover { background: var(--accent-softer); border-color: var(--border-accent); color: var(--accent); }
-#btn-up:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---- Predvoľby (#presets) — 4 pomenované sady namiesto 30 slidrov ---- */
 #presets {
@@ -4370,13 +4611,53 @@ button.danger.armed {
     color: var(--muted);
 }
 #presets .preset:hover { border-color: var(--border-accent); background: var(--accent-softer); }
-#presets .preset:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #presets .preset.active {
     background: var(--accent-soft);
     border-color: var(--border-accent);
     box-shadow: inset 0 0 0 1px var(--border-accent);
 }
 #presets .preset.active .p-name { color: var(--accent); font-weight: var(--fw-semibold); }
+
+/* ---- Hustota (#density) — segmentovaný ovládač troch škál ----
+   Prečo segmentovaný a nie prepínač alebo select: sú to tri stavy jednej osi
+   (voľne → cozy → nahusto) a ich poradie nesie význam. Prepínač zvládne dva,
+   select poradie skryje do rozbaľovacieho okna.
+   Vizuálny jazyk je zhodný s #presets (surface-2 papier, akcentový aktívny
+   stav), ale segmenty zdieľajú rám — sú to stupne, nie štyri samostatné sady.
+   Zásahová plocha zostáva na --control-h; kánon akcentu platí (aktívny stav je
+   amethyst, nikdy zlatá). */
+/* Popisok patrí k ovládaču pod ním, nie k ďalšiemu riadku — .switch-row má
+   medzeru dimenzovanú pre dvojicu popisok+prepínač na jednom riadku. */
+#density-row { margin-bottom: var(--sp-0); }
+#density {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin-bottom: var(--sp-2);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    overflow: hidden;
+}
+#density .dens {
+    min-height: var(--control-h);
+    padding: var(--sp-1) var(--sp-0);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+/* Vlások medzi segmentmi — nie plný rám, aby ovládač zostal jeden predmet */
+#density .dens + .dens { box-shadow: inset 1px 0 0 var(--border); }
+#density .dens:hover { background: var(--accent-softer); color: var(--accent-ink); }
+#density .dens[aria-checked="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-weight: var(--fw-semibold);
+}
+#density .dens:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .preset-state {
     margin: 0 0 var(--sp-2);
@@ -4424,7 +4705,6 @@ button.danger.armed {
 }
 #settings-advanced[open] > summary::before { transform: rotate(45deg); }
 #settings-advanced > summary:hover { color: var(--text); }
-#settings-advanced > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 #settings-advanced > summary .adv-title {
     font-family: var(--mono);
     font-size: var(--fs-caption);
@@ -4447,9 +4727,35 @@ button.danger.armed {
    3255 prvkov v 19 podpisoch malo `normal`, po tejto jednej deklarácii 0.
    Tvrdenie „globálne to rieši `body` a lokálne opakovania sú inertné" teda neplatilo
    — a 3 zo 14 lokálnych opakovaní nie sú inertné, takže sa NEMAŽÚ.
-   `font: inherit` sa použiť nedá: `button.record` by preskočil z 13 na 14 px. */
+   `font: inherit` sa použiť nedá: `button.record` by preskočil z 13 na 14 px.
+
+   `line-height` má ten istý koreň a je to nález R3: shorthand ho na form
+   controls tiež resetuje, takže 48 podpisov / 13 160 prvkov bežalo na UA
+   `normal` — hodnotu, ktorú nikto nedeklaroval a ktorá závisí od metrík fontu.
+   Deklarujeme ju teda nahlas.
+
+   ALE NIE ako `line-height: inherit`, hoci to nález navrhoval. Zdedená by bola
+   --lh-base (1,5) a to je miera PRÓZY: na jednoriadkovom ovládacom prvku by
+   13px text dal 19,5 px riadok, s 16 px paddingu 35,5 px, teda +3,5 px na
+   každom tlačidle appky — hlavičku vrátane, a jej výšku číta plátno z
+   --header-h. To by nebola oprava čitateľnosti, ale nafúknutie chrómu, presne
+   proti nálezom R6/R10.
+   Sú to teda dve roly a obe sú pomenované: chróm drží --lh-control (hodnota
+   zvolená tak, aby sedela pri UA `normal`, viď komentár pri tokene), zatiaľ čo
+   text, ktorý v ovládacom prvku NESIE DÁTA (telá kariet Knižnice, titulky
+   riadkov Denníka, `textarea` s --lh-prose), má svoj stupeň deklarovaný
+   pri sebe. */
 button, input, select, textarea {
     font-variant-numeric: inherit;
+}
+/* `textarea` v tomto zozname ZÁMERNE nie je: svoju prózovú mieru
+   (`line-height: var(--lh-prose)`) má deklarovanú pri sebe v sekcii
+   INPUTS / TEXTAREA / LABELS, teda VYŠŠIE v súbore — a pri rovnakej
+   špecificite (0,0,1) by ju tento blok prebil a zo composera aj z popisu uzla
+   by urobil tesne nasadené riadky. Toto je presne ten druh tichej regresie,
+   ktorá vznikne „dopísaním jednej vlastnosti do existujúceho zoznamu". */
+button, input, select {
+    line-height: var(--lh-control);
 }
 
 /* ==========================================================================
@@ -4497,19 +4803,25 @@ button, input, select, textarea {
 .run-prompt {
     margin: 0;
     /* Zmerané 260 znakov na riadok, teda 2,9× nad čitateľnou hranicou ~90.
-       `ch` a nie px: strop sa má držať znakov, nie šírky okna. */
-    max-width: 90ch;
+       `ch` a nie px: strop sa má držať znakov, nie šírky okna.
+       Hodnota je odteraz --measure (rovnaké 90ch, len pomenované) — R8 žiadal
+       token, aby druhý odstavec nezaviedol druhú pravdu. */
+    max-width: var(--measure);
     color: var(--text);
 }
 
 /* Cena behu. `celkom` je wall clock a obsahuje čas, kým sa človek rozhodoval
    o zápise; `tok/s` je z generovacieho času správ. Sú to dva rôzne údaje, preto
    stoja vedľa seba a majú vlastné popisky — nie jedno číslo, ktoré klame. */
+/* R7: cena behu je DÁTOVÝ riadok (tokeny, trvanie, tok/s), nie popisok — patrí
+   nad 11px podlahu. 12px, nie 13px: číslo v `.run-metric b` má zostať o stupeň
+   tichšie než `.run-prompt`, aby zadanie zostalo hlavným textom karty. */
 .run-cost {
     display: flex; flex-wrap: wrap; gap: var(--sp-3);
     margin-top: var(--sp-2);
     color: var(--muted);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
 }
 
 .run-metric b {
@@ -4521,6 +4833,10 @@ button, input, select, textarea {
 
 .run-error {
     margin: var(--sp-2) 0 0;
+    /* R8: hlásenie chyby je odstavec prózy a dosiaľ nemalo strop vôbec — na
+       2560 px tečie na celú šírku obrazovky. Rovnaká miera ako .run-prompt,
+       aby zadanie a jeho chyba stáli v jednom stĺpci. */
+    max-width: var(--measure);
     color: var(--danger-ink);
     font-size: var(--fs-small);
 }
@@ -4545,11 +4861,22 @@ button, input, select, textarea {
 
 .run-step {
     display: grid;
-    grid-template-columns: 5.5rem 1fr;
+    /* R7: 5,5rem = 88 px, a to je pri --fs-caption v Geist Mono ~13 znakov —
+       `.run-step-who` má `overflow-wrap: anywhere`, takže dlhšie meno roly sa
+       ticho zlomilo doprostred slova. 7rem = 112 px nesie ~17 znakov, čím
+       stĺpec prestane lámať a zostane popisokom, nie hádankou. Textový stĺpec
+       stráca 24 px; jeho mieru drží `--measure` na `.run-prompt`/`.run-error`,
+       nie táto mriežka. */
+    grid-template-columns: 7rem 1fr;
     gap: var(--sp-2);
     align-items: start;
 }
 
+/* Toto ZÁMERNE zostáva na 11px a bez vlastnej prokládky: je to popisok stĺpca
+   (kto ťah povedal), nie dáta, a `.dtl-card.run-card` je <article>, nie
+   <button> — riadkovanie sem teda dedičnosť z `body` donesie a deklarovať ho
+   znova by len posunulo pixely bez zisku. R7 žiadal rozšíriť stĺpec, nie
+   zväčšiť písmo. */
 .run-step-who {
     color: var(--muted);
     font-family: var(--mono);
@@ -4559,12 +4886,17 @@ button, input, select, textarea {
 
 .run-step-text { min-width: 0; }
 
+/* R7: argumenty toolu sú TECHNICKÝ VÝPIS, teda dáta, a 11px je pod podlahou
+   čitateľnosti pre mono s `overflow-wrap: anywhere`. 12px (--fs-small) je
+   podlaha, ktorú nález žiadal; 13px si drží `.run-diff`/`.run-result` nižšie,
+   takže hierarchia „argument < výstup" zostáva. */
 .run-args {
     display: block;
     margin-top: var(--sp-1);
     color: var(--text-secondary);
     font-family: var(--mono);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
     overflow-wrap: anywhere;
 }
 

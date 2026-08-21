@@ -27,6 +27,39 @@ ich po sebe by znamenalo trikrát otvárať `mind.css` a `console.css`:
 | R-3 | **Desktop appka: natívny shell.** Odporúčam **Electron**, nie Tauri — viď §2. | Používateľ zvolil natívny shell (tray, notifikácie, inštalátor, vlastný title bar). |
 | R-4 | **Rozsah: všetko okrem vedomých výnimiek.** Nálezy, ktoré si audity samé označili v sekciách „Čo vedome NEROBIŤ", sa nerobia a v reporte sa vymenujú. | 30–35 agentov je práve na tento rozsah. |
 
+## 1b. Rozhodnutia dávky 2 (21. 8. 2026, po vlne 1)
+
+| # | Rozhodnutie | Poznámka |
+|---|---|---|
+| R-5 | **Strop spendu 3,5 M tokenov.** Pri priblížení sa stropu beh zastaví a nahlási, čo je hotové. | Vlna 1 spotrebovala 818k proti odhadu 180k, pretože štyria agenti čítali ten istý 160 kB auditný korpus. Náprava: od vlny 2 agenti čítajú `docs/sprint-2026-08-21/TRIAZ-*.md` a majú `docs/audit/*` zakázané. |
+| R-6 | **A8 sa zlučuje ÚPLNE.** `S.pack` (Balík pre Claude Code) a kontext doku splynú do jedného mechanizmu. | **NEVRATNÁ ZMENA VÝZNAMU OVLÁDAČA.** `packBtn()` na obrazovkách Dnes, Denník a Knižnica dnes kopíruje balík do schránky; po zlúčení bude plniť kontext chatu. Upozornil som na to a používateľ to schválil vedome. |
+
+### Rozhodnutia, ktoré som spravil sám (reverzibilné, kontrakt ich nekryl)
+
+Osem otvorených otázok z `ROZHRANIE-PROFILY-A-DOK.md`:
+
+1. **CSS doku: variant A.** Nový `public/css/charon.css`, načítaný oboma stránkami.
+   Tretia kópia `.charon-*` pravidiel v `mind.css` by bola presne tá duplicita, ktorú
+   táto vlna platí. Vlastníctvo sa rieši poradím: vlna 4 beží **po** vlne 2, takže
+   `console.css` je vtedy už usadený.
+2. **Dok NEDOSTANE prepínač v Nastaveniach.** `#chat-toggle` existoval len preto, že
+   chat bez API kľúča nefungoval. Dok beží lokálne; prepínač „vypni funkčnú vec" je
+   len ďalší ovládač. Otvára sa klávesou a tlačidlom.
+3. **Žiadny `graph_filter`.** Len `graph_focus`. Profil `graph` tým zostáva na 1246
+   tokenov. Filtrovanie typov a `minWeight` je samostatná úloha, nie súčasť tohto šprintu.
+4. **Runy dostanú stĺpec `tool_profile`**, nie štvrtý filter.
+5. **`SystemPrompt` BUDE poznať profil.** Dnes tvrdí „jediná cesta k pamäti aj
+   súborom sú tvoje tooly", čo je v profile `graph` lož — model môže sľúbiť čítanie
+   súboru, ktorý nemá čím prečítať. Prompt, ktorý sľubuje neexistujúcu schopnosť, je
+   tá istá chyba ako prázdny stav, ktorý sľuboval „vidí pamäť aj súbory".
+6. **Ikony sú zmerané** a odpoveď je v `BASELINE-MERANIA.md §1`: 37 zo 41 je
+   v subsete, štyri chýbajúce sa nikde nekreslia. Dok preberá `iconFor()` bez zmien.
+7. **Rozdelenie vlny 4 na štyroch agentov** podľa návrhu, so vynútenou sekvenčnosťou:
+   agent 4 (mazanie mŕtvej cesty) nesmie začať, kým agent 3 nedoloží zmerané
+   kritériá §5/7 a §5/9. Najprv dok funguje, potom sa maže `chat.js`.
+8. **Profily:** `memory` 1529 · `files` 1304 · `graph` 1246 · `full` 2541 tokenov.
+   Všetky pod dnešným stropom ~2,6k, takže kritérium č. 8 je dosiahnuteľné.
+
 ## 2. Electron vs. Tauri — rozhodnutie s dôvodom
 
 Vyberám **Electron** a je to reverzibilné (shell je aditívny, `bin/hades.cmd` zostáva).

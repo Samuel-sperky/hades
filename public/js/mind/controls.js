@@ -18,6 +18,59 @@ import { $, applyOpts, blip, busy, setOpt, syncSlider } from './util.js';
 // Knižnica — debounce timer filtra (jediné použitie je handler nižšie v setupControls).
 export let libraryTimer = null;
 
+/* ---------- HUSTOTA ZOBRAZENIA (data-density) ----------
+
+   Tri škály jednej osi: `comfortable` → `cozy` (predvolená) → `compact`.
+   Rozmerové tokeny pre každú z nich sú v mind.css (:root a dva bloky
+   :root[data-density=...]); tu je len stampovanie atribútu a perzistencia.
+
+   Prečo je `cozy` reprezentovaná NEPRÍTOMNOSŤOU atribútu: predvolená škála má
+   byť to, čo dá `:root` bez akejkoľvek podmienky — inak by existovali dve
+   miesta, kde je napísané, ako appka vyzerá bez voľby, a jedno z nich by
+   zastaralo. Ukladá sa napriek tomu, aby sa vedomá voľba „cozy" odlíšila od
+   „nikdy som nevyberal".
+
+   Pozor na pravidlo cyklických importov tohto grafu: funkcie sa exportujú ako
+   hoistované `export function`, nikdy ako `export const foo = () => {}`. */
+export const DENSITIES = ['comfortable', 'cozy', 'compact'];
+
+// Vzor initialTheme() z theme.js — počiatočný stav sa ČÍTA, neháda sa.
+export function initialDensity() {
+    const v = localStorage.getItem('hades.density');
+    return DENSITIES.includes(v) ? v : 'cozy';
+}
+
+export function setDensity(name) {
+    const d = DENSITIES.includes(name) ? name : 'cozy';
+    const root = document.documentElement;
+    if (d === 'cozy') delete root.dataset.density;
+    else root.dataset.density = d;
+    localStorage.setItem('hades.density', d);
+    syncDensityButtons(d);
+}
+
+export function syncDensityButtons(name) {
+    const d = name || (document.documentElement.dataset.density || 'cozy');
+    document.querySelectorAll('#density .dens').forEach((b) => {
+        b.setAttribute('aria-checked', b.dataset.density === d ? 'true' : 'false');
+    });
+}
+
+export function applyInitialDensity() {
+    const d = initialDensity();
+    if (d === 'cozy') delete document.documentElement.dataset.density;
+    else document.documentElement.dataset.density = d;
+}
+
+/* Stamp sa robí pri VYHODNOTENÍ modulu, nie v setupControls(): setupControls
+   beží až po načítaní grafu z /api/mind, takže prvé rámce obrazoviek by sa
+   nakreslili v inej hustote než uložená voľba. controls.js je jeden z prvých
+   modulov, ktoré main.js importuje, čiže je to najskorší bod, ktorý má tento
+   súbor k dispozícii — a je to skôr než setTheme(initialTheme()) v init().
+   Dotýka sa len documentElement a localStorage, žiadneho importovaného
+   bindingu, takže to je bezpečné aj v cykle importov. */
+applyInitialDensity();
+
 /* ---------- W2c: pomenované predvoľby zobrazenia ----------
 
    Panel Nastavení mal 30+ slidrov a prepínačov naraz — hlavný zdroj dojmu
@@ -272,6 +325,29 @@ export function setupControls() {
         syncThemeBtn();
         draw();
     };
+
+    /* Hustota — segmentovaný ovládač. Atribút je už nastampovaný pri
+       vyhodnotení modulu (applyInitialDensity), tu sa len dosynchronizujú
+       tlačidlá a pripojí sa klik. Prekreslenie plátna netreba: hustota mení
+       rozmery DOM obrazoviek, nie tokeny, ktoré číta render.
+       Šípky vľavo/vpravo sú v radiogroup očakávané — bez nich by ovládač
+       vyzeral ako rádiá a ovládal sa ako tri nezávislé tlačidlá. */
+    const densBtns = Array.from(document.querySelectorAll('#density .dens'));
+    if (densBtns.length) {
+        syncDensityButtons();
+        densBtns.forEach((b, i) => {
+            b.onclick = () => setDensity(b.dataset.density);
+            b.onkeydown = (e) => {
+                const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+                    : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+                if (!step) return;
+                e.preventDefault();
+                const next = densBtns[(i + step + densBtns.length) % densBtns.length];
+                setDensity(next.dataset.density);
+                next.focus();
+            };
+        });
+    }
 
     // FÁZA SHELL: chat je schovaný (nefunguje bez API kľúča) — prepínač ho vráti
     const chatBtn = $('chat-toggle');

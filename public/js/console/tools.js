@@ -380,9 +380,13 @@ export function permissionCard(frame) {
     const actions = el('div', 'pc-actions');
 
     [
-        ['allow', 'Povoliť', 'Enter', 'btn-primary'],
-        ['allow_always', 'Povoliť vždy', '', 'btn-ghost'],
-        ['deny', 'Zamietnuť', 'Esc', 'btn-danger'],
+        // Varianty sa menujú tak, ako ich definuje `mind.css` (`button.primary` /
+        // `.ghost` / `.danger`). Do 21. 8. 2026 tu boli `btn-*`, ktoré nedefinuje
+        // ani jeden stylesheet, takže najdôležitejší ovládač appky mal vzhľad
+        // neutrálneho tlačidla. `console.css` na `.pc-btn.primary` už počítal.
+        ['allow', 'Povoliť', 'Enter', 'primary'],
+        ['allow_always', 'Povoliť vždy', '', 'ghost'],
+        ['deny', 'Zamietnuť', 'Esc', 'danger'],
     ].forEach(([decision, label, key, cls]) => {
         const btn = el('button', `pc-btn ${cls}`);
         btn.type = 'button';

@@ -19,6 +19,14 @@
 /* Šírka toku. Bola 5× natvrdo `820px` (tok, bublina, composer, nápoveda,
    paleta) a jediná z tých piatich hodnôt, ktorá sa dala zmeniť samostatne, bola
    chyba. 820 z 1920 px je 42,7 % — miera riadku, ktorá sa číta, nie šírka okna.
+
+   Do 21. 8. 2026 mal tento token NULA volajúcich a tých päť literálov žilo
+   ďalej, takže o šírke toku existovalo šesť právd namiesto piatich — pol opravy
+   bolo horšie než žiadna. Dnes ho volá všetkých päť miest: `.tool-call`/
+   `.perm-card`, `.console-body .msg`, `.composer-row`, `#composer-hint`
+   a `#slash-palette`. Jediný literál `820px` v pravidlách je definícia nižšie —
+   `grep -n 820px` smie ukázať už len tento komentár a ju.
+
    Patrí to do `:root` v mind.css k ostatným tokenom; kým je ten súbor v cudzích
    rukách, žije tu — a keď sa presúva, musí zmiznúť ODTIAĽTO, nie vzniknúť
    druhýkrát tam. */
@@ -40,37 +48,52 @@
    JEDEN POMENOVANÝ RESET CHRÓMU TLAČIDIEL
 
    `mind.css` dáva každému bare `<button>` panelové pozadie, rám, zaoblenie,
-   padding, `min-height: 32px` a vlastnú typografiu (r. 667–684). Konzola má
+   padding, `min-height: 32px` a vlastnú typografiu (sekcia BASE BUTTON). Konzola má
    klikacích prvkov, ktoré NIE SÚ tlačidlá v tom vizuálnom zmysle — riadok
    vlákna, hlavička karty nástroja, gombík na spodok — a tie si to celé
    vypínali každý sám: `font: inherit` bolo v tomto súbore 7×,
    `background: transparent` 9×, `border: 0` 4×.
 
-   Preto jeden zoznam selektorov namiesto ôsmich kópií. Stojí ZÁMERNE hore:
-   bloky nižšie si z neho berú, čo im vyhovuje, a čím sa líšia, to si prepíšu —
-   a prepíšu, pretože sú v kaskáde za ním.
+   Preto jeden zoznam selektorov namiesto ôsmich kópií.
+
+   ŠPECIFICITA JE ZÁMERNE 0-0-1, NIE 0-1-0. Prvá verzia tohto resetu bol holý
+   zoznam tried a id, teda presne tá istá špecificita, akú majú bloky nižšie,
+   ktoré si z neho hodnoty prepisujú (`#send` pozadie, `.tr-act` farbu,
+   `.tc-more` rám…). Fungovalo to len vďaka poradiu v zdroji a `w4dup.js` to
+   hlásil ako 14 dvojitých právd — kto by reset presunul nižšie, zhasol by
+   tlačidlá. `:where()` neprispieva špecificitou vôbec, takže `:is(a, button)`
+   dáva presne 0-0-1: dosť na to, aby reset prebil bare `button` z mind.css
+   (rovnaká špecificita, `console.blade.php` načítava console.css druhý), a málo
+   na to, aby ho prebilo KAŽDÉ pravidlo s triedou alebo id nižšie — bez ohľadu
+   na poradie. Všetkých dvanásť selektorov je `<button>` alebo `<a>`, preto
+   `:is(a, button)` nič nevynecháva.
+
+   `cursor: pointer` tu NIE JE: `mind.css` ho dáva každému `<button>` a UA
+   každému `a[href]`.
 
    `min-height` tu NIE JE: `.pc-btn` (tlačidlá potvrdenia zápisu) stojí na
    32 px z mind.css a padding by mu dal 31 px. Kto ho potrebuje zrušiť, ruší si
    ho sám (`.tr-act`).
    --------------------------------------------------------------------------- */
-.rail-top a,
-.rail-top button,
-.rail-retry,
-.tr-open,
-.tr-act,
-#rail-toggle,
-.tc-head,
-.tc-more,
-.pc-btn,
-#send,
-#stop,
-#to-bottom {
+:is(a, button):where(
+    .rail-top a, .rail-top button, .rail-retry, .tr-open, .tr-act,
+    #rail-toggle, .tc-head, .tc-more, .pc-btn, #send, #stop, #to-bottom
+) {
     background: transparent;
-    border: 0;
     color: var(--text);
     font: inherit;
-    cursor: pointer;
+}
+
+/* Rám sa ruší LEN týmto štyrom. Zvyšných osem si ho necháva — buď ho dostávajú
+   z bare `button` v mind.css (`.rail-retry`, `#rail-toggle`, `.tc-more`,
+   `.pc-btn`, `#to-bottom`), alebo si dávajú vlastný (`.tr-act` priehľadný,
+   `.rail-top a` musí explicitne, pretože `<a>` z mind.css nedostáva nič).
+   Do 21. 8. 2026 dostávali `border: 0` všetky a šesť blokov nižšie potom
+   vrátilo presne tú istú hodnotu, akú mind.css dával už predtým — päť z tých
+   šiestich riadkov je preto zmazaných, šiesty (`.rail-top a`) zostal, pretože
+   `<a>` nemá odkiaľ zdediť. */
+button:where(.tr-open, .tc-head, #send, #stop) {
+    border: 0;
 }
 
 #console-app {
@@ -86,25 +109,13 @@
     height: 100vh;
 }
 
-/* Fokus je vidieť VŠADE — konzola sa dá obsluhovať bez myši a potvrdzovanie
-   zápisu je klávesová operácia. */
-.console-body :focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring);
-    border-radius: var(--r-sm);
-}
-
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-    border: 0;
-}
+/* Fokusový prsteň a `.sr-only` BOLI tu a od 21. 8. 2026 sú v mind.css, ktorý sa
+   načítava aj na tejto stránke — takže konzola ich dostáva ďalej a graf ich
+   dostal prvýkrát. Nezdvojujeme ich: dve pravdy o fokuse sú presne to, čo tento
+   šprint platí. `border-radius: var(--r-sm)` z pôvodného pravidla sa NEPRESÚVAL
+   zámerne (mind.css to pri globálnom `:focus-visible` vysvetľuje): pri
+   špecificite 0,1,0 by prepísal `--r-md` každému obyčajnému tlačidlu v okamihu
+   fokusu. Prsteň teraz kopíruje zaoblenie prvku, ktorý ho nesie. */
 
 kbd {
     padding: 1px 5px;
@@ -148,8 +159,13 @@ kbd {
     text-decoration: none;
 }
 
+/* Hover v hlavičke panela je TICHÝ: nesie ho rám a text, nie výplň. Pozadie sa
+   musí vypísať — reset má špecificitu 0-0-1, takže `button:hover` z mind.css
+   (0-1-1) by mu inak podstrčil `--hover-fill`. Do 21. 8. 2026 to držala
+   špecificita starého resetu, teda náhoda, nie rozhodnutie. */
 .rail-top a:hover,
 .rail-top button:hover {
+    background: transparent;
     border-color: var(--border-accent);
     color: var(--accent-ink);
 }
@@ -316,7 +332,6 @@ kbd {
 
 .rail-retry {
     padding: var(--sp-0) 10px;
-    border: 1px solid var(--border);
     border-radius: var(--r-sm);
     color: var(--accent-ink);
     font-size: var(--fs-caption);
@@ -382,9 +397,12 @@ kbd {
     display: none;
     align-items: center;
     padding: var(--sp-0) 6px;
-    border: 1px solid var(--border);
     border-radius: var(--r-sm);
 }
+
+/* Ten istý tichý hover ako v hlavičke panela — prepínač vlákien je jeho dvojča
+   na úzkom okne. Bez tohto riadku by mu `button:hover` z mind.css dal výplň. */
+#rail-toggle:hover { background: transparent; border-color: var(--border-accent); }
 
 #thread-title {
     margin: 0;
@@ -440,9 +458,12 @@ kbd {
     scrollbar-color: var(--scroll-thumb) transparent;
 }
 
+/* `.empty-state` tu ZÁMERNE NIE JE. Bolo, a o 176 riadkov nižšie si dávalo
+   `max-width: 600px` — kto čítal túto skupinu, uveril 820. Prázdny stav má
+   vlastnú, užšiu mieru čítania a drží si ju v jedinom bloku `.empty-state`
+   v sekcii „prázdny stav". */
 .tool-call,
-.perm-card,
-.empty-state { max-width: 820px; margin-left: auto; margin-right: auto; }
+.perm-card { max-width: var(--stream-w); margin-left: auto; margin-right: auto; }
 
 /* Znak v prázdnom stave — jediné miesto v Charónovi, kde má značka priestor.
    Dýchanie sem NEIDE: prázdny stav je ticho pred prácou, nie stav vedomia.
@@ -477,7 +498,7 @@ kbd {
    inak by odpovedi modelu zostal cudzí padding a `pre-wrap`, ktorý v markdown
    bubline pridáva prázdne riadky medzi blokmi. */
 .console-body .msg {
-    max-width: 820px;
+    max-width: var(--stream-w);
     margin: 0 auto 18px;
     padding: 0;
     border-radius: 0;
@@ -547,11 +568,17 @@ kbd {
 .think-note { color: var(--muted); font-size: var(--fs-body); }
 
 /* Bez pohybu zostáva bublina aj jej veta — signál nesie prítomnosť bubliny,
-   nie pulz. To isté platí pre kostru zoznamu vlákien. */
+   nie pulz. To isté platí pre kostru zoznamu vlákien.
+
+   `tc-pulse` je JEDINÁ nekonečná animácia v celej appke a do 21. 8. 2026 tu
+   nebola krytá vôbec — bežal by teda pulz na stave nástroja aj človeku, ktorý
+   si pohyb výslovne vypol. Stav „beží" nesie text `.tc-state`, nie jeho blikanie,
+   takže jeho farba (`--accent-ink`) zostáva. */
 @media (prefers-reduced-motion: reduce) {
     .think-dot { animation: none; opacity: .65; }
     .sk-row { animation: none; opacity: .7; }
     .tr-acts { transition: none; }
+    .tool-call.running .tc-state { animation: none; }
 }
 
 .msg.system .bubble,
@@ -619,8 +646,11 @@ kbd {
 /* ---------- prázdny stav ---------- */
 
 .empty-state {
+    /* Jediná pravda o šírke prázdneho stavu. `auto` po stranách dávala do
+       21. 8. 2026 skupina `.tool-call, .perm-card, .empty-state` v sekcii toku
+       správ — teraz je centrovanie tu, pri hodnote, ktorú centruje. */
     max-width: 600px;
-    margin-top: 10vh;
+    margin: 10vh auto 0;
     color: var(--text-secondary);
     font-size: var(--fs-base);
     line-height: 1.6;
@@ -664,9 +694,9 @@ kbd {
 .tool-call.error { border-color: var(--danger-border); }
 
 .tc-head {
+    /* `display` sa vypisuje: mind.css dáva `inline-flex`, hlavička karty má byť
+       blokový pás na plnú šírku. `align-items` a `gap` už dáva mind.css. */
     display: flex;
-    align-items: center;
-    gap: var(--sp-1);
     width: 100%;
     padding: var(--sp-1) var(--sp-2h);
     font-size: var(--fs-body);
@@ -686,7 +716,7 @@ kbd {
     border-right: 1.5px solid var(--muted);
     border-bottom: 1.5px solid var(--muted);
     transform: rotate(-45deg);
-    transition: transform .12s ease;
+    transition: transform var(--dur-fast) var(--ease);
 }
 
 .tc-head[aria-expanded="true"] .tc-caret { transform: rotate(45deg); }
@@ -745,7 +775,6 @@ kbd {
 .tc-more {
     margin-top: var(--sp-1);
     padding: 3px var(--sp-1);
-    border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--accent-ink);
     font-size: var(--fs-caption);
@@ -762,8 +791,16 @@ kbd {
     overflow-wrap: anywhere;
 }
 
-.diff .df-add { background: var(--cert-overene-soft); color: var(--cert-overene); }
-.diff .df-del { background: var(--cert-pasca-soft); color: var(--cert-pasca); }
+/* Pridaný a odobraný riadok hovoria „úspech/nebezpečenstvo", nie „overené/pasca":
+   `--cert-*` je istota poznatku v grafe, nie smer zmeny v súbore. Tá výpožička
+   navyše padala pod AA na svetlej téme — `--cert-overene` na svojej tinte dalo
+   4,27:1 a `--cert-pasca` 4,29:1 pri potrebe 4,5. Namerané na `-ink` variantoch
+   (zložené pozadie, svetlá / tmavá): add 5,71 / 5,96, del 6,03 / 4,68. Tinty sú
+   pritom takmer tá istá farba (`--success-soft` na svetlej má proti pôvodnej
+   rgba .12 rozdiel jednotiek RGB, na tmavej je `--danger-soft` bajt za bajtom
+   to isté), takže je to oprava kontrastu, nie prekreslenie diffu. */
+.diff .df-add { background: var(--success-soft); color: var(--success-ink); }
+.diff .df-del { background: var(--danger-soft); color: var(--danger-ink); }
 .diff .df-hunk { color: var(--accent-ink); }
 .diff .df-meta { color: var(--muted); }
 .diff .df-ctx { color: var(--text-secondary); }
@@ -833,11 +870,8 @@ kbd {
    v repe (tools.js). Dva slovníky pre jeden vzhľad sa rozídu pri prvej zmene
    akcentu. Čo tu zostáva, je špecifické pre kartu: `kbd` VNÚTRI tlačidla. */
 .pc-btn {
-    display: inline-flex;
-    align-items: center;
     gap: 6px;
     padding: 7px var(--sp-2h);
-    border: 1px solid var(--border);
     border-radius: var(--r-sm);
     font-size: var(--fs-body);
 }
@@ -868,7 +902,7 @@ kbd {
     display: flex;
     align-items: flex-end;
     gap: var(--sp-1);
-    max-width: 820px;
+    max-width: var(--stream-w);
     margin: 0 auto;
     padding: var(--sp-1) 10px;
     border: 1px solid var(--border);
@@ -913,11 +947,17 @@ kbd {
     overflow-y: auto;
 }
 
+/* Tvar, nie chróm: `display`, `align-items`, `justify-content` dáva bare
+   `button` z mind.css, preto tu nie sú.
+
+   `height: 30px` tu ZOSTÁVA a nie je to duplikát. Plán zlúčenia tvrdil, že je
+   inertné, pretože `min-height: 32px` z mind.css ho prebije — prebije ho len
+   NAHOR. Bez neho je výška `auto`, teda ikona 18 px + 2× 8 px padding z mind.css
+   = 34 px, a composer by narástol o 2 px. Skutočná výška prvku je teda 30×32
+   (nie 30×30); kto chce naozaj 30, musí zrušiť `min-height`, a to patrí
+   k `--control-h` a density prepínaču, nie sem. */
 #send,
 #stop {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     flex: none;
     width: 30px;
     height: 30px;
@@ -930,7 +970,7 @@ kbd {
 #stop { background: var(--danger); color: var(--on-accent); }
 
 #composer-hint {
-    max-width: 820px;
+    max-width: var(--stream-w);
     margin: 8px auto 0;
     color: var(--muted);
     font-size: var(--fs-micro);
@@ -944,12 +984,11 @@ kbd {
     top: -18px;
     left: 50%;
     transform: translateX(-50%);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    /* `display`/`align`/`justify` a rám dáva bare `button` z mind.css. `height`
+       zostáva: `min-height: 32px` ho prebíja len nahor, bez neho by gombík
+       narástol na 34 px. Je to teda 30×32 pilulka, nie kruh. */
     width: 30px;
     height: 30px;
-    border: 1px solid var(--border);
     border-radius: var(--r-pill);
     background: var(--panel-solid);
     box-shadow: var(--elev-1);
@@ -966,7 +1005,7 @@ kbd {
     left: 50%;
     bottom: calc(100% - 8px);
     transform: translateX(-50%);
-    width: min(820px, calc(100% - 2 * var(--sp-2)));
+    width: min(var(--stream-w), calc(100% - 2 * var(--sp-2)));
     max-height: 45vh;
     overflow-y: auto;
     padding: 6px;
@@ -1004,7 +1043,8 @@ kbd {
     white-space: nowrap;
 }
 
-.hidden { display: none !important; }
+/* `.hidden` tu BOLO a bolo to bajt za bajt to isté, čo `.hidden` v mind.css.
+   Oba stylesheety sa načítavajú spolu, takže druhý zápis nikdy nič nezmenil. */
 
 /* Ikony sedia na tom istom subsete ako rail grafu; keď pridáš NOVÚ ikonu,
    subset ju nemá a vykreslí sa ako text — treba regenerovať font. */
@@ -1039,7 +1079,7 @@ kbd {
         bottom: 0;
         width: min(300px, 84vw);
         transform: translateX(-100%);
-        transition: transform .16s ease;
+        transition: transform var(--dur-fast) var(--ease);
         background: var(--panel-solid);
         z-index: 20;
     }
