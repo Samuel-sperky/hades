@@ -242,9 +242,63 @@ Dve rozhodnutia sa počas behu odklonili od §1b a review ich potvrdil ako obhá
 Budget-test skalibrovaný (padne pri raste definície nástroja). `AgentRunner.php`
 nedotknutý.
 
-**Zostáva ako backlog (triáž hotová v `docs/sprint-2026-08-21/TRIAZ-A-P.md`):** IA toky
-A2 (Ctrl+K → prvá položka), A4 (detail Denníka/Kontroly na mieste), A5 (hľadanie
-v Rozhodnutiach), A10 (dok Prehľad → Dnes), A12 (pomenované grupy railu + CMDK nav pre
-Runy/Charón), A15/A17/A18 (smernica ako správa, „Povoliť vždy" v hlavičke, front správ
-počas behu), kopírovanie odpovede/kódu. A P13 prsteň composera — CSS správne, žiada
-re-verifikáciu na čistom loade (merač headless pane zamrzol computed style).
+### Druhé kolo, 24. 8. 2026 — 20 agentov v dvoch vlnách
+
+Po zdvihnutí stropu prišlo druhé kolo na zvyšok backlogu. Rozdelenie **podľa horúcich
+súborov, nie podľa témy**: `mind.css` a `mind.blade.php` píše v každom okamihu len
+jeden agent, koľaje bežia paralelne len keď nemajú spoločný súbor, a dve témy, ktoré
+sa oba dotýkajú horúceho súboru, išli v samostatných vlnách za sebou.
+
+**Vlna 1 — dizajn systém (10 agentov):** zavreté **D3, D4, D7, D8, D11, D12, D15, D16,
+D20, D21, D22, R6, R7, R10, A19**.
+- `kbd` je jedna kresba namiesto piatich; radius všade cez `--r-sm`, žiadny raw `5px`.
+- Druhý papier karty je pomenovaná rola: `--card-bg` (default `--panel`) +
+  `.card--nested`. Základ je `--panel` z **funkčného** dôvodu — je to jediný povrch
+  nesúci sklo, takže karta na `--surface-2` by ticho prestala reagovať na slider
+  priehľadnosti. Zistené pri tom: `--surface-2` je na tmavej téme **svetlejšia** než
+  `--panel`, takže „sunken" je preň nesprávne slovo.
+- `.empty` je základ, `.empty--hero` modifikátor; `.card-empty` zostáva so zdôvodnením.
+- Tokeny podľa role, nie podľa čísla: `--disabled-opacity`,
+  `--accent-disabled-fill/-focus-wash/-hover-wash`.
+- Paleta drží výber raz (`[aria-selected="true"]`, trieda `.on` zanikla); prefix `.tc-`
+  je odzbrojený (konzola má `.tool-*`, dok si drží vlastné `.charon-tc-*`).
+- Kopírovanie odpovede aj blokov kódu, `Ctrl+N` v `#composer-hint`.
+- Hustota: `.lib-skill-meta` je jeden `nowrap` riadok — karta Knižnice **151 px → 104 px**
+  zmerané rovnomerne na 1668 kartách. Rez čipov **nie je tichý**: `data-more` sčítava
+  klientsky rez **aj** serverový `tags_more`, takže „+N" nehlási menšie číslo než realita.
+
+**Vlna 2 — IA toky (10 agentov):** zavreté **A2, A3, A4, A10, A12, D9, P6** + Electron
+overenie.
+- Rail má tri pomenované skupiny (TERAZ / ZÁZNAMY / ZNALOSTI); `CMDK_NAV`, `SCREENS`
+  a markup dorovnané v jednom kroku, aby sa tri zoznamy nemohli znova rozísť. **Runy
+  sa konečne dajú nájsť hľadaním.** Charón je v palete ako `location.href`, nie
+  `setScreen` — je to iná plocha na vlastnej URL.
+- `Enter` v Ctrl+K otvára prvý **výsledok**, nie akciu „Vytvor smernicu". Zmerané na
+  dopyte „charon": `items[0]` je stále akcia, ale Enter vyberie uzol.
+- Dok „Prehľad" zanikol; `S` a tlačidlo otvárajú Dnes. S ním zanikla rodina `.metric-*`
+  (D9) — agent správne **odmietol** oživiť `#stats-cards` len preto, aby ho premenoval.
+- Denník a Kontrola otvárajú detail **na mieste** cez jeden `openNodeDetail()`; skok na
+  Graf je sekundárna akcia v pätičke overlayu.
+- Heatmapa nesie dáta aj inak než farbou: `role="img"` so zmeraným súhrnom
+  („365 dní, spolu 26 744 záznamov, najviac 6 256 dňa 20. 8. 2026"), **jeden**
+  fokusovateľný kontejner namiesto 365, `.sr-only` tabuľka po mesiacoch.
+- Hygiena je na Kontrole nad **tým istým** serializérom, ktorý kŕmi `mind_hygiene`
+  (`HygienaScreen`); `McpController::toolHygiene()` sa scvrkol na tri riadky. Ponúka
+  opravu, nie tichý výmaz.
+- **Electron už nie je neoverený:** shell nabootoval reálne proti dvom falošným
+  loopback serverom a zvlášť ako **zabalená `Hades.exe`**. Zmerané: token ide na vlastný
+  origin a **nie** na cudzí, sandboxovaný CJS preload sa načíta z asaru pod koreňovým
+  `type: module`, a `.perm-card` v DOM naozaj dorazí do main procesu ako
+  `hades:pending-write`.
+
+**Testy po druhom kole:** sqlite **475 passed / 45 skipped / 0 failed**; MariaDB
+(`ScreenParity|HybridRecall|RecallBench|ConsoleTools|McpTools`) **116 testov, 0 padnutých,
+0 preskočených**. Dvojité deklarácie: `mind.css` **A=0 B=1** (B bolo 4), `console.css`
+**A=0** — harness kalibrovaný z oboch strán pred meraním.
+
+**Zostáva ako backlog:** A5 (hľadanie v Rozhodnutiach), A15/A17/A18 (smernica ako správa
+po obnove, „Povoliť vždy" v hlavičke, front správ počas behu), D13 (väčšinou zanikol so
+zmazaním `chat.js` — overiť zvyšok), R6(c) zvyšok filtračného pásu na obrazovkách bez
+súrodenca, prekročenie výšky railu pri 11 destináciách na nízkych viewportoch, a P13
+prsteň composera (CSS správne v zdroji aj CSSOM, merač v headless pane vracia zamrznutý
+computed style — re-verifikovať na čistom loade).
