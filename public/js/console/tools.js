@@ -14,7 +14,7 @@
 
 import { el, clip, num } from './dom.js';
 import { escapeHtml } from './markdown.js';
-import { announce, pushBlock, scrollIfFollowing } from './render.js';
+import { pushBlock, scrollIfFollowing } from './render.js';
 
 /* Koľko riadkov výsledku sa vidí bez rozbalenia. Šesť je jeden „odsek" — dosť
    na to, aby bolo vidno, či nástroj našiel to, čo mal. */
@@ -344,9 +344,14 @@ export function permissionCard(frame) {
     // zápisu si z nich neskôr poskladá kartu, ale v DOM by to bol celý JSON
     // navyše pri každom potvrdení.
     card.hadesArgs = frame.arguments;
+    // Náhľad si tiež necháme na elemente: pri rozhodnutí z neho vieme poskladať
+    // ľudské ohlásenie výsledku, keď argumenty nenesú label ani cestu.
+    card.hadesPreview = frame.preview;
     card.tabIndex = -1;
     card.setAttribute('role', 'group');
-    card.setAttribute('aria-label', `Povolenie pre nástroj ${frame.name}`);
+    // Prístupné meno karty hovorí, ČO a KAM sa zapíše — nie technické meno
+    // nástroja („mind_learn"), ktoré čítačke o obsahu rozhodnutia nepovie nič.
+    card.setAttribute('aria-label', `${writeTarget(frame.name, frame.arguments, frame.preview)} — čaká na povolenie`);
 
     const head = el('div', 'pc-head');
     const mark = el('span', 'ms', iconFor(frame.name));
@@ -445,18 +450,27 @@ const DECISION_LABEL = {
    `aria-busy="true"`, takže `role="log"` ju sám neohlási: táto jedna veta je
    jediný kanál, ktorý o zápise povie. */
 export function writeAsk(frame) {
-    const name = frame.name || 'nástroj';
-    const what = argsSummary(frame.arguments);
-    const where = firstLine(frame.preview);
-    const bits = [`Zápis: ${name}`];
+    return `${writeTarget(frame.name, frame.arguments, frame.preview)}. Enter povolí, Esc zamietne.`;
+}
 
-    if (what !== '') bits.push(what);
-    // Prvý riadok náhľadu nesie u pamäťových zápisov typ a názov uzla, u
-    // súborových cestu — teda presne to, čo argumenty nemusia mať v poradí,
-    // v akom o zápise rozhoduje človek.
-    else if (where !== '') bits.push(where);
+/* Ľudský popis zápisu: ČO a KAM. Meno nástroja je technické („mind_learn",
+   „apply_patch") a čítačke o obsahu rozhodnutia nepovie nič — preto ho
+   prekladáme na sloveso a doplníme tým, na čom rozhoduje človek: labelom uzla,
+   resp. cestou k súboru. Detail číta z argumentov; keď tam nie je, siahne na
+   prvý riadok náhľadu (u pamäťových zápisov typ a názov uzla, u súborových
+   cestu). Jedno miesto pre prístupné meno karty, žiadosť aj výsledok — aby
+   všetky tri hovorili jedným hlasom. */
+function writeTarget(name, args, preview) {
+    const key = String(name || '').toLowerCase();
+    const detail = argsSummary(args) || firstLine(preview);
 
-    return `${bits.join(' — ')}. Enter povolí, Esc zamietne.`;
+    let action = 'Zápis';
+    if (/(^|_)(learn|remember)/.test(key)) action = 'Uloženie do pamäte';
+    else if (/(^|_)decision/.test(key)) action = 'Zápis rozhodnutia do pamäte';
+    else if (/(^|_)delete/.test(key)) action = 'Vymazanie z pamäte';
+    else if (/(^|_)(write|edit|apply|move|rename)/.test(key)) action = 'Zápis do súboru';
+
+    return detail !== '' ? `${action}: ${detail}` : action;
 }
 
 function firstLine(text) {
@@ -466,6 +480,13 @@ function firstLine(text) {
 function decide(card, decision) {
     if (card.classList.contains('decided')) return;
 
+    // Fokus je v tejto chvíli na tlačidle vnútri `.pc-actions`, ktoré o riadok
+    // nižšie zaniká — bez zásahu by spadol na <body> a klávesnica by začínala od
+    // začiatku stránky. Zapamätáme si to a vrátime fokus na kartu (má
+    // tabindex="-1"), ale len ak tu naozaj bol: globálny Esc rozhoduje aj spoza
+    // composera a tomu fokus brať netreba. Vzor je runy.js:117.
+    const hadFocus = card.contains(document.activeElement);
+
     card.classList.add('decided');
     card.classList.add(decision === 'deny' ? 'denied' : 'allowed');
     card.querySelectorAll('button').forEach((btn) => { btn.disabled = true; });
@@ -473,15 +494,25 @@ function decide(card, decision) {
     const done = el('p', 'pc-done', DECISION_LABEL[decision] || decision);
     card.querySelector('.pc-actions').replaceWith(done);
 
-    // Rozhodnutie o zápise do pamäte nesmie zostať nedopovedané: `#run-announce`
-    // dovtedy ostal na „čaká na povolenie", teda kanál vyhradený pre
-    // rozhodnutia o výsledku mlčal. Meno nástroja je vo vete zámerne — od
-    // ohlásenia žiadosti mohla prejsť minúta.
-    announce(`${DECISION_LABEL[decision] || decision} — ${card.dataset.name || 'zápis'}.`);
+    if (hadFocus) card.focus();
+
+    // Výsledok rozhodnutia nesmie zostať nedopovedaný. Ide do #console-live
+    // a hovorí ĽUDSKY, čo sa (ne)zapísalo — nie meno nástroja. Ako sa po
+    // zamietnutí skončí BEH, ohlási run-end cesta cez runstate; tu sa to
+    // druhýkrát nepíše.
+    liveAnnounce(`${DECISION_LABEL[decision] || decision}. ${writeTarget(card.dataset.name, card.hadesArgs, card.hadesPreview)}.`);
 
     document.dispatchEvent(new CustomEvent('console:decide', {
         detail: { id: Number(card.dataset.id), decision },
     }));
+}
+
+/* Výsledok rozhodnutia píše do #console-live — samostatnej aria-live oblasti,
+   ktorú do console.blade.php pridáva iný agent tejto vlny. Kým tam nie je,
+   ohlásenie ticho vypadne (radšej nič než pád na neexistujúcom prvku). */
+function liveAnnounce(text) {
+    const live = document.getElementById('console-live');
+    if (live) live.textContent = text;
 }
 
 /** Karta, ktorá ešte čaká — používa ju globálny Esc aj kontrola pred odoslaním. */

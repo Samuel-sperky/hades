@@ -35,6 +35,9 @@
     <link rel="stylesheet" href="/css/mind.css">
 </head>
 <body>
+    {{-- SKIP-LINK (P2): prvý fokusovateľný prvok, aby sa klávesnicou dalo skočiť
+         rovno na obsah obrazoviek a preskočiť plátno grafu, hlavičku a rail. --}}
+    <a class="skip-link" href="#screens">Preskočiť na obsah</a>
     <canvas id="mind"></canvas>
 
     <header id="app-header">
@@ -158,7 +161,7 @@
         </div>
     </nav>
 
-    <main id="screens">
+    <main id="screens" tabindex="-1">
         <section class="screen" id="screen-dnes">
             <header class="screen-head">
                 <h1>Dnes</h1>

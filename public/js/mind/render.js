@@ -3,7 +3,7 @@ import { drawEdges } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
 import { screenToWorld } from './interaction.js';
 import { camInsets, computeLayout, drawRadius } from './layout.js';
-import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.js';
+import { applyLayoutPositions, currentPath, go, reducedMotionActive, syncNavFromFocus } from './sim.js';
 import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
 import { T, certColors, mutedColor } from './theme.js';
 import { stopReplay, updateTimelineLabel } from './timeline.js';
@@ -532,6 +532,51 @@ export function publishNavApi() {
             demoted: S._lodDemoted || 0, topForce: TOP_FORCE,
         }),
     });
+    updateCanvasAria();   // P9: role/label existujú hneď po inite, nielen po prvom draw()
+}
+
+/* ---------- P9: PRÍSTUPNÁ ALTERNATÍVA PLÁTNA ----------
+   Plátno je bitmapa — pre čítačku obrazovky neexistuje. Dáme mu role="img" a KRÁTKY
+   aria-label, ktorý hovorí, čo je na ňom TERAZ: koľko uzlov a spojení je viditeľných
+   (po filtri), aký pohľad a aký filter je aktívny. Čísla NEPOČÍTAME druhýkrát —
+   berieme hotový text z hlavičky (#header-metrics), ktorý udržiava
+   updateHeaderMetrics(); je to jediný zdroj pravdy o viditeľných počtoch.
+
+   Popis je zámerne krátky (nález P8 varuje pred 778-znakovým menom). Plus .sr-only
+   veta s odkazom na obrazovku, ktorá ten obsah dáva TEXTOM (Knižnica = zoznam uzlov),
+   naviazaná cez aria-describedby. */
+let _ariaSr = null;
+let _ariaSig = '';
+export function updateCanvasAria() {
+    if (typeof document === 'undefined' || !canvas) return;
+    if (canvas.getAttribute('role') !== 'img') canvas.setAttribute('role', 'img');
+
+    // Textová alternatíva — raz vytvorená, s odkazom na obrazovku so zoznamom.
+    if (!_ariaSr) {
+        _ariaSr = document.createElement('p');
+        _ariaSr.className = 'sr-only';
+        _ariaSr.id = 'graph-a11y-alt';
+        _ariaSr.textContent = 'Interaktívna sieť vedomia. Zoznam uzlov a spojení v textovej podobe '
+            + 'nájdete na obrazovke Knižnica.';
+        if (canvas.parentNode) canvas.parentNode.insertBefore(_ariaSr, canvas.nextSibling);
+        canvas.setAttribute('aria-describedby', 'graph-a11y-alt');
+    }
+
+    // Signatúra z lacných hodnôt — currentPath() (alokuje crumbs) voláme len keď
+    // sa naozaj niečo zmenilo, nie každý frame.
+    const hm = document.getElementById('header-metrics');
+    const counts = (hm && hm.textContent) ? hm.textContent.trim() : (S.nodes.length + ' uzlov');
+    const nav = S.nav;
+    const sig = S.gview + '|' + nav.level + '|' + nav.area + '|' + nav.dept + '|' + nav.node + '|' + counts;
+    if (sig === _ariaSig) return;
+    _ariaSig = sig;
+
+    const path = currentPath();
+    const view = S.gview === 'layers' ? 'vrstvy' : 'sieť';
+    const scope = path.level === 'map'
+        ? 'celá sieť'
+        : 'filter: ' + (path.nodeName || path.deptName || path.areaName || path.level);
+    canvas.setAttribute('aria-label', 'Graf vedomia (' + view + '), ' + scope + '. ' + counts + '.');
 }
 
 // GRAF B: podlaha tlmenia v stave „spí". Pôvodných 0,5 znamenalo, že celé plátno
@@ -548,7 +593,7 @@ export function draw() {
     // teda skočíme do cieľa: krok 0,02 je exponenciálne dobiehanie, ktoré na rozsahu
     // 1 → 0,78 potrebuje ~270 rámcov, a práve tie držali rAF živý ešte 4 s po tom,
     // čo fyzika (pump()) už ticho dosadla — utíšené plátno by sa nedopočítalo pokoja.
-    if (REDUCED_MOTION) S.dim = targetDim;
+    if (REDUCED_MOTION || reducedMotionActive()) S.dim = targetDim;
     else {
         S.dim += (targetDim - S.dim) * 0.02;
         if (Math.abs(targetDim - S.dim) < 0.001) S.dim = targetDim;
@@ -562,6 +607,8 @@ export function draw() {
     const _mark = (k) => { const t = performance.now(); _P[k] = (_P[k] || 0) * 0.9 + (t - _pt) * 0.1; _pt = t; };
     const L = ensureLayout();
     const level = L.level;
+
+    updateCanvasAria();   // P9: drž aria-label plátna živý (lacný guard na signatúre)
 
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
     ctx.scale(S.cam.k, S.cam.k);
@@ -1617,9 +1664,14 @@ export function frame() {
     syncNavFromFocus();
 
     S._clock += dt;
-    S._anim = animLevel();
+    // P1: pri prefers-reduced-motion (aj prepnutom ZA BEHU) zháše ambientný život a
+    // udalostné animácie na 0 — inak by S._life > 0 držalo rAF slučku živú a plátno by
+    // ďalej dýchalo/unášalo prach. animLevel()/lifeLevel() čítajú REDUCED_MOTION
+    // zamrznutý na loade, preto tu berieme ŽIVÝ stav zo sim.js.
+    const _rm = reducedMotionActive();
+    S._anim = _rm ? 0 : animLevel();
     S._lifeTier = lifeTier();
-    S._life = S._lifeTier >= 2 ? 0 : lifeLevel();
+    S._life = (_rm || S._lifeTier >= 2) ? 0 : lifeLevel();
     S.cursor.a += ((S.cursor.on ? 1 : 0) - S.cursor.a) * Math.min(1, dt * 10);
     if (S.cursor.a < 0.005) S.cursor.a = 0;
     maybeSynapse();

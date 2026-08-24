@@ -33,6 +33,10 @@
     <link rel="stylesheet" href="/css/console.css">
 </head>
 <body class="console-body">
+    {{-- SKIP-LINK (P2): prvý fokusovateľný prvok, aby sa klávesnicou dalo skočiť
+         rovno ku composeru — jediné miesto, kde človek púšťa zápis do pamäte —
+         bez prechodu cez celý rail a hlavičku. --}}
+    <a class="skip-link" href="#prompt">Preskočiť na pole správy</a>
     <div id="console-app">
         {{-- Bočný panel vlákien --}}
         <aside id="thread-rail" aria-label="Vlákna konzoly">
@@ -142,6 +146,9 @@
 
             {{-- Jedna veta pre čítačku, keď ťah dobehne alebo si žiada rozhodnutie. --}}
             <p id="run-announce" class="sr-only" aria-live="polite"></p>
+            {{-- P4: prázdny live región pre stavové oznamy z JS (obsah doňho píše
+                 iný modul). Jeden zámerne — dva polite regióny by sa prekričali. --}}
+            <div aria-live="polite" class="sr-only" id="console-live"></div>
         </main>
     </div>
 

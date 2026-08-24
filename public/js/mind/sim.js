@@ -214,6 +214,30 @@ function easeFit(t) {
 // Ukázali sme už používateľovi aktuálny stav v tichom režime? (viď pump())
 let quietShown = false;
 
+/* P1 — prefers-reduced-motion MUSÍ platiť aj keď sa zmení ZA BEHU. REDUCED_MOTION
+   zo state.js je zamrznutý na čase loadu (matchMedia().matches prečítaný raz), takže
+   keď nástroj tú preferenciu emuluje až po navigácii — alebo keď ju používateľ prepne
+   v OS — sieť sa hýbe ďalej. Tu preto držíme ŽIVÝ stav a reagujeme na 'change':
+     • zmena na reduce → nakopni pumpu, tá cez svoju tichú vetvu sieť dosadí a ZASTAVÍ,
+     • zmena späť → nakopni pumpu, sieť sa opäť usadzuje plynulo.
+   Ťahanie uzla (S._interacting) je z tichého režimu vyňaté — to je pohyb rukou. */
+let reduceMotion = REDUCED_MOTION;
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    const _rmq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reduceMotion = _rmq.matches;
+    const onReduceChange = (e) => {
+        reduceMotion = e.matches;
+        quietShown = false;          // nech tichá vetva znovu ukáže usadený stav
+        if (S.sim) startPump();      // pump() si pri ďalšom kole prečíta nový reduceMotion
+    };
+    if (_rmq.addEventListener) _rmq.addEventListener('change', onReduceChange);
+    else if (_rmq.addListener) _rmq.addListener(onReduceChange);   // starší Safari
+}
+
+// ŽIVÝ stav prefers-reduced-motion pre ostatné moduly (render.js zháša ambient život
+// aj skok jasu z neho). Hoistovaný export — render ↔ sim je cyklus, arrow v const padne.
+export function reducedMotionActive() { return reduceMotion; }
+
 function pump() {
     if (!S.sim) { pumping = false; return; }
     // TICHÉ DOSADNUTIE — dva nezávislé dôvody netikať na requestAnimationFrame:
@@ -236,7 +260,7 @@ function pump() {
     //
     // V oboch prípadoch tikáme v krátkych dávkach cez setTimeout.
     const shown = graphActive();
-    if (!shown || (REDUCED_MOTION && !S._interacting)) {
+    if (!shown || (reduceMotion && !S._interacting)) {
         // Bez pohybu by používateľ na Grafe kukal ~4 s na neusadenú scénu s
         // nezameranou kamerou. Raz teda ukážeme, kde vec stojí (skok, nie pohyb),
         // a konečný stav dokreslí finishSettle().
@@ -307,7 +331,7 @@ function finishSettle() {
     if (S._fitOnSettle || f > 1.001) {
         const c = fitTarget();
         const from = { x: S.cam.x, y: S.cam.y, k: S.cam.k };
-        if (REDUCED_MOTION || animLevel() <= 0) { S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k; }
+        if (reduceMotion || animLevel() <= 0) { S.cam.x = c.x; S.cam.y = c.y; S.cam.k = c.k; }
         else S._camTween = { from, to: c, t: 0, dur: 0.45 };
         S._fitOnSettle = false;
     }
@@ -469,7 +493,7 @@ export function go(target = {}) {
     renderBreadcrumb();
     // Používateľ zamieril sám → usadzovanie mu už kameru nemá preberať.
     if (!first) S._fitOnSettle = false;
-    aimCamera(L, !first && !REDUCED_MOTION && animLevel() > 0);
+    aimCamera(L, !first && !reduceMotion && animLevel() > 0);
     S._morph = null;
     if (graphActive()) draw();   // nech cieľ nezabliká pred prvým rAF framom
     requestDraw();
