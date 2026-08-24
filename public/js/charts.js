@@ -41,6 +41,30 @@
 
     function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
+    /* Slová (nie dáta) pre textové alternatívy grafov. Skratky mesiacov sú tie
+       isté, aké posiela server v heatmap.months — tu ich potrebujeme kľúčované
+       podľa mesiaca dátumu, nie podľa stĺpca mriežky. */
+    const MONTHS_SK = ['jan', 'feb', 'mar', 'apr', 'máj', 'jún', 'júl', 'aug', 'sep', 'okt', 'nov', 'dec'];
+
+    /** 1234 → „1 234" (pevná medzera, aby sa číslo v popise nezlomilo). */
+    function fmtNum(n) {
+        return String(+n || 0).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
+    /** „2026-08-19" → „19. 8. 2026" (čítačka to prečíta ako dátum, nie ako kód). */
+    function fmtDate(iso) {
+        const p = String(iso || '').split('-');
+        if (p.length !== 3) return String(iso || '');
+        return (+p[2]) + '. ' + (+p[1]) + '. ' + p[0];
+    }
+
+    /** „2026-08" → „aug 2026" */
+    function fmtMonthKey(key) {
+        const p = String(key || '').split('-');
+        const m = MONTHS_SK[(+p[1] || 0) - 1];
+        return m ? m + ' ' + p[0] : String(key || '');
+    }
+
     /* Zrod grafu: dáta sa kreslia, nie zjavujú. Pohyb je jediný, ktorý si graf
        smie dovoliť — nesie poradie čítania (donut od dvanástky, krivka zľava,
        heatmapa od najstaršieho týždňa), nie dekoráciu.
@@ -116,6 +140,63 @@
         container.style.setProperty('--heat-cell-h', h + 'px');
     }
 
+    /* Textová alternatíva heatmapy (P6): to isté, čo inak nesie iba farba —
+       slovami a číslami. Žije v `.sr-only`, takže na papieri zostáva graf grafom.
+       Vstup je súhrn spočítaný pri kreslení mriežky, nie druhé čítanie z DOM.
+
+       Že je `.sr-only` `position: absolute` a 1×1 px, tu nie je len kozmetika:
+       autoFit meria REÁLNU výšku kontejnera, takže blok v toku by odkrojil
+       miesto mriežke a ResizeObserver by prepočítaval bunky proti sebe. */
+    function heatAlt(sum) {
+        const box = el('div', 'sr-only');
+
+        const p = document.createElement('p');
+        let t = 'Aktivita za posledných ' + fmtNum(sum.days) + ' dní: spolu '
+            + fmtNum(sum.total) + ' záznamov, z toho dní so záznamom '
+            + fmtNum(sum.activeDays) + '.';
+        if (sum.best && sum.best.count > 0) {
+            t += ' Najrušnejší deň ' + fmtDate(sum.best.date) + ' s '
+                + fmtNum(sum.best.count) + ' záznamami.';
+        }
+        p.textContent = t;
+        box.appendChild(p);
+
+        if (sum.months.length) {
+            const table = document.createElement('table');
+            const cap = document.createElement('caption');
+            cap.textContent = 'Záznamy po mesiacoch';
+            table.appendChild(cap);
+
+            const thead = document.createElement('thead');
+            const hr = document.createElement('tr');
+            for (const h of ['Mesiac', 'Záznamov']) {
+                const th = document.createElement('th');
+                th.setAttribute('scope', 'col');
+                th.textContent = h;
+                hr.appendChild(th);
+            }
+            thead.appendChild(hr);
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            for (const m of sum.months) {
+                const tr = document.createElement('tr');
+                const th = document.createElement('th');
+                th.setAttribute('scope', 'row');
+                th.textContent = fmtMonthKey(m.key);
+                const td = document.createElement('td');
+                td.textContent = fmtNum(m.count);
+                tr.appendChild(th);
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+            }
+            table.appendChild(tbody);
+            box.appendChild(table);
+        }
+
+        return box;
+    }
+
     function heatmap(container, data) {
         if (!container) return;
         container.__hcCell = null;
@@ -124,6 +205,12 @@
         const weeks = Array.isArray(data.weeks) ? data.weeks : [];
         const months = data.months || {};
         const cols = weeks.length;
+
+        // Súhrn pre popis a textovú alternatívu — počíta sa v tom istom prechode,
+        // ktorý skladá mriežku. Druhýkrát a z DOM by to boli tie isté čísla
+        // odvodené inak, teda ďalšie miesto, kde sa plochy vedia rozísť.
+        let days = 0, sum = 0, activeDays = 0, best = null;
+        const byMonth = new Map();          // „YYYY-MM" → počet záznamov
 
         const heat = el('div', 'heat');
 
@@ -157,6 +244,12 @@
                     const tip = (d.date || '') + (n ? ' · ' + n : ' · 0');
                     cell.setAttribute('data-tip', tip);
                     cell.setAttribute('title', tip);
+                    days++;
+                    sum += n;
+                    if (n > 0) activeDays++;
+                    if (!best || n > best.count) best = { count: n, date: d.date || '' };
+                    const mk = String(d.date || '').slice(0, 7);
+                    if (mk) byMonth.set(mk, (byMonth.get(mk) || 0) + n);
                 }
                 grid.appendChild(cell);
             }
@@ -165,8 +258,36 @@
         heat.appendChild(grid);
         container.appendChild(heat);
 
+        /* Prístupnosť heatmapy (P6). Rozhodnutie: JEDEN fokusovateľný kontejner,
+           bunky bez `tabindex` a bez vlastného popisu.
+           — `role="img"` robí z 365 buniek kresbu (potomkovia sú pre čítačku
+             prezentačné), takže `title` na bunke prestáva byť jediným nosičom
+             údaja; ten nesie popis nižšie a `.sr-only` alternatíva pod grafom.
+           — `tabindex="0"` tu nie je preto, aby sa dalo „prejsť po bunkách"
+             (365 zastávok Tabom je samo o sebe chyba), ale preto, že `.heat` je
+             vodorovný scroll kontejner (`overflow-x: auto`): bez fokusovateľného
+             prvku sa jeho obsah v Chromiu klávesnicou neodskroluje.
+           — Prsteň dáva globálne `:focus-visible` z `mind.css`; tu sa CSS nepíše. */
+        // Spolu berieme zo servera (rovnaké číslo ako čip „N aktivít za rok"
+        // na obrazovke Dnes); vlastný súčet je len záloha pre neúplný payload.
+        const total = (data.total != null) ? (+data.total || 0) : sum;
+
+        if (days) {
+            let label = 'Heatmapa aktivity: ' + fmtNum(days) + ' dní, spolu '
+                + fmtNum(total) + ' záznamov';
+            label += (best && best.count > 0)
+                ? ', najviac ' + fmtNum(best.count) + ' dňa ' + fmtDate(best.date) + '.'
+                : ', žiadny deň so záznamom.';
+            heat.setAttribute('role', 'img');
+            heat.setAttribute('tabindex', '0');
+            heat.setAttribute('aria-label', label);
+        }
+
         // less — [ramp] — more legend
         const legend = el('div', 'heat-legend');
+        // Legenda je stupnica farby, nie údaj — bez farby nehovorí nič a čítačke
+        // by ostalo len „menej viac". Údaj, ktorý vysvetľuje, je v .sr-only nižšie.
+        legend.setAttribute('aria-hidden', 'true');
         legend.appendChild(document.createTextNode('menej'));
         for (let l = 0; l <= 4; l++) {
             const c = el('span', 'heat-cell' + (l ? ' l' + l : ''));
@@ -174,6 +295,17 @@
         }
         legend.appendChild(document.createTextNode('viac'));
         container.appendChild(legend);
+
+        if (days) {
+            const mkeys = Array.from(byMonth.keys()).sort();
+            container.appendChild(heatAlt({
+                days: days,
+                total: total,
+                activeDays: activeDays,
+                best: best,
+                months: mkeys.map((k) => ({ key: k, count: byMonth.get(k) })),
+            }));
+        }
 
         autoFit(container, () => fitHeatmap(container));
     }

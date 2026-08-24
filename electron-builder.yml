@@ -19,6 +19,12 @@ directories:
 # ASAR zapnutý: obsah balíka je jeden archív (app.asar), nie voľné súbory.
 asar: true
 
+# Ikonu čítajú NATÍVNE vrstvy (BrowserWindow.icon, Tray), ktoré do asaru nevidia —
+# preto jediná výnimka: zostane ležať na disku v app.asar.unpacked. `main.js`
+# (`resolveIcon`) si tú cestu vezme sám, keď existuje.
+asarUnpack:
+  - electron/assets/hades.ico
+
 # ─── ALLOW-LIST, nie deny-list ───────────────────────────────────────────────
 # Do balíka ide LEN shell a manifest appky. Čokoľvek, čo tu nie je vymenované,
 # sa NEZABALÍ — teda .env, vendor/, node_modules appky, summaries/, handoff/,

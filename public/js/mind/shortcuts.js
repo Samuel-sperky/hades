@@ -173,7 +173,10 @@ export function setupShortcuts() {
             case 'Enter': if (S.selected) go({ level: 'node', node: S.selected.id }); break;
             case '/': case 'f': case 'F': e.preventDefault(); openCmdk(); break;
             case 'r': case 'R': openDock('structure'); break;
-            case 's': case 'S': openDock('stats'); break;
+            // A10: dok „Prehľad" duplikoval obrazovku Dnes, tak zanikol. `S` teda
+            // otvára Dnes priamo — `openDock('stats')` by šlo cez alias v dock.js,
+            // čo je zbytočná okľuka cez sekciu, ktorá už neexistuje.
+            case 's': case 'S': setScreen('dnes'); break;
             case 'd': case 'D': setScreen('dennik'); break;
             case 'l': case 'L': openDock('legend'); break;
             case 'g': case 'G':

@@ -1,5 +1,5 @@
 import { bindPackButtons, packBtn } from '../pack.js';
-import { openNodeFromAnywhere } from '../screens.js';
+import { openNodeDetail } from '../screens.js';
 import { $, esc, getJson, prettyLabel, renderEmpty, renderLoading } from '../util.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
@@ -147,6 +147,14 @@ export function renderJournalList() {
         const day = dayLabel(r.created_at);
         if (day !== lastDay) {
             if (lastDay !== null) html += '</div>';
+            /* „+N poznatkov" v hlavičke dňa (nález A4, tretí bod) tu ZÁMERNE NIE
+               JE. `DennikScreen` per-dňové počty neposiela — má `total`,
+               `filtered_total` a `project_groups`, nič po dňoch — a dopočítať ich
+               z načítaných záznamov je presne chyba M6: okno je `limit` 50, takže
+               najstarší deň v okne je odrezaný a hlavička by sľubovala číslo,
+               ktoré zoznam nedá. Číslo je ÚDAJ, nie kresba, takže patrí do
+               serializéra (`days[].key` + počet nad celým dňom), a ten v tejto
+               vlne drží iný agent. Do vtedy tu radšej nestojí nič než lož. */
             html += '<div class="day-head">' + esc(day) + '</div><div class="rec-grid">';
             lastDay = day;
         }
@@ -180,8 +188,13 @@ export function renderJournalList() {
     if (lastDay !== null) html += '</div>';
     list.innerHTML = html;
 
+    /* Detail sa otvára NA MIESTE (nález A4). Do 24. 8. 2026 tu bolo
+       `openNodeFromAnywhere()`, ktoré robí `setScreen('graf')` bezpodmienečne —
+       klik na záznam teda vyhodil človeka z Denníka a cesta späť bola railom.
+       `openNodeDetail()` je ten istý idióm, aký má Knižnica (čítačka markdownu),
+       a skok na Graf zostal ako sekundárna akcia v pätičke overlayu. */
     list.querySelectorAll('.record').forEach((el) => {
-        el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
+        el.onclick = () => openNodeDetail({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
     });
     bindPackButtons(list);
 }

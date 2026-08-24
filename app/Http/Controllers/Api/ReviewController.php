@@ -6,6 +6,7 @@ use App\Events\MindPulse;
 use App\Http\Controllers\Api\Concerns\HandlesBrainErrors;
 use App\Http\Controllers\Controller;
 use App\Models\Node;
+use App\Serializers\Screen\HygienaScreen;
 use App\Serializers\Screen\KontrolaScreen;
 use App\Services\Brain\BrainWriter;
 use Illuminate\Http\JsonResponse;
@@ -13,12 +14,14 @@ use Illuminate\Http\Request;
 
 /**
  * Kontrola — verify/review fronta. Číta interné /api/* (SPA, bez tokenu) aj
- * externé /api/v1/* (Bearer). Tri operácie:
+ * externé /api/v1/* (Bearer). Štyri operácie, z toho dve čítacie:
  *   - GET  review/queue                 — uzly needs_review od najnovších
  *   - POST nodes/{node}/verify          — verified_at=now, certainty=overene,
  *       needs_review=false; pri guard ON + origin=brain aj frontmatter upgrade
  *       (.md master, {@see BrainWriter::verify}), pri guard OFF len DB + warning
  *   - POST nodes/{node}/resolve-review  — len needs_review=false (bez overenia)
+ *   - GET  hygiene                      — správa o odpade v pamäti (len čítanie,
+ *       {@see HygienaScreen}); sekcia „Hygiena" na tej istej obrazovke, nález A3
  *
  * Každá mutácia vyšle MindPulse (`node.updated`), aby sa vizualizácia + rail
  * počítadlo Kontroly hneď dorovnali.
@@ -42,6 +45,33 @@ class ReviewController extends Controller
     public function queue(Request $request): JsonResponse
     {
         return response()->json((new KontrolaScreen($request->query()))->data());
+    }
+
+    /**
+     * GET — hygiena pamäti: koľko uzlov padá do ktorej triedy odpadu, s pár
+     * príkladmi. Len na čítanie, nič sa nemení.
+     *
+     * Sedí na Kontrole zámerne (nález A3): obe sekcie hovoria o tom istom — čo
+     * v pamäti čaká na rozhodnutie človeka. Novú obrazovku kontrakt zmrazil.
+     *
+     * Tvar drží {@see HygienaScreen} — tá istá trieda, z ktorej čerpá MCP tool
+     * `mind_hygiene`. Do tejto vlny videla odpad LEN AI: grep nad
+     * `public/js/mind/` a `mind.blade.php` nedal ani jeden zásah.
+     *
+     * Je to prechod celou sieťou (uzly + hrany), nie dopyt, takže obrazovka si
+     * ho ťahá **raz** a nie s každým prekreslením fronty.
+     *
+     * `class` sem z UI nechodí; keď ju niekto pošle ručne a je neznáma, príkaz ju
+     * odmietne a jeho chyba menuje platné triedy — vraciame ju ako 422, nie ako
+     * 500, pretože je to chyba požiadavky, nie servera.
+     */
+    public function hygiene(Request $request): JsonResponse
+    {
+        try {
+            return response()->json((new HygienaScreen($request->query()))->data());
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 
     /**

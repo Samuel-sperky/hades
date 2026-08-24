@@ -1,3 +1,4 @@
+import { closeMdOverlay, mdLabel, mdNodeId, openMdOverlay } from './md.js';
 import { setGraphScope } from './pack.js';
 import { showToast } from './toasts.js';
 import { closeNodePanel, selectNode } from './panels.js';
@@ -15,8 +16,12 @@ import { $, esc, renderBreadcrumb } from './util.js';
 
 /* ---------- FÁZA SHELL: obrazovky Dnes / Denník / Graf / Knižnica ---------- */
 
-export const SCREENS = ['dnes', 'dennik', 'graf', 'kniznica', 'rozhodnutia', 'runy', 'kontrola', 'smernica'];
-export const SCREEN_LABELS = { dnes: 'Dnes', dennik: 'Denník', graf: 'Graf', kniznica: 'Knižnica', rozhodnutia: 'Rozhodnutia', runy: 'Runy', kontrola: 'Kontrola', smernica: 'Smernica' };
+/* Poradie zrkadlí skupiny railu (TERAZ / ZÁZNAMY / ZNALOSTI) a `CMDK_NAV`, aby sa
+   tie tri zoznamy dali čítať vedľa seba. Funkčne je to len množina: `SCREENS` slúži
+   na test príslušnosti a uložená obrazovka je v `localStorage['hades.screen']`
+   NÁZOV, nie index — preskladanie poradia teda uloženú voľbu nepokazí. */
+export const SCREENS = ['dnes', 'graf', 'dennik', 'rozhodnutia', 'runy', 'kniznica', 'kontrola', 'smernica'];
+export const SCREEN_LABELS = { dnes: 'Dnes', graf: 'Graf', dennik: 'Denník', rozhodnutia: 'Rozhodnutia', runy: 'Runy', kniznica: 'Knižnica', kontrola: 'Kontrola', smernica: 'Smernica' };
 
 export function setScreen(name) {
     if (!SCREENS.includes(name)) name = 'dnes';
@@ -63,6 +68,103 @@ export function renderScreenBreadcrumb(name) {
     if (bc) bc.innerHTML = '<span class="current">' + esc(SCREEN_LABELS[name]) + '</span>';
 }
 
+/* ---------- detail uzla NA MIESTE (nález A4) ----------
+
+   Do 24. 8. 2026 mala appka tri idiómy detailu na štyroch obrazovkách. Denník
+   (`screens/dennik.js`) a Kontrola (`screens/kontrola.js`) volali
+   `openNodeFromAnywhere()`, ktorý robí `setScreen('graf')` BEZPODMIENEČNE —
+   klik na záznam teda vyhodil človeka z obrazovky, na ktorej pracoval, a cesta
+   späť bola railom. Knižnica pritom už mala ten správny: `openMdOverlay()`
+   a zostane, kde si.
+
+   Toto je ten jeden idióm. Overlay je čítačka toho, čo uzol naozaj hovorí
+   (`/api/nodes/{id}/markdown` = zdrojový .md, a keď ho uzol nemá, celý popis —
+   viď `NodeMarkdownResolver`), takže na rozhodnutie „overiť / vyriešiť" aj na
+   prečítanie záznamu stačí. Skok na Graf zostáva, ale ako SEKUNDÁRNA akcia
+   v pätičke overlayu; `openNodeFromAnywhere()` je ďalej cesta pre hľadanie,
+   paletu a Hygienu, kde človek chce naozaj vidieť uzol v sieti.
+
+   Druhý overlay sa nezakladá a fokusová mechanika sa nekopíruje: `md.js` si už
+   pamätá spúšťač (`mdReturnFocus`), fokus dáva na `#md-close` a `Esc` rieši
+   kaskáda v `shortcuts.js`. */
+
+/* Posledný ref, ktorý prišiel z obrazovky. Držíme ho, aby skok do Grafu dostal
+   celý odľahčený uzol ({id,label,type,area_id}) a panel nemusel hádať typ.
+   Zdrojom pravdy o tom, čo je NA obrazovke, je ale `mdNodeId` (živá väzba
+   z `md.js`): keď overlay medzitým otvoril niekto iný — Knižnica ho otvára
+   priamo — ref nesedí a berie sa to, čo človek naozaj vidí. */
+let mdRef = null;
+let mdWired = false;
+
+export function openNodeDetail(ref) {
+    if (!ref || ref.id == null) return;
+    const id = +ref.id;
+    mdRef = { ...ref, id };
+    ensureMdDetailWiring();
+    openMdOverlay({ id, label: ref.label || '', path: ref.path || null });
+}
+
+function mdDetailRef() {
+    if (mdNodeId == null) return null;
+    if (mdRef && mdRef.id === mdNodeId) return mdRef;
+    return { id: mdNodeId, label: mdLabel || '' };
+}
+
+/* Pätičkové tlačidlo a modálny strážca klávesnice. Naväzuje sa raz a lenivo
+   (nie na úrovni modulu): graf modulov má cykly a bočný efekt pri vyhodnocovaní
+   by závisel od poradia importov v `main.js`. */
+function ensureMdDetailWiring() {
+    if (mdWired) return;
+    mdWired = true;
+
+    const foot = $('md-foot');
+    if (foot && !$('md-graph')) {
+        /* Sekundárna akcia = `.ghost` (primárna `.primary` je „Do balíka").
+           Text, nie ikona: `account_tree` v subsete je, ale pätička je textová
+           a nová ikona = regenerácia subsetu. Fokusový prsteň nesie globálne
+           `:focus-visible` v `mind.css` — per-komponentný sa nepridáva. */
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ghost';
+        btn.id = 'md-graph';
+        btn.textContent = 'Zobraziť v grafe';
+        // Zavrieť PRV než skočíme: closeMdOverlay() vráti fokus na spúšťač
+        // a openNodeFromAnywhere() hneď za ním prepne obrazovku, takže sa
+        // vrátený fokus nikde nezasekne.
+        btn.onclick = () => {
+            const ref = mdDetailRef();
+            closeMdOverlay();
+            if (ref) openNodeFromAnywhere(ref);
+        };
+        foot.insertBefore(btn, $('md-pack'));
+    }
+
+    /* Overlay je `aria-modal="true"`, ale klávesové skratky obrazoviek o ňom
+       nevedeli — a to je nové riziko práve teraz, keď sa detail otvára NA
+       Kontrole: jej blok v `shortcuts.js` berie j/k/v/r/Delete kdekoľvek na
+       obrazovke, takže `v` by ticho overil uzol za scrimom.
+
+       Zachytávacia fáza na window beží pred bublinovým listenerom
+       `shortcuts.js`, takže propagáciu zastavíme tu. `preventDefault` NIE:
+       šípky, medzerník a PageDown musia ďalej skrolovať dokument a Enter
+       na tlačidle pätičky ho musí ďalej aktivovať (stopPropagation default
+       akciu nezabíja). `Escape` prepúšťame — kaskádu má `shortcuts.js`
+       a druhá cesta k zavretiu by bola druhý mechanizmus. Modifikátory tiež,
+       aby `Ctrl+K` fungoval.
+
+       Zastavuje sa len to, čo patrí overlayu (alebo nemá fokus nikde): paleta
+       otvorená nad ním má vlastný `<input>` a listenery NA prvku, takže
+       zastavená propagácia by jej vzala písanie aj šípky. */
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+        const ov = $('md-overlay');
+        if (!ov || ov.classList.contains('hidden')) return;
+        const t = e.target;
+        const own = !t || t === document.body || t === document.documentElement || ov.contains(t);
+        if (own) e.stopPropagation();
+    }, true);
+}
+
 /* Poradie preklikov a rozbehnuté rozšírenie rozsahu pre openNodeFromAnywhere().
    Deklarované PRED funkciou zámerne: `let` v dočasnej mŕtvej zóne by pri cyklickom
    importe, kde by niekto zavolal openNodeFromAnywhere() ešte počas vyhodnocovania
@@ -70,7 +172,9 @@ export function renderScreenBreadcrumb(name) {
 let openSeq = 0;
 let scopeWidening = null;
 
-// Uzol otvorený z ktorejkoľvek obrazovky (Denník/Knižnica/Dnes/Cmd-K) → skoč na Graf a otvor detail.
+// SKOK NA GRAF: uzol sa má vidieť v sieti → prepni obrazovku a otvor detail.
+// Volajú to Dnes, Cmd-K, Hygiena a pätička overlayu („Zobraziť v grafe"); Denník
+// a Kontrola idú cez openNodeDetail() vyššie a obrazovku neopúšťajú (A4).
 // ref môže byť plný načítaný uzol, alebo odľahčený {id,label,type,area_id} z hľadania/knižnice.
 //
 // Graf beží v scope=live, takže na plátne je len časť siete. Do 20. 8. 2026 sa pri

@@ -66,7 +66,14 @@
                 <button id="btn-view-net" class="ms" title="Sieť (V)" aria-label="Pohľad Sieť" aria-pressed="true">hub</button>
                 <button id="btn-view-layers" class="ms" title="Vrstvy (V)" aria-label="Pohľad Vrstvy" aria-pressed="false">layers</button>
                 <button id="btn-structure" class="ms" title="Štruktúra (R)" aria-label="Štruktúra">account_tree</button>
-                <button id="btn-stats" class="ms" title="Prehľad (S)" aria-label="Prehľad">monitoring</button>
+                {{-- A10: „Prehľad" bol sekcia doku, ktorá čítala /api/dashboard — teda
+                     to isté, čo obrazovka Dnes, len v paneli širokom 248 px a len na
+                     Grafe. Tlačidlo preto neotvára druhý panel s tými istými číslami,
+                     ale skratkou vedie na obrazovku Dnes. Ikona je `wb_sunny`, tá istá,
+                     akou je Dnes v raile — cieľ sa má dať prečítať z ikony (`monitoring`
+                     sľuboval panel). Rail zostáva primárnou cestou; toto je len skratka
+                     z hlavičky Grafu, ktorá je mimo Grafu skrytá spolu s #graph-tools. --}}
+                <button id="btn-today" class="ms" title="Dnes (S)" aria-label="Otvoriť obrazovku Dnes">wb_sunny</button>
                 <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
             </div>
             <div id="header-metrics" aria-live="polite"></div>
@@ -110,24 +117,52 @@
             <span class="bc-word">Hades</span>
         </button>
 
-        <div class="rail-group" role="group" aria-label="Obrazovky">
+        {{-- POMENOVANÉ SKUPINY RAILU (nález A12). Osem destinácií viselo v jednej
+             skupine „Obrazovky" bez princípu poradia — nič nepovedalo, prečo sú Runy
+             medzi Rozhodnutiami a Kontrolou. Delenie je podľa času a povahy obsahu:
+             TERAZ = čo sa deje práve teraz, ZÁZNAMY = čo sa stalo, ZNALOSTI = čo
+             vedomie vie a práca s tým.
+
+             ODCHÝLKA OD NÁVRHU A ZDÔVODNENIE: triáž navrhla štvrtú skupinu
+             PRÁCA/SPRÁVA len pre Kontrolu. Jednopoložková skupina by dostala label
+             ťažší než jej obsah (eyebrow + jedna destinácia, teda dva riadky na jeden
+             cieľ) a Kontrola pracuje nad tou istou znalosťou ako Knižnica a Smernica —
+             je to „fronta poznatkov čakajúcich na overenie", nie samostatná plocha.
+             Preto tri skupiny a v ZNALOSTIACH poradie prehliadaj → over → použi
+             (Knižnica → Kontrola → Smernica).
+
+             PRÍSTUPNOSŤ: názov skupiny nesie `aria-label` na `role="group"` (ten istý
+             vzor, aký tu mala skupina „Obrazovky" a aký majú Charón a Systém), vizuálny
+             eyebrow je `aria-hidden`, inak by ho čítačka prečítala druhý raz.
+             Verzálku dáva CSS (`text-transform`), nie text — tak ako `.cmdk-group`
+             a ostatné eyebrow labely v projekte. --}}
+        <div class="rail-group" role="group" aria-label="Teraz">
+            <span class="rail-eyebrow" aria-hidden="true">Teraz</span>
             <button class="dest" data-screen="dnes" type="button" aria-label="Dnes">
                 <span class="ms" aria-hidden="true">wb_sunny</span><span class="lbl">Dnes</span>
-            </button>
-            <button class="dest" data-screen="dennik" type="button" aria-label="Denník">
-                <span class="ms" aria-hidden="true">receipt_long</span><span class="lbl">Denník</span>
             </button>
             <button class="dest" data-screen="graf" type="button" aria-label="Graf">
                 <span class="ms" aria-hidden="true">hub</span><span class="lbl">Graf</span>
             </button>
-            <button class="dest" data-screen="kniznica" type="button" aria-label="Knižnica">
-                <span class="ms" aria-hidden="true">menu_book</span><span class="lbl">Knižnica</span>
+        </div>
+
+        <div class="rail-group" role="group" aria-label="Záznamy">
+            <span class="rail-eyebrow" aria-hidden="true">Záznamy</span>
+            <button class="dest" data-screen="dennik" type="button" aria-label="Denník">
+                <span class="ms" aria-hidden="true">receipt_long</span><span class="lbl">Denník</span>
             </button>
             <button class="dest" data-screen="rozhodnutia" type="button" aria-label="Rozhodnutia">
                 <span class="ms" aria-hidden="true">gavel</span><span class="lbl">Rozhodnutia</span>
             </button>
             <button class="dest" data-screen="runy" type="button" aria-label="Runy">
                 <span class="ms" aria-hidden="true">bolt</span><span class="lbl">Runy</span>
+            </button>
+        </div>
+
+        <div class="rail-group" role="group" aria-label="Znalosti">
+            <span class="rail-eyebrow" aria-hidden="true">Znalosti</span>
+            <button class="dest" data-screen="kniznica" type="button" aria-label="Knižnica">
+                <span class="ms" aria-hidden="true">menu_book</span><span class="lbl">Knižnica</span>
             </button>
             <button id="dest-kontrola" class="dest" data-screen="kontrola" type="button" aria-label="Kontrola">
                 <span class="ms" aria-hidden="true">fact_check</span><span class="lbl">Kontrola</span>
@@ -236,18 +271,10 @@
             <button id="btn-new-node" class="ghost" type="button">+ Nový uzol</button>
         </section>
 
-        <section id="sec-stats" class="hidden">
-            <div id="stats-cards" class="metric-grid"></div>
-            <h3>Oblasti</h3>
-            <div id="stats-areas"></div>
-            <h3>Najsilnejšie uzly</h3>
-            <div id="stats-top"></div>
-            <h3>Posledné záznamy</h3>
-            <div id="stats-recent"></div>
-            <h3>Aktivita (30 dní)</h3>
-            <canvas id="growth-chart" width="248" height="60"></canvas>
-        </section>
-
+        {{-- A10: sekcia #sec-stats („Prehľad") tu bola do 24. 8. 2026. Zmazaná —
+             hovorila to isté, čo obrazovka Dnes (oba zdroje čítajú /api/dashboard),
+             len v 248 px paneli a len na Grafe. #btn-today v hlavičke Grafu teraz
+             vedie na obrazovku. --}}
         <section id="sec-legend" class="hidden">
             <h3>Typy uzlov</h3>
             <div id="legend-types"></div>

@@ -55,8 +55,12 @@ function createTray(deps) {
     const tray = new Tray(nativeImage.createFromPath(iconPath));
 
     function buildMenu() {
-        // Stav auto-startu sa číta z OS pri každom otvorení menu — prepínač tak
-        // zrkadlí skutočnosť, aj keď ju zmenil niekto iný.
+        // Stav auto-startu sa číta z OS pri každom POSTAVENÍ menu — teda pri štarte
+        // a po každom prepnutí (viď `click` nižšie). Nie pri každom otvorení menu:
+        // `setContextMenu` drží jednu hotovú instanciu a Electron nemá udalosť
+        // „menu sa práve otvára", ktorá by sa dala na Windows spoľahlivo predbehnúť.
+        // Dôsledok: keď openAtLogin prestaví niekto mimo Hadesa (Nastavenia
+        // Windows), prepínač to dobehne až po reštarte appky.
         const openAtLogin = app.getLoginItemSettings().openAtLogin;
 
         return Menu.buildFromTemplate([
@@ -74,6 +78,9 @@ function createTray(deps) {
                 checked: openAtLogin,
                 click: (item) => {
                     app.setLoginItemSettings({ openAtLogin: item.checked });
+                    // Postav menu znovu, aby zaškrtnutie prišlo z OS, nie z kliku:
+                    // keby OS nastavenie odmietol, prepínač to prizná.
+                    tray.setContextMenu(buildMenu());
                 },
             },
             { type: 'separator' },

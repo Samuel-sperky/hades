@@ -11,6 +11,7 @@ use App\Models\Run;
 use App\Models\Tag;
 use App\Serializers\Screen\DennikScreen;
 use App\Serializers\Screen\DnesScreen;
+use App\Serializers\Screen\HygienaScreen;
 use App\Serializers\Screen\KniznicaScreen;
 use App\Serializers\Screen\KontrolaScreen;
 use App\Serializers\Screen\RozhodnutiaScreen;
@@ -22,7 +23,6 @@ use App\Services\MindService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -1298,75 +1298,25 @@ class McpController extends Controller
     }
 
     /**
-     * Hygienická správa pre session — len na čítanie.
+     * Hygienická správa pre session — len na čítanie a TÁ ISTÁ trieda, z ktorej
+     * čerpá sekcia „Hygiena" na obrazovke Kontrola.
      *
      * Klasifikátor je JEDEN a je v `mind:hygiene` (ten zase stojí na
-     * `MindService::noiseOf()`). Preto sa tu príkaz volá, a nepíše sa druhá
-     * kópia pravidiel: dva detektory odpadu by sa rozišli a AI by videla iné
-     * čísla než človek v CLI.
+     * `MindService::noiseOf()`); `HygienaScreen` ho volá a nepíše druhú kópiu
+     * pravidiel. Do vlny F bol tvar odpovede poskladaný priamo tu, takže odpad
+     * videla len AI — človek v appke nemal ako (nález A3). Teraz je to `data()`
+     * prefiltrované deklarovaným zoznamom kľúčov a plochy drží pri sebe
+     * `ScreenParityTest`.
      *
-     * `--no-file` je povinné — správa z MCP nesmie po každom volaní zakladať
-     * súbor v storage. `--fix` sa nepodáva nikdy: opravy a mazanie idú cez
-     * menované nástroje, kde je jasné, čo presne sa deje s ktorým uzlom.
+     * Payload sa nezmenil ani o kľúč: `nodes`, `edges`, `dirty_nodes`,
+     * `classes[]` (bez tried s nulou, `examples` sú len id) a `worst[]`
+     * s labelom. Zápisové cesty tu nie sú a nebudú — opravy idú cez
+     * `mind_rename` / `mind_move` / `mind_update`, kde je vidieť, čo presne sa
+     * deje s ktorým uzlom.
      */
     protected function toolHygiene(array $args): array
     {
-        $options = [
-            '--json' => true,
-            '--no-file' => true,
-            '--limit' => max(1, min((int) ($args['limit'] ?? 3), 10)),
-        ];
-
-        if (! blank($args['class'] ?? null)) {
-            $options['--class'] = (string) $args['class'];
-        }
-
-        $exit = Artisan::call('mind:hygiene', $options);
-        $output = trim(Artisan::output());
-
-        // Neznámu triedu odmieta príkaz a jeho chyba UŽ menuje platné triedy —
-        // držať tu ich druhú kópiu by znamenalo, že raz sa rozídu.
-        if ($exit !== 0) {
-            throw new \InvalidArgumentException($output !== '' ? $output : 'mind:hygiene failed.');
-        }
-
-        $report = json_decode($output, true);
-
-        if (! is_array($report)) {
-            throw new \RuntimeException('mind:hygiene returned no machine-readable report.');
-        }
-
-        return $this->dropEmpty([
-            'nodes' => $report['nodes'] ?? 0,
-            'edges' => $report['edges'] ?? 0,
-            'dirty_nodes' => $report['dirty_nodes'] ?? 0,
-            // Trieda s nulou nenesie informáciu (to je zdravý stav), takže sa
-            // neposiela. Poradie drží príkaz: najdrahšie triedy prvé.
-            'classes' => collect($report['classes'] ?? [])
-                ->filter(fn (array $class): bool => ($class['count'] ?? 0) > 0)
-                ->map(fn (array $class): array => [
-                    'class' => $class['class'],
-                    'count' => $class['count'],
-                    'weight' => $class['weight'],
-                    // len id — label a oblasť si AI dotiahne cez mind_read, keď
-                    // sa pre konkrétny uzol rozhodne
-                    'examples' => array_values(array_filter(
-                        array_column($class['examples'] ?? [], 'id'),
-                        fn ($id): bool => $id !== null,
-                    )),
-                ])
-                ->values()
-                ->all(),
-            // tri najdrahšie uzly aj s labelom — o týchto sa rozhoduje najskôr,
-            // tak nech ich AI vie pomenovať bez ďalšieho dotazu
-            'worst' => collect($report['worst'] ?? [])
-                ->map(fn (array $node): array => [
-                    'id' => $node['id'],
-                    'label' => $node['label'],
-                    'classes' => $node['classes'],
-                ])
-                ->all(),
-        ]);
+        return (new HygienaScreen($args))->forAi();
     }
 
     /**

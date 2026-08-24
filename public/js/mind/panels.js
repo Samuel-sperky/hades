@@ -553,7 +553,16 @@ export function fillDeptOptions(areaId, deptId) {
         + depts.map((d) => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
     dSel.value = deptId || '';
 }
+/* POZOR, DNES JE TO MŔTVA CESTA. Sekciu doku `#sec-stats` („Prehľad") zmazal
+   nález A10 (24. 8. 2026) a `dock.js` odvtedy `openDock('stats')` PREPOSIELA na
+   obrazovku Dnes cez DOCK_ALIAS, takže `dockOpen` už nikdy nenadobudne hodnotu
+   `'stats'` — a to je jediná podmienka, pod ktorou `ws.js:179` túto funkciu volá.
+   Funkcia zostáva len preto, že ju `ws.js` importuje; zmazať sa musia obe miesta
+   naraz, inak modul spadne pri načítaní. Preto tu pribudol aj strážca nižšie:
+   kontejnery v DOM nie sú a `$('stats-cards').innerHTML` by hodilo TypeError
+   v obsluhe WS správy. */
 export async function refreshStats() {
+    if (!$('stats-cards')) return;
     let st;
     try {
         const res = await fetch('/api/mind/stats');
@@ -563,10 +572,14 @@ export async function refreshStats() {
         return;
     }
 
+    /* D9: jedna rodina pre „číslo s popiskom". Toto bola `.metric-*`, teda druhá
+       rodina pre to isté, čo `.kpi-*` na obrazovkách; ostáva `.kpi-*` a dvojriadková
+       podoba je modifikátor `--block`. Mriežka `#stats-cards` musí mať pri oživení
+       aj `.kpi-grid .kpi-grid--pair` — `auto-fit` dá v 300px paneli jeden stĺpec. */
     const card = (label, value, sub) =>
-        '<div class="metric"><div class="metric-val">' + value + '</div>'
-        + '<div class="metric-label">' + label + '</div>'
-        + (sub ? '<div class="metric-sub">' + sub + '</div>' : '') + '</div>';
+        '<div class="kpi-card kpi-card--block"><div class="kpi-val">' + value + '</div>'
+        + '<div class="kpi-label">' + label + '</div>'
+        + (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</div>';
 
     const w = st.week || {};
     $('stats-cards').innerHTML =

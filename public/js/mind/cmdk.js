@@ -6,16 +6,32 @@ import { $, emptyHtml, esc, plainInline, plainText, prettyProject, typeName } fr
 
 /* ---------- Cmd-K paleta (zjednotené hľadanie + navigácia) ---------- */
 
+/* Paleta pozná VŠETKY destinácie railu. Do 24. 8. 2026 ich mala sedem z ôsmich —
+   chýbali Runy (pribudli neskôr a na paletu sa zabudlo) aj Charón. Rozdiel bol tichý:
+   paleta na „runy" nenašla nič a vyzeralo to, že obrazovka neexistuje.
+   Poradie zrkadlí skupiny railu (TERAZ / ZÁZNAMY / ZNALOSTI), aby paleta a rail
+   nehovorili o tej istej appke v dvoch rôznych poradiach. */
 export const CMDK_NAV = [
     { screen: 'dnes', label: 'Dnes', icon: 'wb_sunny' },
-    { screen: 'dennik', label: 'Denník', icon: 'receipt_long' },
     { screen: 'graf', label: 'Graf', icon: 'hub' },
-    { screen: 'kniznica', label: 'Knižnica', icon: 'menu_book' },
+    { screen: 'dennik', label: 'Denník', icon: 'receipt_long' },
     { screen: 'rozhodnutia', label: 'Rozhodnutia', icon: 'gavel' },
+    { screen: 'runy', label: 'Runy', icon: 'bolt' },
+    { screen: 'kniznica', label: 'Knižnica', icon: 'menu_book' },
     { screen: 'kontrola', label: 'Kontrola', icon: 'fact_check' },
     { screen: 'smernica', label: 'Smernica', icon: 'assignment' },
+    /* Charón NIE JE obrazovka grafu, ale samostatná plocha na vlastnej URL — preto
+       `url` a nie `screen`, a klik robí `location.href`, nie `setScreen()`. Odchod zo
+       stránky je zmena kontextu, takže to paleta priznáva podtitulom.
+       Ikona `send` je tá istá ako v raile a je overená v subsete; `forum` v ňom NIE JE
+       a nová ikona by znamenala regeneráciu subsetu. */
+    { url: '/console', label: 'Charón', icon: 'send', sub: 'Chat s vedomím — otvorí samostatnú plochu' },
 ];
 export let cmdkTimer = null, cmdkSeq = 0;
+// Beží vzdialené hľadanie? Enter to potrebuje vedieť: kým výsledky nie sú vonku,
+// nesmie spadnúť na akciu — pretiekol by na Smernicu presne v tom okamihu, keď
+// hľadaný uzol o 200 ms príde.
+export let cmdkPending = false;
 // Kam sa vráti fokus po zavretí palety. Bez toho spadol na <body>, takže Tab po
 // zavretí začínal od začiatku dokumentu — a paletu otvára KLÁVESOVÁ skratka,
 // čiže presne ten používateľ, ktorému to vadí najviac.
@@ -60,6 +76,26 @@ export function cmdkMove(delta) {
     items[next].scrollIntoView({ block: 'nearest' });
 }
 
+/* Ktorú položku vezme Enter zo vstupu. **Poradie skupín v zozname sa NEMENÍ** —
+   je to vizuálna hierarchia; mení sa len voľba. Prednosť má skutočný výsledok
+   (uzol, playbook), potom destinácia railu, akcia je až posledná.
+   Do 24. 8. 2026 tu bolo `cmdkItems()[0]`, a keďže zoznam sa skladá
+   `nav → Akcia → #cmdk-remote`, pri dopyte, ktorý netrafí názov obrazovky, bola
+   prvou položkou **vždy** „Vytvor smernicu": človek napísal text, stlačil Enter
+   a namiesto výsledku skončil na Smernici (nález A2). */
+export function cmdkEnterTarget() {
+    const items = cmdkItems();
+    const hit = items.find((el) => el.dataset.id !== undefined || el.dataset.pb !== undefined);
+    if (hit) return hit;
+    const dest = items.find((el) => el.dataset.nav !== undefined || el.dataset.url !== undefined);
+    if (dest) return dest;
+    // Akcia je fallback, ale nie „na slepo": kým hľadanie beží, ešte nevieme, či
+    // výsledok nepríde. A keď dobehne naprázdno, akcia je jediná položka v palete,
+    // takže Enter na nej je vedomá voľba, nie prekvapenie.
+    if (cmdkPending) return null;
+    return items.find((el) => el.dataset.action !== undefined) || null;
+}
+
 export function setupCmdk() {
     $('cmdk-trigger').onclick = openCmdk;
     const overlay = $('cmdk');
@@ -81,10 +117,12 @@ export function setupCmdk() {
         if (e.key === 'ArrowDown') { e.preventDefault(); cmdkMove(1); return; }
         if (e.key === 'ArrowUp') { e.preventDefault(); cmdkMove(-1); return; }
         if (e.key === 'Enter') {
-            // na položke si Enter obslúži prehliadač sám (je to <button>)
+            // Na položke si Enter obslúži prehliadač sám (je to <button>) — to, na čom
+            // človek stojí, má prednosť pred akýmkoľvek pravidlom nižšie.
             if (document.activeElement !== input) return;
-            const first = cmdkItems()[0];
-            if (first) { e.preventDefault(); first.click(); }
+            const target = cmdkEnterTarget();
+            // Bez cieľa Enter zámerne nerobí NIČ (nie „vytvor smernicu" na slepo).
+            if (target) { e.preventDefault(); target.click(); }
             return;
         }
         // Písanie po odšípkovaní musí ísť do dopytu, nie do prázdna. Hodnotu meníme
@@ -110,6 +148,13 @@ export function setupCmdk() {
 export function bindCmdkItems(root) {
     root.querySelectorAll('.cmdk-item[data-nav]').forEach((el) => {
         el.onclick = () => { closeCmdk(); setScreen(el.dataset.nav); };
+    });
+    /* Odchod na inú plochu (dnes len Charón). Hodnota pochádza z konštanty CMDK_NAV,
+       nikdy z dopytu — do `location.href` sa nesmie dostať nič, čo napísal človek.
+       Paletu zatvárame pred odchodom: keby navigáciu niečo zdržalo, otvorená paleta
+       nad odchádzajúcou stránkou vyzerá ako zaseknutý klik. */
+    root.querySelectorAll('.cmdk-item[data-url]').forEach((el) => {
+        el.onclick = () => { closeCmdk(); location.href = el.dataset.url; };
     });
     root.querySelectorAll('.cmdk-item[data-id]').forEach((el) => {
         el.onclick = () => {
@@ -154,9 +199,12 @@ export function renderCmdk(q) {
     let html = '';
     if (nav.length) {
         html += cmdkGroup('Prejsť na')
-            + nav.map((n) => '<button type="button" class="cmdk-item" data-nav="' + n.screen + '">'
+            + nav.map((n) => '<button type="button" class="cmdk-item" '
+                + (n.url ? 'data-url="' + esc(n.url) + '"' : 'data-nav="' + n.screen + '"') + '>'
                 + '<span class="ms" aria-hidden="true">' + n.icon + '</span>'
-                + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label) + '</span></span></button>').join('');
+                + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label) + '</span>'
+                + (n.sub ? '<span class="cmdk-sub">' + esc(n.sub) + '</span>' : '')
+                + '</span></button>').join('');
     }
     // Akcia: poskladať smernicu z aktuálneho dopytu (skočí na obrazovku Smernica)
     html += cmdkGroup('Akcia')
@@ -172,7 +220,8 @@ export function renderCmdk(q) {
     // Debounce 180 ms, od 2 znakov; nav ostáva okamžitá.
     clearTimeout(cmdkTimer);
     const seq = ++cmdkSeq;
-    if (query.length < 2) return;
+    if (query.length < 2) { cmdkPending = false; return; }
+    cmdkPending = true;
     const remote = $('cmdk-remote');
     if (remote) remote.innerHTML = '<div class="cmdk-hint-row">Hľadám…</div>';
     cmdkTimer = setTimeout(async () => {
@@ -211,5 +260,8 @@ export function renderCmdk(q) {
             box._books = books;
             bindCmdkItems(box);
         } catch (e) { /* offline nevadí */ }
+        // Dopyt dobehol (aj keď naprázdno alebo do chyby) — Enter už smie padnúť na
+        // akciu. Strážime `seq`: stará odpoveď nesmie odklepnúť čakanie novšieho dopytu.
+        finally { if (seq === cmdkSeq) cmdkPending = false; }
     }, 180);
 }

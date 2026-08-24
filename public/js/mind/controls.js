@@ -170,7 +170,10 @@ export function setupControls() {
 
     // graph-tools (v hlavičke, viditeľné len na Grafe) + systém (rail)
     $('btn-structure').onclick = () => openDock('structure');
-    $('btn-stats').onclick = () => openDock('stats');
+    // A10: Prehľad prestal byť sekciou doku — skratka vedie priamo na obrazovku Dnes,
+    // teda na ten istý zdroj (/api/dashboard) v plnej šírke. Nie cez openDock('dnes'):
+    // dok o obrazovkách nerozhoduje, tu je destinácia známa.
+    $('btn-today').onclick = () => setScreen('dnes');
     $('btn-legend').onclick = () => openDock('legend');
     $('btn-help').onclick = () => toggleHelp(true);
     $('btn-settings').onclick = () => openDock('settings');

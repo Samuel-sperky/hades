@@ -68,8 +68,12 @@ const path = require('node:path');
 const { createStateManager } = require('./states/manager');
 const { createTray } = require('./tray');
 
-/** Koreň projektu (o úroveň vyššie než tento adresár) — kvôli `.env`. */
-const ROOT = path.resolve(__dirname, '..');
+/**
+ * Koreň balíka appky (o úroveň vyššie než tento adresár). V dev behu je to koreň
+ * repozitára, v zabalenej appke koreň `app.asar`. Žije tu `package.json` —
+ * jediné, čo shell z balíka číta (`readVersion`).
+ */
+const APP_ROOT = path.resolve(__dirname, '..');
 
 /** Kam sa okno pripája. Prepísateľné cez `HADES_PORT`, tak ako v `bin/hades-app.mjs`. */
 const PORT = Number(process.env.HADES_PORT || 8080);
@@ -106,8 +110,22 @@ const CHROME_H = 40;
 /** Identita v taskbare — bez nej Windows appku zoskupuje pod „Node". */
 const APP_USER_MODEL_ID = 'sk.sperky.hades';
 
-/** Ikona okna aj appky (mini sigil, 16–256 px). */
-const APP_ICON = path.join(__dirname, 'assets', 'hades.ico');
+/**
+ * Ikona okna, appky aj tray (mini sigil, 16–256 px).
+ *
+ * V zabalenej appke sa berie z `app.asar.unpacked`: ikonu čítajú NATÍVNE vrstvy
+ * (`BrowserWindow.icon`, `Tray`), ktoré do asar archívu nevidia — preto ju
+ * `asarUnpack` v `electron-builder.yml` necháva ležať na disku. V dev behu
+ * (`npm run app`) žiadny asar neexistuje a použije sa cesta na disku tak, ako je.
+ */
+function resolveIcon() {
+    const inside = path.join(__dirname, 'assets', 'hades.ico');
+    const unpacked = inside.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
+    return unpacked !== inside && fs.existsSync(unpacked) ? unpacked : inside;
+}
+
+const APP_ICON = resolveIcon();
 
 /** Systémové okenné príkazy z lišty. Whitelist, overený v main. */
 const WINDOW_ACTIONS = new Set(['minimize', 'maximize', 'close']);
@@ -134,7 +152,35 @@ function screenOf(url) {
 }
 
 /**
- * UI token: z prostredia, inak z `.env` v koreni projektu.
+ * Kde sa hľadá `.env` s UI tokenom.
+ *
+ * ZÁMERNE to nie je `APP_ROOT`. `.env` do balíka nepatrí a ALLOW-list v
+ * `electron-builder.yml` ho tam nepustí, takže v ZABALENEJ appke by
+ * `APP_ROOT/.env` (teda cesta vnútri asaru) neexistoval a okno by zhaslo na
+ * dialógu ešte pred prvým pixelom. Kandidáti v poradí:
+ *
+ *   1. `HADES_ROOT` — koreň projektu povedaný prostredím (platí vždy),
+ *   2. dev beh (`npm run app`): koreň repozitára, teda `APP_ROOT`,
+ *   3. zabalená appka: adresár .exe — portable .exe položený do koreňa projektu
+ *      tak funguje bez nastavovania čohokoľvek.
+ *
+ * Kto nemá ani jedno, dostane `HADES_UI_TOKEN` do prostredia (viď dialóg nižšie).
+ */
+function envDirs() {
+    const dirs = [];
+    const fromEnv = (process.env.HADES_ROOT || '').trim();
+
+    if (fromEnv !== '') {
+        dirs.push(path.resolve(fromEnv));
+    }
+
+    dirs.push(app.isPackaged ? path.dirname(app.getPath('exe')) : APP_ROOT);
+
+    return dirs;
+}
+
+/**
+ * UI token: z prostredia, inak z `.env` (viď `envDirs`).
  *
  * Parsuje sa ručne, aby shell nemal ani jednu závislosť navyše. Hodnota sa
  * nikam nevypisuje — ani pri chybe. Chybová hláška hovorí o mene premennej,
@@ -147,23 +193,29 @@ function readUiToken() {
         return fromEnv;
     }
 
-    let raw;
+    for (const dir of envDirs()) {
+        let raw;
 
-    try {
-        raw = fs.readFileSync(path.join(ROOT, '.env'), 'utf8');
-    } catch {
-        return null;
+        try {
+            raw = fs.readFileSync(path.join(dir, '.env'), 'utf8');
+        } catch {
+            continue;
+        }
+
+        const line = raw.split(/\r?\n/).find((l) => l.startsWith('HADES_UI_TOKEN='));
+
+        if (!line) {
+            continue;
+        }
+
+        const value = line.slice('HADES_UI_TOKEN='.length).trim().replace(/^["']|["']$/g, '');
+
+        if (value !== '') {
+            return value;
+        }
     }
 
-    const line = raw.split(/\r?\n/).find((l) => l.startsWith('HADES_UI_TOKEN='));
-
-    if (!line) {
-        return null;
-    }
-
-    const value = line.slice('HADES_UI_TOKEN='.length).trim().replace(/^["']|["']$/g, '');
-
-    return value === '' ? null : value;
+    return null;
 }
 
 /**
@@ -174,7 +226,7 @@ function readUiToken() {
  */
 function readVersion() {
     try {
-        const raw = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
+        const raw = fs.readFileSync(path.join(APP_ROOT, 'package.json'), 'utf8');
         const value = JSON.parse(raw).version;
 
         return typeof value === 'string' && value !== '' ? value : app.getVersion();
@@ -319,15 +371,23 @@ function sendChromeState() {
  * s ňou. Bezpečnostná hranica (4) sa nemení, len jej cieľ.
  */
 function installContentGuards(wc) {
+    /* Adresa sa číta z OBJEKTU udalosti (`event.url`), nie z pozičného argumentu.
+       Dôvod je meraný, nie kozmetický: Electron 43 pozičné args ešte posiela, ale
+       hlási „'will-navigate' arguments are deprecated and will be removed" — a keby
+       ich budúca verzia odstránila, `url` by bolo `undefined`, `isOwnOrigin` vždy
+       false a strážca by zablokoval aj vlastnú navigáciu, teda celú appku.
+       Poslúchač má preto ZÁMERNE aritu 1: varovanie sa vypúšťa podľa počtu
+       parametrov poslúchača, nie podľa toho, čo z nich čítaš. */
+
     // (4) Navigácia von z vlastného originu sa nedeje. Odkaz na internet otvorí
     // systémový prehliadač — v okne appky nemá čo robiť.
-    wc.on('will-navigate', (event, url) => {
-        if (isOwnOrigin(url)) {
+    wc.on('will-navigate', (event) => {
+        if (isOwnOrigin(event.url)) {
             return;
         }
 
         event.preventDefault();
-        openExternal(url);
+        openExternal(event.url);
     });
 
     wc.setWindowOpenHandler(({ url }) => {
@@ -341,8 +401,8 @@ function installContentGuards(wc) {
 
     // Presmerovanie na cudzí origin uprostred requestu (redirect) je tá istá
     // hranica ako klik na odkaz.
-    wc.on('will-redirect', (event, url) => {
-        if (!isOwnOrigin(url)) {
+    wc.on('will-redirect', (event) => {
+        if (!isOwnOrigin(event.url)) {
             event.preventDefault();
         }
     });
@@ -372,8 +432,14 @@ function installThemeBridge(wc) {
 
     wc.on('dom-ready', inject);
 
-    wc.on('console-message', (_event, _level, message) => {
-        if (typeof message === 'string' && message.startsWith('__HADES_THEME__ ')) {
+    // Text sa berie z objektu udalosti (`details.message`) a poslúchač má arita 1
+    // — to je to isté ako pri `will-navigate` vyššie: Electron 43 na pozičné
+    // argumenty (`level`, `message`, …) hlási deprecation a v ďalšom majore ich
+    // odstráni. Namerané v boot teste: s aritou 3 sa varovanie vypúšťalo, s 1 nie.
+    wc.on('console-message', (details) => {
+        const message = details && typeof details.message === 'string' ? details.message : '';
+
+        if (message.startsWith('__HADES_THEME__ ')) {
             currentTheme = message.slice('__HADES_THEME__ '.length).trim() === 'light' ? 'light' : 'dark';
 
             if (barView && !barView.webContents.isDestroyed()) {
@@ -693,8 +759,11 @@ if (!app.requestSingleInstanceLock()) {
         if (!token) {
             dialog.showErrorBox(
                 'Hades sa nedá odomknúť',
-                'V .env chýba HADES_UI_TOKEN, takže okno by skončilo na prihlasovaní.\n\n'
-                + 'Doplň ho do .env v koreni projektu a spusti Hades znovu.',
+                'Nenašiel som HADES_UI_TOKEN, takže okno by skončilo na prihlasovaní.\n\n'
+                + 'Hľadal som ho v prostredí a v .env tu:\n'
+                + envDirs().map((d) => `  • ${d}`).join('\n')
+                + '\n\nDoplň HADES_UI_TOKEN do .env v koreni projektu a spusti Hades znovu.\n'
+                + 'Ak je Hades nainštalovaný mimo projektu, povedz mu koreň premennou HADES_ROOT.',
             );
             app.quit();
 

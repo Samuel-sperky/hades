@@ -6,6 +6,7 @@ use App\Models\ConsoleThread;
 use App\Models\Run;
 use App\Serializers\Screen\DennikScreen;
 use App\Serializers\Screen\DnesScreen;
+use App\Serializers\Screen\HygienaScreen;
 use App\Serializers\Screen\KniznicaScreen;
 use App\Serializers\Screen\KontrolaScreen;
 use App\Serializers\Screen\RozhodnutiaScreen;
@@ -113,6 +114,15 @@ class ScreenParityTest extends TestCase
                 'serializer' => KontrolaScreen::class,
                 'tool' => 'mind_review',
                 'route' => 'api/review/queue',
+            ],
+            // Hygiena je sekcia TEJ ISTEJ obrazovky (Kontrola), ale vlastný
+            // serializér a vlastná routa: je to prechod celou sieťou, nie dopyt,
+            // takže by ho fronta platila pri každom prekreslení. Do vlny F videl
+            // odpad len `mind_hygiene` — človek v appke nemal ako (nález A3).
+            'hygiena' => [
+                'serializer' => HygienaScreen::class,
+                'tool' => 'mind_hygiene',
+                'route' => 'api/hygiene',
             ],
         ];
     }

@@ -356,6 +356,17 @@ function createStateManager(deps) {
     function attach() {
         const wc = appView.webContents;
 
+        /* Padlo aktuálne načítanie? Chromium po sieťovej chybe načíta ešte VLASTNÚ
+           chybovú stránku a na ňu vypustí `did-finish-load` — namerané v Electrone
+           43.4.1 (smoke test: pri odmietnutom spojení sa offline obrazovka objavila
+           a hneď zmizla, ostal chybový list Chrome s pásom „stratené spojenie" a
+           zrušeným backoffom, teda presne to, čomu má tento správca zabrániť).
+           Príznak sa nuluje na začiatku každého načítania a `did-finish-load` ho
+           berie ako podmienku. */
+        let loadFailed = false;
+
+        wc.on('did-start-loading', () => { loadFailed = false; });
+
         // Pád načítania appky na vlastnom origine (backend nebeži alebo spadol).
         // `-3` (ABORTED) je bežné pri preklikoch/redirectoch, nie výpadok — ignoruj.
         wc.on('did-fail-load', (_event, errorCode, _desc, validatedURL, isMainFrame) => {
@@ -367,6 +378,8 @@ function createStateManager(deps) {
                 return;
             }
 
+            loadFailed = true;
+
             if (offlineShown) {
                 // Padol pokus o obnovu (backend odpovedal na sondu, ale načítanie
                 // zlyhalo) — pokračuj v backoffe namiesto zaseknutia.
@@ -377,8 +390,10 @@ function createStateManager(deps) {
         });
 
         // Appka sa úspešne načítala — schovaj offline a začni sledovať živé spojenie.
+        // `loadFailed` odfiltruje chybovú stránku Chromium: tá má tú istú URL na
+        // vlastnom origine, takže bez príznaku by prešla ako úspech.
         wc.on('did-finish-load', () => {
-            if (isOwnOrigin(wc.getURL())) {
+            if (!loadFailed && isOwnOrigin(wc.getURL())) {
                 hideOffline();
                 startWsMonitor();
             }

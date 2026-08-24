@@ -110,6 +110,9 @@ Route::middleware([
 
     // Kontrola — verify/review fronta (B5).
     Route::get('/review/queue', [ReviewController::class, 'queue']);
+    // Sekcia „Hygiena" tej istej obrazovky (A3) — ten istý serializér kŕmi
+    // `mind_hygiene`, takže odpad, ktorý vidí AI, vidí odteraz aj človek.
+    Route::get('/hygiene', [ReviewController::class, 'hygiene']);
     Route::post('/nodes/{node}/verify', [ReviewController::class, 'verify']);
     Route::post('/nodes/{node}/resolve-review', [ReviewController::class, 'resolveReview']);
 

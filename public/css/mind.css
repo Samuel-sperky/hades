@@ -272,11 +272,13 @@
        písal 13× ručne ako 10px / 10.5px (a 11.5 / 12.5 pri caption a small) —
        teda tri veľkosti bez tokenu na tých istých úlohách. Škála má odteraz
        jediný zdroj pravdy: micro → caption → small → body → base → title →
-       display, plus dva zvlášť pomenované displeje (--fs-kpi, --fs-metric). */
+       display, plus dva zvlášť pomenované displeje (--fs-hero, --fs-kpi). */
     /* Škála je PÁROVÁ (veľkosť + jej prokládka) a je to ÚPLNÁ škála, nie zoznam
-       použitých hodnôt. --lh-micro a --sp-5 dnes nič nevolá; nemaž ich —
+       použitých hodnôt. --sp-5 dnes nič nevolá; nemaž ho —
        diera v škále je horšia než nepoužitý stupeň, lebo ďalší človek na jej mieste
-       zadrôtuje číslo. Overené: všetkých 13 --fs-* má aspoň jedného volajúceho.
+       zadrôtuje číslo. Overené (24. 8. 2026, po D9): všetkých 12 --fs-* má aspoň
+       jedného volajúceho — --fs-headline ho má jediného (.md-body h1.md-h), lebo
+       druhý (rolový alias --fs-metric) s rodinou .metric-* zanikol.
        (--lh-small volajúceho MÁ od 21. 8. 2026: nález R3 odhalil, že form
        controls bežali na UA `normal`, takže dátové telá kariet a technické
        výpisy musia svoju prokládku deklarovať nahlas.) */
@@ -436,15 +438,19 @@
     --heat-4: #8734cf;                    /* densest — deep accent amethyst (5,63:1 on paper) */
 
     /* ---- dashboard type scale ----
-       Tri stupne odpočtu, aby dashboard mal hierarchiu a nie šesť rovnako veľkých
-       čísel: --fs-hero (jedno hlavné číslo obrazovky) → --fs-kpi (druhý rad) →
-       --fs-metric (čísla v paneloch a kartách). */
+       DVA stupne odpočtu, aby dashboard mal hierarchiu a nie šesť rovnako veľkých
+       čísel: --fs-hero (jedno hlavné číslo obrazovky) → --fs-kpi (každý ďalší
+       odpočet, na obrazovke aj v paneli).
+
+       D9 (24. 8. 2026): tretí stupeň --fs-metric (= --fs-headline = 24px) tu bol
+       preto, že „číslo s popiskom" malo dve rodiny — .kpi-* na obrazovke a .metric-*
+       v paneli. Rodiny sú zlúčené do .kpi-*, takže tretí stupeň stratil jediného
+       volajúceho a je zmazaný. Nie je to diera v škále: --fs-metric bolo ROLOVÉ
+       meno ukazujúce na --fs-headline, a ten stupeň žije ďalej. */
     --fs-hero: 44px;  --lh-hero: 1;       /* JEDNO primárne číslo na obrazovku */
     --fs-kpi: 30px;   --lh-kpi: 1;        /* big mono KPI readouts */
-    /* Rolové mená NEDRŽIA vlastnú hodnotu, ukazujú na stupeň škály. Predtým tu
-       --fs-metric: 24px duplikovalo --fs-headline a --fs-h2: 16px duplikovalo
-       --fs-title — dve mená pre tú istú veľkosť, ktoré sa mohli rozísť. */
-    --fs-metric: var(--fs-headline);      /* readouts v paneloch (dock, karty) */
+    /* Rolové mená NEDRŽIA vlastnú hodnotu, ukazujú na stupeň škály — inak by sa
+       dve mená pre tú istú veľkosť mohli rozísť (--fs-h2 : --fs-title). */
     --fs-h1: 28px;                        /* screen title (Geist) — vlastná, mimo škály */
     --fs-h2: var(--fs-title);             /* dashboard block / section heading */
 
@@ -591,12 +597,17 @@
        Rovnaká hodnota, druhé meno. Nie sú to nové stupne a nedržia vlastnú
        hodnotu — ukazujú na existujúci token, takže sa nemôžu rozísť. Sú tu,
        aby komponent prenesený z inej appky rodiny nemusel prekladať mená.
-       Volajúceho má dnes len --card-radius (sekcia JEDNA KARTA). Zvyšok je
-       zámerne bez volajúceho: prepisovať ~100 deklarácií `transition` alebo
-       typografických veľkostí na druhé meno by bol plošný reformát bez zmeny
-       vzhľadu — presne to, čo tento súbor zakazuje. --page-h1 a --kpi-value
-       navyše zostávajú NEPOUŽITÉ vedome, aby úloha typografickej škály (R7)
-       menila jedno meno (--fs-h1 / --fs-kpi), nie dve. */
+       Volajúceho majú dnes --card-radius (sekcia JEDNA KARTA) a --kpi-value
+       (.kpi-val). Zvyšok je zámerne bez volajúceho: prepisovať ~100 deklarácií
+       `transition` alebo typografických veľkostí na druhé meno by bol plošný
+       reformát bez zmeny vzhľadu — presne to, čo tento súbor zakazuje.
+
+       --kpi-value volajúceho DOSTAL v D9 (24. 8. 2026): rodiny .kpi-* a .metric-*
+       sa zliali do jednej a číslo karty má odteraz jedno rolové meno. Dovtedy tu
+       stálo, že --page-h1 aj --kpi-value zostávajú nepoužité, aby úloha
+       typografickej škály (R7) menila jedno meno, nie dve; R7 je zavretá, takže
+       tá podmienka vypršala. Alias ukazuje na --fs-kpi, hodnota sa nemení.
+       --page-h1 nepoužité zostáva. */
     --card-radius: var(--r-md);
     --shadow-1: var(--elev-1);
     --shadow-2: var(--elev-2);
@@ -901,7 +912,6 @@ kbd {
    S −.34em by vyšla na −.10em a číslice by sa zliali. Zmerané renderom, nie
    z tabuliek: mono .600em / Playfair .239em / Geist .236em na 44 px. */
 .kpi-val,
-.metric-val,
 .tc-val { word-spacing: -.34em; }
 /* Tesnenie platí LEN na samo číslo (holý textový uzol v obale). Do vnorených
    popiskov sa dediť nesmie — .kpi-val má popisky rovnako ako .hero-unit a pri
@@ -909,7 +919,6 @@ kbd {
    potomkoch, nie výpis tried: ten by pri pridaní ďalšieho popisku (napr.
    .kpi-suffix) tichu vypadol. */
 .kpi-val *,
-.metric-val *,
 .tc-val * { word-spacing: normal; }
 
 /* Shared technical readout treatment — Geist Mono + aligned figures.
@@ -1215,6 +1224,55 @@ button.close:active { background: var(--accent-soft); }
 }
 
 .rail-group { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+/* NÁZOV SKUPINY RAILU (nález A12). Blade eyebrow zaviedol, CSS preň nemalo ani
+   jedno pravidlo — v 80px raile to bol neošetrený odsek v --fs-base, ktorý skupinu
+   rozšíril nad šírku railu. Jazyk je ten istý, akým hovoria ostatné eyebrow labely
+   v projekte (.cmdk-group, .kpi-label): mono, verzálka z CSS a nie z textu, --muted.
+
+   `width: 68px` a nie `auto`: #rail má `align-items: center`, takže .rail-group je
+   široká podľa svojho najširšieho dieťaťa — bez pevnej šírky by dlhší názov skupinu
+   roztiahol a v 80px raile by pretiekol. 68px je presne šírka `.dest`, takže eyebrow
+   a destinácie stoja v jednej osi. Najdlhší názov („ZÁZNAMY", 8 znakov) meria pri
+   10px mono s --ls-mono-caps ~53px, teda sa vojde; ellipsis je poistka pre preklad. */
+.rail-eyebrow {
+    width: 68px;
+    margin-top: var(--sp-0);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: var(--lh-micro);
+    font-weight: var(--fw-medium);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* NÍZKE OKNO: eyebrow labely idú preč PRVÉ. Rail nemá `overflow`, takže keď sa
+   obsah nezmestí, destinácie vytečú pod dolnú hranu a stanú sa nedosiahnuteľnými —
+   label je z toho obsahu jediná časť, ktorú si možno dovoliť neukázať, pretože
+   názov skupiny nesie `aria-label` na `role="group"` a vizuálny eyebrow je
+   `aria-hidden`. Skrytím sa teda nestráca ani informácia pre čítačku, ani cieľ.
+
+   Odkiaľ 860px (počítané z pevných hodnôt tohto súboru, nie odhad):
+     11 destinácií × 52px (min-height `.dest`)          = 572
+     medzery vo skupinách (2+3+3+0+1) × --sp-1 8px      =  72
+     medzery railu medzi 6 deťmi (5 × 8px)              =  40
+     #brand-core (4 + 24 svg + 2 + 11 slovo + 8 + 4)    =  53
+     .rail-group.bottom padding-top                     =   8
+                                                  bez eyebrow = 745px
+     3 eyebrow labely × (13px riadok + 4px margin)      =  51  → s eyebrow = 796px
+   Dostupná výška obsahu railu = 100vh − 2×--edge (32) − 2×--sp-1 (16) = 100vh − 48.
+   S eyebrow to teda sedí od ~844px výšky okna, bez nich od ~793px. Prah 860px má
+   nad 844 rezervu na zaokrúhlenie a je to zároveň jediná výšková hranica súboru;
+   keď sa mení počet destinácií, prepočítaj ju. */
+@media (max-height: 860px) {
+    .rail-eyebrow { display: none; }
+}
+
 .rail-group.bottom {
     margin-top: auto;
     padding-top: var(--sp-1);
@@ -2580,41 +2638,14 @@ body.ambient #toasts {
 /* ---------------------------------------------------------------------------
    DASHBOARD + DENNÍK ZÁZNAMOV (Aura business vrstva)
    --------------------------------------------------------------------------- */
-.metric-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--sp-1);
-    margin-bottom: var(--sp-1);
-}
-.metric {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    padding: var(--sp-2h) var(--sp-2);
-}
-/* Číslo v paneli je ODPOČET, nie hero metrika: mono + tabular-nums ako každý iný
-   odpočet v appke (--fs-kpi / #header-metrics / .tc-val). Serif má v celej appke
-   jediné miesto — .hero-val, teda JEDNO primárne číslo obrazovky (manuál §4).
-   Keby serif nesol aj druhý a tretí rad čísel, prestal by hovoriť „toto je to
-   hlavné" a stal by sa ozdobou. */
-.metric-val {
-    font-family: var(--mono);
-    font-size: var(--fs-metric);
-    line-height: 1.1;
-    color: var(--text);
-    font-weight: var(--fw-semibold);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -.01em;
-}
-.metric-label {
-    font-size: var(--fs-caption);
-    text-transform: uppercase;
-    letter-spacing: var(--ls-mono-caps);
-    color: var(--muted);
-    margin-top: 2px;
-    font-family: var(--mono);
-}
-.metric-sub { font-size: var(--fs-caption); color: var(--accent); margin-top: var(--sp-0); }
+/* D9: rodina `.metric-*` (`.metric-grid`, `.metric`, `.metric-val`,
+   `.metric-label`, `.metric-sub`) tu bola do 24. 8. 2026. Bola to DRUHÁ rodina pre
+   to isté, čo `.kpi-*` — „číslo s popiskom" — len s vlastným chrómom
+   (`--surface-2` namiesto `--card-bg`), vlastnou mriežkou (`1fr 1fr`) a vlastnou
+   veľkosťou čísla (`--fs-metric` = 24px vs `--fs-kpi` = 30px). Zlúčené do `.kpi-*`
+   + modifikátory `.kpi-grid--pair` a `.kpi-card--block` (viď blok KPI GRID nižšie).
+   Dôvod, prečo je číslo v paneli mono a nie serif, sa presunul tam — serif má
+   v celej appke jediné miesto (`.hero-val`, manuál §4). */
 
 #stats-recent, #journal-list { display: flex; flex-direction: column; gap: var(--sp-1); }
 
@@ -3859,7 +3890,7 @@ select {
    vzácny, a preto významný: len hero metriky"). Do 20. 8. 2026 tu bežalo Geist Mono
    a Playfair nesol nadpis obrazovky, teda presne opačne než manuál; manuál je zdroj
    pravdy. Serif tu má prácu: odlišuje JEDNO primárne číslo obrazovky od radu
-   monospace odpočtov pod ním (--fs-kpi, .metric-val, #header-metrics), takže
+   monospace odpočtov pod ním (.kpi-val, #header-metrics, .tc-val), takže
    hierarchiu nesie aj rez písma, nie len veľkosť.
    Tabulárne číslice drží globálny font-variant-numeric z body; word-spacing tu
    NIE JE (viď blok o nezlomiteľnej medzere vyššie — v Playfaire je už úzka). */
@@ -3917,6 +3948,22 @@ button.hero-action:hover { border-color: var(--accent); }
     gap: var(--sp-1);
     margin-bottom: var(--gutter);
 }
+/* PEVNÁ DVOJICA — pre KPI mriežku v paneli, nie na obrazovke (D9 / plán M8).
+   `auto-fit` + `--kpi-cols` je správne na obrazovke, kde je šírky dosť; v paneli
+   je to tichá regresia a toto je jej miera:
+
+     --panel-w = 300px, #dock padding = --sp-2 (16px) na každej strane
+     → obsah 300 − 32 = 268px
+     auto-fit s --kpi-cols 160px: 268 pojme 1×160 (dva by chceli 160+8+160 = 328)
+     → JEDEN stĺpec, teda dvojnásobná výška panela
+     pevné 1fr 1fr: (268 − 8 gapu) / 2 = 130px na stĺpec
+
+   Prečo NIE „len znížiť --kpi-cols" na 120px: --panel-w je responzívny
+   (`min(300px, 26vw)` pod 1280px), takže pri viewporte 1000px má panel 260px,
+   obsah 228px a dva 120px stĺpce s gapom (248px) sa zase nezmestia — mriežka by
+   spadla na jeden stĺpec presne tam, kde je miesta najmenej. `1fr 1fr` je na
+   šírke nezávislé, preto je to ono. */
+.kpi-grid--pair { grid-template-columns: 1fr 1fr; }
 /* Druhý rad odpočtov je STRIP, nie blok: číslo a popisok na jednej účaří.
    V dvojriadkovej podobe mala karta na 1600 px ~350 px šírky a 80 px výšky pre
    dve slová, takže rad čítal ako štyri prázdne škatule. Jednoriadkový strip je
@@ -3925,6 +3972,18 @@ button.hero-action:hover { border-color: var(--accent); }
     display: flex; flex-direction: row; align-items: baseline;
     gap: var(--sp-1);
     flex-wrap: wrap;
+}
+/* DVOJRIADKOVÁ PODOBA — číslo nad popiskom. Modifikátor, nie druhá rodina (D9):
+   presne toto robila zrušená `.metric`. Musí vrátiť `align-items: stretch` sám —
+   `.kpi-card` je zámerne mimo skupiny `align-items: stretch` v sekcii JEDNA KARTA
+   (viď komentár tam), takže bez tohto riadku by dvojriadkový obsah zostal na
+   účiare. `gap` klesá z `--sp-1` (8px) na `--sp-0` (4px): vodorovne 8px oddeľuje
+   dva údaje, zvislo by tá istá medzera rozlomila JEDEN údaj na číslo a cudzí
+   popisok. Zrušená `.metric` na to mala `margin-top: 2px` na popisku. */
+.kpi-card--block {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-0);
 }
 .kpi-label {
     font-family: var(--mono);
@@ -3937,7 +3996,7 @@ button.hero-action:hover { border-color: var(--accent); }
 }
 .kpi-val {
     font-family: var(--mono);
-    font-size: var(--fs-kpi); line-height: var(--lh-kpi);
+    font-size: var(--kpi-value); line-height: var(--lh-kpi);
     font-weight: var(--fw-semibold);
     font-variant-numeric: tabular-nums;
     color: var(--text);
@@ -3948,6 +4007,17 @@ button.hero-action:hover { border-color: var(--accent); }
     font-weight: var(--fw-medium);
     color: var(--muted);
     margin-left: 3px;
+}
+/* Tretí riadok karty — doplnok k číslu („+12 tento týždeň"). Ekvivalent zrušenej
+   `.metric-sub` (D9).
+   `order: 3` NIE JE kozmetika: `.kpi-val` má `order: 1`, `.kpi-label` `order: 2`
+   a implicitná hodnota je 0, takže bez tohto riadku by sa doplnok vykreslil ako
+   PRVÝ, nad číslom. */
+.kpi-sub {
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    color: var(--accent);
+    order: 3;
 }
 
 /* ---------------------------------------------------------------------------
@@ -4475,7 +4545,9 @@ button.danger.armed {
    .kpi-card tu už NIE JE: je to jednoriadkový strip so zarovnaním na účiaru
    (align-items: baseline pri jeho vlastnej deklarácii). Toto je presne ten
    dvojitý zápis, ktorý v tomto súbore robí, že zmena „nemá efekt" — override
-   blok je nižšie, takže by baseline prebil. */
+   blok je nižšie, takže by baseline prebil.
+   Jeho dvojriadkovú variantu (.kpi-card--block, D9) preto stretch nedáva táto
+   skupina, ale modifikátor sám — a to je aj dôvod, prečo tu nesmie pribudnúť. */
 .today-card,
 .today-card-link,
 .dash-card,
