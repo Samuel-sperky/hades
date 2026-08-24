@@ -38,6 +38,9 @@ const STATUS_ORDER = ['running', 'waiting', 'failed', 'aborted', 'done'];
 export async function renderRuns() {
     const body = $('runy-body');
     if (!body) return;
+    // Pás filtrov je od R6(c) súrodenec hlavičky, telo ho už nezmaže samo —
+    // nad načítavaním by inak viseli čipy predchádzajúceho obsahu.
+    clearRunsBand();
     renderLoading(body, 'Načítavam behy…');
     try {
         const d = await getJson('/api/runs' + query());
@@ -68,11 +71,22 @@ export function pruneRunFilters() {
     if (runsState.model && !runsState.models.includes(runsState.model)) runsState.model = null;
 }
 
+/* Pás filtrov je SÚRODENEC hlavičky (`#runy-tools` v blade), nie prvé deti tela:
+   len tak ho vie CSS postaviť vedľa nadpisu do jedného pruhu namiesto dvoch. */
+function clearRunsBand() {
+    const band = $('runy-tools');
+    if (band) band.innerHTML = '';
+}
+
 function renderRunsView() {
     const body = $('runy-body');
-    if (!body) return;
+    const band = $('runy-tools');
+    if (!body || !band) return;
 
     if (!runsState.items.length && !runsState.status && !runsState.model) {
+        // Prázdna konzola nemá čo filtrovať — pás ostáva prázdny, inak by nad
+        // vetou „ešte nič nebežalo" stál rad čipov z minulej návštevy.
+        clearRunsBand();
         renderEmpty(
             body,
             'bolt',
@@ -82,16 +96,17 @@ function renderRunsView() {
         return;
     }
 
-    body.innerHTML = filtersHtml() + timelineHtml();
+    band.innerHTML = filtersHtml();
+    body.innerHTML = timelineHtml();
 
-    body.querySelectorAll('.chip[data-status]').forEach((c) => {
+    band.querySelectorAll('.chip[data-status]').forEach((c) => {
         c.onclick = () => {
             const v = c.dataset.status;
             runsState.status = runsState.status === v ? null : (v || null);
             renderRuns();
         };
     });
-    body.querySelectorAll('.chip[data-model]').forEach((c) => {
+    band.querySelectorAll('.chip[data-model]').forEach((c) => {
         c.onclick = () => {
             const v = c.dataset.model;
             runsState.model = runsState.model === v ? null : (v || null);

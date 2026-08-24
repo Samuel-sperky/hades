@@ -2685,6 +2685,20 @@ body.ambient #toasts {
 /* V Knižnici pás obaľuje `#library-filter` a odstup k zoznamu už dáva
    `#library-body { gap }`. Vlastný margin by sa k nemu pripočítal. */
 #library-filter > .dtl-filter { margin-bottom: 0; }
+/* Obal celého filtračného pásu (Rozhodnutia, Runy, Kontrola). Skladá ho JS, aby
+   mala obrazovka medzi hlavičkou a zoznamom JEDEN prvok namiesto dvoch–troch
+   samostatných radov — bez neho sa pás nedá postaviť vedľa nadpisu (R6(c) nižšie).
+   Odstup medzi radmi drží `gap`, nie ich vlastné marginy: posledný rad by inak
+   ťahal svoju medzeru pod celý pás a pripočítal ju k medzere sekcie. Nulovanie
+   MUSÍ stáť za `.dtl-filter:has(+ .dtl-filter)` — má s ním rovnakú špecificitu.
+   `.dec-toolbar` je v zozname preto, že v Rozhodnutiach zastupuje posledný rad,
+   keď filtre nie sú z čoho postaviť (jeden rok, jedna oblasť). */
+.screen-tools {
+    display: flex; flex-direction: column;
+    gap: var(--sp-0);
+    margin-bottom: var(--sp-2);
+}
+.screen-tools > :is(.dtl-filter, .dec-toolbar) { margin-bottom: 0; }
 /* počet záznamov v chipe — z filtra sa tým stane aj malá štatistika */
 .chip-n {
     margin-left: var(--sp-0h);
@@ -3203,21 +3217,21 @@ body[data-screen="graf"] #screens { display: none; }
    ZMERANÉ (od hornej hrany `.screen-head` po horný okraj obsahu, ten istý DOM):
      Denník      → #journal-list   138,59 → 82,59px   (−56,0)
      Knižnica    → #library-list   197,39 → 130,59px  (−66,8)
-     Rozhodnutia → #dec-list       246,98 → 206,98px  (−40,0)
    Pod 900px sa Denník aj Knižnica merajú nezmenene (182,59 → 182,59), teda
    zbalený stav je naozaj zbalený a nie tretí layout.
 
-   Zlúčené je to TAM, KDE TO DOM DOVOLÍ, a nikde inde:
+   Zlúčené je to podľa toho, čo DOM dovolí, a preto to nie je jedno pravidlo:
    - Knižnica — `#library-search` je dieťa `.screen-head`, takže hlavička sa stane
      dvojstĺpcovou mriežkou (nadpis + podtitul vľavo, pole vpravo).
    - Denník — `#journal-filter` je SÚRODENEC hlavičky v tej istej sekcii, takže
      dvojstĺpcová sa stane sekcia a zoznam ide pod oba stĺpce.
-   - Rozhodnutia / Runy / Kontrola — tam `.dtl-filter` NIE JE súrodenec hlavičky,
-     ale žije vnútri `#*-body`, a nie je jeden: sú to dva až tri rady (rok, oblasť,
-     nástroje). Jeden riadok z toho v CSS neurobím bez `display: contents` na
-     kontejneri, čo by zo všetkých jeho detí — vrátane prázdneho stavu a zoznamu —
-     porobilo mriežkové položky obrazovky. Tam sa preto zatiaľ škrtá len dvojitá
-     medzera (nižšie), nie počet pásov. Zvyšok chce jeden obal v JS.
+   - Rozhodnutia / Runy / Kontrola — tam `.dtl-filter` nebol súrodenec hlavičky,
+     žil vnútri `#*-body`, a nebol jeden: sú to dva až tri rady (hľadanie, rok,
+     oblasť, nástroje). Z CSS sa to nedalo zlúčiť bez `display: contents` na tele,
+     čo by zo VŠETKÝCH jeho detí — vrátane prázdneho stavu a zoznamu — porobilo
+     mriežkové položky obrazovky. Rieši to preto jeden obal navyše: JS sype rady
+     do `.screen-tools`, ktorý blade stavia vedľa hlavičky. Vlastný blok aj vlastný
+     zlom (1080px) má nižšie — a s ním aj namerané čísla.
 
    Celé zlúčenie je v `min-width: 901px`, teda ako DOPLNOK k existujúcemu
    `max-width: 900px` breakpointu. Nie je to obrátené len z chuti: keby základ
@@ -3263,9 +3277,79 @@ body[data-screen="graf"] #screens { display: none; }
     #screen-dennik > #journal-list { grid-column: 1 / -1; grid-row: 2; }
 }
 
-/* Obrazovky, kde filtračný pás žije vnútri `#*-body` (Rozhodnutia, Runy,
-   Kontrola, Knižnica): hlavička k nemu nepotrebuje celú sekčnú medzeru — čipy
-   patria k nadpisu, nie k zoznamu. */
+/* ---------------------------------------------------------------------------
+   Rozhodnutia, Runy, Kontrola — ten istý pás vedľa hlavičky, ale VLASTNÝ zlom.
+
+   Ich pás nie je jeden rad čipov ako v Denníku, ale obal s dvoma až tromi radmi
+   (`.screen-tools`, skladá ho JS). Preto je to trieda a nie id obrazovky — tri
+   obrazovky zdieľajú jedno pravidlo a Denník si ho neberie.
+
+   PREČO 1080px A NIE 901px: pri zlome Denníka je druhý stĺpec taký úzky, že sa
+   rady čipov v ňom zalomia na viac riadkov, než mali v pôvodnom zvislom poradí —
+   a pás vtedy nie je úspora, ale strata. Nasledujúca tabuľka je zmeraná s týmto
+   blokom DOČASNE posunutým na 901px, teda hovorí, čo by Denníkov zlom urobil
+   (vzdialenosť od hornej hrany `.screen-head` po horný okraj zoznamu, ten istý
+   DOM, tie isté dáta):
+
+     šírka   Rozhodnutia         Runy                Kontrola
+     920px   207 → 192  (−15)    167 → 196  (+29)    117 → 67  (−51)
+     1020px  207 → 192  (−15)    167 → 196  (+29)    117 → 67  (−51)
+     1040px  207 → 192  (−15)    167 → 152  (−15)    117 → 67  (−51)
+     1080px  207 → 148  (−59)    167 → 108  (−59)    117 → 67  (−51)
+
+   Runy sú tá obrazovka, ktorá si pod 1040px pohorší (+29px) — dva rady čipov so
+   stavmi a názvami modelov sa do úzkeho stĺpca nezmestia. Zlom je preto tam, kde
+   z čísel vychádza plný zisk pre všetky tri, nie tam, kde ho má Denník.
+
+   TAKTO TO MERIA S 1080px (výsledný stav, tie isté dáta):
+     864–1000px  všetky tri nezmenené, `display: block` — zbalený stav je naozaj
+                 zbalený a nie tretí layout
+     1080px      Rozhodnutia 206,98 → 148,39 (−58,6)
+                 Runy        166,59 → 108,00 (−58,6)
+                 Kontrola    117,39 →  66,59 (−50,8)
+     1904px      Rozhodnutia 162,98 → 104,39 (−58,6), Runy a Kontrola rovnako
+
+   Jedno číslo pre všetky tri, hoci Kontrola by zvládla aj 920px: jej pás je dnes
+   jednoradový, ale rady si počíta zo svojich osí (typ / istota / oblasť), takže
+   pri rastúcej fronte narastie rovnako ako ostatným. Zlom viazaný na dnešný počet
+   radov jednej obrazovky by bol pravidlo s dátumom spotreby.
+
+   Pod týmto zlomom sa nedeklaruje NIČ — obrazovka ostane v pôvodnom zvislom
+   poradí bez jediného prepisu, presne ako pri zlome Denníka vyššie.
+   --------------------------------------------------------------------------- */
+@media (min-width: 1080px) {
+    /* `align-items: end` drží jednoriadkový pás na účiare podtitulu (to je celý
+       zmysel zlúčenia), lenže pri dvoch až troch radoch je pás vyšší než hlavička
+       a spodné zarovnanie by nadpis odplavilo do stredu prázdneho stĺpca. Preto
+       má hlavička `align-self: start`: nadpis ostáva hore v oboch prípadoch. */
+    .screen.active:has(> .screen-tools) {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: var(--section-gap);
+        align-items: end;
+    }
+    .screen.active:has(> .screen-tools) > .screen-head {
+        grid-column: 1; grid-row: 1;
+        align-self: start;
+    }
+    /* Pás si berie sekčnú medzeru z toho istého dôvodu ako filter Denníka: keď je
+       vyšší než hlavička, odstup k zoznamu určuje on. */
+    .screen.active:has(> .screen-tools) > .screen-tools {
+        grid-column: 2; grid-row: 1;
+        margin-bottom: var(--section-gap);
+    }
+    /* Telo obrazovky ide pod oba stĺpce. Je to `*`, nie `#*-body`, aby pravidlo
+       platilo aj tomu, čo do sekcie pribudne — mriežka nesmie visieť na id. */
+    .screen.active:has(> .screen-tools) > *:not(.screen-head, .screen-tools) {
+        grid-column: 1 / -1; grid-row: 2;
+    }
+}
+
+/* Obrazovky, kde za hlavičkou nasleduje filtračný pás — či už ako `.screen-tools`
+   (Rozhodnutia, Runy, Kontrola), alebo vnútri `#library-body` (Knižnica):
+   hlavička k nemu nepotrebuje celú sekčnú medzeru, čipy patria k nadpisu, nie
+   k zoznamu. Selektor je zámerne `+ *` a nie `+ .screen-tools` — platí obom
+   tvarom a v zbalenom stave (pod zlomom) je to jediné, čo tú medzeru drží. */
 .screen-head:has(+ * .dtl-filter) { margin-bottom: var(--sp-1); }
 
 /* ---- graph-tools (v hlavičke, len na Grafe) ---- */

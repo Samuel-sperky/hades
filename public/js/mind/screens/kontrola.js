@@ -160,8 +160,13 @@ function ensureKontrolaShell(body) {
     const sig = kontrolaAxisSignature();
     if ($('kontrola-list') && kontrolaAxisSig === sig) return;
     kontrolaAxisSig = sig;
-    body.innerHTML = '<div id="kontrola-filter"></div><div id="kontrola-list"></div>';
-    $('kontrola-filter').innerHTML = kontrolaFilterHtml();
+    /* Toolbar je od R6(c) SÚRODENEC hlavičky (`#kontrola-tools` v blade), nie prvé
+       dieťa tela: len tak ho vie CSS postaviť vedľa nadpisu do jedného pruhu
+       namiesto dvoch. Telo preto stavia už len zoznam. */
+    body.innerHTML = '<div id="kontrola-list"></div>';
+    const band = $('kontrola-tools');
+    if (!band) return;
+    band.innerHTML = kontrolaFilterHtml();
     wireKontrolaFilter();
 }
 
@@ -236,7 +241,7 @@ function kontrolaFilterHtml() {
 /* Čo sa mení bez prestavby toolbaru: aktívny čip, veta o strope a tlačidlo
    ďalšej stránky. Preto sú to triedy a textContent, nie nový innerHTML. */
 function syncKontrolaFilter() {
-    const wrap = $('kontrola-filter');
+    const wrap = $('kontrola-tools');
     if (!wrap) return;
     wrap.querySelectorAll('[data-kf]').forEach((el) => {
         const on = (kontrolaState.f[el.dataset.kf] || '') === el.dataset.val;
@@ -291,7 +296,7 @@ function kontrolaNoteText() {
 }
 
 function wireKontrolaFilter() {
-    const wrap = $('kontrola-filter');
+    const wrap = $('kontrola-tools');
     if (!wrap) return;
     wrap.querySelectorAll('[data-kf]').forEach((el) => {
         el.onclick = () => {

@@ -56,6 +56,10 @@ function applyDecisionsPayload(d) {
 export async function renderDecisions() {
     const body = $('rozhodnutia-body');
     if (!body) return;
+    // Pás filtrov je od R6(c) mimo tela (súrodenec hlavičky), takže ho telo už
+    // nezmaže samo — nad načítavaním by inak visel filter starého obsahu.
+    const band = $('rozhodnutia-tools');
+    if (band) band.innerHTML = '';
     renderLoading(body, 'Načítavajú sa rozhodnutia…');
     const seq = ++decisionsState.seq;
     try {
@@ -119,7 +123,12 @@ export function decChip(label, active, attrs, n) {
 
 export function renderDecisionsView() {
     const body = $('rozhodnutia-body');
-    if (!body) return;
+    /* Pás filtrov je SÚRODENEC hlavičky (`#rozhodnutia-tools` v blade), nie prvé
+       deti tela: len tak ho vie CSS postaviť vedľa nadpisu do jedného pruhu
+       namiesto dvoch. Telu ostáva to, čo patrí pod oba stĺpce — formulár
+       pridania a zoznam. */
+    const band = $('rozhodnutia-tools');
+    if (!body || !band) return;
     // Os období aj os oblastí prichádzajú zo servera už zoradené a s počtami nad
     // CELÝM korpusom. Počítať ich tu z `all` znamenalo, že nad stropom 500 by čip
     // hlásil iné číslo než realita — a AI by o osi nevedela nič.
@@ -180,11 +189,13 @@ export function renderDecisionsView() {
             + chips + (last ? tools : '') + '</div>';
     });
     if (!rows.length) h += '<div class="dec-toolbar">' + tools + '</div>';
-    if (decisionsState.adding) h += decAddFormHtml();
 
-    body.innerHTML = h + '<div id="dec-list"></div>';
+    band.innerHTML = h;
+    // Formulár pridania NEJDE do pásu: pás je lišta vedľa nadpisu, panel s poľami
+    // by ho roztiahol cez celú výšku hlavičky. Patrí nad zoznam, teda do tela.
+    body.innerHTML = (decisionsState.adding ? decAddFormHtml() : '') + '<div id="dec-list"></div>';
     renderDecisionsList();
-    wireDecisions(body);
+    wireDecisions(band);
 }
 
 /* Zoznam v samostatnom kontajneri — mení sa pri každom filtri, lišta nad ním nie. */
@@ -339,7 +350,10 @@ export function disarmDelete(btn) {
     btn.textContent = btn.dataset.armIcon || 'delete';
 }
 
-export function wireDecisions(body) {
+/* `bar` je filtračný pás (`#rozhodnutia-tools`), nie telo obrazovky — čipy, ktoré
+   sa tu vešajú, žijú od R6(c) v ňom. Tlačidlá formulára sa hľadajú cez `$()`, tie
+   sú v tele a je im jedno, odkiaľ sa volá. */
+export function wireDecisions(bar) {
     const toggle = $('dec-add-toggle');
     if (toggle) toggle.onclick = () => { decisionsState.adding = !decisionsState.adding; renderDecisionsView(); if (decisionsState.adding) { const t = $('dec-text'); if (t) t.focus(); } };
 
@@ -367,17 +381,17 @@ export function wireDecisions(body) {
         };
     }
 
-    body.querySelectorAll('.dtl-filter [data-year]').forEach((c) => {
+    bar.querySelectorAll('.dtl-filter [data-year]').forEach((c) => {
         c.onclick = () => {
             decisionsState.year = c.dataset.year || null;
-            syncDecChips(body, 'year');
+            syncDecChips(bar, 'year');
             refreshDecisionList();
         };
     });
-    body.querySelectorAll('.dtl-filter [data-area]').forEach((c) => {
+    bar.querySelectorAll('.dtl-filter [data-area]').forEach((c) => {
         c.onclick = () => {
             decisionsState.areaId = c.dataset.area ? +c.dataset.area : null;
-            syncDecChips(body, 'area');
+            syncDecChips(bar, 'area');
             refreshDecisionList();
         };
     });
@@ -385,12 +399,12 @@ export function wireDecisions(body) {
 
 /* Aktívny čip sa prekliká hneď, dáta dobehnú o request neskôr. Prekresliť kvôli
    tomu celú lištu nejde — bolo by v nej pole hľadania, do ktorého sa práve píše. */
-export function syncDecChips(body, kind) {
+export function syncDecChips(bar, kind) {
     const attr = kind === 'year' ? 'data-year' : 'data-area';
     const want = kind === 'year'
         ? (decisionsState.year === null ? '' : decisionsState.year)
         : (decisionsState.areaId === null ? '' : String(decisionsState.areaId));
-    body.querySelectorAll('.dtl-filter [' + attr + ']').forEach((c) => {
+    bar.querySelectorAll('.dtl-filter [' + attr + ']').forEach((c) => {
         const on = (c.getAttribute(attr) || '') === want;
         c.classList.toggle('active', on);
         c.setAttribute('aria-pressed', on ? 'true' : 'false');

@@ -197,6 +197,11 @@
                 <h1>Rozhodnutia</h1>
                 <p class="screen-sub">Časová os rozhodnutí naprieč projektami</p>
             </header>
+            {{-- Filtračný pás stojí VEDĽA hlavičky, nie pod ňou (nález R6(c)): nadpis
+                 nepotrebuje celý sekčný pás vzduchu k čipom, ktoré patria k nemu.
+                 Rady filtrov doň sype JS, rozloženie je v mind.css (.screen-tools) —
+                 pod 900px sa mriežka neuplatní a pás sa vráti pod nadpis. --}}
+            <div id="rozhodnutia-tools" class="screen-tools"></div>
             <div id="rozhodnutia-body"></div>
         </section>
 
@@ -205,6 +210,8 @@
                 <h1>Runy</h1>
                 <p class="screen-sub">Čo konzola robila — zadanie, kroky, cena</p>
             </header>
+            {{-- Filtračný pás vedľa hlavičky — viď Rozhodnutia vyššie. --}}
+            <div id="runy-tools" class="screen-tools"></div>
             <div id="runy-body"></div>
         </section>
 
@@ -213,6 +220,8 @@
                 <h1>Kontrola</h1>
                 <p class="screen-sub">Fronta poznatkov čakajúcich na overenie</p>
             </header>
+            {{-- Filtračný pás vedľa hlavičky — viď Rozhodnutia vyššie. --}}
+            <div id="kontrola-tools" class="screen-tools"></div>
             <div id="kontrola-body"></div>
         </section>
 
