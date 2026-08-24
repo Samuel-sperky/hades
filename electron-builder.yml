@@ -1,0 +1,53 @@
+# Konfigurácia electron-builder — balenie desktop shellu Hades.
+#
+# PREČO SAMOSTATNÝ SÚBOR (a nie blok v package.json):
+# Koreňový package.json slúži webovému frontendu (Vite + Tailwind, "type":
+# "module", "private": true) a jeho skripty dev/build patria vizualizácii.
+# Balenie inštalátora je iná doména; držať ho oddelene znamená, že úprava
+# balenia sa nikdy nedotkne poľa, na ktorom visí web build, a naopak. Metadáta
+# appky (name, version, main, author) zostávajú v package.json, lebo tie
+# electron-builder číta výhradne odtiaľ a verzia sa z nich premieta do appky.
+
+appId: sk.sperky.hades          # zhoduje sa s APP_USER_MODEL_ID v electron/main.js
+productName: Hades
+copyright: © 2026 Sperky
+
+directories:
+  output: dist-electron         # sem padne inštalátor + portable (git-ignorované)
+  buildResources: electron/assets
+
+# ASAR zapnutý: obsah balíka je jeden archív (app.asar), nie voľné súbory.
+asar: true
+
+# ─── ALLOW-LIST, nie deny-list ───────────────────────────────────────────────
+# Do balíka ide LEN shell a manifest appky. Čokoľvek, čo tu nie je vymenované,
+# sa NEZABALÍ — teda .env, vendor/, node_modules appky, summaries/, handoff/,
+# docs/, .git/, public/ ani nič ďalšie z koreňa projektu. Shell navyše nemá
+# žiadnu runtime závislosť (main.js parsuje .env ručne a používa len vstavané
+# moduly Electronu), takže sa nebalí žiadny node_modules.
+files:
+  - package.json
+  - electron/**/*
+  - "!electron/assets/build-icon.py"   # generátor ikony, čisto build-time — nepatrí do balíka
+
+win:
+  icon: electron/assets/hades.ico
+  target:
+    - target: nsis
+    - target: portable
+  # Bez code-signing certifikátu ostáva build NEPODPÍSANÝ (viď report → notes).
+  # signAndEditExecutable sa necháva default; žiadny cudzí podpisovač sa nevolá.
+
+nsis:
+  oneClick: false                       # klasický inštalátor s krokmi, nie tichý
+  perMachine: false                     # inštalácia pre používateľa, bez UAC výzvy
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Hades
+  installerIcon: electron/assets/hades.ico
+  uninstallerIcon: electron/assets/hades.ico
+  uninstallDisplayName: Hades
+
+portable:
+  artifactName: Hades-${version}-portable.exe

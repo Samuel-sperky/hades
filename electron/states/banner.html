@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="sk">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+    <title>Hades</title>
+    <style>
+        /* Nevtieravý pás pri strate spojenia. Značkové tokeny (docs/BRAND-HADES.md §3),
+           žiadny raw hex mimo :root / [data-theme]. */
+        :root {
+            --panel: #16201e;
+            --fg: #e7ebe9;
+            --fg-dim: #9aa6a2;
+            --accent: #c4a2f5;
+            --border: rgba(196, 162, 245, .30);
+        }
+
+        :root[data-theme="light"] {
+            --panel: #ffffff;
+            --fg: #17201e;
+            --fg-dim: #5b6763;
+            --accent: #6d3fb5;
+            --border: #c9b0ee;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 16px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            color: var(--fg);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 13px;
+            -webkit-font-smoothing: antialiased;
+            user-select: none;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            flex: 0 0 auto;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+            .dot { animation: blink 1.4s ease-in-out infinite; }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .3; }
+        }
+
+        .text { color: var(--fg); }
+        .text b { font-weight: 600; }
+        .text span { color: var(--fg-dim); }
+    </style>
+</head>
+<body>
+    <span class="dot" aria-hidden="true"></span>
+    <p class="text" role="status" aria-live="polite">
+        <b>Stratené spojenie</b> <span>— skúšam sa pripojiť znova…</span>
+    </p>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var api = window.hadesState;
+            var root = document.documentElement;
+
+            if (api) {
+                api.onTheme(function (theme) {
+                    root.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+                });
+
+                api.ready();
+            }
+        })();
+    </script>
+</body>
+</html>

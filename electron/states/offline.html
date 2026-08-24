@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="sk">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:;">
+    <title>Hades — Vedomie</title>
+    <style>
+        /* ── Značkové tokeny (docs/BRAND-HADES.md §3). Tmavá je default, svetlá je
+           povinná varianta. Žiadny raw hex mimo tohto :root / [data-theme]. ────── */
+        :root {
+            --paper: #0e1413;
+            --panel: #16201e;
+            --fg: #e7ebe9;
+            --fg-dim: #9aa6a2;
+            --accent: #c4a2f5;
+            --accent-hover: #d9c6fa;
+            --on-accent: #0e1413;
+            --gold: #d8b878;
+            --border: rgba(196, 162, 245, .30);
+            --code-bg: #0a0f0e;
+            --code-fg: #d0d7d4;
+        }
+
+        :root[data-theme="light"] {
+            --paper: #f6f4f1;
+            --panel: #ffffff;
+            --fg: #17201e;
+            --fg-dim: #5b6763;
+            --accent: #6d3fb5;
+            --accent-hover: #58309a;
+            --on-accent: #ffffff;
+            --gold: #8a6417;
+            --border: #c9b0ee;
+            --code-bg: #efe9f6;
+            --code-fg: #2a2140;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--paper);
+            color: var(--fg);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            user-select: none;
+            padding: 32px;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 480px;
+            text-align: center;
+        }
+
+        .sigil {
+            width: 84px;
+            height: 84px;
+            margin: 0 auto 28px;
+            display: block;
+        }
+
+        .sigil .ring { fill: none; stroke: var(--accent); stroke-width: 9; }
+        .sigil .core { fill: var(--gold); transform-origin: 50px 50px; }
+
+        @media (prefers-reduced-motion: no-preference) {
+            .sigil .core { animation: core-pulse 4s ease-in-out infinite; }
+        }
+
+        @keyframes core-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(.9); opacity: .78; }
+        }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 600;
+            line-height: 1.25;
+            margin: 0 0 10px;
+            letter-spacing: -.01em;
+        }
+
+        .lede {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--fg-dim);
+            margin: 0 0 24px;
+        }
+
+        .step {
+            text-align: left;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin: 0 0 24px;
+        }
+
+        .step-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--fg-dim);
+            margin: 0 0 8px;
+        }
+
+        code {
+            display: block;
+            font-family: "Geist Mono", ui-monospace, "Cascadia Code", "Consolas", monospace;
+            font-size: 14px;
+            background: var(--code-bg);
+            color: var(--code-fg);
+            border-radius: 8px;
+            padding: 10px 12px;
+            user-select: text;
+            overflow-x: auto;
+        }
+
+        .retry {
+            font: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--on-accent);
+            background: var(--accent);
+            border: 0;
+            border-radius: 10px;
+            padding: 11px 22px;
+            cursor: pointer;
+            transition: background .15s ease;
+        }
+
+        .retry:hover { background: var(--accent-hover); }
+        .retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        .retry[disabled] { opacity: .6; cursor: default; }
+
+        .status {
+            min-height: 20px;
+            margin: 16px 0 0;
+            font-size: 13px;
+            color: var(--fg-dim);
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <svg class="sigil" viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="ring" cx="50" cy="50" r="36"></circle>
+            <circle class="core" cx="50" cy="50" r="15"></circle>
+        </svg>
+
+        <h1>Vedomie sa nepodarilo prebudiť</h1>
+        <p class="lede">Server neodpovedá — skontroluj, či Hades beží.</p>
+
+        <div class="step">
+            <p class="step-label">Spusti v koreni projektu</p>
+            <code>docker compose up -d</code>
+        </div>
+
+        <button class="retry" id="retry" type="button">Skúsiť znova</button>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+    </main>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var api = window.hadesState;
+            var root = document.documentElement;
+            var btn = document.getElementById('retry');
+            var status = document.getElementById('status');
+            var countdown = null;
+
+            function stopCountdown() {
+                if (countdown !== null) {
+                    clearInterval(countdown);
+                    countdown = null;
+                }
+            }
+
+            function render(st) {
+                stopCountdown();
+
+                if (!st || st.phase === 'connecting') {
+                    btn.disabled = true;
+                    status.textContent = 'Pripájam sa…';
+
+                    return;
+                }
+
+                // 'waiting' — odpočet do ďalšieho automatického pokusu.
+                btn.disabled = false;
+
+                var tick = function () {
+                    var left = Math.max(0, Math.round((st.nextAt - Date.now()) / 1000));
+                    status.textContent = left > 0
+                        ? 'Ďalší pokus o ' + left + ' s'
+                        : 'Pripájam sa…';
+                };
+
+                tick();
+                countdown = setInterval(tick, 500);
+            }
+
+            if (api) {
+                api.onTheme(function (theme) {
+                    root.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+                });
+
+                api.onStatus(render);
+
+                btn.addEventListener('click', function () {
+                    stopCountdown();
+                    btn.disabled = true;
+                    status.textContent = 'Pripájam sa…';
+                    api.retry();
+                });
+
+                api.ready();
+            }
+        })();
+    </script>
+</body>
+</html>

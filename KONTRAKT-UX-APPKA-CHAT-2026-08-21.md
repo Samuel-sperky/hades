@@ -60,6 +60,27 @@ Osem otvorených otázok z `ROZHRANIE-PROFILY-A-DOK.md`:
 8. **Profily:** `memory` 1529 · `files` 1304 · `graph` 1246 · `full` 2541 tokenov.
    Všetky pod dnešným stropom ~2,6k, takže kritérium č. 8 je dosiahnuteľné.
 
+## 1c. Prerušenie týždenným limitom a konsolidácia (24. 8. 2026)
+
+Vlny 3 (prístupnosť) a 5 (Electron) narazili uprostred behu na týždenný limit
+používania. **Agenti stihli zapísať súbory na disk, ale ich záverečný výstup limit
+zabil** — workflow ich označil ako error, hoci Edit volania prešli. Zachránené a
+overené: P7 (aria-pressed na 4 obrazovkách), P11 (#auto-accept cieľ, zmerané 32×144),
+P13 (prsteň composera — CSS správne v zdroji aj CSSOM, computed style ale zamrznutý
+v headless pane; re-verifikáciu robí brána kvality), a kompletný `electron/main.js`.
+
+Po limite používateľ zdvihol strop na 5 M a požiadal dokončiť zvyšok **10–15 agentmi**
+namiesto pôvodných 23. Nový plán (dve workflow, 12 agentov):
+
+- **Workflow A (7)** — Electron dokončenie (preload+core → chróm+identita →
+  stavy+tray → balenie+security) ‖ prístupnosť (plátno P1/P9 · mind.css P10 +
+  skip-link P2 · konzola P3/P4). Dve koľaje bez spoločného súboru.
+- **Workflow B (5)** — chat nad grafom: profily+GraphFocusTool → zdieľané JS moduly →
+  dok charon.js/charon.css → zmazanie mŕtveho chat.js + úplné zlúčenie A8 → review.
+
+Hades MCP je počas tohto behu odpojený; pokračujem bez neho (pravidlo CLAUDE.md).
+Vetva `feat/hades-ux` je zatiaľ len lokálna, na origin nie je pushnutá.
+
 ## 2. Electron vs. Tauri — rozhodnutie s dôvodom
 
 Vyberám **Electron** a je to reverzibilné (shell je aditívny, `bin/hades.cmd` zostáva).
