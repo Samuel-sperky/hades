@@ -188,8 +188,11 @@ function openPalette(matches) {
 }
 
 function paintCursor(items) {
+    // Vybraná položka má JEDEN nosič. Dovtedy tu bola aj trieda `.on` a CSS
+    // viselo na nej, takže tá istá pravda bola zapísaná dvakrát a dala sa
+    // rozviazať. `aria-selected` je pre `role="option"` povinné aj tak, takže
+    // ostalo ono a `console.css` číta priamo atribút — `.on` bola len farba.
     items.forEach((item, i) => {
-        item.classList.toggle('on', i === cursor);
         item.setAttribute('aria-selected', i === cursor ? 'true' : 'false');
     });
 

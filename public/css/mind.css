@@ -105,6 +105,11 @@
     --glass-blur-lg: none;
     --surface-2: #fbf7f9;
     --field-bg: #fbf7f9;                  /* --surface-2, not a bg-alpha */
+    /* Papier karty — pomenovaná rola, nie náhoda. Základ je --panel; „druhý
+       papier" appky (--surface-2) je odteraz deklarovaná varianta .card--nested,
+       ktorá prepisuje LEN tento token. Zdôvodnenie a namerané hodnoty sú
+       v sekcii JEDNA KARTA nižšie, aby boli pri modifikátore. */
+    --card-bg: var(--panel);
     --scrim: rgba(16, 29, 27, .32);       /* ink #101d1b @32%, not black */
 
     /* ---- borders & neutral interactive surfaces (SOLID Aura lines) ---- */
@@ -133,18 +138,35 @@
     --accent: #6d3fb5;                    /* amethyst — 6,36:1 na paperi (teal dával 4,77) */
     --accent-600: #58309a;                /* pressed/darker accent FILL */
     --accent-ink: var(--accent-600);      /* TEXT na akcentovom tinte (6,98:1 na --accent-soft) */
-    --accent-rgb: 109, 63, 181;            /* JS-facing triplet: slider fill, msg.me, rings */
+    /* Surový triplet pre alfu. Popis „JS-facing: slider fill, msg.me, rings" tu bol
+       do 24. 8. 2026 a bol nepravdivý: `.msg.me` odišlo s mŕtvym chat.js a žiadne JS
+       tento token nečíta. Jediní volajúci sú tri akcentové alfa tokeny nižšie (D15). */
+    --accent-rgb: 109, 63, 181;
     --accent-soft: #e9dcfa;               /* --accent-soft, solid tint for active pills */
     --accent-softer: #f4eefc;             /* --accent-tint */
     /* D19: 0 volajúcich, ZOSTÁVA — stupeň „pressed" v úplnom rebríku stavov
        (softer → soft → press). Diera v škále je horšia než nepoužitý stupeň. */
     --accent-press: #c9b0ee;              /* --accent-line, pressed */
     --border-accent: #c9b0ee;             /* --accent-line */
+    /* ---- akcent s alfou: pomenované podľa ROLE, nie podľa čísla (nález D15) ----
+       Do 24. 8. 2026 bola `rgba(var(--accent-rgb), …)` rozpísaná priamo v pravidlách
+       a čitateľ musel z čísla hádať, čo tá alfa znamená. Nie je to `--alpha-*` škála
+       (tá by pomenovala presne to isté číslo, len inde) — sú to tri stavy, ktoré má
+       akcent ako priesvitná plocha: výplň vypnutej akcie, prsteň pri fokuse, prsteň
+       pri hoveri/stlačení. HODNOTY sú nezmenené, je to premenovanie, nie ladenie.
+       Dark override NEMAJÚ a nesmú ho dostať: odvíjajú sa od --accent-rgb, ktoré je
+       na tmavej téme prepísané na tom istom prvku (:root), takže sa prepočítajú samé
+       — presne ako --accent-ink vyššie. */
+    --accent-disabled-fill: rgba(var(--accent-rgb), .35);   /* výplň `button.primary:disabled` */
+    --accent-focus-wash: rgba(var(--accent-rgb), .30);      /* prsteň palca slidera pri fokuse */
+    --accent-hover-wash: rgba(var(--accent-rgb), .16);      /* prsteň palca slidera pri hover/active */
     /* Alfa .28 dávala voči --surface-2 len 1,48:1, WCAG 2.4.11 žiada 3:1 pre
        indikátor fokusu. Nie je to regresia redizajnu (token bol taký aj predtým),
        ale pribudli fokusovateľné prvky, takže na ňom teraz záleží. */
     --focus-ring: 0 0 0 3px rgba(109, 63, 181, .85);
     /* glows are now soft amethyst-tinted RINGS/SHADOWS, never additive blooms */
+    /* D20: jediný volajúci je `.perm-card` v console.css (karta „čaká na rozhodnutie
+       zápisu"). Token vyzerá nepoužitý, keď sa čistí len tento súbor — nemazať. */
     --glow-accent: 0 1px 2px rgba(15, 40, 38, .05), 0 6px 18px -10px rgba(109, 63, 181, .30);
     /* D19: 0 volajúcich, ZOSTÁVA — druhý (väčší) stupeň dvojstupňového glow rebríka. */
     --glow-accent-lg: 0 8px 24px -12px rgba(109, 63, 181, .28);
@@ -429,6 +451,26 @@
     /* ---- spacing extras ---- */
     --sp-0h: 6px;                         /* half-step between sp-0(4) and sp-1(8) */
     --sp-2h: 12px;                        /* half-step between sp-1(8) and sp-2(16) */
+    /* ---- D21: ktoré surové `px` sa v tomto súbore prepísali na tokeny ----
+       Prepísané je PRÁVE to, čo sa hodnote tokenu rovná, teda 4, 6, 8, 12 a 16 px
+       v `padding` / `margin` / `gap` (33 deklarácií). Zmena je dokázateľne inertná,
+       nie „vyzerá rovnako": všetkých osem `--sp-*` je deklarovaných v `:root`
+       PRESNE RAZ (žiadny prepis v `[data-theme]` ani v `[data-density]`), takže
+       vypočítaná hodnota je tá istá vo všetkých témach aj hustotách.
+
+       ZÁMERNE SUROVÉ ZOSTÁVAJÚ (a nie je to nedokončená práca):
+       - 1, 2, 3, 5, 7, 10, 14, 20 px — mimo škály. Nedostávajú token po jednom;
+         `--row-pad-x` je dnes 10 px a `--gutter` 20 px, takže o časti tejto
+         medziškály rozhoduje úloha HUSTOTY (vydrôtovať `--row-pad-*`,
+         `--card-pad*`, `--section-gap` do pravidiel), nie táto.
+       - `margin: -4px 0 0 -4px` na `.empty-loading .load-mark::after` — nie je to
+         odstup, ale vycentrovanie: je to polovica `width`/`height` toho istého
+         prvku (8 px), teda `-50%` napísané v px. Väzba vedie na rozmer bodky,
+         nie na škálu, a token by ju rozpojil.
+       - `padding-inline: clamp(16px, 2vw, 48px)` na `#screens` — vzorec, ktorého
+         horná hranica je mimo škály; pomenovať polovicu vzorca nič nevysvetlí.
+       - `--chart-gap: 3px`, `--fs-h1: 28px`, `.empty .ms` 28/48 px — každé z nich
+         má vlastný komentár, ktorý hovorí, prečo stupňom škály nie je. */
     --gutter: 20px;                       /* dashboard grid gutter — HUSTOTA ho mení */
 
     /* ======================================================================
@@ -469,12 +511,28 @@
     --section-gap: var(--sp-3);           /* 24px */
     /* Minimálna šírka stĺpca fluidných mriežok (minmax v repeat(auto-fit/fill)).
        Odčítané: .kpi-grid 160px, .dash-grid 280px, .rec-grid 640px.
-       Toto je páka R10 — v kompaktnej škále spadne .rec-grid na ~420px, čím sa
-       na 1920 zdvojnásobí počet viditeľných riadkov Denníka BEZ zmeny výšky
-       riadku (a bez toho, aby sa dotkla predvolená „cozy" škála). */
+
+       R10 JE ZAPLATENÝ V ZÁKLADNEJ ŠKÁLE, nie až v kompaktnej. Tokeny vznikli
+       tak, že „cozy" musela zostať do pixela zhodná s dnešným vzhľadom, a preto
+       tu 640px zostalo a 420px sedelo len v `compact`. Nález R10 je ale meranie
+       ZÁKLADNÉHO stavu: 640px dá na 1920 dva stĺpce po ~854px pre 25-znakový
+       titulok Denníka, teda ~600px prázdna na riadok. Prepínač hustoty to
+       nespraví — človek, ktorý ho nikdy neprepne, vidí ten istý vzduch.
+       Preto je 420px odteraz DEFAULT a obe odchýlky sa posunuli s ním. Je to
+       zámerná zmena rytmu „cozy" — jediný token, ktorý vlnu hustoty prežil
+       s inou hodnotou, než mal pri vzniku.
+
+       ZMERANÉ (headless Chrome, 24. 8. 2026, ten istý DOM, výmena stylesheetu):
+       viewport 1904px dá obsahovú šírku 1690px (rail + okraje + padding = 214px).
+         640px → 2 stĺpce po 840,9px
+         420px → 3 stĺpce po 557,9px
+       Štvrtý stĺpec potrebuje 4×420 + 3×8 (gap `--sp-1`) = 1704px obsahu, teda
+       viewport ~1918px. Na 1920 ich teda naozaj vyjdú štyri, ale je to o vlások:
+       v okne prehliadača s rámom (1904) sú tri. Nie je to chyba hodnoty, je to
+       hranica — píše sa sem, aby ju nikto nemusel hľadať znova. */
     --kpi-cols: 160px;
     --dash-cols: 280px;
-    --rec-cols: 640px;                    /* .rec-grid a .today-list */
+    --rec-cols: 420px;                    /* .rec-grid a .today-list */
     --card-cols: 300px;                   /* .lib-skills, .today-grid, .dir-saved */
 
     /* ---- rozmery ovládacích prvkov — jedno pomenované miesto ----
@@ -485,6 +543,13 @@
        rytmus (34px), aby text nesedel na ráme. */
     --control-h: 32px;
     --field-h: 34px;
+    /* Priehľadnosť VYPNUTÉHO prvku — jedno miesto pre celú appku (nález D22).
+       Do 24. 8. 2026 mala appka tri hodnoty (.45 `button:disabled`, .5 `.pc-btn`,
+       .45 `#send`) a štvrtá, `.72` na `.perm-card.denied`, sa medzi ne strácala.
+       `.72` token NEDOSTÁVA a nemá dostať: „zamietnuté" je iná rola než „vypnuté"
+       — karta zostáva čitateľná a klikateľná, len doznieva. Keď sa raz utlmenie
+       vypnutého prvku má pohnúť, pohne sa tu a konzola sa pohne s ním. */
+    --disabled-opacity: .45;
     /* Riadkovanie JEDNORIADKOVÉHO ovládacieho prvku (nález R3). Do 21. 8. 2026
        ho na form controls nedeklarovalo nič a platila UA hodnota `normal`, teda
        číslo, ktoré závisí od metrík fontu a nikto ho nezvolil.
@@ -559,7 +624,8 @@
     --gutter: var(--sp-3);                /* 20 → 24 */
     --kpi-cols: 200px;
     --dash-cols: 320px;
-    --rec-cols: 720px;
+    /* 720 → 560: o krok nad základom, ale už nie dva stĺpce ako 640px. */
+    --rec-cols: 560px;
     --card-cols: 340px;
 }
 :root[data-density="compact"] {
@@ -571,9 +637,10 @@
     --gutter: var(--sp-2);                /* 20 → 16 */
     --kpi-cols: 140px;
     --dash-cols: 240px;
-    /* 420px je hodnota, ktorú nález R10 vypočítal: na 1920 vyjdú štyri stĺpce
-       namiesto dvoch, a 25-znakový titulok Denníka sa doňho ešte zmestí. */
-    --rec-cols: 420px;
+    /* 420px (hodnota z R10) sa presunula do :root, takže kompaktná škála musí ísť
+       o krok nižšie, inak by sa od základnej nelíšila. 340px dá na 1920 päť
+       stĺpcov; titulok Denníka je `nowrap` + ellipsis, takže sa kráti, nezalomí. */
+    --rec-cols: 340px;
     --card-cols: 260px;
 }
 
@@ -740,6 +807,25 @@ body {
 
 .hidden { display: none !important; }
 
+/* Klávesa je JEDNA kresba (nález D4). Do 21. 8. 2026 ich bolo päť — bare `kbd`
+   v console.css a štyri komponentné v tomto súbore — a tri z nich mali radius
+   napísaný ako raw `5px`, takže „to isté" tlačidlo klávesy malo tri rôzne
+   zaoblenia podľa toho, kde stálo. Základ je najúspornejšia z tých kresieb
+   (pôvodne console.css); špecificita 0,0,1 znamená, že každý komponent nižšie
+   dopíše len to, čím sa naozaj líši (veľkosť, kontrast textu), nie celú kresbu.
+   mind.css sa načítava PRVÝ aj na /console, takže konzola dostáva ten istý
+   základ a graf ho dostal prvýkrát. */
+kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: 1.5;
+}
+
 /* Text len pre čítačky obrazovky (ARIA live oblasti, popisky ikonových tlačidiel).
    Do 21. 8. 2026 to bola utilita, ktorú mala len konzola. */
 .sr-only {
@@ -775,7 +861,7 @@ body {
     width: auto;
     height: auto;
     margin: var(--sp-2);
-    padding: var(--sp-2) 16px;
+    padding: var(--sp-2);
     overflow: visible;
     clip-path: none;
     background: var(--panel);
@@ -881,7 +967,7 @@ body:not([data-screen="graf"]) #mind { visibility: hidden; }
     display: flex;
     align-items: center;
     gap: var(--sp-1);
-    padding: 5px 6px 5px 12px;
+    padding: 5px var(--sp-0h) 5px var(--sp-2h);
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-pill);
@@ -947,7 +1033,7 @@ button {
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: var(--sp-1) 12px;
+    padding: var(--sp-1) var(--sp-2h);
     /* Zásahová plocha. Token drží 32 px na VŠETKÝCH škálach hustoty — kompaktné
        zobrazenie zhusťuje priestor medzi prvkami, nie klikaciu plochu. */
     min-height: var(--control-h);
@@ -966,7 +1052,7 @@ button {
 }
 button:hover { background: var(--hover-fill); border-color: var(--border-strong); }
 button:active { background: var(--accent-soft); transition-duration: var(--dur-press); }
-button:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
+button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; pointer-events: none; }
 
 /* Accent-filled primary action */
 button.primary {
@@ -977,7 +1063,7 @@ button.primary {
 }
 button.primary:hover { background: var(--accent-600); border-color: var(--accent-600); }
 button.primary:active { background: var(--accent-600); }
-button.primary:disabled { background: rgba(var(--accent-rgb), .35); border-color: transparent; }
+button.primary:disabled { background: var(--accent-disabled-fill); border-color: transparent; }
 
 /* Ghost */
 /* Viazané na `button` AJ na `a`: odkaz s `.ghost` nedostával nič, takže „Otvoriť
@@ -1256,7 +1342,7 @@ button.close:active { background: var(--accent-soft); }
 #breadcrumb .crumb {
     background: none; border: none;
     min-height: auto;
-    padding: 2px 6px;
+    padding: 2px var(--sp-0h);
     border-radius: var(--r-sm);
     font-family: var(--mono);
     font-size: var(--fs-small);
@@ -1268,7 +1354,7 @@ button.close:active { background: var(--accent-soft); }
    názov obrazovky), takže má váhu — pri 12 px vedľa stavového čipu sa strácalo. */
 #breadcrumb .current {
     color: var(--text);
-    padding: 2px 6px;
+    padding: 2px var(--sp-0h);
     font-size: var(--fs-body);
     font-weight: var(--fw-medium);
 }
@@ -1378,7 +1464,7 @@ input:not([type="range"]), textarea {
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: var(--sp-1) 12px;
+    padding: var(--sp-1) var(--sp-2h);
     font-family: var(--font);
     font-size: var(--fs-base);
     transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
@@ -1391,7 +1477,7 @@ input:not([type="range"]):focus-visible, textarea:focus-visible {
     box-shadow: var(--focus-ring);
 }
 input:not([type="range"]):focus, textarea:focus { outline: none; border-color: var(--accent); }
-input:disabled, textarea:disabled { opacity: .5; cursor: not-allowed; }
+input:disabled, textarea:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
 
 textarea {
     line-height: var(--lh-prose);
@@ -1446,13 +1532,13 @@ input[type="range"]::-moz-range-thumb {
     transition: box-shadow var(--dur-fast) var(--ease);
 }
 input[type="range"]::-webkit-slider-thumb:hover,
-input[type="range"]::-webkit-slider-thumb:active { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .16); }
+input[type="range"]::-webkit-slider-thumb:active { box-shadow: 0 0 0 4px var(--accent-hover-wash); }
 input[type="range"]::-moz-range-thumb:hover,
-input[type="range"]::-moz-range-thumb:active { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .16); }
+input[type="range"]::-moz-range-thumb:active { box-shadow: 0 0 0 4px var(--accent-hover-wash); }
 input[type="range"]:focus-visible { outline: none; box-shadow: none; }   /* prsteň nesie thumb nižšie, nie celé pole */
-input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .30); }
-input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .30); }
-input[type="range"]:disabled { opacity: .5; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-focus-wash); }
+input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px var(--accent-focus-wash); }
+input[type="range"]:disabled { opacity: var(--disabled-opacity); }
 
 label.slider {
     display: flex; align-items: center; justify-content: space-between;
@@ -1674,7 +1760,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     background: var(--surface-2);
     color: var(--text);
     font-size: var(--fs-body);
-    padding: var(--sp-0) 12px;
+    padding: var(--sp-0) var(--sp-2h);
     border-radius: var(--r-pill);
     border: 1px solid var(--border);
     cursor: pointer;
@@ -1713,7 +1799,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 /* Ozbrojený stav mazania — ikona sa mení na textovú otázku */
 #node-delete.armed {
     width: auto;
-    padding: 0 12px;
+    padding: 0 var(--sp-2h);
     font-family: var(--font);
     font-size: var(--fs-body);
     font-weight: var(--fw-medium);
@@ -1756,7 +1842,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .sug-add:hover { background: var(--accent-softer); color: var(--accent-ink); }   /* W3b: 2,83:1 → ink */
-.sug-add:disabled { opacity: .5; pointer-events: none; }
+.sug-add:disabled { opacity: var(--disabled-opacity); pointer-events: none; }
 
 /* ---------------------------------------------------------------------------
    TIMELINE (#timeline) — kompaktne v hlavičke, pred metrikami
@@ -1812,7 +1898,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 }
 #zoomctl button:hover { background: var(--hover-fill); color: var(--text); }
 #zoomctl button:active { background: var(--accent-soft); }
-#zoomctl button:disabled { opacity: .4; pointer-events: none; }
+#zoomctl button:disabled { opacity: var(--disabled-opacity); pointer-events: none; }
 
 /* A9: mŕtvy chat nad grafom (#prompt / #prompt-form / #chat-log / .msg /
    .suggest-card) je preč — nahradil ho dok Charóna (charon.css). Zostalo len to,
@@ -1832,7 +1918,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 .ctx-chip {
     display: inline-flex; align-items: center; gap: var(--sp-0);
     max-width: 100%;
-    padding: 2px 4px 2px 10px;
+    padding: 2px var(--sp-0) 2px 10px;
     background: var(--surface-subtle);
     border: 1px solid var(--border-accent);
     border-radius: var(--r-pill);
@@ -1868,7 +1954,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     background: none; border: none;
     color: var(--muted);
     font-size: var(--fs-small);
-    padding: 2px 6px;
+    padding: 2px var(--sp-0h);
     cursor: pointer;
     border-radius: var(--r-sm);
     transition: color var(--dur-fast) var(--ease);
@@ -1897,7 +1983,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: var(--sp-1) 12px var(--sp-1) 16px;
+    padding: var(--sp-1) var(--sp-2h) var(--sp-1) var(--sp-2);
     backdrop-filter: var(--glass-blur);
     box-shadow: var(--elev-2);
     font-size: var(--fs-body);
@@ -1985,13 +2071,13 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 }
 .key-row:last-child { border-bottom: none; }
 .key-row .label, .key-row > span { color: var(--text-secondary); font-weight: var(--fw-regular); }
+/* Kresbu nesie bare `kbd` vyššie; tu ostáva len to, čím sa legenda klávesov
+   v paneli líši — je to zoznam na čítanie, takže klávesa je väčšia, štvorcová
+   a text má plný kontrast. */
 .key-row kbd {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 22px; height: 22px;
-    padding: 0 6px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-sm);
+    padding: 0 var(--sp-0h);
     color: var(--text);
     font-weight: var(--fw-medium);
     font-size: var(--fs-small);
@@ -2146,7 +2232,12 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 #hint button#hint-next:hover { background: var(--accent-600); border-color: var(--accent-600); }
 
 /* ---------------------------------------------------------------------------
-   EMPTY STATE — .empty je základ, .empty-network jeho hero modifikátor
+   EMPTY STATE — .empty je základ, .empty--hero a .empty-network sú jeho modifikátory
+
+   Jedno meno pre prázdny stav v celej appke (mind aj Charón). `.empty--hero` je
+   veľká, ľavostranná podoba pre uvítaciu obrazovku vlákna; `.empty-network` je
+   hero nad plátnom (prázdna sieť / chyba štartu). `.card-empty` NIE je prázdny
+   stav v tomto slovníku — viď jeho vlastný komentár nižšie.
    --------------------------------------------------------------------------- */
 /* ---- Rozhodnutia: toolbar + ručné pridanie, Knižnica: rad značiek ----
    Rozloženie týchto troch blokov bolo písané inline v JS (šesť style="" atribútov).
@@ -2171,15 +2262,77 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 }
 .dec-add-row #dec-area { flex: 1; min-width: 160px; }
 .dec-add-row #dec-date { flex: 0 0 auto; }
+/* ---- Knižnica: meta riadok karty je JEDEN riadok, prepad sa zhrnie do „+N" ----
+
+   Nález R6/R10 zmeral, že tento blok zaberal 66 z 151 px karty: `flex-wrap: wrap`
+   nad ôsmimi čipmi (origin + istota + vek + 5 značiek) sa na ~320px karte lámal
+   na tri riadky, teda na dva riadky vzduchu pod textom, ktorý nikto nečíta.
+   Overené (výmena stylesheetu nad tým istým DOM, karta 325,2px, 5 stĺpcov):
+   meta riadok 64,38 → 18,0px a karta 150,86 → 104,48px, teda −46,4px (−30,7 %).
+   Číslo auditu tým sedí na desatinu: 64,38 z 150,86. A padá celý RAD, nie jedna
+   karta — `.lib-skills` je `align-items: stretch`, takže výšku radu dáva
+   najvyššia karta v ňom.
+
+   Riadok je preto `nowrap` + `overflow: hidden` a idú doň LEN prvé dve značky.
+   Koľko ich riadok ukáže a koľko zvyšku sa zhrnulo počíta `libMeta()` v
+   `screens/kniznica.js` a hotové číslo posiela v `data-more`; CSS ho tu už len
+   vykreslí (`content: attr(data-more)`).
+
+   Prečo počíta JS a nie CSS: k prepadu treba PRIPOČÍTAŤ `tags_more` zo servera
+   (ten reže odpoveď na `KniznicaScreen::TAG_CAP` = 5), a to je číslo v dátach,
+   ktoré CSS prečítať nevie. Do 24. 8. 2026 skladalo tretiu a ďalšiu značku
+   `display: none` a počet dopisovali tri `:has()` stavy „+1/+2/+3"; karta s viac
+   než piatimi značkami potom hlásila dva počty vedľa seba („+2" z CSS a „+3" zo
+   servera). Spolu s tým padla aj výnimka `:not(:last-child)`, ktorá tam bola len
+   preto, aby sa serverový čip „+N" nezložil a riadok neohlásil menšie číslo, než
+   je skutočnosť. (CSS counter nikdy nebol kandidát: prvok s `display: none` nemá
+   box, takže `counter-increment` na skrytom čipe dá vždy +0.)
+
+   Dve veci, ktoré tu nie sú omylom:
+   1) ::after je `position: absolute`, nie flex item. V `overflow: hidden` riadku
+      by stál posledný v poradí, takže by ho orezanie zjedlo PRVÉ — a značka
+      prepadu, ktorú nevidno, je horšia než žiadna. `padding-right` mu drží
+      miesto, takže neprekrýva čip, len stojí za ním; --sp-3 (24px) uveze tri
+      znaky mono na 11px, teda až „+99".
+   2) `white-space: nowrap` na riadku: `.tag` je `inline-flex` bez `nowrap`, takže
+      dvojslovná značka by sa v úzkom riadku zalomila VNÚTRI čipu a jednoriadkový
+      rytmus by padol na 34px. */
 .lib-skill-meta {
-    display: flex; flex-wrap: wrap; gap: var(--sp-0h); align-items: center;
+    position: relative;
+    display: flex; flex-wrap: nowrap; gap: var(--sp-0h); align-items: center;
     margin-top: var(--sp-0h);
+    overflow: hidden;
+    white-space: nowrap;
+}
+/* Žiadny čip sa nezmenšuje — zmenšený čip s `nowrap` textom preteká sám seba. */
+.lib-skill-meta > * { flex: none; }
+
+/* Značka prepadu. Text nesie `data-more` z `libMeta()`, takže karta bez prepadu
+   atribút nemá, ::after jej nevzniká a riadok nedrží prázdne miesto. */
+.lib-skill-meta[data-more] { padding-right: var(--sp-3); }
+.lib-skill-meta[data-more]::after {
+    content: attr(data-more);
+    position: absolute;
+    right: 0; top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--mono); font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
 }
 
 /* Prázdno vnútri karty — emptyCardHtml() v util.js. Vedome to NIE JE .empty:
    nadpis karty už kontext povedal, takže tu ostáva jediný tichý riadok. Výška
    drží mriežku dashboardu (min-height ≈ najnižší graf), aby karta bez dát
-   nezliezla a nerozhodila susedov. */
+   nezliezla a nerozhodila susedov.
+
+   NEZLIEVAŤ s .empty — je to WONTFIX, nie prehliadnutie (D11, audit §9/2), a
+   zliatie sa už raz zvažovalo a zamietlo. Dôvody, ktoré platia aj po zjednotení
+   slovníka prázdnych stavov: (a) iný volajúci — emptyCardHtml(), nie
+   renderEmpty(), (b) iná rola — nie je to prázdna OBRAZOVKA, ale prázdna dlaždica
+   vnútri karty, ktorá už má nadpis, takže nesmie mať ikonu ani druhý riadok
+   „čo s tým", (c) min-height drží mriežku dashboardu, čo .empty nemá a mať nemá.
+   Ako modifikátor .empty by musel zrušiť ikonu, gap aj padding základu — to je
+   viac prepisov než celý tento blok. */
 .card-empty {
     margin: 0;
     padding: var(--sp-2) 0;
@@ -2312,6 +2465,37 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     justify-content: center;
 }
 
+/* Hero podoba prázdneho stavu — uvítacia plocha, ktorá je prvá vec na obrazovke
+   (dnes jediný volajúci: renderEmpty() v public/js/console/render.js).
+   Nie je to zdrobnená verzia .empty: je to ĽAVOSTRANNÁ PRÓZA so značkou, nadpisom
+   a zoznamom schopností, takže musí explicitne vrátiť tri veci, ktoré základ vnucuje
+   pre drobné „nič tu nie je" — vycentrovanie, zarovnanie textu a vnútorný odstup.
+   Bez toho by z hero vznikol vycentrovaný zoznam.
+   Šírku drží --measure-prose (miera čítania pre plynulý text, ktorá už v appke je),
+   nie vlastné číslo — prázdny stav je próza ako každá iná. */
+.empty--hero {
+    align-items: flex-start;
+    text-align: left;
+    padding: 0;
+    /* gap: 0 zámerne — rytmus tu nesú margin-y detí (znak, nadpis, zoznam), ktoré
+       si ich už deklarujú. Gap základu by sa k nim pripočítal. */
+    gap: 0;
+    max-width: var(--measure-prose);
+    margin-inline: auto;
+}
+/* Typografiu hero plochy určuje jej vlastník (console.css), nie slovník drobného
+   prázdna: bez tohto by odstavec spadol na .empty p, teda o stupeň menšie a tichšie
+   písmo, než akým hero hovorí. */
+.empty--hero p {
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+}
+/* Ikony v hero ploche sú čitateľné značky bodov zoznamu, nie stlmená kresba
+   prázdna — .empty .ms ich stmieva na polovicu, čo tu je regresia kontrastu.
+   Veľkosť a farbu si drží volajúci (.empty-can .ms), preto tu len opacita. */
+.empty--hero .ms { opacity: 1; }
+
 /* Hero nad plátnom (prázdna sieť / chyba štartu) */
 .empty.empty-network {
     position: fixed; inset: 0;
@@ -2406,7 +2590,7 @@ body.ambient #toasts {
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: 12px var(--sp-2);
+    padding: var(--sp-2h) var(--sp-2);
 }
 /* Číslo v paneli je ODPOČET, nie hero metrika: mono + tabular-nums ako každý iný
    odpočet v appke (--fs-kpi / #header-metrics / .tc-val). Serif má v celej appke
@@ -2430,7 +2614,7 @@ body.ambient #toasts {
     margin-top: 2px;
     font-family: var(--mono);
 }
-.metric-sub { font-size: var(--fs-caption); color: var(--accent); margin-top: 4px; }
+.metric-sub { font-size: var(--fs-caption); color: var(--accent); margin-top: var(--sp-0); }
 
 #stats-recent, #journal-list { display: flex; flex-direction: column; gap: var(--sp-1); }
 
@@ -2463,7 +2647,7 @@ body.ambient #toasts {
    85,6 % textu appky. 12px (--fs-small) drží hierarchiu voči 13px titulku
    a `flex-shrink: 0` znamená, že o šírku sa podelí titulok, nie rozloženie. */
 .record-time { font-family: var(--mono); font-size: var(--fs-small); line-height: var(--lh-small); color: var(--muted); flex-shrink: 0; }
-.record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: 6px; }
+.record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: var(--sp-0h); }
 
 /* .tag — NEUTRAL at rest (business-clean); amethyst only as --accent / active.
    Contract §4.5: .tag / .tag--accent own tag styling (aliases .tag-chip NOT used). */
@@ -2471,7 +2655,7 @@ body.ambient #toasts {
     display: inline-flex; align-items: center;
     font-size: var(--fs-caption); font-family: var(--mono);
     letter-spacing: var(--ls-mono);
-    padding: 1px 8px; border-radius: var(--r-pill);
+    padding: 1px var(--sp-1); border-radius: var(--r-pill);
     background: var(--surface-2); color: var(--text-secondary);
     border: 1px solid var(--border);
 }
@@ -2493,9 +2677,17 @@ body.ambient #toasts {
     gap: var(--sp-0);
     margin-bottom: var(--sp-2);
 }
+/* Rozhodnutia, Runy a Kontrola majú filtračných radov DVA až TRI (rok, oblasť,
+   nástroje) a každý si bral plnú sekčnú medzeru, takže samotné filtre stáli
+   nad zoznamom 40–70px. Medzi radmi toho istého pásu patrí medzera radu, nie
+   medzera sekcie — plnú si drží len posledný rad, ten pás naozaj končí. */
+.dtl-filter:has(+ .dtl-filter) { margin-bottom: var(--sp-0); }
+/* V Knižnici pás obaľuje `#library-filter` a odstup k zoznamu už dáva
+   `#library-body { gap }`. Vlastný margin by sa k nemu pripočítal. */
+#library-filter > .dtl-filter { margin-bottom: 0; }
 /* počet záznamov v chipe — z filtra sa tým stane aj malá štatistika */
 .chip-n {
-    margin-left: 6px;
+    margin-left: var(--sp-0h);
     font-family: var(--mono); font-size: var(--fs-caption);
     color: var(--muted); font-weight: 400;
 }
@@ -2531,9 +2723,17 @@ body.ambient #toasts {
 #journal-list .day-head:first-child { margin-top: 0; }
 
 /* Záznamy JEDNÉHO dňa — fluidná mriežka. Dni ostávajú pod sebou (sú to skupiny),
-   viacstĺpcová je mriežka vnútri dňa: na 1600 vyjdú 2 stĺpce, na 2560 tri.
-   640px je minimum, pri ktorom sa riadok (názov + projekt + súbory + commity +
-   čas) nekráti — pod tým by mriežka len vymenila prázdno za elipsy. */
+   viacstĺpcová je mriežka vnútri dňa: pri --rec-cols 420px vyjdú tri stĺpce na
+   1904 (zmerané) a štyri od ~1918 nahor — presné hranice sú pri tokene.
+   Zmerané na dni s piatimi záznamami: 144,67 → 93,78px, teda dva riadky mriežky
+   namiesto troch pri NEZMENENEJ výške riadku záznamu.
+   Pôvodné 640px sa zdôvodňovalo tým, že pod ním sa riadok (názov + projekt +
+   súbory + commity + čas) kráti. Nález R10 to zmeral z druhej strany: na 1920
+   to boli dva stĺpce po ~854px pre 25-znakový titulok, teda elipsa nikde a
+   ~600px prázdna na riadok. Titulok je `nowrap` + `text-overflow: ellipsis`
+   (.record-title) a čas má `flex-shrink: 0`, takže úžším stĺpcom sa skracuje
+   VÝHRADNE názov — a to je tá časť, ktorú vidno v troch riadkoch namiesto
+   jedného. Hodnota žije v --rec-cols, aby ju hustota mohla prepnúť. */
 .rec-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--rec-cols)), 1fr));
@@ -2708,7 +2908,7 @@ body.ambient #toasts {
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: var(--sp-1) 12px;
+    padding: var(--sp-1) var(--sp-2h);
     font-family: var(--font);
     font-size: var(--fs-base);
     cursor: pointer;
@@ -2733,7 +2933,7 @@ body.ambient #toasts {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: 10px 12px;
+    padding: 10px var(--sp-2h);
     margin-bottom: var(--sp-1);
 }
 .dup-pair { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
@@ -2759,7 +2959,7 @@ body.ambient #toasts {
 }
 .dup-side button {
     min-height: 26px;
-    padding: 2px 12px;
+    padding: 2px var(--sp-2h);
     font-size: var(--fs-small);
 }
 
@@ -2977,8 +3177,11 @@ body[data-screen="graf"] #screens { display: none; }
 }
 #library-search {
     display: block;
+    /* Šírka bola `100%` s capom 420px, čo na desktope vždy vyšlo na 420px — od
+       zlúčenia hlavičky je 420px priamo šírka (pole je v mriežkovej bunke, kde
+       `100%` nemá čo merať) a cap drží zbalený stav v úzkom okne. */
     margin-top: var(--sp-2);
-    width: 100%; max-width: 420px;
+    width: 420px; max-width: 100%;
     background: var(--field-bg);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
@@ -2989,7 +3192,81 @@ body[data-screen="graf"] #screens { display: none; }
 }
 #library-search:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
 
-/* Denník obrazovka — filter dostane vzduch nad zoznamom */
+/* ---------------------------------------------------------------------------
+   HLAVIČKA OBRAZOVKY NESIE AJ JEJ OVLÁDANIE — jeden pás namiesto dvoch
+
+   Nález R6(c): na obrazovkách s filtrom stáli nad zoznamom dva samostatné pásy —
+   nadpis s podtitulom a pod ním rad filtračných čipov (resp. hľadacie pole).
+   Audit to zmeral na −52px na každej takej obrazovke, a je to vzduch bez roly:
+   nadpis „Denník" nepotrebuje 24px odstup od čipov, ktoré patria k nemu.
+
+   ZMERANÉ (od hornej hrany `.screen-head` po horný okraj obsahu, ten istý DOM):
+     Denník      → #journal-list   138,59 → 82,59px   (−56,0)
+     Knižnica    → #library-list   197,39 → 130,59px  (−66,8)
+     Rozhodnutia → #dec-list       246,98 → 206,98px  (−40,0)
+   Pod 900px sa Denník aj Knižnica merajú nezmenene (182,59 → 182,59), teda
+   zbalený stav je naozaj zbalený a nie tretí layout.
+
+   Zlúčené je to TAM, KDE TO DOM DOVOLÍ, a nikde inde:
+   - Knižnica — `#library-search` je dieťa `.screen-head`, takže hlavička sa stane
+     dvojstĺpcovou mriežkou (nadpis + podtitul vľavo, pole vpravo).
+   - Denník — `#journal-filter` je SÚRODENEC hlavičky v tej istej sekcii, takže
+     dvojstĺpcová sa stane sekcia a zoznam ide pod oba stĺpce.
+   - Rozhodnutia / Runy / Kontrola — tam `.dtl-filter` NIE JE súrodenec hlavičky,
+     ale žije vnútri `#*-body`, a nie je jeden: sú to dva až tri rady (rok, oblasť,
+     nástroje). Jeden riadok z toho v CSS neurobím bez `display: contents` na
+     kontejneri, čo by zo všetkých jeho detí — vrátane prázdneho stavu a zoznamu —
+     porobilo mriežkové položky obrazovky. Tam sa preto zatiaľ škrtá len dvojitá
+     medzera (nižšie), nie počet pásov. Zvyšok chce jeden obal v JS.
+
+   Celé zlúčenie je v `min-width: 901px`, teda ako DOPLNOK k existujúcemu
+   `max-width: 900px` breakpointu. Nie je to obrátené len z chuti: keby základ
+   deklaroval mriežku a media query ju vracala na `block`, mal by ten istý
+   selektor tú istú vlastnosť dvakrát s inou hodnotou — presne ten druh dvojitej
+   deklarácie, ktorý si tento súbor zaplatil na nulu. Takto je deklarácia jedna
+   a pod 900px sa jednoducho neuplatní: obrazovka zostane v pôvodnom zvislom
+   poradí (nadpis, podtitul, ovládanie pod nimi) bez jediného prepisu.
+   --------------------------------------------------------------------------- */
+@media (min-width: 901px) {
+    .screen-head:has(> #library-search) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        column-gap: var(--section-gap);
+        align-items: end;
+    }
+    .screen-head:has(> #library-search) > h1,
+    .screen-head:has(> #library-search) > .screen-sub { grid-column: 1; }
+    /* Pole preklenie oba riadky nadpisu a sadne na účiaru podtitulu. Vlastnú
+       hornú medzeru v mriežke nepotrebuje — odstup je stĺpcová medzera. */
+    .screen-head:has(> #library-search) > #library-search {
+        grid-column: 2; grid-row: 1 / span 2;
+        align-self: end;
+        margin-top: 0;
+    }
+
+    /* Denník: nadpis vľavo, filtračné čipy v druhom stĺpci, zoznam pod oboma.
+       `align-items: end` zarovnáva SPODKY vonkajších boxov, takže čipy sedia na
+       tej istej linke ako podtitul — preto dostane filter tú istú spodnú medzeru
+       ako hlavička (`--section-gap`) namiesto svojej `--sp-2`. Keby si nechal
+       svoju, riadok by mu ju pripočítal a čipy by vyskočili o 8px nad podtitul. */
+    #screen-dennik.screen.active {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: var(--section-gap);
+        align-items: end;
+    }
+    #screen-dennik > .screen-head { grid-column: 1; grid-row: 1; }
+    #screen-dennik > #journal-filter {
+        grid-column: 2; grid-row: 1;
+        margin-bottom: var(--section-gap);
+    }
+    #screen-dennik > #journal-list { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* Obrazovky, kde filtračný pás žije vnútri `#*-body` (Rozhodnutia, Runy,
+   Kontrola, Knižnica): hlavička k nemu nepotrebuje celú sekčnú medzeru — čipy
+   patria k nadpisu, nie k zoznamu. */
+.screen-head:has(+ * .dtl-filter) { margin-bottom: var(--sp-1); }
 
 /* ---- graph-tools (v hlavičke, len na Grafe) ---- */
 #graph-tools { display: flex; gap: var(--sp-0); }
@@ -3023,13 +3300,9 @@ body[data-screen="graf"] #screens { display: none; }
 }
 #cmdk-trigger:hover { border-color: var(--border-accent); color: var(--text); background: var(--accent-softer); }
 #cmdk-trigger .ms { font-size: var(--icon-sm); }
-#cmdk-trigger kbd {
-    font-family: var(--mono); font-size: var(--fs-micro);
-    padding: 1px 5px;
-    border: 1px solid var(--border-strong);
-    border-radius: 5px;
-    color: var(--muted); background: var(--panel-solid);
-}
+/* Kresba je v bare `kbd`; tu sa mení len papier — trigger sedí na hlavičke,
+   nie na paneli, takže klávesa v ňom potrebuje nepriehľadné pozadie panelu. */
+#cmdk-trigger kbd { background: var(--panel-solid); }
 
 /* ---- Cmd-K paleta (overlay) ---- */
 #cmdk {
@@ -3066,13 +3339,8 @@ body[data-screen="graf"] #screens { display: none; }
 }
 #cmdk-input::placeholder { color: var(--muted); }
 #cmdk-input:focus { outline: none; }
-.cmdk-input-row kbd {
-    font-family: var(--mono); font-size: var(--fs-micro);
-    padding: 1px 6px;
-    border: 1px solid var(--border-strong);
-    border-radius: 5px;
-    color: var(--muted); background: var(--surface-2);
-}
+/* `.cmdk-input-row kbd` nemá vlastné pravidlo — bola to znak po znaku tá istá
+   kresba ako bare `kbd`, len s paddingom 1px 6px namiesto 1px 5px. */
 #cmdk-results { overflow-y: auto; padding: var(--sp-1); }
 .cmdk-group {
     font-size: var(--fs-caption);
@@ -3117,7 +3385,7 @@ body[data-screen="graf"] #screens { display: none; }
 .today-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .today-chip {
     display: inline-flex; align-items: center; gap: var(--sp-1);
-    padding: 4px 10px;
+    padding: var(--sp-0) 10px;
     background: var(--surface-subtle);
     border: 1px solid var(--border);
     border-radius: var(--r-pill);
@@ -3133,8 +3401,9 @@ body[data-screen="graf"] #screens { display: none; }
     transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .today-chip:hover { border-color: var(--border-accent); background: var(--accent-softer); }
-/* Fluidná mriežka — riadok záznamu potrebuje ~640px (názov + značka + čas), tak sa
-   šírka doleje ďalším stĺpcom namiesto prázdna medzi názvom a časom. */
+/* Fluidná mriežka — šírka sa doleje ďalším stĺpcom namiesto prázdna medzi názvom
+   a časom. Minimum je to isté --rec-cols ako v Denníku (420px od R10, predtým
+   640px): riadok je tá istá trojica názov + značka + čas. */
 .today-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--rec-cols)), 1fr));
@@ -3158,7 +3427,7 @@ body[data-screen="graf"] #screens { display: none; }
     background: var(--surface-subtle);
     border: 1px solid var(--border);
     border-radius: var(--r-pill);
-    padding: 1px 8px; flex-shrink: 0;
+    padding: 1px var(--sp-1); flex-shrink: 0;
 }
 .ti-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
 
@@ -3232,7 +3501,7 @@ body[data-screen="graf"] #screens { display: none; }
 .today-card-wrap { display: flex; align-items: stretch; gap: 2px; }
 .today-card-link {
     flex: 1; min-width: 0;
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex; flex-direction: column; gap: var(--sp-0h);
     color: var(--text);
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
@@ -3249,7 +3518,7 @@ body[data-screen="graf"] #screens { display: none; }
 .tcl-proj {
     font-size: var(--fs-caption); color: var(--muted);
     background: var(--surface-subtle); border: 1px solid var(--border);
-    border-radius: var(--r-pill); padding: 1px 8px;
+    border-radius: var(--r-pill); padding: 1px var(--sp-1);
     max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tcl-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
@@ -3352,8 +3621,8 @@ body[data-screen="graf"] #screens { display: none; }
 /* Šablóny — rýchle štarty ako čipy */
 .dir-templates { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-bottom: var(--sp-2); }
 .dir-tpl {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 6px 12px;
+    display: inline-flex; align-items: center; gap: var(--sp-0h);
+    padding: var(--sp-0h) var(--sp-2h);
     background: var(--surface-subtle);
     border: 1px solid var(--border);
     border-radius: var(--r-pill);
@@ -3815,8 +4084,8 @@ button.hero-action:hover { border-color: var(--accent); }
    .cert--icon = icon-only variant (dense contexts: library rows, panels)
    --------------------------------------------------------------------------- */
 .cert {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 1px 8px;
+    display: inline-flex; align-items: center; gap: var(--sp-0);
+    padding: 1px var(--sp-1);
     border-radius: var(--r-pill);
     border: 1px solid transparent;
     font-family: var(--mono);
@@ -3847,8 +4116,8 @@ button.hero-action:hover { border-color: var(--accent); }
    §4.8 icons: menu_book (brain) / bolt (session).
    --------------------------------------------------------------------------- */
 .origin {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 1px 8px;
+    display: inline-flex; align-items: center; gap: var(--sp-0);
+    padding: 1px var(--sp-1);
     border-radius: var(--r-pill);
     font-family: var(--mono);
     font-size: var(--fs-caption);
@@ -3920,6 +4189,12 @@ button.hero-action:hover { border-color: var(--accent); }
 /* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
 .dtl-card .dtl-head {
     display: flex; align-items: baseline; gap: var(--sp-1);
+    /* Hlavička je v karte JEDEN pružný blok (dátum + text), nie dve položky.
+       Musí byť: keby sa `display: contents`-om rozpadla na dvoje, dlhý text by si
+       vzal vlastný riadok a dátum by zostal sám nad ním. Takto ide na druhý
+       riadok celá hlavička, alebo nič. */
+    flex: 1 1 auto;
+    min-width: 0;
 }
 .dtl-card .dtl-date {
     font-family: var(--mono); font-size: var(--fs-caption);
@@ -4012,7 +4287,7 @@ body[data-screen="graf"] #mind {
 .sync-guard { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); }
 .sync-guard .ms { font-size: var(--icon-sm); }
 .sync-guard strong { color: var(--text-secondary); }
-.sync-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+.sync-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--sp-0h); }
 
 /* Vstup vo filtračnom rade nesmie brať celú šírku. Základné `input { width: 100% }`
    ho inak roztiahne cez celý riadok a poznámku („Zobrazených 100 zo 140") vytlačí
@@ -4061,13 +4336,12 @@ button.danger.armed {
     font-size: var(--fs-small); color: var(--muted);
 }
 .kbd-hints .kh { display: inline-flex; align-items: center; gap: var(--sp-0); }
+/* Kresbu nesie bare `kbd`; pás pod obsahom potrebuje len štvorcovú stopu
+   a plný kontrast textu. */
 .kbd-hints kbd {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 20px; height: 20px; padding: 0 5px;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-sm);
-    font-family: var(--mono); font-size: var(--fs-caption);
+    font-size: var(--fs-caption);
     color: var(--text);
 }
 
@@ -4078,7 +4352,7 @@ button.danger.armed {
     position: absolute;
     top: 4px; right: 8px;
     min-width: 16px; height: 16px;
-    padding: 0 4px;
+    padding: 0 var(--sp-0);
     display: inline-flex; align-items: center; justify-content: center;
     background: var(--accent);
     color: var(--on-accent);
@@ -4144,7 +4418,7 @@ button.danger.armed {
 .dir-preview-wrap,
 .dir-saved-item {
     padding: var(--card-pad);
-    background: var(--panel);
+    background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: var(--card-radius);
     box-shadow: none;
@@ -4161,6 +4435,41 @@ button.danger.armed {
 .record,
 .dtl-card,
 .dir-saved-item { --card-pad: var(--card-pad-row); }
+
+/* ---------------------------------------------------------------------------
+   1b) DRUHÝ PAPIER — pomenovaná varianta povrchu (nález D3)
+
+   Appka mala dva papiere kariet a rozdiel nebol nikde pomenovaný: zjednotená
+   karta kreslí `--panel`, kým `.tool-call` v konzole kreslí `--surface-2`.
+   Odteraz je povrch jeden token (`--card-bg`, základ v :root) a druhý papier je
+   DEKLAROVANÁ rola, nie náhoda.
+
+   ZÁKLAD je --panel. Tri dôvody, a ani jeden nie je „tak to už je":
+   1) Všetkých 11 selektorov v skupine vyššie ho už kreslí — základ teda nie je
+      nové rozhodnutie, len pomenovanie stavu.
+   2) --panel je JEDINÝ povrch, ktorý nesie sklo: na tmavej sleduje slider
+      priehľadnosti (`--panel-a: var(--panel-alpha)`, applyOpts ho píše inline
+      na :root), takže panel nad plátnom presvitá. --surface-2 je plochý
+      nepriehľadný hex, takže karta na ňom zo skla ticho vypadne a na slider
+      prestane reagovať.
+   3) Rola --surface-2 inde v súbore je „plocha VNÚTRI panela": na svetlej je to
+      tá istá hodnota ako --field-bg (#fbf7f9), na tmavej hodnota vedľa nej.
+      Je to papier v karte, nie papier karty.
+
+   PREČO SA VARIANTA NEVOLÁ --sunken (namerané z hodnôt v :root, nie odhad):
+   - tmavá: --panel-rgb je 19,27,26 a --surface-2 je #16201f (22,32,31), teda
+     varianta je SVETLEJŠIA než základ — vizuálne sa zdvihne, nezapadne;
+   - svetlá: --panel je 255,255,255 a --surface-2 #fbf7f9 (251,247,249), teda
+     varianta je o vlások tmavšia — jeden krok smerom k papieru --bg (248,244,247).
+   Smer sa medzi témami OTÁČA, konštantný je len ten jeden krok od základu.
+   Preto názov hovorí, čo varianta robí (odlišuje blok vnorený v toku), nie kam
+   sa posúva. `.card--sunken` by na tmavej téme klamala.
+
+   POZOR: --card-bg sa dedí. Modifikátor musí sedieť na tom istom elemente ako
+   trieda karty a karta vnorená v `.card--nested` by variantu zdedila — v tomto
+   súbore taký prípad nie je (viď poznámka o vnorení v bode 1).
+   --------------------------------------------------------------------------- */
+.card--nested { --card-bg: var(--surface-2); }
 
 /* Karty so stĺpcovým obsahom — deti na celú šírku karty (ruší UA centrovanie).
    .kpi-card tu už NIE JE: je to jednoriadkový strip so zarovnaním na účiaru
@@ -4206,6 +4515,7 @@ button.danger.armed {
 /* span-2 potrebuje aspoň 2 stĺpce; v jednostĺpcovom rade by pretekal */
 @media (max-width: 900px) {
     .dash-card.span-2 { grid-column: auto; }
+
 }
 
 /* ---------------------------------------------------------------------------
@@ -4287,8 +4597,7 @@ button.danger.armed {
 
       column-width 440px je zvolený tak, aby výsledný stĺpec vyšiel ~456px
       = ~68 znakov pri 13px: na 1600 sú to 3 stĺpce, na 2560 päť, oba s tou
-      istou dĺžkou riadku. Karta je zvislá (značky pod textom) — v 456px
-      stĺpci by ich pravý blok nemal kam ísť. */
+      istou dĺžkou riadku. */
 .dtl-group {
     columns: 440px;
     column-gap: var(--sp-3);
@@ -4299,6 +4608,55 @@ button.danger.armed {
     display: flex;
     flex-direction: column;
 }
+
+/* ---- Karta rozhodnutia: dva stĺpce, keď sa zmestia; stĺpec, keď nie ----
+
+   Nález R6(b). Karta mala tri natvrdo naskladané riadky — hlavička (dátum + text),
+   dôvod, meta (origin + oblasť + uzol + „dôvod ▾") — takže aj jednoriadkové
+   rozhodnutie stálo dva riadky. A jednoriadkových je väčšina.
+
+   Riešenie je `flex-wrap`, nie grid s pevnými stĺpcami: šírku stĺpca dáva multicol
+   (~456px) a texty rozhodnutí majú od jedného riadku po pätnásť. Pevné dva stĺpce
+   by dlhému textu zobrali polovicu šírky a kartu tým PREDĹŽILI. `flex-wrap` to
+   rozhoduje podľa obsahu — základná veľkosť hlavičky je `auto`, teda jej
+   max-content:
+   - krátke rozhodnutie s málo čipmi: hlavička + meta sa vojdú na jeden riadok
+     (−1 riadok karty),
+   - dlhý text alebo plná meta (origin + oblasť + uzol + dôvod ≈ 290px): hlavička
+     si vezme celý riadok a meta prepadne pod ňu, presne ako dnes.
+
+   Tým zostáva v platnosti aj to, čo si k tejto karte zapísal jej autor — že
+   v ~456px stĺpci nemá pravý blok značiek kam ísť. Rozdiel je, že to odteraz
+   ROZHODUJE ŠÍRKA, nie deklarácia: karta, ktorej sa meta vedľa hlavičky zmestí,
+   za ňu neplatí riadkom.
+
+   ZMERANÉ (stĺpec 497px, ten istý DOM, výmena stylesheetu):
+     krátky text + origin              67,5 → 47,5px  (jeden riadok)
+     krátky text + origin + oblasť     67,5 → 47,5px  (jeden riadok)
+     krátky text + všetky 4 čipy       67,5 → 67,5px  (meta 336,7px sa nezmestí)
+     dlhý text                        106,5 → 106,5px (bez zmeny, zámer)
+     rozbalený dôvod                  107,5 → 107,5px (bez zmeny, zámer)
+   Čiže −20px na karte s ľahkou metou a NULA rizika na ostatných. Karta s plnou
+   metou (origin + oblasť + uzol + dôvod) si dva riadky drží; zlacniť ju by
+   znamenalo dať hlavičke `flex-basis: 0`, čím by dlhý text tiekol vedľa čipov
+   do ôsmich riadkov. To by bola horšia karta, nie hustejšia.
+
+   Prečo `flex-wrap` a nie `.dtl-head { display: contents }`: viď komentár pri
+   .dtl-head. A prečo `:has(> .dtl-head)` a nie `.dtl-card`: to isté meno karty
+   nosia Runy (`.dtl-card.run-card`), ktoré majú `.run-head` a zvislý obsah —
+   riadkový wrap by im rozobral rozloženie. Selektor sa preto pýta na hlavičku
+   rozhodnutia, nie na obrazovku. */
+.dtl-card:has(> .dtl-head) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--sp-1);
+    row-gap: var(--sp-0);
+}
+/* Dôvod je odsek — vždy na vlastnom riadku, nikdy vedľa hlavičky. */
+.dtl-card:has(> .dtl-head) > .dtl-reason { flex: 1 0 100%; }
+/* Meta prepadne pod hlavičku len keď sa vedľa nej nezmestí. */
+.dtl-card:has(> .dtl-head) > .dtl-meta { flex: 0 1 auto; }
 
 /* ---------------------------------------------------------------------------
    6) KONTRASTNÝ DLH — `color: var(--accent-600)` je na tmavej téme tmavý amethyst
@@ -4598,7 +4956,7 @@ button, input, select {
 
 .run-model { font-family: var(--mono); }
 /* Profil nástrojov behu — druhá tichá metadáta vedľa modelu, odlíšená tónom. */
-.run-profile { font-family: var(--mono); color: var(--accent-ink); background: var(--accent-softer); border-radius: var(--r-sm); padding: 0 6px; }
+.run-profile { font-family: var(--mono); color: var(--accent-ink); background: var(--accent-softer); border-radius: var(--r-sm); padding: 0 var(--sp-0h); }
 
 .run-prompt {
     margin: 0;
@@ -4661,13 +5019,27 @@ button, input, select {
 
 .run-step {
     display: grid;
-    /* R7: 5,5rem = 88 px, a to je pri --fs-caption v Geist Mono ~13 znakov —
-       `.run-step-who` má `overflow-wrap: anywhere`, takže dlhšie meno roly sa
-       ticho zlomilo doprostred slova. 7rem = 112 px nesie ~17 znakov, čím
-       stĺpec prestane lámať a zostane popisokom, nie hádankou. Textový stĺpec
-       stráca 24 px; jeho mieru drží `--measure` na `.run-prompt`/`.run-error`,
+    /* R7: šírku prvého stĺpca drží NAJDLHŠÍ reťazec, ktorý doňho renderer naozaj
+       posiela, a ten je zmeraný, nie odhadnutý.
+
+       Čo tam chodí (runy.js): pri správe `ty` / `Charón`, pri toole meno nástroja.
+       Najdlhšie z trinástich mien v `ToolRegistry::TOOLS` je `mind_overview` = 13 znakov.
+       (`assistant`, ktorý tu bol uvedený ako dôvod, renderer NEPOSIELA vôbec —
+       role sa prekladajú na slovenské slová o dvoch a šiestich znakoch.)
+
+       Zmerané z hmtx toho woff2, ktorý si appka hostí sama: Geist Mono má advance
+       presne 0,600 em pre všetky tieto znaky, `.run-step-who` je --fs-caption
+       (11 px) a nededí žiadne letter-spacing, rem = 16 px (html font-size nikto
+       neprepisuje). 13 × 0,6 × 11 = 85,8 px.
+
+       Preto 6rem = 96 px: 10,2 px rezervy, teda ešte jedno a pol znaku navyše, keby
+       štrnásty nástroj dostal dlhšie meno. 5,5rem (88 px) sa tesne zmestí, ale
+       s rezervou 2,2 px — a `.run-step-who` má `overflow-wrap: anywhere`, takže
+       prvé prekročenie sa neprejaví pretečením, ale tichým zlomom doprostred slova.
+       7rem (112 px) rezervovalo 26 px, ktoré nemá čo niesť. Textový stĺpec ich
+       dostáva späť; jeho mieru drží `--measure` na `.run-prompt`/`.run-error`,
        nie táto mriežka. */
-    grid-template-columns: 7rem 1fr;
+    grid-template-columns: 6rem 1fr;
     gap: var(--sp-2);
     align-items: start;
 }
@@ -4714,9 +5086,17 @@ button, input, select {
     border-radius: var(--r-sm);
     color: var(--text-secondary);
     font-family: var(--mono);
-    /* `--fs-body` (13 px), nie `--fs-caption` (11 px): technický výpis sa pod 13 px
-       číta zle a ten istý druh obsahu má v konzole 14 px. Jedna deklarácia, nie dve —
-       druhá by bola presne tá dvojitá deklarácia, akú v tomto súbore hľadá detektor. */
+    /* `--fs-body` (13 px), nie `--fs-caption` (11 px): podlaha pre diff a kód je
+       13 px (technický výpis, ktorý sa len číta a nekopíruje, znesie 12 px — viď
+       `.run-args` vyššie). Jedna deklarácia, nie dve — druhá by bola presne tá
+       dvojitá deklarácia, akú v tomto súbore hľadá detektor.
+
+       TOTO JE ZÁVÄZNÁ HODNOTA DIFFU PRE CELÚ APPKU. Rozpor, ktorý R7 hlásil ako
+       14 × 13 px, dnes stojí opačne: `console.css` kreslí ten istý obsah menším
+       písmom (`.tool-result` a `.pc-preview` = `--fs-small`, 12 px), a to sú
+       plochy Charóna pre výsledok toolu a náhľad zápisu — teda znak po znaku ten
+       istý text, ktorý Runy ukazujú tu. Dorovnať sa má konzola nahor na
+       `--fs-body`, nie Runy nadol: 13 px je podlaha, nie voľba vzhľadu. */
     font-size: var(--fs-body);
     white-space: pre;
 }

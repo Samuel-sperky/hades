@@ -59,7 +59,7 @@
    ŠPECIFICITA JE ZÁMERNE 0-0-1, NIE 0-1-0. Prvá verzia tohto resetu bol holý
    zoznam tried a id, teda presne tá istá špecificita, akú majú bloky nižšie,
    ktoré si z neho hodnoty prepisujú (`#send` pozadie, `.tr-act` farbu,
-   `.tc-more` rám…). Fungovalo to len vďaka poradiu v zdroji a `w4dup.js` to
+   `.tool-more` rám…). Fungovalo to len vďaka poradiu v zdroji a `w4dup.js` to
    hlásil ako 14 dvojitých právd — kto by reset presunul nižšie, zhasol by
    tlačidlá. `:where()` neprispieva špecificitou vôbec, takže `:is(a, button)`
    dáva presne 0-0-1: dosť na to, aby reset prebil bare `button` z mind.css
@@ -77,7 +77,7 @@
    --------------------------------------------------------------------------- */
 :is(a, button):where(
     .rail-top a, .rail-top button, .rail-retry, .tr-open, .tr-act,
-    #rail-toggle, .tc-head, .tc-more, .pc-btn, #send, #stop, #to-bottom
+    #rail-toggle, .tool-head, .tool-more, .pc-btn, #send, #stop, #to-bottom
 ) {
     background: transparent;
     color: var(--text);
@@ -85,14 +85,14 @@
 }
 
 /* Rám sa ruší LEN týmto štyrom. Zvyšných osem si ho necháva — buď ho dostávajú
-   z bare `button` v mind.css (`.rail-retry`, `#rail-toggle`, `.tc-more`,
+   z bare `button` v mind.css (`.rail-retry`, `#rail-toggle`, `.tool-more`,
    `.pc-btn`, `#to-bottom`), alebo si dávajú vlastný (`.tr-act` priehľadný,
    `.rail-top a` musí explicitne, pretože `<a>` z mind.css nedostáva nič).
    Do 21. 8. 2026 dostávali `border: 0` všetky a šesť blokov nižšie potom
    vrátilo presne tú istú hodnotu, akú mind.css dával už predtým — päť z tých
    šiestich riadkov je preto zmazaných, šiesty (`.rail-top a`) zostal, pretože
    `<a>` nemá odkiaľ zdediť. */
-button:where(.tr-open, .tc-head, #send, #stop) {
+button:where(.tr-open, .tool-head, #send, #stop) {
     border: 0;
 }
 
@@ -117,16 +117,10 @@ button:where(.tr-open, .tc-head, #send, #stop) {
    špecificite 0,1,0 by prepísal `--r-md` každému obyčajnému tlačidlu v okamihu
    fokusu. Prsteň teraz kopíruje zaoblenie prvku, ktorý ho nesie. */
 
-kbd {
-    padding: 1px 5px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-sm);
-    background: var(--surface-2);
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: var(--fs-micro);
-    line-height: 1.5;
-}
+/* Bare `kbd` BOL tu a od 21. 8. 2026 je v mind.css (nález D4) — presunula sa
+   presne táto kresba, deklaráciu za deklaráciou, takže konzola vyzerá rovnako
+   a graf dostal klávesu prvýkrát. Druhý zápis by nič nezmenil, len by dovolil
+   dvom pravdám o klávese rozísť sa. */
 
 /* ---------- bočný panel vlákien ---------- */
 
@@ -589,15 +583,15 @@ kbd {
 /* Bez pohybu zostáva bublina aj jej veta — signál nesie prítomnosť bubliny,
    nie pulz. To isté platí pre kostru zoznamu vlákien.
 
-   `tc-pulse` je JEDINÁ nekonečná animácia v celej appke a do 21. 8. 2026 tu
+   `tool-pulse` je JEDINÁ nekonečná animácia v celej appke a do 21. 8. 2026 tu
    nebola krytá vôbec — bežal by teda pulz na stave nástroja aj človeku, ktorý
-   si pohyb výslovne vypol. Stav „beží" nesie text `.tc-state`, nie jeho blikanie,
+   si pohyb výslovne vypol. Stav „beží" nesie text `.tool-state`, nie jeho blikanie,
    takže jeho farba (`--accent-ink`) zostáva. */
 @media (prefers-reduced-motion: reduce) {
     .think-dot { animation: none; opacity: .65; }
     .sk-row { animation: none; opacity: .7; }
     .tr-acts { transition: none; }
-    .tool-call.running .tc-state { animation: none; }
+    .tool-call.running .tool-state { animation: none; }
 }
 
 .msg.system .bubble,
@@ -658,12 +652,83 @@ kbd {
     white-space: pre;
 }
 
+/* ---------- kopírovanie odpovede a kódu (A19) ---------- */
+
+/* Vzhľad nesie `.ghost` z mind.css (bez rámu, `--muted`, hover na `--text`) —
+   šiesta varianta tlačidla tu nevzniká. Prepisuje sa len to, čo tlačidlo dostáva
+   od okolia: 32 px z bare `button` je v riadku hlavičky správy priveľa a
+   `text-transform` s `letter-spacing` sa dedia z `.msg .who`, kde je verzálka.
+   Fokusový prsteň dáva globálne `:focus-visible` — vlastný tu nie je zámerne. */
+.copy-btn {
+    min-height: 24px;
+    padding: 2px 8px;
+    font-size: var(--fs-micro);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Popisok stojí na opačnom konci riadka než meno a cena — tam ho oko hľadá a
+   ani jeden z tých údajov sa pritom neposunie. */
+.msg .who .copy-btn,
+.code-head .copy-btn { margin-left: auto; }
+
+/* Potvrdenie kopírovania. `--success-ink` je tá istá rola ako pri ostatných
+   „hotovo" textoch v appke; svieti len tie 1,6 s, kým sa popisok vráti. */
+.copy-btn.is-done { color: var(--success-ink); }
+
+/* Hlavička bloku kódu. Tlačidlo je NAD blokom, nie v ňom: `pre.code` skroluje
+   sám, takže tlačidlo vnútri by pri širokom kóde odišlo mimo dohľadu — a nad
+   kódom nemá čo prekryť. Spodný odstup preberá obal, aby
+   `.bubble.md > *:last-child` (nulovanie posledného odstupu) trafilo prvok,
+   ktorý je naozaj posledný. */
+.code-wrap { margin: 0 0 12px; }
+.bubble.md .code-wrap pre.code { margin: 0; }
+
+.code-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 24px;
+}
+
+.code-lang {
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    color: var(--muted);
+}
+
+/* Záložná cesta kopírovania (`document.execCommand`) potrebuje SKUTOČNE vybraný
+   text, takže textarea nesmie byť `display: none` ani `visibility: hidden` —
+   odkladá sa mimo plochy a v DOM žije zlomok sekundy. */
+.copy-fallback {
+    position: fixed;
+    top: 0;
+    left: -9999px;
+    opacity: 0;
+}
+
 .help-list { margin: 8px 0; padding-left: 20px; }
 .help-list li { margin-bottom: 4px; }
 .help-keys { color: var(--muted); font-size: var(--fs-small); }
 
 /* ---------- prázdny stav ---------- */
 
+/* TRETÍ NÁZOV JEDNÉHO DRUHU OBSAHU (nález D11) — a zostáva tu vedome, nie
+   nedopatrením. Základ prázdneho stavu je `.empty` v mind.css (tichý stred: flex
+   kolóna, `text-align: center`, `--muted`) a hero podobu tam už nesie
+   modifikátor `.empty.empty-network`. Tento blok má byť tretí prípad tej istej
+   rodiny, teda `.empty` + hero modifikátor.
+   Prečo sa to nestalo pri tomto zlúčení: triedu skladá JS, nie CSS —
+   `public/js/console/render.js:59` (`el('div', 'empty-state')`) a dva
+   `querySelector('.empty-state')` na r. 143 a 167. Bez tej jednej riadky by
+   `.empty--hero` bolo pravidlo, ktoré nič netrafí, a prázdny stav konzoly by
+   ostal bez kresby — to je horšie než tretí názov.
+   Čo bude treba pri prepnutí zmerať (základ NIE JE bez následkov): `.empty` dáva
+   `text-align: center` a `.empty p { font-size: var(--fs-small) }`, takže
+   odstavec aj zoznam schopností (`.empty-can` nižšie — vedome NIE prázdny stav,
+   je to zoznam toho, čo konzola vie) potrebujú vlastný prepis, inak sa
+   vycentrujú a zdrobnia. `color: --text-secondary` tu je zdvih oproti `--muted`
+   základu a je zámerný — je to prvá vec, ktorú človek na obrazovke vidí. */
 .empty-state {
     /* Jediná pravda o šírke prázdneho stavu. `auto` po stranách dávala do
        21. 8. 2026 skupina `.tool-call, .perm-card, .empty-state` v sekcii toku
@@ -701,18 +766,47 @@ kbd {
 
 /* ---------- karta nástroja ---------- */
 
+/* PREFIX JE `.tool-`, NIE `.tc-` (nález D7). Do 24. 8. 2026 znamenal `.tc-`
+   v tejto appke dve rôzne veci: tu časti karty volania nástroja (8 selektorov),
+   v `mind.css` tabulárne číslo karty Dnes (`.tc-val`, `.tc-label`). Suffixy sa
+   síce nekrížili, takže kolízia nebola aktívna — ale ani odzbrojená: keby
+   ktorákoľvek strana pridala `.tc-head` alebo `.tc-name`, prefarbí druhej
+   komponent na diaľku a nikde nie je napísané, že sa to môže stať. Karta sa
+   volá `.tool-call`, takže jej časti sa menujú po nej. `mind.css` sa nemenil —
+   `.tc-val` a `.tc-label` zostávajú, kde boli. Dok Charóna nad grafom má vlastný
+   prefix `.charon-tc-*` (`charon.css`) a s touto zmenou nemá nič spoločné. */
+
+/* JEDEN PAPIER KARTY, DRUHÝ JE DEKLAROVANÁ ROLA (nález D3). Do 24. 8. 2026
+   kreslila táto karta `--surface-2`, kým zjednotená karta v mind.css kreslila
+   `--panel` — appka mala dva papiere a rozdiel nebol nikde pomenovaný. Odteraz
+   je povrch jeden token `--card-bg` (základ `--panel` v `:root`) a druhý papier
+   je varianta `.card--nested` (mind.css, sekcia JEDNA KARTA, aj so nameranými
+   hodnotami a s dôvodom, prečo sa NEvolá `--sunken`).
+
+   Karta nástroja JE ten vnorený blok v toku správ, takže berie variantu:
+   prepisuje presne ten jeden token, ktorý prepisuje `.card--nested`, a povrch
+   kreslí už z neho. Vypočítaný štýl sa preto nemení. Triedu `.card--nested` tu
+   nenesie značka len preto, že ju skladá `public/js/console/tools.js` a tento
+   šprint ten súbor neotvára; keď ju tam niekto dopíše, tento riadok zmizne a
+   nič sa nepohne.
+
+   Zaoblenie ide cez `--card-radius` — je to alias na `--r-md`, teda tá istá
+   hodnota povedaná slovníkom karty. Padding tu ZÁMERNE nie je: nesú ho
+   `.tool-head` a `.tool-body`, takže `var(--card-pad)` by tu pridal druhý rám
+   okolo hlavičky, ktorá má ísť od okraja po okraj. */
 .tool-call {
+    --card-bg: var(--surface-2);
     margin-bottom: 12px;
     border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    background: var(--surface-2);
+    border-radius: var(--card-radius);
+    background: var(--card-bg);
     overflow: hidden;
 }
 
 .tool-call.write { border-color: var(--border-accent); }
 .tool-call.error { border-color: var(--danger-border); }
 
-.tc-head {
+.tool-head {
     /* `display` sa vypisuje: mind.css dáva `inline-flex`, hlavička karty má byť
        blokový pás na plnú šírku. `align-items` a `gap` už dáva mind.css. */
     display: flex;
@@ -722,13 +816,13 @@ kbd {
     text-align: left;
 }
 
-.tc-head:hover { background: var(--hover-fill); }
-.tc-head .ms { font-size: 16px; color: var(--muted); }
+.tool-head:hover { background: var(--hover-fill); }
+.tool-head .ms { font-size: 16px; color: var(--muted); }
 
 /* Šípka rozbalenia je kreslená CSS-om a nie ikonou zámerne: `expand_more`,
    `chevron_right` ani `unfold_more` v subsete Material Symbols NIE SÚ (overené
    scratchpad/iconcheck.js) a vykreslili by sa ako svoje meno. */
-.tc-caret {
+.tool-caret {
     width: 6px;
     height: 6px;
     flex: none;
@@ -738,11 +832,11 @@ kbd {
     transition: transform var(--dur-fast) var(--ease);
 }
 
-.tc-head[aria-expanded="true"] .tc-caret { transform: rotate(45deg); }
+.tool-head[aria-expanded="true"] .tool-caret { transform: rotate(45deg); }
 
-.tc-name { font-family: var(--mono); font-size: var(--fs-small); }
+.tool-name { font-family: var(--mono); font-size: var(--fs-small); }
 
-.tc-args {
+.tool-args {
     flex: 1;
     min-width: 0;
     color: var(--muted);
@@ -753,23 +847,23 @@ kbd {
     white-space: nowrap;
 }
 
-.tc-state {
+.tool-state {
     flex: none;
     color: var(--muted);
     font-size: var(--fs-caption);
     font-family: var(--mono);
 }
 
-.tool-call.running .tc-state { color: var(--accent-ink); animation: tc-pulse 1.1s ease-in-out infinite; }
-.tool-call.waiting .tc-state { color: var(--warn-ink); }   /* --warn dal na svetlej 3,00:1 */
-.tool-call.error .tc-state { color: var(--danger-ink); }   /* --danger dal na svetlej 4,12:1 */
-.tool-call.denied .tc-state { color: var(--muted); }
+.tool-call.running .tool-state { color: var(--accent-ink); animation: tool-pulse 1.1s ease-in-out infinite; }
+.tool-call.waiting .tool-state { color: var(--warn-ink); }   /* --warn dal na svetlej 3,00:1 */
+.tool-call.error .tool-state { color: var(--danger-ink); }   /* --danger dal na svetlej 4,12:1 */
+.tool-call.denied .tool-state { color: var(--muted); }
 
-@keyframes tc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+@keyframes tool-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
-.tc-body { padding: 0 12px 10px; border-top: 1px solid var(--line-soft); }
+.tool-body { padding: 0 12px 10px; border-top: 1px solid var(--line-soft); }
 
-.tc-result {
+.tool-result {
     margin: 10px 0 0;
     padding: 0;
     max-height: none;
@@ -784,14 +878,14 @@ kbd {
 
 /* Zbalený výsledok ukáže šesť riadkov — dosť na to, aby bolo vidno, či nástroj
    našiel to, čo mal. `-webkit-line-clamp` funguje aj v Chrome, aj vo Firefoxe. */
-.tc-result.clamped {
+.tool-result.clamped {
     display: -webkit-box;
     -webkit-line-clamp: 6;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.tc-more {
+.tool-more {
     margin-top: var(--sp-1);
     padding: 3px var(--sp-1);
     border-radius: 6px;
@@ -799,7 +893,7 @@ kbd {
     font-size: var(--fs-caption);
 }
 
-.tc-more:hover { border-color: var(--border-accent); background: var(--accent-softer); }
+.tool-more:hover { border-color: var(--border-accent); background: var(--accent-softer); }
 
 /* ---------- diff ---------- */
 
@@ -826,12 +920,19 @@ kbd {
 
 /* ---------- potvrdenie zápisu ---------- */
 
+/* Karta potvrdenia stojí na ZÁKLADNOM papieri karty (`--card-bg`, teda `--panel`)
+   — ten istý, aký kreslí zjednotená karta v mind.css. Papier tu nenesie žiadny
+   význam a nesmie ho niesť: rolu „čaká na rozhodnutie človeka" hovorí akcentový
+   rámik, o stupeň väčšie zaoblenie a glow. Presne preto sa povrch píše tokenom
+   a nie `--panel` priamo: keby sa základ raz pohol, karta nástroja aj karta
+   potvrdenia sa pohnú spolu a rozdiel medzi nimi zostane ten deklarovaný.
+   Vypočítaný štýl sa nemení — `--card-bg` je v `:root` práve `--panel`. */
 .perm-card {
     margin-bottom: 18px;
     padding: 12px 14px;
     border: 1px solid var(--border-accent);
     border-radius: var(--r-lg);
-    background: var(--panel);
+    background: var(--card-bg);
     box-shadow: var(--glow-accent);
 }
 
@@ -896,7 +997,13 @@ kbd {
 }
 
 .pc-btn kbd { background: transparent; border-color: var(--border); }
-.pc-btn:disabled { opacity: .5; }
+/* `.pc-btn:disabled { opacity: .5 }` tu BOLO a od 24. 8. 2026 nie je (nález D22).
+   Vypnuté tlačidlo má v appke jednu hodnotu a nesie ju `button:disabled`
+   v mind.css (`.45`, spolu s `cursor` a `pointer-events`); `.pc-btn` je
+   `<button>`, takže ju dostáva bez jediného riadka tu. Tretia hodnota vedľa
+   `.45` a `.72` nebola rola, len náhoda — a keď sa základ raz prepíše na token,
+   konzola sa pohne s ním. `.perm-card.denied` `.72` nižšie ZOSTÁVA: to nie je
+   „vypnuté", ale „zamietnuté", teda iná rola. */
 
 .pc-btn.primary kbd { color: var(--on-accent); border-color: var(--on-accent); }
 
@@ -1005,7 +1112,9 @@ kbd {
     color: var(--on-accent);
 }
 
-#send:disabled { opacity: .45; }
+/* `#send:disabled { opacity: .45 }` tu BOLO a od 24. 8. 2026 nie je (nález D22):
+   bola to znak po znaku tá istá hodnota, akú `#send` ako `<button>` dostane
+   z `button:disabled` v mind.css. Vypočítaný štýl sa nemení. */
 #stop { background: var(--danger); color: var(--on-accent); }
 
 #composer-hint {
@@ -1065,9 +1174,15 @@ kbd {
     font-size: var(--fs-body);
 }
 
-.sp-item.on { background: var(--accent-soft); }
+/* JEDEN NOSIČ VYBRANEJ POLOŽKY (nález D12). Kurzor palety držala do 24. 8. 2026
+   trieda `.on` A ZÁROVEŇ `aria-selected` — dva zápisy tej istej pravdy, ktoré sa
+   dali rozviazať (kto by zabudol prepnúť jeden, čítačka a oko by hlásili inú
+   položku). Zostáva ten, ktorý má význam aj mimo CSS: `aria-selected` je pre
+   `role="option"` povinný, kým `.on` bola len farba. Špecificita je rovnaká
+   (0-2-0 pre pozadie, 0-2-1 pre ikonu), takže vypočítaný štýl sa nemení. */
+.sp-item[aria-selected="true"] { background: var(--accent-soft); }
 .sp-item .ms { font-size: 16px; color: var(--muted); }
-.sp-item.on .ms { color: var(--accent-ink); }
+.sp-item[aria-selected="true"] .ms { color: var(--accent-ink); }
 .sp-cmd { font-family: var(--mono); font-size: var(--fs-small); }
 .sp-arg { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); }
 
@@ -1086,16 +1201,21 @@ kbd {
    Oba stylesheety sa načítavajú spolu, takže druhý zápis nikdy nič nezmenil. */
 
 /* Ikony sedia na tom istom subsete ako rail grafu; keď pridáš NOVÚ ikonu,
-   subset ju nemá a vykreslí sa ako text — treba regenerovať font. */
+   subset ju nemá a vykreslí sa ako text — treba regenerovať font.
+
+   Celý zvyšok bloku (line-height, font-weight/style, letter-spacing,
+   text-transform, white-space, display, direction, font-variation-settings,
+   font-smoothing) dáva `.ms` v mind.css, ktorý sa načítava PRED týmto súborom
+   na tej istej špecificite 0-0-1. Ostávajú len tri veci, ktorými sa konzola
+   naozaj líši:
+     · `sans-serif` fallback — keď subset zhavaruje, ligatúrový názov sa aspoň
+       vykreslí bezpätkovo a nerozhodí rail (mind.css fallback nemá);
+     · `--icon-sm` (18 px) namiesto `--icon-md` (20 px) z mind.css — konzola má
+       drobnejšie ikony; token je zámerne `-sm`, `-md` by bolo +2 px všade;
+     · `liga` naprieč prefixmi — mind.css ho nedeklaruje. */
 .ms {
     font-family: 'Material Symbols Rounded', sans-serif;
-    font-size: 18px;
-    line-height: 1;
-    font-weight: normal;
-    font-style: normal;
-    letter-spacing: normal;
-    text-transform: none;
-    white-space: nowrap;
+    font-size: var(--icon-sm);
     -webkit-font-feature-settings: 'liga';
     font-feature-settings: 'liga';
 }

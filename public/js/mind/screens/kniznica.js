@@ -22,18 +22,35 @@ export const libraryState = { areas: [], total: 0, areaSlug: null, q: '' };
 
 // F4: meta riadok skillu v Knižnici — origin + cert (icon) + vek + značky (chipy).
 //
-// Značky NEREŽEME tu. Strop je na serveri (`KniznicaScreen::TAG_CAP`), lebo
-// `slice(0, 5)` v tomto riadku bola tichá strata dát v pohľade: uzol s ôsmimi
-// značkami vyzeral ako uzol s piatimi, kým AI z tej istej odpovede dostala
-// všetkých osem. Server teraz pošle päť a povie `tags_more`, takže obe plochy
-// čítajú to isté a človek vidí, že tam ešte niečo je.
+// Značky NEREŽEME kvôli dátam. Strop odpovede je na serveri
+// (`KniznicaScreen::TAG_CAP` = 5), lebo `slice(0, 5)` v tomto riadku bola tichá
+// strata dát v pohľade: uzol s ôsmimi značkami vyzeral ako uzol s piatimi, kým AI
+// z tej istej odpovede dostala všetkých osem. Server teda pošle päť a povie
+// `tags_more`, takže obe plochy čítajú to isté.
+//
+// Režeme tu kvôli MIESTU: riadok je jednoriadkový (blok „meta riadok karty je
+// JEDEN riadok" v mind.css) a vojdú sa doň dve značky. Koľko toho zostalo je
+// JEDNO číslo — prepad z tohto rezu PLUS `tags_more` — a ide do `data-more`,
+// odkiaľ ho ::after vykreslí ako `attr()`.
+//
+// Prečo počíta číslo JS: `tags_more` je údaj v dátach a CSS ho prečítať nevie.
+// Kým skladalo značky CSS (`display: none` + tri `:has()` stavy), muselo si
+// serverový čip „+N" nechať stáť, inak by riadok ohlásil menšie číslo než je
+// skutočnosť — a karta s viac než piatimi značkami tak hlásila dva počty vedľa
+// seba („+2" z CSS a „+3" zo servera). Jedno miesto, jedno číslo.
+const LIB_TAGS_SHOWN = 2;
+
 export function libMeta(s) {
     const tags = Array.isArray(s.tags) ? s.tags : [];
-    const chips = tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('')
-        + (s.tags_more ? '<span class="tag">+' + s.tags_more + '</span>' : '');
+    const shown = tags.slice(0, LIB_TAGS_SHOWN);
+    // `tags_more` je to, čo odrezal server, `tags.length - shown.length` to, čo
+    // režeme my. Prepad je súčet — nikdy nie menej, než koľko značiek chýba.
+    const more = (tags.length - shown.length) + (Number(s.tags_more) || 0);
+    const chips = shown.map((t) => '<span class="tag">' + esc(t) + '</span>').join('');
     const cert = s.certainty ? certBadge(s.certainty, true) : '';
     const parts = originBadge(s.origin) + cert + libAge(s) + chips;
-    return '<span class="lib-skill-meta">' + parts + '</span>';
+    const overflow = more > 0 ? ' data-more="+' + more + '"' : '';
+    return '<span class="lib-skill-meta"' + overflow + '>' + parts + '</span>';
 }
 
 /* Vek playbooku. Knižnica bola jediná obrazovka bez dátumu — a pri skille je

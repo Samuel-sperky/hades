@@ -18,7 +18,12 @@ import { argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeTarg
 
 /* Slovník a formát brány (ikona, argumenty na riadok, diff, ľudský popis zápisu)
    žijú v public/js/shared/gate.js — dok Charóna nad grafom hovorí tú istú reč.
-   Tu zostáva len skladanie DOM kariet nad triedami console.css. */
+   Tu zostáva len skladanie DOM kariet nad triedami console.css.
+
+   Časti karty nesú prefix `.tool-` (po `.tool-call`), nie `.tc-`: ten istý
+   prefix znamenal v mind.css tabulárne číslo karty Dnes (`.tc-val`,
+   `.tc-label`) a kolízia bola len otázka času. Dôvod je zapísaný v
+   console.css, sekcia „karta nástroja". */
 
 /* Koľko riadkov výsledku sa vidí bez rozbalenia. Šesť je jeden „odsek" — dosť
    na to, aby bolo vidno, či nástroj našiel to, čo mal. */
@@ -36,20 +41,20 @@ export function toolCard(frame) {
     if (frame.call_id) card.dataset.callId = frame.call_id;
     if (frame.write) card.classList.add('write');
 
-    const head = el('button', 'tc-head');
+    const head = el('button', 'tool-head');
     head.type = 'button';
     head.setAttribute('aria-expanded', 'false');
 
     const mark = el('span', 'ms', iconFor(frame.name));
     mark.setAttribute('aria-hidden', 'true');
 
-    head.append(el('span', 'tc-caret'));
+    head.append(el('span', 'tool-caret'));
     head.append(mark);
-    head.append(el('span', 'tc-name', frame.name || 'nástroj'));
-    head.append(el('span', 'tc-args', argsSummary(frame.arguments)));
-    head.append(el('span', 'tc-state', 'beží…'));
+    head.append(el('span', 'tool-name', frame.name || 'nástroj'));
+    head.append(el('span', 'tool-args', argsSummary(frame.arguments)));
+    head.append(el('span', 'tool-state', 'beží…'));
 
-    const body = el('div', 'tc-body hidden');
+    const body = el('div', 'tool-body hidden');
 
     head.addEventListener('click', () => toggleBody(card));
 
@@ -119,7 +124,7 @@ export function historyCard(call) {
     if (call.status === 'pending') {
         card.classList.remove('running');
         card.classList.add('waiting');
-        card.querySelector('.tc-state').textContent = 'čaká na rozhodnutie';
+        card.querySelector('.tool-state').textContent = 'čaká na rozhodnutie';
 
         return card;
     }
@@ -130,7 +135,7 @@ export function historyCard(call) {
     if (call.status === 'running') {
         card.classList.remove('running');
         card.classList.add('denied');
-        card.querySelector('.tc-state').textContent = 'beh prerušený';
+        card.querySelector('.tool-state').textContent = 'beh prerušený';
 
         return card;
     }
@@ -153,9 +158,9 @@ function normalizeStatus(status) {
 
 function fillResult(card, call) {
     const status = normalizeStatus(call.status);
-    const state = card.querySelector('.tc-state');
-    const body = card.querySelector('.tc-body');
-    const head = card.querySelector('.tc-head');
+    const state = card.querySelector('.tool-state');
+    const body = card.querySelector('.tool-body');
+    const head = card.querySelector('.tool-head');
 
     card.classList.remove('running', 'waiting');
     card.classList.add(status);
@@ -182,7 +187,7 @@ function fillResult(card, call) {
         return;
     }
 
-    const pre = el('pre', 'tc-result');
+    const pre = el('pre', 'tool-result');
 
     if (looksLikeDiff(text)) {
         pre.classList.add('diff');
@@ -204,7 +209,7 @@ function fillResult(card, call) {
     body.append(pre);
 
     if (long) {
-        const more = el('button', 'tc-more', 'rozbaliť');
+        const more = el('button', 'tool-more', 'rozbaliť');
         more.type = 'button';
         more.addEventListener('click', () => {
             const clamped = pre.classList.toggle('clamped');
@@ -235,8 +240,8 @@ function plural(count) {
 }
 
 function toggleBody(card) {
-    const body = card.querySelector('.tc-body');
-    const head = card.querySelector('.tc-head');
+    const body = card.querySelector('.tool-body');
+    const head = card.querySelector('.tool-head');
 
     if (!body.children.length) return;
 

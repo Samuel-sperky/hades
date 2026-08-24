@@ -207,6 +207,11 @@ export function pushUser(text) {
 export function pushAssistant(text, meta = {}) {
     const box = assistantShell(meta);
     box.querySelector('.bubble').innerHTML = renderMarkdown(text ?? '');
+    answerText.set(box, String(text ?? ''));
+    // Tlačidlá PRED vložením do toku: `#stream` je `aria-live` s
+    // `aria-relevant="additions"`, takže tlačidlo pridané do už vloženej
+    // bubliny by čítačka ohlásila ako nový obsah.
+    equipCopy(box);
 
     return appendBlock(box);
 }
@@ -265,6 +270,166 @@ function assistantShell(meta = {}) {
     box.append(el('div', 'bubble md'));
 
     return box;
+}
+
+/* ---------- kopírovanie odpovede a kódu ---------- */
+
+/* Do schránky patrí SUROVÝ markdown, nie vykreslený text: odpoveď sa lepí do
+   zadania pre iného agenta a z `innerText` by z odrážok, nadpisov a blokov kódu
+   zostali holé riadky. Drží sa mimo DOM (WeakMap, nie `dataset`) — celá odpoveď
+   v atribúte sú kilobajty v strome a druhá kópia tej istej pravdy. */
+const answerText = new WeakMap();
+
+/* Popisok je TEXT, nie ikona, a je to zámer: Material Symbols je tu subset
+   (215 glyfov zo 4271) a `content_copy` v ňom overený nie je — nevykreslená
+   ligatúra by sa ukázala ako slovo „content_copy". Nová ikona = regenerácia
+   subsetu, čo je iná úloha než tlačidlo. */
+const COPY_IDLE = 'Kopírovať';
+const COPY_DONE = 'Skopírované';
+const COPY_FAIL = 'Nedá sa skopírovať';
+
+/* Ako dlho stojí potvrdenie v popisku. Kratšie než sekunda sa pri pohľade na
+   schránku stihne minúť. */
+const COPY_HOLD = 1600;
+
+const copyTimers = new WeakMap();
+
+/**
+ * Tlačidlo, ktoré skopíruje to, čo vráti `read()`.
+ *
+ * `name` je PRÍSTUPNÝ NÁZOV a musí povedať, čo presne kopíruje: v jednom toku
+ * stojí vedľa seba tlačidlo odpovede aj tlačidlá jednotlivých blokov kódu a
+ * „Kopírovať" trikrát je pre čítačku zoznam bez rozdielu.
+ *
+ * Fokusový prsteň dáva globálne `:focus-visible` v mind.css — vlastný tu
+ * zámerne nie je.
+ */
+function copyButton(name, read) {
+    const btn = el('button', 'copy-btn ghost', COPY_IDLE);
+    btn.type = 'button';
+    btn.setAttribute('aria-label', name);
+    btn.title = name;
+
+    btn.addEventListener('click', async () => {
+        const ok = await toClipboard(read());
+
+        flash(btn, ok ? COPY_DONE : COPY_FAIL, name);
+    });
+
+    return btn;
+}
+
+/* Bez viditeľného potvrdenia človek nevie, či klik zabral — do schránky sa
+   pozrieť nedá. Popisok sa vráti sám; `announce()` to povie aj čítačke, ktorej
+   samotná zmena textu v tlačidle nehlási nič. Časovač je PER TLAČIDLO: jeden
+   spoločný by pri druhom kliku zrušil obnovu prvého a to by mu popisok nechal
+   na „Skopírované" navždy. */
+function flash(btn, text, name) {
+    clearTimeout(copyTimers.get(btn));
+    btn.textContent = text;
+    btn.classList.toggle('is-done', text === COPY_DONE);
+    announce(`${name}: ${text.toLowerCase()}.`);
+
+    copyTimers.set(btn, setTimeout(() => {
+        btn.textContent = COPY_IDLE;
+        btn.classList.remove('is-done');
+    }, COPY_HOLD));
+}
+
+/** `navigator.clipboard` padá bez bezpečného kontextu aj bez fokusu dokumentu,
+    takže záložná cesta nie je teoretická — appka sa reálne otvára aj cez tunel. */
+async function toClipboard(text) {
+    const value = String(text ?? '');
+
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(value);
+
+            return true;
+        } catch {
+            // Padáme na `execCommand` nižšie — odmietnuté povolenie nie je chyba.
+        }
+    }
+
+    return legacyCopy(value);
+}
+
+function legacyCopy(value) {
+    const back = document.activeElement;
+    const ta = el('textarea', 'copy-fallback');
+    ta.value = value;
+    ta.setAttribute('readonly', '');
+    ta.setAttribute('aria-hidden', 'true');
+    ta.tabIndex = -1;
+    document.body.append(ta);
+
+    let ok = false;
+
+    try {
+        ta.select();
+        ok = document.execCommand('copy');
+    } catch {
+        ok = false;
+    }
+
+    ta.remove();
+    // Výber v odloženej textarea zoberie fokus. Bez vrátenia by klávesnica po
+    // kopírovaní spadla na <body> a človek by sa musel do toku pretabovať znova.
+    if (back instanceof HTMLElement) back.focus();
+
+    return ok;
+}
+
+/** Hotová odpoveď dostane tlačidlá. Idempotentné — bublinu môže spečatiť aj
+    `closeBubble()`, aj `endTurn()`. */
+function equipCopy(box) {
+    const who = box.querySelector('.who');
+    const bubble = box.querySelector('.bubble');
+
+    if (!who || !bubble || who.querySelector('.copy-btn')) return;
+
+    who.append(copyButton('Kopírovať odpoveď', () => answerText.get(box) ?? bubble.innerText));
+    equipCode(bubble);
+}
+
+/* Každý blok kódu má vlastné tlačidlo — v odpovedi ich býva viac a „skopíruj
+   celú odpoveď" nie je to isté ako „skopíruj ten príkaz".
+
+   Obal a hlavička nad blokom, nie tlačidlo v ňom: `pre.code` skroluje sám
+   (`overflow-x: auto`), takže tlačidlo vnútri by pri širokom kóde odišlo mimo
+   dohľadu, a tlačidlo NAD kódom nemá čo prekryť. Hlavička zároveň konečne
+   ukáže `data-lang`, ktorý markdown renderer dávno zapisuje a nikto nečítal. */
+function equipCode(root) {
+    root.querySelectorAll('pre.code').forEach((pre) => {
+        if (pre.parentElement?.classList.contains('code-wrap')) return;
+
+        const lang = pre.dataset.lang || '';
+        const wrap = el('div', 'code-wrap');
+        const head = el('div', 'code-head');
+
+        if (lang) head.append(el('span', 'code-lang', lang));
+        head.append(copyButton(lang ? `Kopírovať kód (${lang})` : 'Kopírovať kód',
+            () => pre.textContent ?? ''));
+
+        pre.replaceWith(wrap);
+        wrap.append(head, pre);
+    });
+}
+
+/* Dopísaná bublina ťahu. Až tu, nie pri vzniku: počas streamu sa bublina
+   prekresľuje raz za rámec, takže tlačidlo by kopírovalo polovicu odpovede a
+   `equipCode()` by obaľovalo blok kódu, ktorý ešte nemá koniec. */
+function sealBubble() {
+    const bubble = C.turn?.bubble;
+
+    if (!bubble) return;
+
+    const box = bubble.closest('.msg.assistant');
+
+    if (!box) return;
+
+    answerText.set(box, C.turn.raw);
+    equipCopy(box);
 }
 
 /* ---------- streamovaná odpoveď ---------- */
@@ -338,6 +503,7 @@ export function closeBubble() {
     if (!C.turn) return;
 
     paintTurn();
+    sealBubble();
     C.turn.bubble = null;
     C.turn.raw = '';
 }
@@ -355,6 +521,9 @@ export function endTurn() {
     // Ťah sa skončil (aj zaparkovaním na povolení) — čakať už nie je na čo.
     waitStop();
     paintTurn();
+    // Ešte za `aria-busy="true"`, teda kým čítačka tok nesleduje — tlačidlo
+    // Kopírovať nie je nový obsah odpovede.
+    sealBubble();
     streamEl()?.setAttribute('aria-busy', 'false');
     C.turn = null;
 }

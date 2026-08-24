@@ -10,6 +10,13 @@
          starte, aby sa odkaz na konkrétnu konverzáciu dal poslať a otvoriť. --}}
     <meta name="console-thread" content="{{ request()->route('uuid') ?? '' }}">
     <title>Hades — Charón</title>
+    {{-- POZOR: tri hodnoty palety sú tu zapísané NATVRDO, pretože data-URI je
+         samostatný dokument a CSS premenné z mind.css nečíta:
+           %230e1413 = --bg-rgb tmavej témy (14, 20, 19 — papier, pozadie znaku),
+           %23c4a2f5 = --accent tmavej témy (amethyst, prstenec),
+           %23d8b878 = --brand-gold (jadro vedomia).
+         Keď sa paleta zmení, tento favicon sa NEZMENÍ sám — treba ho prepísať
+         ručne, inak znak v karte prehliadača ostane v starých farbách. --}}
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
     {{-- Fallback pre prehliadače, ktoré SVG favicon neberú, a dlaždica pre iOS.
          .ico je vyrobené z MINI verzie znaku — master by sa pri 16 px zlial. --}}
@@ -137,7 +144,10 @@
                      zo zvyšku by ostalo „pošle · nový riadok · príkazy". --}}
                 <p id="composer-hint">
                     <span class="hint-keys"><kbd>Enter</kbd> pošle · <kbd>Shift</kbd>+<kbd>Enter</kbd> nový riadok · </span>
-                    <kbd>/</kbd> príkazy<span class="hint-keys"> · <kbd>Esc</kbd> zastaví beh</span>
+                    {{-- Ctrl+N žil len v `title` tlačidla „Nové vlákno", teda v tooltipe,
+                         ktorý sa na klávesnici ani na dotyku nezobrazí. Handler je
+                         v public/js/console/main.js (`keydown`, `n` + Ctrl/Cmd). --}}
+                    <kbd>/</kbd> príkazy<span class="hint-keys"> · <kbd>Esc</kbd> zastaví beh · <kbd>Ctrl</kbd>+<kbd>N</kbd> nové vlákno</span>
                 </p>
                 {{-- Paleta slash príkazov. Zoznam žije v public/js/console/slash.js;
                      vlastníkom palety je #prompt (role="combobox" vyššie). --}}
