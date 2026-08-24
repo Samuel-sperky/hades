@@ -109,7 +109,11 @@ export function pruneDecisionFilters() {
    .chip-n. Predtým tu čipy počty nemali, takže dve obrazovky mali dva rôzne
    filtračné idiomy — a človek nevedel, či sa filtrom niečo vôbec ukáže. */
 export function decChip(label, active, attrs, n) {
-    return '<button type="button" class="chip' + (active ? ' active' : '') + '" ' + attrs + '>'
+    // `aria-pressed` je povinné: bez neho nesie zapnutý filter LEN farba. Vzor je
+    // `runy.js` (chip()). Dopĺňa sa aj v syncDecChips(), inak by sa trieda
+    // a atribút po prekliku rozišli.
+    return '<button type="button" class="chip' + (active ? ' active' : '') + '"'
+        + ' aria-pressed="' + (active ? 'true' : 'false') + '" ' + attrs + '>'
         + esc(label) + (n == null ? '' : '<span class="chip-n">' + n + '</span>') + '</button>';
 }
 
@@ -387,7 +391,9 @@ export function syncDecChips(body, kind) {
         ? (decisionsState.year === null ? '' : decisionsState.year)
         : (decisionsState.areaId === null ? '' : String(decisionsState.areaId));
     body.querySelectorAll('.dtl-filter [' + attr + ']').forEach((c) => {
-        c.classList.toggle('active', (c.getAttribute(attr) || '') === want);
+        const on = (c.getAttribute(attr) || '') === want;
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
 }
 

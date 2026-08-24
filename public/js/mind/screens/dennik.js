@@ -78,11 +78,18 @@ export function renderJournalFilter() {
     if (journalProject && groups.findIndex((g) => g.key === journalProject) >= JOURNAL_CHIPS_TOP) journalChipsOpen = true;
     const shown = journalChipsOpen ? groups : groups.slice(0, JOURNAL_CHIPS_TOP);
 
-    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '" data-project="">'
+    /* `aria-pressed` je povinné: čip je prepínač a bez neho nesie zapnutý filter
+       LEN farba, takže čítačka o filtri nevie nič. Vzor je `runy.js` (chip()) —
+       ten istý atribút, nie druhý mechanizmus. `.chip-more` ho NEMÁ: rozbaľovač
+       nie je filter a svoj stav hovorí popiskom („+3 viac" / „menej"). */
+    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '"'
+        + ' aria-pressed="' + (journalProject ? 'false' : 'true') + '" data-project="">'
         + 'Všetky<span class="chip-n">' + journalTotal + '</span></button>'
         + shown.map((g) =>
             // data-project nesie KĽÚČ skupiny (filtruje sa ním), popisok ľudský text
-            '<button type="button" class="chip' + (journalProject === g.key ? ' active' : '') + '" data-project="' + esc(g.key) + '">'
+            '<button type="button" class="chip' + (journalProject === g.key ? ' active' : '') + '"'
+            + ' aria-pressed="' + (journalProject === g.key ? 'true' : 'false') + '"'
+            + ' data-project="' + esc(g.key) + '">'
             + esc(g.label) + '<span class="chip-n">' + g.count + '</span></button>'
         ).join('')
         + (hiddenCount ? '<button type="button" class="chip chip-more" id="journal-chips-more">'
@@ -97,8 +104,12 @@ export function renderJournalFilter() {
                renderJournalFilter() čipy prekresľuje až vnútri renderJournal(),
                teda po fetchi (3–4 s pri plnom denníku) — dovtedy kliknutý čip
                vyzeral neaktívne a klik pôsobil, akoby nezabral. */
-            wrap.querySelectorAll('.chip[data-project]').forEach((c) => c.classList.remove('active'));
+            wrap.querySelectorAll('.chip[data-project]').forEach((c) => {
+                c.classList.remove('active');
+                c.setAttribute('aria-pressed', 'false');
+            });
             chip.classList.add('active');
+            chip.setAttribute('aria-pressed', 'true');
             setJournalProject(chip.dataset.project || null);
         };
     });

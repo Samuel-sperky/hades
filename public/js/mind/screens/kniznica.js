@@ -141,7 +141,11 @@ function ensureLibraryShell(body) {
    v .chip-n. Do 20. 8. 2026 sa oblasť dala zúžiť len tým, že človek uhádol jej
    presné slovo a napísal ho do hľadania. */
 export function libChip(label, active, slug, n) {
+    // `aria-pressed` je povinné: bez neho nesie zapnutú oblasť LEN farba. Vzor je
+    // `runy.js` (chip()). Dopĺňa sa aj v syncLibraryFilter(), inak by sa trieda
+    // a atribút po prekliku rozišli.
     return '<button type="button" class="chip' + (active ? ' active' : '') + '"'
+        + ' aria-pressed="' + (active ? 'true' : 'false') + '"'
         + ' data-lib-area="' + esc(slug) + '">'
         + esc(label) + (n == null ? '' : '<span class="chip-n">' + n + '</span>') + '</button>';
 }
@@ -160,7 +164,9 @@ function syncLibraryFilter() {
     const wrap = $('library-filter');
     if (!wrap) return;
     wrap.querySelectorAll('[data-lib-area]').forEach((el) => {
-        el.classList.toggle('active', (libraryState.areaSlug || '') === el.dataset.libArea);
+        const on = (libraryState.areaSlug || '') === el.dataset.libArea;
+        el.classList.toggle('active', on);
+        el.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
 }
 

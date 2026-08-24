@@ -170,7 +170,12 @@ function ensureKontrolaShell(body) {
    a nie import z `rozhodnutia.js` — cudzí súbor prepisuje iná vlna a väzba naň
    by kvôli trom riadkom rozbila obrazovku, ktorá s Rozhodnutiami nesúvisí. */
 function kfChip(label, active, attrs, n) {
-    return '<button type="button" class="chip' + (active ? ' active' : '') + '" ' + attrs + '>'
+    // `aria-pressed` je povinné: bez neho nesie zapnutý filter LEN farba a čítačka
+    // o ňom nevie nič. Vzor je `runy.js` (chip()) — ten istý atribút, nie druhý
+    // mechanizmus. Aktívny stav sa dopĺňa aj v syncKontrolaFilter(), inak by sa
+    // trieda a atribút po prekliku rozišli.
+    return '<button type="button" class="chip' + (active ? ' active' : '') + '"'
+        + ' aria-pressed="' + (active ? 'true' : 'false') + '" ' + attrs + '>'
         + esc(label) + (n == null ? '' : '<span class="chip-n">' + n + '</span>') + '</button>';
 }
 
@@ -234,7 +239,9 @@ function syncKontrolaFilter() {
     const wrap = $('kontrola-filter');
     if (!wrap) return;
     wrap.querySelectorAll('[data-kf]').forEach((el) => {
-        el.classList.toggle('active', (kontrolaState.f[el.dataset.kf] || '') === el.dataset.val);
+        const on = (kontrolaState.f[el.dataset.kf] || '') === el.dataset.val;
+        el.classList.toggle('active', on);
+        el.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     const note = $('kontrola-note');
     if (note) note.textContent = kontrolaNoteText();

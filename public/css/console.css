@@ -438,7 +438,26 @@ kbd {
 
 #model-select:disabled { color: var(--muted); cursor: default; }
 
-.auto-accept { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+/* ZÁSAHOVÝ CIEĽ BRÁNY ZÁPISOV (nález P11). Týmto prepínačom sa vypína
+   potvrdzovanie zápisov do pamäte a do súborov — je to najzávažnejší prepínač
+   v appke a do 21. 8. 2026 bol jej NAJMENŠÍ cieľ: 128×18 px, a pod 860 px, kde
+   sa skryje `.lbl`, spadol na samotné 13×13 px políčko prehliadača.
+
+   Výšku drží `--control-h` (32 px na všetkých škálach hustoty — kompaktné
+   zobrazenie zhusťuje priestor medzi prvkami, nie klikaciu plochu), šírku aj
+   bez textu drží vodorovný padding: 2 × 8 px + políčko (13–16 px podľa
+   platformy) = najmenej 29 px. `--sp-1` density neprepína, takže to platí na
+   všetkých troch škálach. Padding zároveň robí z labelu jeden spojitý cieľ —
+   klik do medzery medzi políčkom a textom už nepadá na hlavičku. */
+.auto-accept {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--control-h);
+    padding: 0 var(--sp-1);
+    cursor: pointer;
+}
+
 .auto-accept input { accent-color: var(--accent); }
 
 #run-stats {
@@ -908,13 +927,29 @@ kbd {
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     background: var(--field-bg);
+    /* Prsteň rezervovaný v pokoji nulovou šírkou (nález P13). `box-shadow`
+       layout nikdy neposúva, takže composer pri fokuse neposkočí ani nepreusporiada
+       text — na rozdiel od `border-width: 1px → 2px`, čo bola druhá zvažovaná
+       cesta a odsúvala by celý riadok o pixel. Nulová šírka tu je preto, aby
+       prechod mal odkiaľ vyrásť a prsteň nepreblikol naraz. */
+    box-shadow: 0 0 0 0 transparent;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-/* Fokus nesie RÁMIK RIADKU, nie prsteň okolo textarey. Dva indikátory naraz
-   (prsteň na poli + akcentový rámik riadku) čítalo oko ako „vybrané", nie ako
-   „tu píšeš" — a bol to ten istý signál dvakrát. Kontrast --accent voči papieru
-   je nad 3:1 v oboch témach, takže indikátor sám obstojí. */
-.composer-row:focus-within { border-color: var(--accent); }
+/* Fokus nesie RIADOK, nie textarea vnútri — dva indikátory naraz (prsteň na
+   poli + akcentový rámik riadku) čítalo oko ako „vybrané", nie ako „tu píšeš".
+   Preto `#prompt:focus-visible { box-shadow: none }` nižšie ZOSTÁVA: ruší
+   globálny prsteň z mind.css na samotnej textarei.
+
+   Čo sa 21. 8. 2026 zmenilo: rámik riadku sám bol 1 px indikátor, kým celá
+   ostatná appka má 3 px prsteň (`--focus-ring`). Jeden indikátor to bol, ale
+   iný než všade inde. Teraz riadok nesie ten istý prsteň ako každý iný fokus
+   a akcentový rámik k nemu drží hranicu poľa. */
+.composer-row:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
 #composer #prompt:focus-visible { box-shadow: none; }
 #composer.parked .composer-row { border-color: var(--warn); }
 
@@ -934,7 +969,11 @@ kbd {
     transition: none;
     flex: 1;
     width: auto;
-    min-height: 22px;
+    /* 24 px, nie 22: v pokoji je textarea jednoriadková a bola tým treťím
+       cieľom pod 24×24 v tomto súbore (klik do spodných 2 px riadku minul
+       pole). Na výšku composera to je +2 px raz, výška po napísaní textu si
+       ju ďalej počíta JS zo `scrollHeight`. */
+    min-height: 24px;
     max-height: 40vh;
     border: 0;
     background: transparent;
@@ -1100,6 +1139,10 @@ kbd {
     #rail-toggle { display: inline-flex; }
     #console-header { flex-wrap: wrap; padding: 6px var(--sp-2); }
     .ch-right { gap: 10px; }
+    /* Text zmizne, cieľ nie: `.auto-accept` má `min-height: var(--control-h)`
+       a vodorovný padding, takže aj tu zostáva nad 24×24 (32 × ~29 px). Tento
+       riadok bol do 21. 8. 2026 presne to miesto, kde brána zápisov spadla na
+       13×13 px — keď mu meníš okolie, prepočítaj šírku znova. */
     .auto-accept .lbl { display: none; }
     #model-select { max-width: 130px; }
     #stream { padding: var(--sp-2) 12px var(--sp-1); }
