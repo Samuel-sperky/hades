@@ -172,11 +172,12 @@ function ensureKontrolaShell(body) {
        práca, hygiena je stav. `aria-live` je tu preto, že obsah dobehne sám
        (meranie beží sekundy) — bez neho by čítačka o výsledku nevedela.
 
-       Odstup je INLINE a je to dočasné: `.kbd-hints` pod frontou má margin-top,
-       ale nie margin-bottom, takže karta by sa nalepila na pás skratiek.
-       Patrí to do `mind.css` ako `#kontrola-hygiene { margin-top: var(--gutter) }`
-       — ten súbor v tejto vlne drží iný agent, tak nech je odstup vidieť tu
-       a nech sa presunie jedným riadkom. */
+       Odstup je INLINE a je to dlh, nie zámer: `.kbd-hints` pod frontou má
+       margin-top, ale nie margin-bottom, takže karta by sa nalepila na pás
+       skratiek. Patrí to do `mind.css` ako
+       `#kontrola-hygiene { margin-top: var(--gutter) }` a presúva sa to jedným
+       riadkom. Zostalo to tu, pretože `mind.css` v čase tejto opravy rozpracovala
+       paralelná session a dvaja pisatelia do jedného súboru sa ticho prepíšu. */
     body.innerHTML = '<div id="kontrola-filter"></div><div id="kontrola-list"></div>'
         + '<div class="dash-card" id="kontrola-hygiene" style="margin-top:var(--gutter)"'
         + ' aria-live="polite"></div>';
@@ -654,10 +655,25 @@ export function renderHygiena() {
     if (!el) return;
     const html = hygienaHtml();
     if (el.innerHTML !== '' && html === hygRendered) return;
+    /* Fokus musí prežiť prepis. „Zmerať znovu" je vnútri prepisovaného tela, takže
+       kliknutie klávesnicou zničí práve ten prvok, ktorý fokus drží — a meranie
+       trvá sekundy, takže by človek zostal na `<body>` a druhý render (po dobehnutí)
+       by ho tam nechal. Je to tá istá trieda nálezu ako P3 (fokus po rozhodnutí
+       o zápise), len na inej obrazovke. Vzor je `runy.js`: zapamätaj, prekresli,
+       vráť. */
+    const hadFocus = el.contains(document.activeElement)
+        ? document.activeElement.id || (document.activeElement.dataset?.hyg ? 'hyg:' + document.activeElement.dataset.hyg : '')
+        : '';
     hygRendered = html;
     el.setAttribute('aria-busy', hygienaState.loading ? 'true' : 'false');
     el.innerHTML = html;
     wireHygiena(el);
+    if (hadFocus) {
+        const back = hadFocus.startsWith('hyg:')
+            ? el.querySelector('[data-hyg="' + hadFocus.slice(4) + '"]')
+            : el.querySelector('#' + hadFocus);
+        back?.focus();
+    }
 }
 
 function hygienaHtml() {

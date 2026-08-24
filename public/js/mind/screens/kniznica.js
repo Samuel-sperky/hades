@@ -29,16 +29,25 @@ export const libraryState = { areas: [], total: 0, areaSlug: null, q: '' };
 // `tags_more`, takže obe plochy čítajú to isté.
 //
 // Režeme tu kvôli MIESTU: riadok je jednoriadkový (blok „meta riadok karty je
-// JEDEN riadok" v mind.css) a vojdú sa doň dve značky. Koľko toho zostalo je
-// JEDNO číslo — prepad z tohto rezu PLUS `tags_more` — a ide do `data-more`,
-// odkiaľ ho ::after vykreslí ako `attr()`.
+// JEDEN riadok" v mind.css). Koľko toho zostalo je JEDNO číslo — prepad z tohto
+// rezu PLUS `tags_more` — a ide do `data-more`, odkiaľ ho ::after vykreslí
+// ako `attr()`.
+//
+// **Jedna značka, nie dve — a je to zmerané, nie odhadnuté.** Pri dvoch sa
+// rozpočet riadku nezmestil: `origin` 83 + `cert` 18 + vek 105–112 + dve značky
+// 117–190 + medzery ≈ 346–420 px proti 342 px vnútornej šírky karty pri
+// `--card-cols: 300px`. Zmerané 24. 8. 2026 na 1440×900: **67 % kariet** (267
+// zo 400) malo `scrollWidth > clientWidth`, takže druhá značka sa odrezala —
+// a `data-more` ju nepočítalo, lebo počíta len to, čo sme nezobrazili. Riadok
+// tak hlásil menej, než koľko naozaj chýbalo. Pri jednej značke sa rozpočet
+// zmestí (~301 px) a prepad je znova pravdivý: čo nevidíš, je v čísle.
 //
 // Prečo počíta číslo JS: `tags_more` je údaj v dátach a CSS ho prečítať nevie.
 // Kým skladalo značky CSS (`display: none` + tri `:has()` stavy), muselo si
 // serverový čip „+N" nechať stáť, inak by riadok ohlásil menšie číslo než je
 // skutočnosť — a karta s viac než piatimi značkami tak hlásila dva počty vedľa
 // seba („+2" z CSS a „+3" zo servera). Jedno miesto, jedno číslo.
-const LIB_TAGS_SHOWN = 2;
+const LIB_TAGS_SHOWN = 1;
 
 export function libMeta(s) {
     const tags = Array.isArray(s.tags) ? s.tags : [];

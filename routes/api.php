@@ -112,7 +112,12 @@ Route::middleware([
     Route::get('/review/queue', [ReviewController::class, 'queue']);
     // Sekcia „Hygiena" tej istej obrazovky (A3) — ten istý serializér kŕmi
     // `mind_hygiene`, takže odpad, ktorý vidí AI, vidí odteraz aj človek.
-    Route::get('/hygiene', [ReviewController::class, 'hygiene']);
+    //
+    // `throttle` je tu naozaj potrebný, nie z opatrnosti: každé volanie spustí
+    // `mind:hygiene`, teda prechod celou sieťou (uzly + hrany) VNÚTRI HTTP
+    // requestu, a PHP workerov je osem. Obrana v prehliadači (`hygienaState`)
+    // chráni pred klikaním, nie pred volaním endpointu priamo.
+    Route::get('/hygiene', [ReviewController::class, 'hygiene'])->middleware('throttle:6,1');
     Route::post('/nodes/{node}/verify', [ReviewController::class, 'verify']);
     Route::post('/nodes/{node}/resolve-review', [ReviewController::class, 'resolveReview']);
 

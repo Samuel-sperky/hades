@@ -1,5 +1,4 @@
 import { closeNodePanel } from './panels.js';
-import { setScreen } from './screens.js';
 import { renderStructure } from './structure.js';
 import { loadTagFilter } from './tagfilter.js';
 import { $ } from './util.js';
@@ -23,21 +22,16 @@ export const DOCK_SECTIONS = {
 /* A10: „Prehľad" (`stats`) prestal byť sekciou doku. Čítal `/api/dashboard`, teda
    presne to isté, čo obrazovka Dnes — dve implementácie tej istej pravdy, jedna
    z nich vtesnaná do panela širokého 248 px a dostupná len na Grafe.
-   Stará adresa sekcie sa **preposiela** na obrazovku, nie odmieta: klávesu `S`
-   obsluhuje `shortcuts.js` a ten stále volá `openDock('stats')`. Bez tohto riadku
-   by `S` spadla na `DOCK_SECTIONS['stats'].title`. Keď sa v `shortcuts.js` klávesa
-   prepne priamo na `setScreen('dnes')`, tabuľka aj vetva nižšie môžu zmiznúť.
 
-   Otvorený dok sa tu zámerne NEZATVÁRA: presne tak sa chová aj klik na destináciu
-   v raile (`setScreen` dok nerieši). Keby táto jedna cesta dok zatvárala, appka by
-   mala dve rôzne správania pre ten istý prechod — a to je práve tá porucha, ktorú
-   A10 rieši. */
-const DOCK_ALIAS = { stats: 'dnes' };
+   Prechodný alias `DOCK_ALIAS = { stats: 'dnes' }` tu bol do 24. 8. 2026, kým
+   `shortcuts.js` ešte volal `openDock('stats')`. Klávesa `S` ide odvtedy priamo na
+   `setScreen('dnes')` a iného volajúceho `stats` nemá nikto (`controls.js` otvára
+   structure/legend/settings), takže alias aj jeho vetva zanikli — inak by tu
+   zostal riadok, ktorý nič nedrží, s komentárom vysvetľujúcim stav, čo už neplatí. */
 
 export let dockOpen = null;
 
 export function openDock(name) {
-    if (DOCK_ALIAS[name]) { setScreen(DOCK_ALIAS[name]); return; }
     if (dockOpen === name) { closeDock(); return; }
     if (NARROW.matches) closeNodePanel(); // úzke okno: dock a detail ležia na sebe
     dockOpen = name;

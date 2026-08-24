@@ -5,7 +5,7 @@ import { clearLocal, setLocal } from './filters.js';
 import { closeMdOverlay } from './md.js';
 import { cancelConnect, closeNodePanel, openCreateNode } from './panels.js';
 import { fitView, zoomBy } from './render.js';
-import { openNodeFromAnywhere, setScreen } from './screens.js';
+import { openNodeDetail, openNodeFromAnywhere, setScreen } from './screens.js';
 import { armKontrolaAction, disarmKontrolaBtn, kontrolaBtn, kontrolaMove, kontrolaNodeRef, kontrolaResolve, kontrolaState, kontrolaVerify } from './screens/kontrola.js';
 import { clearFilter, currentPath, go, goUp, largestAreaId, largestDeptId, setView } from './sim.js';
 import { S } from './state.js';
@@ -142,7 +142,13 @@ export function setupShortcuts() {
             switch (e.key) {
                 case 'j': case 'ArrowDown': kontrolaMove(1); break;
                 case 'k': case 'ArrowUp': kontrolaMove(-1); break;
-                case 'Enter': if (cur) openNodeFromAnywhere(kontrolaNodeRef(cur.id)); break;
+                // A4: detail sa otvára NA MIESTE, teda tou istou funkciou, akou ho
+                // otvára klik (`openNodeDetail`). Do 24. 8. 2026 tu bolo
+                // `openNodeFromAnywhere()`, ktoré bezpodmienečne prepne na Graf —
+                // takže myš otvárala overlay a klávesnica vyhadzovala z obrazovky.
+                // Riadkový `onkeydown` v kontrola.js zostáva ako zábrana proti
+                // dvojitej aktivácii, už nie ako oprava rozdielu.
+                case 'Enter': if (cur) openNodeDetail(kontrolaNodeRef(cur.id)); break;
                 case 'v': case 'V': if (cur) kontrolaVerify(cur.id); break;
                 case 'r': case 'R': if (cur) kontrolaResolve(cur.id); break;
                 case 'Delete': case 'Backspace': if (cur) armKontrolaAction(kontrolaBtn(cur.id, 'skip'), cur.id, 'delete'); break;

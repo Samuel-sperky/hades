@@ -148,13 +148,15 @@ export function renderJournalList() {
         if (day !== lastDay) {
             if (lastDay !== null) html += '</div>';
             /* „+N poznatkov" v hlavičke dňa (nález A4, tretí bod) tu ZÁMERNE NIE
-               JE. `DennikScreen` per-dňové počty neposiela — má `total`,
-               `filtered_total` a `project_groups`, nič po dňoch — a dopočítať ich
-               z načítaných záznamov je presne chyba M6: okno je `limit` 50, takže
-               najstarší deň v okne je odrezaný a hlavička by sľubovala číslo,
-               ktoré zoznam nedá. Číslo je ÚDAJ, nie kresba, takže patrí do
-               serializéra (`days[].key` + počet nad celým dňom), a ten v tejto
-               vlne drží iný agent. Do vtedy tu radšej nestojí nič než lož. */
+               JE, a je to trvalý stav, nie rozpracovanosť. `DennikScreen` per-dňové
+               počty neposiela — má `total`, `filtered_total` a `project_groups`,
+               nič po dňoch. Dopočítať ich z načítaných záznamov je presne chyba M6:
+               okno je `limit` 50, takže najstarší deň v okne je odrezaný a hlavička
+               by sľubovala číslo, ktoré zoznam nedá.
+
+               Číslo je ÚDAJ, nie kresba, takže podmienka je jasná: kým ho
+               `DennikScreen` nepošle (`days[]` s počtom nad celým dňom, nie nad
+               oknom), hlavička dňa nesie len dátum. Radšej nič než lož. */
             html += '<div class="day-head">' + esc(day) + '</div><div class="rec-grid">';
             lastDay = day;
         }

@@ -206,7 +206,13 @@ class HygienaScreen extends ScreenSerializer
         $output = trim(Artisan::output());
 
         if ($exit !== 0) {
-            throw new \InvalidArgumentException($output !== '' ? $output : 'mind:hygiene failed.');
+            // Iba PRVÝ riadok. Zamýšľaná cesta je neznáma trieda a tam je prvý
+            // riadok presne tá užitočná veta (menuje platné triedy). Pri
+            // akomkoľvek inom nenulovom exite by sa celý `Artisan::output()`
+            // prelial do tela HTTP odpovede — teda stack trace alebo čokoľvek,
+            // čo príkaz vypísal, a to von z appky nepatrí. Zvyšok zostáva v logu.
+            $first = trim(strtok($output, "\n") ?: '');
+            throw new \InvalidArgumentException($first !== '' ? $first : 'mind:hygiene failed.');
         }
 
         $report = json_decode($output, true);
