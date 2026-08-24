@@ -176,7 +176,44 @@ Dvojité deklarácie (~46 dvojíc „selektor + vlastnosť" s inou hodnotou) bol
 **zaplatené v `c1a3a96`** a dnes je ich **0**. Čo v súbore ostáva, je zámerné:
 4 dvojice `--card-pad` (základ + varianta, 17 riadkov od seba) a 15 legitímnych
 prepisov (media queries, rovnako pomenované kroky rôznych `@keyframes`). Detektor
-je `w4dup.js` v scratchpade.
+je `w4dup.js` v scratchpade. **Ten detektor mal chybu** — delil selektorové zoznamy
+na každej čiarke, teda aj vnútri `:is(button, a)`, a hlásil 12 neexistujúcich dvojíc.
+Opravená verzia delí len na nulovej hĺbke zanorenia; **kalibruj ju z oboch strán**
+(na verzii pred zmenou musí hlásiť staré čísla), inak „opravíš" funkčné CSS.
+Stav 24. 8. 2026: `mind.css` **A=0 B=1**, `console.css` **A=0**.
+
+**`console.css` drží A=0 vďaka `:is(a, button):where(...)` na špecificite 0-0-1.**
+`:where()` nepridáva špecificitu, takže reset prebije bare `button` z `mind.css`
+(rovnaká špecificita, `console.css` sa načítava druhý) a zároveň mu ustúpi každé
+pravidlo s triedou alebo id — **bez ohľadu na poradie v zdroji**. Nový selektor
+s rovnakou špecificitou v tej skupine vráti závislosť na poradí; nerob to.
+
+**Jeden fokusový prsteň, jedna klávesa, jeden papier karty** (druhé kolo, 24. 8. 2026):
+
+- Prsteň nesie **jedno globálne `:focus-visible`** (0-1-0) v RESET & BASE. Per-komponentné
+  pravidlo pridávaj len ak nesie **niečo iné** než prsteň. `border-radius` v globálnom
+  pravidle zámerne **nie je** — prebilo by `button { border-radius: var(--r-md) }` (0-0-1)
+  a každé tlačidlo by pri fokuse skočilo z 10 px na 8 px. Výnimka
+  `input[type="range"]:focus-visible { box-shadow: none }` je zámerná (prsteň nesie thumb).
+- `kbd` je **jedna bare kresba** v `mind.css` (`mind.css` sa načítava prvý aj na
+  `/console`); komponenty dopisujú len rozdiel. Radius vždy cez `--r-sm`.
+- Povrch karty je token **`--card-bg`** (default `var(--panel)`), druhý papier je
+  deklarovaná rola **`.card--nested`** (`--surface-2`). Základ je `--panel` z **funkčného**
+  dôvodu: je to jediný povrch nesúci sklo (`--panel-alpha` píše slider inline na `:root`),
+  takže karta na `--surface-2` ticho vypadne zo slidera priehľadnosti. A pozor —
+  `--surface-2` je na **tmavej** téme *svetlejšia* než `--panel`, takže „sunken" je preň
+  nesprávne slovo.
+- Prázdny stav má jeden slovník: **`.empty`** je základ, **`.empty--hero`** modifikátor.
+  `.card-empty` zostáva zámerne (iná rola, vlastný komentár) — nezlievaj ho.
+- Tokeny sú pomenované **podľa role, nie podľa čísla**: `--disabled-opacity`,
+  `--accent-disabled-fill` / `-focus-wash` / `-hover-wash`. `.perm-card.denied` má `.72`
+  zámerne — *zamietnuté* nie je *vypnuté*.
+- Prefix **`.tc-` v `console.css` už neexistuje** — časti karty nástroja sú `.tool-*`
+  (podľa `.tool-call`). `mind.css` si drží `.tc-val`/`.tc-label` (tabulárne číslo karty
+  Dnes) a dok nad grafom vlastné `.charon-tc-*`. Tri prefixy, tri významy, žiadna kolízia.
+- **Rez, ktorý sa nepriznáva, je lož.** `.lib-skill-meta` je `nowrap` + `overflow: hidden`,
+  takže čipy sa režú — `data-more` preto sčítava klientsky rez **aj** serverový
+  `tags_more`. Keby sčítal len jedno, karta by hlásila menšie číslo než realita.
 
 **Keď meníš CSS, over, že zmena je inertná, výmenou stylesheetu nad TÝM ISTÝM DOM**
 (`w8/cssswap.js`) — nie dvoma načítaniami stránky, Hades je živý a medzi nimi sa
@@ -326,6 +363,15 @@ vráti `data()`, MCP tool vráti `dropEmpty(project(data(), fieldsForAi()))`. Ro
 medzi plochou človeka a plochou AI je **deklarovaný zoznam kľúčov, nie druhá
 implementácia**. Nová obrazovka = serializér + **jeden riadok** do
 `ScreenParityTest::registry()`; test si zvyšok vynúti sám.
+
+**Hygiena** (24. 8. 2026) je deviaty serializér a vzor, ako to spraviť správne:
+`app/Serializers/Screen/HygienaScreen.php` **volá existujúci klasifikátor**
+(`mind:hygiene`, ktorý stojí na `MindService::noiseOf()`) namiesto toho, aby ho
+prepísal, a `McpController::toolHygiene()` sa tým scvrkol na tri riadky. Je to
+**sekcia na obrazovke Kontrola, nie nová obrazovka** — kontrakt počet obrazoviek
+zmrazil. Do 24. 8. 2026 videla odpad v pamäti **len AI** (`mind_hygiene`), človek
+nie; sekcia preto ponúka **opravu (premenovanie), nie tichý výmaz** — recall odpad
+označí a zaradí za čisté uzly, nemaže ho.
 
 Prečo to existuje: audit 19. 8. 2026 našiel šesť miest, kde sa plochy už rozišli,
 a vždy z tej istej príčiny — dve implementácie jedného obsahu. Smernica skladala
