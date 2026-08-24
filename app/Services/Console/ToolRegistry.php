@@ -5,6 +5,7 @@ namespace App\Services\Console;
 use App\Services\Console\Tools\ConsoleTool;
 use App\Services\Console\Tools\EditFileTool;
 use App\Services\Console\Tools\GlobTool;
+use App\Services\Console\Tools\GraphFocusTool;
 use App\Services\Console\Tools\GrepTool;
 use App\Services\Console\Tools\MindDeleteTool;
 use App\Services\Console\Tools\MindLearnTool;
@@ -35,6 +36,13 @@ use Throwable;
  * PORADIE {@see self::TOOLS} nie je kozmetika. V takomto poradí ich model vidí
  * v systémovom prompte a slabý model siaha na to, čo je vyššie — takže čítanie
  * je vpredu a zápis vzadu.
+ *
+ * **`TOOLS` je kánon toho, čo EXISTUJE (13); {@see self::PROFILES} je kánon toho,
+ * čo sa VYSTAVUJE.** Nie sú to tie isté množiny: `graph_focus` existuje, ale
+ * profil `full` ho nemá (jeho efekt je klientský a `/console` plátno nemá).
+ * Beh dostane len tooly svojho profilu — filtruje sa advertising ({@see self::definitions()})
+ * aj vykonanie ({@see self::call()}), pretože model si tool pamätá z histórie
+ * vlákna a keby sa filtroval len popis, zavolal by ho a vykonal.
  */
 class ToolRegistry
 {
@@ -47,6 +55,7 @@ class ToolRegistry
         GrepTool::class,
         GlobTool::class,
         ReadFileTool::class,
+        GraphFocusTool::class,
         // zápis — parkuje sa na potvrdenie človekom
         MindLearnTool::class,
         MindRenameTool::class,
@@ -56,17 +65,143 @@ class ToolRegistry
         WriteFileTool::class,
     ];
 
-    /** @var array<string, ConsoleTool> meno → tool, v poradí self::TOOLS */
+    /**
+     * Profily — bezpečnostne tvarovaný zoznam toho, ktoré tooly beh vystaví.
+     *
+     * Je to konštanta v KÓDE, nie config: členstvo rozhoduje o tom, ktoré
+     * ZÁPISOVÉ tooly v behu vôbec existujú, a to patrí vedľa {@see self::TOOLS},
+     * kde ho `ConsoleToolsTest` pripne menovite. V `.env` by ho netestoval nikto
+     * a preklep by ticho odobral (alebo pridal) zápisový tool. Do configu ide len
+     * meno defaultného profilu (`hades.console.profile`).
+     *
+     * Poradie v každom profile drží pravidlo „čítanie vpredu, zápis vzadu"
+     * (slabý model siaha na to, čo je vyššie). `graph_focus` je čítací.
+     *
+     * ŽIADNY `bash`/`shell` tool v žiadnom profile (kontrakt §4: appka je verejne
+     * tunelovaná cez ngrok). Vynucuje to `TOOLS` a menovitý zoznam v teste.
+     *
+     * @var array<string, array<int, class-string<ConsoleTool>>>
+     */
+    public const PROFILES = [
+        // Pamäť bez súborov. Kurátorstvo vedomia sa súborov projektu nedotýka —
+        // a `read_file`/PathGuard je najväčšia riziková plocha, ktorú netreba
+        // vystavovať behu, ktorý ju nepotrebuje.
+        'memory' => [
+            MindRecallTool::class, MindReadTool::class, MindOverviewTool::class,
+            MindLearnTool::class, MindRenameTool::class, MindMoveTool::class, MindDeleteTool::class,
+        ],
+
+        // Súbory + JEDEN čítací tool pamäte. `mind_recall` tu JE zámerne: smernica
+        // modelu prikazuje „nič si nedomýšľaj, zisti to toolom", a konvencie
+        // projektu žijú v pamäti. Profil bez recallu by model nútil vymýšľať.
+        'files' => [
+            MindRecallTool::class,
+            GrepTool::class, GlobTool::class, ReadFileTool::class,
+            EditFileTool::class, WriteFileTool::class,
+        ],
+
+        // Dok nad plátnom. Čítanie pamäte + navigácia grafu + `mind_learn`.
+        // `mind_learn` tu MUSÍ byť: bez zápisového toolu by sa dvojfázová brána
+        // v doku nedala ani spustiť, teda ani overiť. Súborové tooly tu NIE SÚ:
+        // dok je nad grafom, nie nad repozitárom.
+        'graph' => [
+            MindRecallTool::class, MindReadTool::class, MindOverviewTool::class,
+            GraphFocusTool::class,
+            MindLearnTool::class,
+        ],
+
+        // Plná konzola (/console). Dnešná dvanástka, znak po znaku.
+        // `graph_focus` tu NIE JE — jeho efekt je klientský a konzola plátno nemá.
+        'full' => [
+            MindRecallTool::class, MindReadTool::class, MindOverviewTool::class,
+            GrepTool::class, GlobTool::class, ReadFileTool::class,
+            MindLearnTool::class, MindRenameTool::class, MindMoveTool::class,
+            MindDeleteTool::class, EditFileTool::class, WriteFileTool::class,
+        ],
+    ];
+
+    /** @var array<string, ConsoleTool> celý kánon, meno → tool */
+    protected array $all = [];
+
+    /** @var array<string, ConsoleTool> aktívna podmnožina podľa profilu */
     protected array $tools = [];
+
+    protected ?string $profile = null;
+
+    /** Bol register postavený z kánonu, alebo mu sadu podstrčil test? */
+    protected bool $canon;
 
     /**
      * @param  array<int, ConsoleTool>|null  $tools  vlastná sada (testy); `null` = kánon z {@see self::TOOLS}
      */
     public function __construct(?array $tools = null)
     {
+        $this->canon = $tools === null;
+
         foreach ($tools ?? array_map(fn (string $class) => app($class), self::TOOLS) as $tool) {
-            $this->tools[$tool->name()] = $tool;
+            $this->all[$tool->name()] = $tool;
         }
+
+        $this->tools = $this->all;
+
+        // Kánon sa hneď zúži na default profil — bez tohto by `/console` (ktorý
+        // register berie z kontajnera) vystavil aj `graph_focus`.
+        if ($this->canon) {
+            $this->useProfile((string) config('hades.console.profile', 'full'));
+        }
+    }
+
+    /**
+     * Zúži aktívnu sadu na jeden profil.
+     *
+     * Neznámy profil je ODMIETNUTIE, nie fallback — ten istý duch ako v
+     * {@see \App\Services\Console\Tools\PathGuard}: fallback na `full` by dal behu
+     * viac toolov (vrátane zápisových), než volajúci žiadal (tichý únik
+     * oprávnenia); fallback na menší profil by model nechal povedať „taký nástroj
+     * nemám" a človek by hľadal chybu v modeli. Odmietnutie je jediná možnosť,
+     * ktorá nevie zalhať.
+     *
+     * @throws \InvalidArgumentException neznámy profil
+     */
+    public function useProfile(string $profile): void
+    {
+        if (! isset(self::PROFILES[$profile])) {
+            throw new \InvalidArgumentException(
+                "Unknown tool profile `{$profile}`. Available: ".implode(', ', array_keys(self::PROFILES)).'.'
+            );
+        }
+
+        $this->profile = $profile;
+
+        // Podstrčená sada (testy fake toolov) sa NEFILTRUJE. Filtrovanie kánonom
+        // by ju vyprázdnilo a ConsoleRunTest by ostal zelený bez toho, aby čokoľvek
+        // meral — presne tá pasca, na ktorú tento projekt raz naletel.
+        if (! $this->canon) {
+            return;
+        }
+
+        $keep = self::PROFILES[$profile];
+        $this->tools = array_filter(
+            $this->all,
+            fn (ConsoleTool $tool): bool => in_array($tool::class, $keep, true)
+        );
+    }
+
+    /** Meno aktívneho profilu (alebo `null`, keď register nie je z kánonu). */
+    public function activeProfile(): ?string
+    {
+        return $this->profile;
+    }
+
+    /**
+     * Celý kánon bez ohľadu na profil — pre testy tvaru, ktoré overujú vlastnosť
+     * KAŽDÉHO toolu, nie profilu.
+     *
+     * @return array<int, string>
+     */
+    public function allNames(): array
+    {
+        return array_keys($this->all);
     }
 
     /**

@@ -1,52 +1,65 @@
 import { reloadGraph } from './api.js';
+import { attachToContext, contextHas, refreshContextButtons } from './charon.js';
 import { mdLabel, mdNodeId, mdPath, syncMdFoot } from './md.js';
 import { S } from './state.js';
 import { showToast } from './toasts.js';
-import { $, busy, emptyCardHtml, esc } from './util.js';
+import { $, esc } from './util.js';
 
-export function persistPack() {
-    localStorage.setItem('hades.pack', JSON.stringify([...S.pack].map(([id, label]) => ({ id, label }))));
-}
-export function packHas(id) { return S.pack.has(+id); }
-export function togglePack(id, label) {
-    id = +id;
-    if (S.pack.has(id)) S.pack.delete(id); else S.pack.set(id, label || ('#' + id));
-    persistPack();
-    updatePackUi();
-    return S.pack.has(id);
-}
-export function addToPack(id, label) {
-    id = +id;
-    if (S.pack.has(id)) return false;
-    S.pack.set(id, label || ('#' + id));
-    persistPack();
-    updatePackUi();
-    return true;
-}
+/* ---------- „Do balíka" = priloženie do kontextu doku Charóna (A8, R-6) ----------
+
+   NEVRATNÁ ZMENA VÝZNAMU (kontrakt R-6, používateľ schválil): tlačidlá „Do
+   balíka" (packBtn) na obrazovkách Dnes / Denník / Knižnica a v čítačke už
+   NEKOPÍRUJÚ do schránky. Plnia jediný spoločný kontext „daj Claude Code" —
+   kontext doku Charóna (S.charonCtx, vlastní ho charon.js). Bývalý „Balík pre
+   Claude Code" (S.pack, jeho zásuvka a export cez /api/context/pack) zanikol;
+   von sa poznatok dostane rozhovorom s Charónom nad tým istým kontextom.
+
+   Modul zostal (WONTFIX #4 auditu zakazoval mazať packBtn) ako TENKÝ ADAPTÉR:
+   packBtn kreslí to isté tlačidlo, bindPackButtons ho naviaže na kontext doku.
+   Stav členstva aj popisky sú jeden zdroj pravdy v charon.js (contextHas /
+   attachToContext / refreshContextButtons). Exporty sú hoistované `export
+   function` — graf modulov má cykly (panels → pack → charon → …).
+
+   Prepínač rozsahu grafu (#scope-toggle) je tu tiež, hoci s balíkom nesúvisí —
+   býval vedľa neho a importuje ho screens.js pri rozšírení pohľadu. */
+
+// packHas ostáva ako meno pre md.js (syncMdFoot číta členstvo) — delegát na
+// jeden zdroj pravdy v charon.js.
+export function packHas(id) { return contextHas(id); }
 
 // HTML pack-toggle tlačidla pre riadky zoznamov (Dnes / Denník / Knižnica).
 // Konštantná ikona, aktívny stav farbí .in-pack (žiadny reflow pri prepnutí).
+// Trieda .pack-btn a jej štýly v mind.css ostávajú; mení sa len význam (kontext).
 export function packBtn(id, label) {
     const on = packHas(id);
     return '<button type="button" class="pack-btn ms' + (on ? ' in-pack' : '') + '"'
         + ' data-pack-id="' + esc(String(id)) + '" data-pack-label="' + esc(label || '') + '"'
         + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
-        + ' title="' + (on ? 'V balíku — klikni pre odobratie' : 'Do balíka') + '">library_add</button>';
+        + ' title="' + (on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru') + '">library_add</button>';
 }
 
-// Naviaž pack-toggle tlačidlá v podstrome (stopPropagation, aby klik neotvoril aj riadok).
+// Naviaž pack-toggle tlačidlá v podstrome (stopPropagation, aby klik neotvoril aj
+// riadok). attachToContext prepne členstvo a pri pridaní otvorí zavretý dok.
 export function bindPackButtons(root) {
     root.querySelectorAll('.pack-btn[data-pack-id]').forEach((b) => {
         b.onclick = (e) => {
             e.stopPropagation();
             e.preventDefault();
-            const on = togglePack(b.dataset.packId, b.dataset.packLabel);
-            showToast(on ? 'Pridané do balíka' : 'Odobraté z balíka');
+            const r = attachToContext(b.dataset.packId, b.dataset.packLabel);
+            if (r.full) showToast('Kontext má strop 8 uzlov — najprv niektorý odober');
+            else showToast(r.on ? 'Priložené do rozhovoru' : 'Odobraté z rozhovoru');
         };
     });
 }
 
-// Zosúlaď celé pack UI so stavom S.pack — počet v hlavičke, všetky tlačidlá, detail, zásuvka.
+// Volá ju panels.js pri výbere uzla — zosúladí #node-charon aj .pack-btn so
+// stavom kontextu. Meno ostáva (panels.js ho importuje), telo delegát na charon.js.
+export function updatePackUi() {
+    refreshContextButtons();
+}
+
+/* ---------- prepínač rozsahu grafu (nesúvisí s balíkom) ---------- */
+
 /** Prepínač rozsahu drží stav vlákna aj vizuál — inak by tvrdil niečo iné než graf. */
 export function syncScopeToggle() {
     const btn = $('scope-toggle');
@@ -70,134 +83,13 @@ export function setGraphScope(next) {
     return reloadGraph();
 }
 
-export function updatePackUi() {
-    const n = S.pack.size;
-    const trig = $('pack-trigger');
-    if (trig) {
-        trig.classList.toggle('hidden', n === 0);
-        const c = $('pack-count');
-        if (c) c.textContent = String(n);
-    }
-    document.querySelectorAll('.pack-btn[data-pack-id]').forEach((b) => {
-        const on = packHas(b.dataset.packId);
-        b.classList.toggle('in-pack', on);
-        b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        b.title = on ? 'V balíku — klikni pre odobratie' : 'Do balíka';
-    });
-    const npk = $('node-pack');
-    if (npk) {
-        const on = S.selected ? packHas(S.selected.id) : false;
-        npk.classList.toggle('in-pack', on);
-        npk.setAttribute('aria-pressed', on ? 'true' : 'false');
-        npk.title = on ? 'V balíku — klikni pre odobratie' : 'Do balíka';
-    }
-    if (packDrawerOpen()) renderPackList();
-}
-
-/* ---------- zásuvka balíka (export pre Claude Code) ---------- */
-
-export function packDrawerOpen() {
-    const d = $('pack-drawer');
-    return d ? !d.classList.contains('hidden') : false;
-}
-
-// Fokus si zásuvka berie a vracia rovnako ako čítačka (md.js) a pomocník —
-// bez toho spadol po zavretí na <body> a Tab začínal od začiatku dokumentu.
-export let packReturnFocus = null;
-
-export function openPackDrawer() {
-    const d = $('pack-drawer');
-    if (!d) return;
-    if (!packDrawerOpen()) packReturnFocus = document.activeElement;
-    d.classList.remove('hidden');
-    renderPackList();
-    const close = $('pack-close');
-    if (close) close.focus();
-}
-export function closePackDrawer() {
-    const d = $('pack-drawer');
-    if (d) d.classList.add('hidden');
-    const back = packReturnFocus;
-    packReturnFocus = null;
-    // <body> nie je „kam sa vrátiť" (viď closeCmdk) — vtedy fokus dostane spúšťač,
-    // a keď ten medzitým zmizol (balík sa vyprázdnil), ostane tam, kde je.
-    if (back && back !== document.body && back.isConnected && typeof back.focus === 'function') back.focus();
-    else { const t = $('pack-trigger'); if (t && !t.classList.contains('hidden')) t.focus(); }
-}
-
-export function renderPackList() {
-    const list = $('pack-list');
-    if (!list) return;
-    // Zásuvka sa menuje „Balík pre Claude Code" a hneď pod nadpisom vysvetľuje, na čo
-    // je — 28px ikona s vetou pod ňou to isté zopakuje po tretie. Jeden tichý riadok.
-    if (!S.pack.size) { list.innerHTML = emptyCardHtml('Balík je prázdny'); return; }
-    list.innerHTML = [...S.pack].map(([id, label]) =>
-        '<div class="pack-row">'
-        + '<span class="pack-row-label" title="' + esc(label) + '">' + esc(label) + '</span>'
-        + '<button type="button" class="ghost ms pack-row-del" data-id="' + id
-        + '" title="Odobrať" aria-label="Odobrať z balíka">close</button>'
-        + '</div>'
-    ).join('');
-    list.querySelectorAll('.pack-row-del').forEach((b) => {
-        b.onclick = () => { togglePack(b.dataset.id); };
-    });
-}
-
-// Strop 50 je serverová validácia (/api/context/pack), nie rozmar — ale doteraz
-// sa nad ním mlčky odrezalo a používateľ skopíroval balík bez uzlov, o ktorých
-// si myslel, že v ňom sú. Pri exporte kontextu pre AI je tiché orezanie to
-// najhoršie, čo sa môže stať.
-export const PACK_LIMIT = 50;
-
-export async function copyPack() {
-    if (!S.pack.size) { showToast('Balík je prázdny'); return; }
-    const ids = [...S.pack.keys()].slice(0, PACK_LIMIT);
-    const cut = S.pack.size - ids.length;
-    try {
-        const res = await fetch('/api/context/pack', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ node_ids: ids }),
-        });
-        if (!res.ok) { showToast('Kopírovanie sa nepodarilo'); return; }
-        const data = await res.json();
-        await navigator.clipboard.writeText(data.markdown || '');
-        showToast(cut > 0
-            ? 'Skopírované ' + ids.length + ' z ' + S.pack.size + ' — strop balíka je ' + PACK_LIMIT
-            : 'Skopírované pre Claude Code');
-    } catch (e) {
-        showToast('Kopírovanie sa nepodarilo');
-    }
-}
-
-// Naviazanie všetkých pack ovládačov + prepínača rozsahu grafu. Volá sa raz z init().
+// Naviazanie čítačky (#md-pack) a prepínača rozsahu grafu. Volá sa raz z init().
 export function setupPack() {
-    const trig = $('pack-trigger');
-    if (trig) trig.onclick = openPackDrawer;
-    const pc = $('pack-close');
-    if (pc) pc.onclick = closePackDrawer;
-    const copyBtn = $('pack-copy');
-    if (copyBtn) copyBtn.onclick = () => busy(copyBtn, copyPack, 'Kopírujem…');
-    const clearBtn = $('pack-clear');
-    if (clearBtn) clearBtn.onclick = () => {
-        S.pack.clear();
-        persistPack();
-        updatePackUi();
-        showToast('Balík vyprázdnený');
-    };
-
-    // Detail uzla — Do balíka
-    const npk = $('node-pack');
-    if (npk) npk.onclick = () => {
-        if (!S.selected) return;
-        togglePack(S.selected.id, S.selected.label);
-    };
-
-    // Čítačka — Do balíka + Kopírovať cestu
+    // Čítačka dokumentu — „Do balíka" priloží uzol dokumentu do kontextu doku.
     const mpk = $('md-pack');
     if (mpk) mpk.onclick = () => {
         if (mdNodeId == null) return;
-        togglePack(mdNodeId, mdLabel);
+        attachToContext(mdNodeId, mdLabel);
         syncMdFoot();
     };
     const mcp = $('md-copypath');
@@ -215,6 +107,4 @@ export function setupPack() {
             setGraphScope(S.graphScope === 'all' ? 'live' : 'all');
         };
     }
-
-    updatePackUi();
 }

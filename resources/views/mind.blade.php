@@ -33,6 +33,10 @@
     <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/css/mind.css">
+    {{-- Charón — dok nad plátnom. Vlastný stylesheet (variant A): karty nástrojov
+         a brány zápisov žijú raz, s vlastným .charon-* prefixom (mind.css má .tc-*
+         už obsadené tabulárnym číslom). --}}
+    <link rel="stylesheet" href="/css/charon.css">
 </head>
 <body>
     {{-- SKIP-LINK (P2): prvý fokusovateľný prvok, aby sa klávesnicou dalo skočiť
@@ -77,10 +81,10 @@
             </div>
         </div>
         <div class="h-right">
-            <button id="pack-trigger" type="button" class="hidden" aria-label="Balík pre Claude Code">
-                <span class="ms" aria-hidden="true">inventory_2</span>
-                <span id="pack-count">0</span>
-            </button>
+            {{-- Charón — dok nad plátnom. Otvára sa týmto tlačidlom a (fáza 2)
+                 klávesou C; žiadny prepínač v Nastaveniach (R-2). --}}
+            <button id="charon-toggle" type="button" class="ms" title="Charón nad grafom (C)"
+                    aria-label="Charón — rozhovor nad grafom" aria-expanded="false" aria-controls="charon">hub</button>
             <button id="cmdk-trigger" type="button" aria-label="Hľadať (Ctrl+K)">
                 <span class="ms" aria-hidden="true">search</span>
                 <span class="cmdk-hint">Hľadať</span>
@@ -297,10 +301,9 @@
                 <summary><span class="adv-title">Pokročilé</span><span class="adv-n">jednotlivé ovládače</span></summary>
                 <div class="adv-body">
                     <h3>Vzhľad</h3>
-                    <div class="switch-row">
-                        <span id="chat-toggle-label">Chat s Hadesom (potrebuje API kľúč)</span>
-                        <button id="chat-toggle" class="switch" type="button" role="switch" aria-checked="false" aria-labelledby="chat-toggle-label"></button>
-                    </div>
+                    {{-- A9: prepínač „Chat s Hadesom" je preč. Mŕtvy chat nad grafom
+                         (fungoval len s API kľúčom) nahradil dok Charóna — otvára sa
+                         tlačidlom v hlavičke a klávesou C, bez prepínača (R-2/§1b). --}}
                     <div class="switch-row">
                         <span id="sound-toggle-label">Zvuk</span>
                         <button id="btn-sound" class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="sound-toggle-label"></button>
@@ -403,7 +406,9 @@
             <div id="node-history"></div>
             <div class="row node-actions">
                 <button id="node-edit" class="primary">Upraviť</button>
-                <button id="node-pack" class="ghost ms" title="Do balíka" aria-label="Do balíka" aria-pressed="false">library_add</button>
+                {{-- A8: #node-pack („Do balíka") zaniklo — kontext doku je jediný
+                     mechanizmus a #node-charon plní ten istý kontext. --}}
+                <button id="node-charon" class="ghost ms" title="Priložiť do rozhovoru" aria-label="Priložiť do rozhovoru" aria-pressed="false">hub</button>
                 <button id="node-md" class="ghost ms hidden" title="Zobraziť dokument" aria-label="Zobraziť dokument">description</button>
                 <button id="node-connect" class="ghost ms" title="Prepojiť s uzlom" aria-label="Prepojiť s uzlom">link</button>
                 <button id="node-delete" class="danger ms" aria-label="Zmazať">delete</button>
@@ -426,18 +431,9 @@
         </div>
     </aside>
 
-    <aside id="pack-drawer" class="hidden" aria-label="Balík pre Claude Code">
-        <div class="dock-head">
-            <h2>Balík pre Claude Code</h2>
-            <button class="close ms" id="pack-close" aria-label="Zavrieť">close</button>
-        </div>
-        <p class="pack-hint">Vybrané uzly skopíruješ ako markdown a vložíš do Claude Code.</p>
-        <div id="pack-list"></div>
-        <div class="row pack-actions">
-            <button id="pack-copy" class="primary" type="button">Kopírovať pre Claude Code</button>
-            <button id="pack-clear" class="ghost" type="button">Vyprázdniť</button>
-        </div>
-    </aside>
+    {{-- A8 (R-6): zásuvka „Balík pre Claude Code" a export do schránky zanikli.
+         „Do balíka" teraz plní kontext doku Charóna a poznatok ide von rozhovorom
+         s Charónom nad tým istým kontextom — jeden mechanizmus namiesto troch. --}}
 
     <div id="zoomctl" role="group" aria-label="Ovládanie kamery">
         <button id="zoom-in" class="ms" title="Priblížiť (+)" aria-label="Priblížiť">add</button>
@@ -445,15 +441,35 @@
         <button id="zoom-reset" class="ms" title="Vycentrovať (0)" aria-label="Vycentrovať">center_focus_strong</button>
     </div>
 
-    <div id="prompt">
-        <div id="chat-context" class="hidden" aria-label="Kontext chatu"></div>
-        <div id="chat-log" class="hidden" aria-live="polite"></div>
-        <form id="prompt-form">
-            <span class="ms spark" aria-hidden="true">hub</span>
-            <input id="prompt-input" placeholder="Opýtaj sa Hadesa… (/ príkazy)" autocomplete="off" aria-label="Správa pre Hadesa">
-            <button type="submit" class="ms send-btn" aria-label="Odoslať">send</button>
-        </form>
-    </div>
+    {{-- A9: mŕtvy chat nad grafom (#prompt / #chat-context / #chat-log / #prompt-form)
+         je preč — nahradil ho dok Charóna nižšie, ktorý beží lokálne a nesie
+         dvojfázovú bránu zápisov. Kontext chatu (#chat-context) splynul s kontextom
+         doku (#charon-ctx), A8. --}}
+
+    {{-- CHARÓN — dok nad plátnom. Vlastné id (#dock je obsadené),
+         vlastný .charon-* prefix. Napojený na /api/console/run cez zdieľaný
+         runclient — jediná cesta k modelu, dvojfázová brána zápisov platí tu
+         rovnako ako v konzole. Skrytý kým sa neotvorí (#charon-toggle / klávesa C). --}}
+    <aside id="charon" aria-label="Charón — rozhovor nad grafom">
+        <div id="charon-head">
+            <span id="charon-title">Charón</span>
+            <span id="charon-status" aria-hidden="true"></span>
+            <button id="charon-close" class="ms" type="button" aria-label="Zavrieť dok">close</button>
+        </div>
+        <div id="charon-stream" role="log" aria-live="polite" aria-label="Priebeh rozhovoru"></div>
+        <div id="charon-ctx" class="hidden" aria-label="Kontext z grafu"></div>
+        {{-- A8: tlačidlo „Priložiť balík (N)" zaniklo — po zlúčení niet oddeleného
+             balíka; „Do balíka" na obrazovkách plní priamo tento kontext. --}}
+        <div id="charon-composer">
+            <form id="charon-form">
+                <textarea id="charon-input" rows="1" autocomplete="off"
+                          placeholder="Opýtaj sa Hadesa nad grafom…" aria-label="Správa pre Charóna"></textarea>
+                <button id="charon-send" class="ms" type="submit" aria-label="Odoslať">send</button>
+                <button id="charon-stop" class="ms hidden" type="button" aria-label="Zastaviť beh">stop</button>
+            </form>
+        </div>
+        <div id="charon-announce" class="sr-only" aria-live="polite"></div>
+    </aside>
 
     <div id="toasts" aria-live="polite"></div>
     <div id="hover-card" class="hidden" role="tooltip"></div>
@@ -509,5 +525,7 @@
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8/dist/web/pusher.min.js"></script>
     <script src="/js/charts.js"></script>
     <script type="module" src="/js/mind/main.js"></script>
+    {{-- A9/fáza 2: setupCharon() volá priamo main.js (po installFetchGuard),
+         samostatný bootstrap skript zanikol spolu s mŕtvym chat.js. --}}
 </body>
 </html>

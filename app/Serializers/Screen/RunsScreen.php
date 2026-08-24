@@ -82,6 +82,7 @@ class RunsScreen extends ScreenSerializer
         return [
             'counts',
             'items[].uuid', 'items[].status', 'items[].prompt', 'items[].model',
+            'items[].tool_profile',
             'items[].steps', 'items[].tool_calls', 'items[].tokens_out',
             'items[].duration_ms', 'items[].stop_reason', 'items[].error',
             'items[].started_at', 'items[].thread',
@@ -105,6 +106,10 @@ class RunsScreen extends ScreenSerializer
             'prompt' => self::clip((string) $run->prompt, 160),
             'provider' => $run->provider,
             'model' => $run->model,
+            // S akou sadou nástrojov beh bežal — `null` pri behoch z čias pred
+            // profilmi. Je to dáta, nie slovo, takže patrí do serializéra (nie do
+            // dopočtu v prehliadači) a musí byť aj vo `fieldsForAi()`.
+            'tool_profile' => $run->tool_profile,
             'steps' => $run->steps,
             'tool_calls' => $run->tool_calls,
             'tokens_in' => $run->tokens_in,

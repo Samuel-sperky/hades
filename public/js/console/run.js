@@ -12,6 +12,12 @@
      • rámec `permission` ťah ukončí BEZ `end` — beh je zaparkovaný a `/decide`
        ho rozbehne a dostreamuje zvyšok. Preto sa parkovanie nesmie tváriť ako
        koniec: `C.awaiting` drží, že sa ešte nič neskončilo.
+
+   Samotná mechanika prúdu (fetch, ReadableStream, parsovanie NDJSON, abort,
+   dvojfázová brána) sa vo vlne 4 presťahovala do public/js/shared/runclient.js
+   a shared/ndjson.js — dok Charóna nad grafom beží na tej istej, aby nemali dve
+   kópie. Tu zostáva LEN konzolová view vrstva: čo sa kde nakreslí, ohlási a ako
+   sa prepne composer. Klient volá tieto callbacky a mutuje `C`.
    =========================================================================== */
 
 import { C } from './state.js';
@@ -22,10 +28,93 @@ import {
     appendDelta, beginTurn, closeBubble, endTurn, paintStats, pushBlock,
     pushError, pushNotice, pushUser, announce, scrollIfFollowing, waitStart,
 } from './render.js';
-import { markResult, permissionCard, pendingCard, decidePending, toolCard, writeAsk } from './tools.js';
-import { cleanStop, stopNote } from './runstate.js';
+import { markResult, permissionCard, pendingCard, decidePending, toolCard } from './tools.js';
+import { writeAsk } from '../shared/gate.js';
+import { cleanStop, stopNote } from '../shared/runstate.js';
+import { createRunClient } from '../shared/runclient.js';
 
 let ticker = 0;
+
+/* Jeden klient behu pre celú konzolu. Mechanika (fetch + ReadableStream + CSRF
+   + abort, dvojfázová brána, parsovanie NDJSON) žije v public/js/shared/ — dok
+   Charóna nad grafom beží na tej istej, aby nemali dve kópie. `view` sú
+   konzolové spätné volania: klient nevie nič o `#send`, `#stop` ani o toku
+   správ, to všetko zostáva tu. Klient mutuje `C` (abort, awaiting, step, stats,
+   t0); `C.thread`/`C.running` ostávajú v réžii tohto modulu. */
+const client = createRunClient({
+    request,
+    state: C,
+    view: {
+        onStart(frame) {
+            beginTurn(frame);
+            paintStats();
+        },
+
+        onDelta(text) {
+            appendDelta(text);
+            paintStats();
+        },
+
+        onTool(frame) {
+            // Karta ukončí rozpracovanú bublinu, aby text po nástroji začal novú.
+            closeBubble();
+            pushBlock(toolCard(frame));
+        },
+
+        onToolResult(frame) {
+            markResult(frame);
+            // Nástroj dobehol a model premýšľa znova. Toto ticho je rovnako dlhé
+            // ako to pred prvým tokenom, takže si žiada ten istý signál.
+            waitStart();
+        },
+
+        onPermission(frame) {
+            closeBubble();
+            pushBlock(permissionCard(frame));
+            // Stav sa musí prekresliť HNEĎ: rámec `permission` ťah končí, tikanie
+            // sekúnd dobehne až v `onSettled`, a do vtedy by hlavička tvrdila, že
+            // model ešte píše.
+            paintStats();
+            // Ohlási sa ZÁPIS, nie nástroj — vetu skladá `writeAsk()` z tých
+            // istých argumentov, aké vidí človek na karte.
+            announce(writeAsk(frame));
+        },
+
+        onStep() {
+            paintStats();
+        },
+
+        onEnd(frame) {
+            noteStop(frame.stop_reason);
+            announce(endAnnounce(frame));
+        },
+
+        onError(text, fromFrame) {
+            // 401/419 už ohlásil http.js do toku správ; transportné chyby prídu
+            // s prázdnym `fromFrame` a hlásia sa len do toku. Rámec `error` z prúdu
+            // ide aj do čítačky.
+            pushError(text);
+            if (fromFrame) announce('Beh zlyhal.');
+        },
+
+        onNotice(text) {
+            pushNotice(text);
+        },
+
+        onThreadState: applyThreadState,
+        onRunningChange: setRunning,
+
+        onSettled() {
+            endTurn();
+            paintStats();
+            scrollIfFollowing();
+        },
+
+        onAfter() {
+            if (C.thread) loadThreads();
+        },
+    },
+});
 
 export function wireRun() {
     document.addEventListener('console:send', (event) => { sendTurn(event.detail?.text || ''); });
@@ -114,7 +203,7 @@ export async function sendTurn(text) {
         const model = $('#model-select')?.value;
         if (model) body.model = model;
 
-        await stream('/api/console/run', body);
+        await client.startRun(body);
     } finally {
         C.sending = false;
     }
@@ -126,7 +215,7 @@ async function resumeAfterDecision(id, decision) {
 
     C.awaiting = null;
 
-    await stream('/api/console/decide', {
+    await client.resumeDecision({
         thread: C.thread.uuid,
         call: id,
         decision,
@@ -138,260 +227,7 @@ export function stopRun() {
 
     // Text, ktorý už prišiel, ZOSTÁVA. Stratiť odpoveď preto, že ju človek prestal
     // čítať, je horšie než nedokončená odpoveď.
-    C.abort.abort();
-}
-
-/* ---------- samotný prúd ---------- */
-
-async function stream(url, body) {
-    C.abort = new AbortController();
-    C.stats = null;
-    C.step = null;
-    C.t0 = Date.now();
-    setRunning(true);
-
-    let closed = false;   // videli sme end / error / permission?
-
-    try {
-        const res = await request(url, { method: 'POST', body, signal: C.abort.signal });
-
-        if (!res.ok) {
-            // 401/419 už ohlásil http.js do toku správ, druhé hlásenie by len
-            // zdvojilo tú istú vetu.
-            if (res.status !== 401 && res.status !== 419) {
-                pushError(await refusalText(res));
-            }
-            closed = true;
-
-            return;
-        }
-
-        if (!res.body) {
-            pushError('Prehliadač nevrátil telo odpovede — beh sa nedá čítať.');
-            closed = true;
-
-            return;
-        }
-
-        closed = await consume(res.body.getReader());
-    } catch (error) {
-        if (error?.name === 'AbortError') {
-            closed = true;
-            pushNotice('Beh zastavený. Čo prišlo, zostáva.');
-        } else {
-            pushError(`Spojenie s behom sa prerušilo: ${error?.message || 'neznáma chyba'}`);
-            closed = true;
-        }
-    } finally {
-        C.abort = null;
-
-        // Krok sa nuluje TU a nie v case `end`: pri Stope (aj pri spadnutom
-        // serveri) rámec `end` nikdy nepríde, takže hlavička ostávala navždy na
-        // „krok 1/12" nad ničím, čo by bežalo. Zaparkovaný beh je jediná
-        // výnimka — tam krok stále platí, beh len čaká na rozhodnutie.
-        if (!C.awaiting) C.step = null;
-
-        setRunning(false, !!C.awaiting);
-
-        endTurn();
-        paintStats();
-        scrollIfFollowing();
-    }
-
-    if (!closed && !C.awaiting) {
-        // Prúd skončil bez `end` aj bez `error` — server spadol alebo ho niekto
-        // zrezal. Mlčať by znamenalo nechať konzolu vyzerať, že ešte myslí.
-        pushError('Beh sa skončil bez odpovede — server prúd zavrel uprostred.');
-    }
-
-    if (C.thread) loadThreads();
-}
-
-/**
- * Veta k odmietnutému behu. Backend aj pri 422 posiela TEN ISTÝ NDJSON rámec
- * `error` (viď RunController::refuse) a jeho text hovorí, čo sa naozaj stalo —
- * „Vlákno čaká na rozhodnutie o zápise…", „Také vlákno neexistuje." Predtým sa
- * telo vôbec nečítalo a človek dostal len číslo stavu, teda presne tú
- * informáciu, s ktorou sa nedá nič spraviť. Generická veta zostáva ako záloha,
- * keď telo chýba alebo sa nedá naparsovať.
- */
-async function refusalText(res) {
-    const fallback = `Beh sa nepodarilo spustiť (HTTP ${res.status}).`;
-
-    let text = '';
-
-    try {
-        text = await res.text();
-    } catch {
-        return fallback;
-    }
-
-    // Telo je NDJSON ako celý zvyšok protokolu — rámcov môže byť aj viac,
-    // hľadá sa prvý `error`.
-    for (const line of text.split('\n')) {
-        const raw = line.trim();
-        if (raw === '') continue;
-
-        let frame;
-
-        try {
-            frame = JSON.parse(raw);
-        } catch {
-            continue;
-        }
-
-        if (frame?.t === 'error' && frame.message) return String(frame.message);
-    }
-
-    return fallback;
-}
-
-/**
- * Čítanie prúdu. Buffer je tu povinný z dvoch dôvodov a oba sú overiteľné:
- *   1. jeden JSON objekt sa MÔŽE rozdeliť medzi dva chunky, takže naivné
- *      `split('\n')` nad jedným chunkom by na hranici hodilo SyntaxError;
- *   2. `TextDecoder` s `{ stream: true }` drží aj rozdelený viacbajtový znak —
- *      bez toho by sa slovenská diakritika na hranici chunku rozsypala na „�".
- * Vracia true, ak prúd riadne skončil rámcom end/error/permission.
- */
-async function consume(reader) {
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let closed = false;
-
-    for (;;) {
-        const { value, done } = await reader.read();
-
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        let cut = buffer.indexOf('\n');
-
-        while (cut >= 0) {
-            const line = buffer.slice(0, cut);
-            buffer = buffer.slice(cut + 1);
-            if (handleLine(line)) closed = true;
-            cut = buffer.indexOf('\n');
-        }
-    }
-
-    // Posledný riadok nemusí mať koncový newline — a decoder treba dorovnať.
-    buffer += decoder.decode();
-    if (handleLine(buffer)) closed = true;
-
-    return closed;
-}
-
-/** Vracia true, ak riadok bol koncovým rámcom ťahu. */
-function handleLine(line) {
-    const text = line.trim();
-    if (text === '') return false;
-
-    let frame;
-
-    try {
-        frame = JSON.parse(text);
-    } catch {
-        // Nečitateľný riadok neukončí ťah — protokol ho zakazuje, ale keby prišiel,
-        // stratiť zvyšok odpovede kvôli jednému rámcu by bola horšia chyba.
-        pushError('Nečitateľný rámec z behu (preskočený).');
-
-        return false;
-    }
-
-    return dispatch(frame);
-}
-
-/**
- * Rámec → obrazovka. Stav vlákna sa premieta AŽ PO ňom: koncové rámce `/decide`
- * nesú aj `auto_accept` a hlásenie o vypnutej bráne má prekryť rutinné „Odpoveď
- * dokončená" v `#run-announce`, nie naopak.
- */
-function dispatch(frame) {
-    const closing = route(frame);
-
-    applyThreadState(frame);
-
-    return closing;
-}
-
-function route(frame) {
-    switch (frame.t) {
-        case 'start':
-            beginTurn(frame);
-            paintStats();
-
-            return false;
-
-        case 'delta':
-            appendDelta(frame.text);
-            paintStats();
-
-            return false;
-
-        case 'tool':
-            // Karta ukončí rozpracovanú bublinu, aby text po nástroji začal novú.
-            closeBubble();
-            pushBlock(toolCard(frame));
-
-            return false;
-
-        case 'tool_result':
-            markResult(frame);
-            // Nástroj dobehol a model premýšľa znova. Toto ticho je rovnako dlhé
-            // ako to pred prvým tokenom, takže si žiada ten istý signál.
-            waitStart();
-
-            return false;
-
-        case 'permission':
-            closeBubble();
-            C.awaiting = { id: frame.id, name: frame.name };
-            pushBlock(permissionCard(frame));
-            // Stav sa musí prekresliť HNEĎ: rámec `permission` ťah končí, tikanie
-            // sekúnd dobehne až v `finally`, a do vtedy by hlavička tvrdila, že
-            // model ešte píše.
-            paintStats();
-            // Ohlási sa ZÁPIS, nie nástroj — vetu skladá `writeAsk()` v tools.js
-            // z tých istých argumentov, aké vidí človek na karte.
-            announce(writeAsk(frame));
-
-            return true;
-
-        case 'step':
-            C.step = { n: frame.n, of: frame.of };
-            paintStats();
-
-            return false;
-
-        case 'end':
-            // Kľúče sa menujú PRESNE ako v logu behov (`runs`) a v payloade
-            // vlákna — `paintStats()` skladá ten istý reťazec z oboch zdrojov
-            // a preklad `tps` ↔ `tokens_per_second` bol jediný dôvod, prečo by
-            // to nešlo.
-            C.stats = {
-                tokens_in: frame.tokens_in,
-                tokens_out: frame.tokens_out,
-                tokens_per_second: frame.tokens_per_second,
-            };
-            C.step = null;
-            noteStop(frame.stop_reason);
-            announce(endAnnounce(frame));
-
-            return true;
-
-        case 'error':
-            pushError(frame.message || 'Beh zlyhal.');
-            announce('Beh zlyhal.');
-
-            return true;
-
-        default:
-            // Neznámy typ rámca sa ticho ignoruje: protokol sa má dať rozširovať
-            // bez toho, aby starší klient spadol.
-            return false;
-    }
+    client.stop();
 }
 
 function endAnnounce(frame) {

@@ -3,12 +3,13 @@
 
    Jedno miesto, ktoré vie preložiť „ako sa beh skončil" a „čo stál" na vetu pre
    človeka. Vlastný modul zámerne: to isté hlásenie musí povedať ŽIVÝ beh
-   (rámec `end` v run.js) aj OBNOVENÉ vlákno (log behov v render.js). Keby si
-   každý z nich držal vlastnú kópiu textov a vlastnú definíciu „riadneho konca",
-   ťah zrezaný stropom krokov by po obnove stránky vyzeral inak než pred ňou —
-   presne ten rozpor, kvôli ktorému tento modul vznikol.
+   (rámec `end` v run.js), OBNOVENÉ vlákno (log behov v render.js) aj dok Charóna
+   nad grafom. Keby si každý z nich držal vlastnú kópiu textov a vlastnú definíciu
+   „riadneho konca", ťah zrezaný stropom krokov by po obnove stránky vyzeral inak
+   než pred ňou — presne ten rozpor, kvôli ktorému tento modul vznikol.
 
-   Modul NIČ neimportuje, takže nie je súčasťou cyklu render ↔ run ↔ main.
+   Zdieľaný modul (public/js/shared/) — presunutý z public/js/console/ vo vlne 4,
+   obsah nezmenený. Modul NIČ neimportuje, takže nie je súčasťou cyklu.
    =========================================================================== */
 
 /**

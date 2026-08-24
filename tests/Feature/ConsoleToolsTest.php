@@ -72,6 +72,20 @@ class ConsoleToolsTest extends TestCase
         return app(ToolRegistry::class);
     }
 
+    /**
+     * Register BEZ profilového filtra — kánon všetkých {@see ToolRegistry::TOOLS}.
+     *
+     * `app(ToolRegistry::class)` má aktívny default profil `full`, ktorý
+     * `graph_focus` nevystavuje ({@see ToolRegistry::PROFILES}). Testy, ktoré
+     * overujú vlastnosť KAŽDÉHO toolu (tvar definície, strana `isWrite`, náhľad),
+     * musia vidieť aj trinásty — inak by `isWrite('graph_focus')` vrátil
+     * fail-closed `true` a test by padol na správnom mieste zo zlého dôvodu.
+     */
+    private function canon(): ToolRegistry
+    {
+        return new ToolRegistry(array_map(fn (string $c) => app($c), ToolRegistry::TOOLS));
+    }
+
     private function tool(string $name): ConsoleTool
     {
         return $this->registry()->get($name);
@@ -103,9 +117,11 @@ class ConsoleToolsTest extends TestCase
      */
     public function test_read_tools_run_without_asking_and_write_tools_do_not(): void
     {
-        $registry = $this->registry();
+        // Kánon (13), nie aktívny profil: `graph_focus` je čítací a musí byť
+        // v teste vidieť, inak by fail-closed `isWrite()` zakryl dieru.
+        $registry = $this->canon();
 
-        foreach (['mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep'] as $name) {
+        foreach (['mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep', 'graph_focus'] as $name) {
             $this->assertFalse($registry->isWrite($name), "{$name} musí byť čítací");
         }
 
@@ -115,12 +131,12 @@ class ConsoleToolsTest extends TestCase
             $this->assertTrue($registry->isWrite($name), "{$name} musí vyžadovať potvrdenie");
         }
 
-        // A žiadny tool nesmie v registri pribudnúť bez toho, aby o ňom tento
-        // test vedel — inak by nová diera prešla „lebo testy sú zelené".
+        // A žiadny tool nesmie v kánone pribudnúť bez toho, aby o ňom tento test
+        // vedel — inak by nová diera prešla „lebo testy sú zelené".
         $this->assertSame([
-            'mind_recall', 'mind_read', 'mind_overview', 'grep', 'glob', 'read_file',
+            'mind_recall', 'mind_read', 'mind_overview', 'grep', 'glob', 'read_file', 'graph_focus',
             'mind_learn', 'mind_rename', 'mind_move', 'mind_delete', 'edit_file', 'write_file',
-        ], $registry->names());
+        ], $registry->allNames());
     }
 
     /** Neznámy tool je zápisový — fail-closed, inak by preklep v mene obišel potvrdenie. */
@@ -671,7 +687,9 @@ class ConsoleToolsTest extends TestCase
      */
     public function test_registry_exposes_definitions_in_the_shape_the_llm_layer_expects(): void
     {
-        $definitions = $this->registry()->definitions();
+        // Tvar je vlastnosť KAŽDÉHO toolu, nie profilu — preto kánon (13), aby sa
+        // overil aj `graph_focus`, ktorý default profil `full` nevystavuje.
+        $definitions = $this->canon()->definitions();
 
         $this->assertCount(count(ToolRegistry::TOOLS), $definitions);
 
@@ -720,8 +738,10 @@ class ConsoleToolsTest extends TestCase
     /** Čítacie tooly nemajú čo potvrdzovať, takže nesmú predstierať náhľad. */
     public function test_read_tools_have_no_preview(): void
     {
-        foreach (['mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep'] as $name) {
-            $this->assertNull($this->tool($name)->preview(['path' => 'app', 'query' => 'x', 'pattern' => 'x']));
+        $canon = $this->canon();
+
+        foreach (['mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep', 'graph_focus'] as $name) {
+            $this->assertNull($canon->get($name)->preview(['path' => 'app', 'query' => 'x', 'pattern' => 'x']));
         }
     }
 
@@ -800,5 +820,238 @@ class ConsoleToolsTest extends TestCase
         $this->assertSame('Vývoj / kód', $data['areas'][0]['name']);
         $this->assertArrayHasKey('node_types', $data);
         $this->assertArrayHasKey('needs_review', $data['totals']);
+    }
+
+    // ---- 9. profily nástrojov -----------------------------------------------
+
+    /**
+     * Kritérium §5/8 kontraktu: definície na profil nesmú prerásť dnešných ~2,6k
+     * tokenov.
+     *
+     * Meria sa PRESNE to, čo ide do requestu: `json_encode(definitions())` s tými
+     * istými flagmi, aké používa jazyková vrstva, delené 4. Nie počet toolov, nie
+     * dĺžka popisov — tie sa dajú obísť. Znaky, nie bajty: popisy sú anglické, ale
+     * nesú `—`, ktorý má 3 bajty a jeden token, takže `strlen()` by profil
+     * zbytočne obviňovala.
+     *
+     * Stropy nie sú jedno globálne číslo. Každý profil má vlastný, pretože globálny
+     * strop 2600 by dovolil, aby `graph` (1246) narástol na dvojnásobok bez toho,
+     * aby to test zbadal — a práve `graph` beží v doku vedľa plátna, kde je kontext
+     * najdrahší.
+     *
+     * KALIBRÁCIA (bez nej test nič nedokazuje): pripojenie 300 znakov výplne do
+     * `MindRecallTool::description()` zdvihne `full` na ~2 616 tok a test padne
+     * hláškou „profil full: 2616 tok > 2600". Bez zmeny prejde a čísla sedia
+     * s tabuľkou §1.2 návrhu.
+     */
+    public function test_tool_definitions_stay_inside_the_budget_of_every_profile(): void
+    {
+        $caps = ['memory' => 1600, 'files' => 1400, 'graph' => 1350, 'full' => 2600];
+
+        // Nový profil bez stropu neprejde — inak by sa strop dal obísť tým, že sa
+        // tool pridá do profilu, o ktorom tento test nevie.
+        $this->assertSame(array_keys(ToolRegistry::PROFILES), array_keys($caps));
+
+        foreach ($caps as $profile => $cap) {
+            $registry = app(ToolRegistry::class);
+            $registry->useProfile($profile);
+
+            $json = json_encode(
+                $registry->definitions(),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            );
+
+            $tokens = (int) ceil(mb_strlen((string) $json) / 4);
+
+            $this->assertLessThanOrEqual($cap, $tokens, "profil {$profile}: {$tokens} tok > {$cap}");
+        }
+    }
+
+    /**
+     * B1 — profil filtruje VYKONANIE, nie len ponuku. Model si `write_file` pamätá
+     * z histórie vlákna; keby sa filtroval len `definitions()`, zavolal by ho a
+     * tool by sa vykonal.
+     */
+    public function test_a_tool_outside_the_profile_is_refused_and_writes_nothing(): void
+    {
+        $registry = app(ToolRegistry::class);
+        $registry->useProfile('memory');   // memory profil nemá súborové tooly
+
+        $result = $registry->call('write_file', ['path' => 'x.txt', 'content' => 'y']);
+
+        $this->assertTrue($result->failed);
+        $this->assertStringContainsString('Unknown tool', $result->text);
+        $this->assertFalse(File::exists($this->root.'/x.txt'));
+    }
+
+    /** B2 — profil nemení stranu toolu (`isWrite`), len či je v sade. */
+    public function test_profile_never_turns_a_write_tool_into_a_read_tool(): void
+    {
+        foreach (ToolRegistry::PROFILES as $profile => $classes) {
+            $registry = app(ToolRegistry::class);
+            $registry->useProfile($profile);
+
+            foreach ($classes as $class) {
+                $tool = app($class);
+                $this->assertSame(
+                    $tool->isWrite(),
+                    $registry->isWrite($tool->name()),
+                    "profil {$profile}: {$tool->name()}"
+                );
+            }
+        }
+    }
+
+    /** B3 — každý zápisový tool v každom profile má čo ukázať pred povolením. */
+    public function test_every_write_tool_in_every_profile_still_has_a_preview(): void
+    {
+        foreach (ToolRegistry::PROFILES as $profile => $classes) {
+            $registry = app(ToolRegistry::class);
+            $registry->useProfile($profile);
+
+            foreach ($classes as $class) {
+                $tool = app($class);
+
+                if (! $tool->isWrite()) {
+                    continue;
+                }
+
+                // Buď diff/pred-po, alebo ToolRefusal s dôvodom (registry ho chytí
+                // a vráti jeho text) — nikdy prázdny dialóg.
+                $preview = $registry->preview($tool->name(), []);
+
+                $this->assertNotNull($preview, "profil {$profile}: {$tool->name()}");
+                $this->assertNotSame('', $preview, "profil {$profile}: {$tool->name()}");
+            }
+        }
+    }
+
+    /** B4 (toolová vrstva) — neznámy profil je výnimka, nie fallback. */
+    public function test_unknown_profile_is_refused_not_substituted(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        app(ToolRegistry::class)->useProfile('bash');
+    }
+
+    /** B8 — `full` je presne dnešná dvanástka; nemôže tichom narásť ani sa zmenšiť. */
+    public function test_full_profile_is_exactly_todays_twelve(): void
+    {
+        $names = array_map(fn (string $c) => app($c)->name(), ToolRegistry::PROFILES['full']);
+
+        $this->assertSame([
+            'mind_recall', 'mind_read', 'mind_overview', 'grep', 'glob', 'read_file',
+            'mind_learn', 'mind_rename', 'mind_move', 'mind_delete', 'edit_file', 'write_file',
+        ], $names);
+
+        // A `full` NEobsahuje `graph_focus` — jeho efekt je klientský a /console
+        // plátno nemá (§1.3 návrhu).
+        $this->assertNotContains(\App\Services\Console\Tools\GraphFocusTool::class, ToolRegistry::PROFILES['full']);
+    }
+
+    /**
+     * B9 — každý profil je podmnožina kánonu (nemôže prepašovať cudziu triedu) a
+     * každý tool patrí aspoň do jedného profilu (nemôže existovať nedosiahnuteľný
+     * a neotestovaný).
+     */
+    public function test_every_profile_is_a_subset_of_the_canon_and_every_tool_belongs_somewhere(): void
+    {
+        $union = [];
+
+        foreach (ToolRegistry::PROFILES as $profile => $classes) {
+            foreach ($classes as $class) {
+                $this->assertContains($class, ToolRegistry::TOOLS, "profil {$profile}: cudzia trieda {$class}");
+                $union[$class] = true;
+            }
+        }
+
+        foreach (ToolRegistry::TOOLS as $class) {
+            $this->assertArrayHasKey($class, $union, "tool {$class} nie je v žiadnom profile");
+        }
+    }
+
+    // ---- 10. graph_focus (navigácia grafu) ----------------------------------
+
+    public function test_graph_focus_resolves_a_node_into_a_go_target(): void
+    {
+        $area = Area::firstOrFail();
+        $dept = \App\Models\Department::create(['area_id' => $area->id, 'name' => 'Konzola', 'slug' => 'konzola']);
+        $node = Node::create([
+            'type' => 'skill', 'area_id' => $area->id, 'department_id' => $dept->id,
+            'label' => 'Ripgrep v konzole', 'description' => 'Vzor ide ako jeden argv prvok.', 'strength' => 2,
+        ]);
+
+        $data = json_decode($this->canon()->call('graph_focus', ['node' => $node->id])->text, true);
+
+        $this->assertSame('node', $data['focused']);
+        $this->assertSame('Ripgrep v konzole', $data['label']);
+        // `nav` je PRESNE argument klientskeho go() — klient nič neprekladá.
+        $this->assertSame([
+            'level' => 'node', 'area' => $area->id, 'dept' => $dept->id, 'node' => $node->id,
+        ], $data['nav']);
+    }
+
+    public function test_graph_focus_resolves_an_area_by_exact_name(): void
+    {
+        $area = Area::firstOrFail();
+
+        $data = json_decode($this->canon()->call('graph_focus', ['area' => 'Vývoj / kód'])->text, true);
+
+        $this->assertSame('area', $data['focused']);
+        $this->assertSame('area', $data['nav']['level']);
+        $this->assertSame($area->id, $data['nav']['area']);
+        $this->assertNull($data['nav']['node']);
+    }
+
+    public function test_graph_focus_resolves_a_department_and_fills_its_area(): void
+    {
+        $area = Area::firstOrFail();
+        $dept = \App\Models\Department::create(['area_id' => $area->id, 'name' => 'Charón', 'slug' => 'charon']);
+
+        $data = json_decode($this->canon()->call('graph_focus', ['department' => 'Charón'])->text, true);
+
+        $this->assertSame('department', $data['focused']);
+        $this->assertSame('dept', $data['nav']['level']);
+        $this->assertSame($dept->id, $data['nav']['dept']);
+        $this->assertSame($area->id, $data['nav']['area']);   // oblasť sa doplnila sama
+    }
+
+    public function test_graph_focus_reset_clears_the_filter(): void
+    {
+        $data = json_decode($this->canon()->call('graph_focus', ['reset' => true])->text, true);
+
+        $this->assertSame('all', $data['focused']);
+        $this->assertSame([
+            'level' => 'map', 'area' => null, 'dept' => null, 'node' => null,
+        ], $data['nav']);
+    }
+
+    public function test_graph_focus_refuses_an_unknown_area_instead_of_guessing(): void
+    {
+        $result = $this->canon()->call('graph_focus', ['area' => 'Kvantová fyzika']);
+
+        $this->assertTrue($result->failed);
+        $this->assertStringContainsString('No area named', $result->text);
+    }
+
+    public function test_graph_focus_refuses_when_nothing_is_given(): void
+    {
+        $result = $this->canon()->call('graph_focus', []);
+
+        $this->assertTrue($result->failed);
+        $this->assertStringContainsString('reset', $result->text);
+    }
+
+    public function test_graph_focus_is_a_read_tool_without_a_preview(): void
+    {
+        $registry = $this->registry();
+
+        $this->assertFalse($this->canon()->isWrite('graph_focus'));
+        $this->assertNull($this->canon()->get('graph_focus')->preview(['node' => 1]));
+
+        // A v profile `graph` je dostupný a vykonateľný bez parkovania.
+        $registry->useProfile('graph');
+        $this->assertTrue($registry->has('graph_focus'));
+        $this->assertFalse($registry->isWrite('graph_focus'));
     }
 }

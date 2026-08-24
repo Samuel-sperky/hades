@@ -163,10 +163,11 @@ try {
 // alebo 'all' (celá sieť vrátane knižnice). Perzistuje 'hades.graphScope', default 'live'.
 S.graphScope = localStorage.getItem('hades.graphScope') === 'all' ? 'all' : 'live';
 
-// FÁZA OBRAZOVKY: balík uzlov na export do Claude Code — Map(id → label). Persist 'hades.pack'.
-// Prvé miesto v appke, odkiaľ sa dá poznatok dostať von (POST /api/context/pack → schránka).
-S.pack = new Map();
-try {
-    const p = JSON.parse(localStorage.getItem('hades.pack') || '[]');
-    if (Array.isArray(p)) for (const it of p) { if (it && it.id != null) S.pack.set(+it.id, it.label || ('#' + it.id)); }
-} catch (e) { /* poškodený balík — prázdny */ }
+// A8 (kontrakt R-6): „Balík pre Claude Code" (S.pack) a kontext doku Charóna
+// (S.charonCtx) SPLYNULI do jedného mechanizmu — kontextu doku. S.pack tu už
+// nie je: tlačidlá „Do balíka" (packBtn) aj čítačka plnia priamo kontext doku
+// (S.charonCtx vlastní charon.js) a poznatok sa von dostane rozhovorom s
+// Charónom nad tým istým kontextom, nie kopírovaním do schránky. Starý kľúč
+// 'hades.pack' sa NEMIGRUJE (strop kontextu je 8 uzlov proti 50 v balíku a
+// tvar sa líši) — je to nevratná zmena významu ovládača, ktorú používateľ
+// schválil (R-6).

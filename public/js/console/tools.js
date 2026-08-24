@@ -12,80 +12,17 @@
    modul. Udalosť je zároveň to isté rozhranie, aké už používa composer.
    =========================================================================== */
 
-import { el, clip, num } from './dom.js';
-import { escapeHtml } from './markdown.js';
+import { el, num } from './dom.js';
 import { pushBlock, scrollIfFollowing } from './render.js';
+import { argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeTarget } from '../shared/gate.js';
+
+/* Slovník a formát brány (ikona, argumenty na riadok, diff, ľudský popis zápisu)
+   žijú v public/js/shared/gate.js — dok Charóna nad grafom hovorí tú istú reč.
+   Tu zostáva len skladanie DOM kariet nad triedami console.css. */
 
 /* Koľko riadkov výsledku sa vidí bez rozbalenia. Šesť je jeden „odsek" — dosť
    na to, aby bolo vidno, či nástroj našiel to, čo mal. */
 const PEEK_LINES = 6;
-
-/* Ikony sú SUBSET Material Symbols. Každá tu menovaná je overená skriptom
-   scratchpad/iconcheck.js — chýbajúca ligatúra sa vykreslí ako svoje meno
-   („terminal"), čo je presne tá porucha, ktorú subset riešil. Keď pridáš nástroj
-   s novou ikonou, over ju, inak radšej nechaj `bolt`. */
-const ICONS = {
-    grep: 'search',
-    search: 'search',
-    ripgrep: 'search',
-    glob: 'search',
-    read: 'description',
-    read_file: 'description',
-    cat: 'description',
-    list: 'list',
-    list_files: 'list',
-    ls: 'list',
-    tree: 'list',
-    edit: 'edit',
-    edit_file: 'edit',
-    write: 'edit',
-    write_file: 'edit',
-    apply_patch: 'edit',
-    mind_recall: 'memory',
-    mind_read: 'memory',
-    recall: 'memory',
-    graph: 'hub',
-    mind_learn: 'psychology',
-    learn: 'psychology',
-    remember: 'psychology',
-    mind_decision: 'psychology',
-    bash: 'code',
-    shell: 'code',
-    php: 'code',
-    artisan: 'code',
-    delete: 'delete',
-    mind_delete: 'delete',
-};
-
-export function iconFor(name) {
-    return ICONS[String(name || '').toLowerCase()] || 'bolt';
-}
-
-/** Argumenty na JEDEN riadok — to, čo o volaní naozaj rozhoduje, ide prvé. */
-export function argsSummary(args) {
-    if (!args || typeof args !== 'object') return '';
-
-    const first = ['pattern', 'query', 'q', 'topic', 'label', 'path', 'file', 'id', 'node', 'command', 'area', 'glob'];
-    const parts = [];
-
-    first.forEach((key) => {
-        const value = args[key];
-        if (value !== undefined && value !== null && value !== '') parts.push(scalar(value));
-    });
-
-    if (parts.length === 0) {
-        Object.entries(args).slice(0, 3).forEach(([key, value]) => parts.push(`${key}=${scalar(value)}`));
-    }
-
-    return clip(parts.join(' · '), 130);
-}
-
-function scalar(value) {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'object') return clip(JSON.stringify(value), 60);
-
-    return String(value);
-}
 
 /* ---------- karta volania ---------- */
 
@@ -308,27 +245,6 @@ function toggleBody(card) {
     scrollIfFollowing();
 }
 
-/* ---------- diff ---------- */
-
-export function looksLikeDiff(text) {
-    const lines = String(text ?? '').split(/\r?\n/);
-
-    return lines.some((line) => /^@@ /.test(line))
-        || lines.some((line) => /^[+-]/.test(line) && !/^([+-]){3}/.test(line));
-}
-
-/** Zafarbené +/- riadky. Farby idú z tokenov certifikácie, žiadny raw hex. */
-export function diffHtml(text) {
-    return String(text ?? '').split(/\r?\n/).map((line) => {
-        const cls = /^(\+\+\+|---|diff |index )/.test(line) ? 'df-meta'
-            : /^@@/.test(line) ? 'df-hunk'
-                : line.startsWith('+') ? 'df-add'
-                    : line.startsWith('-') ? 'df-del' : 'df-ctx';
-
-        return `<span class="dl ${cls}">${escapeHtml(line) || ' '}</span>`;
-    }).join('');
-}
-
 /* ---------- potvrdenie zápisu ---------- */
 
 /**
@@ -435,48 +351,6 @@ export function permissionCard(frame) {
     return card;
 }
 
-const DECISION_LABEL = {
-    allow: 'Povolené',
-    allow_always: 'Povolené — a odteraz bez pýtania',
-    deny: 'Zamietnuté',
-};
-
-/* Čo čítačka povie, keď brána zápisov požiada o rozhodnutie.
-
-   Do 20. 8. 2026 povedala len „Nástroj mind_learn čaká na povolenie." — teda
-   MENO NÁSTROJA a ani slovo o tom, čo sa má zapísať. Meno pritom odznelo aj tak
-   dvakrát (raz z vety, raz z `aria-label` karty, ktorá si berie fokus), kým
-   obsah, o ktorom sa rozhoduje, v AX strome celý JE. Karta pribúda ešte pod
-   `aria-busy="true"`, takže `role="log"` ju sám neohlási: táto jedna veta je
-   jediný kanál, ktorý o zápise povie. */
-export function writeAsk(frame) {
-    return `${writeTarget(frame.name, frame.arguments, frame.preview)}. Enter povolí, Esc zamietne.`;
-}
-
-/* Ľudský popis zápisu: ČO a KAM. Meno nástroja je technické („mind_learn",
-   „apply_patch") a čítačke o obsahu rozhodnutia nepovie nič — preto ho
-   prekladáme na sloveso a doplníme tým, na čom rozhoduje človek: labelom uzla,
-   resp. cestou k súboru. Detail číta z argumentov; keď tam nie je, siahne na
-   prvý riadok náhľadu (u pamäťových zápisov typ a názov uzla, u súborových
-   cestu). Jedno miesto pre prístupné meno karty, žiadosť aj výsledok — aby
-   všetky tri hovorili jedným hlasom. */
-function writeTarget(name, args, preview) {
-    const key = String(name || '').toLowerCase();
-    const detail = argsSummary(args) || firstLine(preview);
-
-    let action = 'Zápis';
-    if (/(^|_)(learn|remember)/.test(key)) action = 'Uloženie do pamäte';
-    else if (/(^|_)decision/.test(key)) action = 'Zápis rozhodnutia do pamäte';
-    else if (/(^|_)delete/.test(key)) action = 'Vymazanie z pamäte';
-    else if (/(^|_)(write|edit|apply|move|rename)/.test(key)) action = 'Zápis do súboru';
-
-    return detail !== '' ? `${action}: ${detail}` : action;
-}
-
-function firstLine(text) {
-    return clip(String(text ?? '').split(/\r?\n/).find((line) => line.trim() !== '') || '', 90);
-}
-
 function decide(card, decision) {
     if (card.classList.contains('decided')) return;
 
@@ -491,7 +365,7 @@ function decide(card, decision) {
     card.classList.add(decision === 'deny' ? 'denied' : 'allowed');
     card.querySelectorAll('button').forEach((btn) => { btn.disabled = true; });
 
-    const done = el('p', 'pc-done', DECISION_LABEL[decision] || decision);
+    const done = el('p', 'pc-done', decisionLabel(decision) || decision);
     card.querySelector('.pc-actions').replaceWith(done);
 
     if (hadFocus) card.focus();
@@ -500,7 +374,7 @@ function decide(card, decision) {
     // a hovorí ĽUDSKY, čo sa (ne)zapísalo — nie meno nástroja. Ako sa po
     // zamietnutí skončí BEH, ohlási run-end cesta cez runstate; tu sa to
     // druhýkrát nepíše.
-    liveAnnounce(`${DECISION_LABEL[decision] || decision}. ${writeTarget(card.dataset.name, card.hadesArgs, card.hadesPreview)}.`);
+    liveAnnounce(`${decisionLabel(decision) || decision}. ${writeTarget(card.dataset.name, card.hadesArgs, card.hadesPreview)}.`);
 
     document.dispatchEvent(new CustomEvent('console:decide', {
         detail: { id: Number(card.dataset.id), decision },

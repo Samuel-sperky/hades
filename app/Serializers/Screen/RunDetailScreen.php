@@ -35,6 +35,7 @@ class RunDetailScreen extends ScreenSerializer
             'prompt' => (string) $run->prompt,
             'provider' => $run->provider,
             'model' => $run->model,
+            'tool_profile' => $run->tool_profile,
             'steps' => $run->steps,
             'tool_calls' => $run->tool_calls,
             'tokens_in' => $run->tokens_in,
@@ -54,7 +55,7 @@ class RunDetailScreen extends ScreenSerializer
     public function fieldsForAi(): array
     {
         return [
-            'uuid', 'status', 'prompt', 'model', 'steps', 'tool_calls',
+            'uuid', 'status', 'prompt', 'model', 'tool_profile', 'steps', 'tool_calls',
             'tokens_in', 'tokens_out', 'duration_ms', 'stop_reason', 'error',
             'started_at', 'thread',
             'timeline[].kind', 'timeline[].role', 'timeline[].text',

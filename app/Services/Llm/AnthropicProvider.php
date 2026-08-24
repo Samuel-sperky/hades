@@ -5,14 +5,13 @@ namespace App\Services\Llm;
 use Anthropic\Client;
 use Anthropic\Lib\Streaming\MessageAccumulator;
 use Anthropic\Messages\Model;
-use App\Http\Controllers\ChatController;
 use JsonSerializable;
 use Throwable;
 
 /**
  * Claude cez oficiálne PHP SDK — ten istý kontrakt ako lokálny model.
  *
- * SDK sa používa presne tak, ako ho volá {@see ChatController}
+ * SDK sa používa presne tak, ako ho volá {@see \App\Http\Controllers\ChatController}
  * (`$client->messages->create(…)`), len s pridanými toolmi a streamovaním.
  *
  * Bez kľúča je `available()` false a `chat()` hodí {@see ProviderUnavailableException}.

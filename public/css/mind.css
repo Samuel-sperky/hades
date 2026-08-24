@@ -1814,183 +1814,21 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 #zoomctl button:active { background: var(--accent-soft); }
 #zoomctl button:disabled { opacity: .4; pointer-events: none; }
 
-/* ---------------------------------------------------------------------------
-   PROMPT BAR (#prompt) — owns bottom-center; white glass, amethyst focus ring
-   --------------------------------------------------------------------------- */
-#prompt {
-    position: fixed;
-    bottom: var(--edge); left: 50%;
-    transform: translateX(-50%);
-    width: 320px;
-    z-index: var(--z-chrome);
-    transition: width var(--dur-slow) var(--ease);
-}
-#prompt.open { width: min(600px, 60vw); }
-
-#prompt-form {
-    display: flex; align-items: center; gap: 10px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    padding: var(--sp-1) var(--sp-1) var(--sp-1) 16px;
-    backdrop-filter: var(--glass-blur);
-    box-shadow: var(--elev-2);
-    transition: border-color var(--dur-slow) var(--ease), box-shadow var(--dur-slow) var(--ease);
-}
-#prompt-form:focus-within {
-    border-color: var(--border-accent);
-    box-shadow: var(--elev-2), 0 0 0 3px rgba(var(--accent-rgb), .16);
-}
-/* Open prompt emits a soft amethyst ring echoing node rings */
-#prompt.open #prompt-form {
-    border-color: var(--border-accent);
-    box-shadow: var(--elev-2), 0 0 0 4px rgba(var(--accent-rgb), .10);
-}
-
-/* KÁNON AKCENTU: iskra bola zlatá („echoes the gold core"), a to je práve to
-   presakovanie, ktoré kánon zakazuje — sedí VNÚTRI interaktívneho ovládacieho prvku
-   (#prompt-form je pole, do ktorého sa píše), takže zlatá tam prestala znamenať
-   „toto je Hades" a začala znamenať „tu sa dá klikať". Amethyst, ako každý iný akcent
-   v chróme; --accent je ten istý token, aký nesú .toast .ms a .dir-tpl .ms. */
-#prompt-form .spark { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
-
-#prompt-input {
-    flex: 1;
-    background: none; border: none; margin: 0;
-    padding: var(--sp-1) 0;
-    font-size: var(--fs-base);
-    font-family: var(--font);
-    color: var(--text);
-}
-#prompt-input::placeholder { color: var(--muted); }
-#prompt-input:focus { outline: none; }
-
-/* Send button: muted amethyst-tint at rest, promoted to solid accent when input has text */
-#prompt-form button {
-    border: 1px solid transparent;
-    background: var(--accent-softer);
-    color: rgba(var(--accent-rgb), .75);
-    border-radius: var(--r-md);
-    width: 40px; height: 40px; min-height: 40px;
-    padding: 0;
-    flex-shrink: 0;
-    font-size: var(--icon-md);
-    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
-                border-color var(--dur-fast) var(--ease);
-}
-#prompt-form button:hover { background: var(--accent-soft); color: var(--accent-ink); }   /* W3b: 2,58:1 → ink */
-#prompt-form.has-text button {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-}
-#prompt-form.has-text button:hover { background: var(--accent-600); border-color: var(--accent-600); }
-
-/* ---------------------------------------------------------------------------
-   CHAT LOG (#chat-log) — unified with prompt into one white-glass surface
-   --------------------------------------------------------------------------- */
-#chat-log {
-    max-height: 44vh; overflow-y: auto;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-bottom: 1px solid var(--line-soft);
-    border-radius: var(--r-lg) var(--r-lg) 0 0;
-    padding: var(--sp-2);
-    margin-bottom: -1px;
-    backdrop-filter: var(--glass-blur);
-    box-shadow: var(--elev-2);
-    display: flex; flex-direction: column; gap: var(--sp-1);
-    animation: rise-fade var(--dur-base) var(--ease);
-}
+/* A9: mŕtvy chat nad grafom (#prompt / #prompt-form / #chat-log / .msg /
+   .suggest-card) je preč — nahradil ho dok Charóna (charon.css). Zostalo len to,
+   čo dok ZDIEĽA: čipy kontextu (.ctx-*, nižšie) a @keyframes rise-fade (používa
+   ho aj #toasts, .screen.active a ďalšie). */
 @keyframes rise-fade {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-.msg {
-    max-width: 88%;
-    padding: var(--sp-1) 12px;
-    border-radius: var(--r-md);
-    font-size: var(--fs-base);
-    line-height: var(--lh-prose);
-    white-space: pre-wrap;
-    user-select: text;
-}
-.msg.me { align-self: flex-end; background: var(--accent-soft); color: var(--text); }
-.msg.hades {
-    align-self: flex-start;
-    background: var(--panel-solid);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-}
-
-/* Hades reply row — gold-ring avatar + bubble (user messages stay avatar-less, right)
-   Zlatá je tu v kánone: avatar JE znak značky v riadku — hovorí „toto povedal Hades".
-   Nie je to interaktívny prvok (nemá hover ani fokus, nedá sa naň klikať). */
-.msg-row {
-    display: flex; align-items: flex-start; gap: var(--sp-1);
-    align-self: flex-start;
-    max-width: 88%;
-}
-.msg-row .msg { max-width: 100%; }
-.avatar {
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    border: 1.5px solid var(--gold-text);
-    background: none;
-    color: var(--gold-text);
-    font-family: var(--mono);
-    font-size: var(--fs-caption);
-    font-weight: var(--fw-semibold);
-    display: inline-flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    margin-top: 4px;
-    user-select: none;
-}
-.msg.sys {
-    align-self: center;
-    color: var(--muted);
-    font-size: var(--fs-small);
-    background: none;
-    padding: var(--sp-0);
-}
-.msg.sys--error {
-    align-self: stretch;
-    color: var(--text-secondary);
-    background: var(--danger-soft);
-    border-left: 2px solid var(--danger);
-}
-.msg.thinking { color: var(--muted); font-style: normal; }
-.msg.thinking .dot {
-    display: inline-block;
-    animation: thinking-pulse var(--dur-pulse) var(--ease) infinite;
-    opacity: .25;
-}
-/* Stagger je ZLOMOK periódy, nie absolútne číslo — inak sa pri zmene --dur-pulse
-   rozpadne rytmus a tri bodky začnú blikať naraz. */
-.msg.thinking .dot:nth-child(2) { animation-delay: calc(var(--dur-pulse) / 6); }
-.msg.thinking .dot:nth-child(3) { animation-delay: calc(var(--dur-pulse) / 3); }
-@keyframes thinking-pulse {
-    0%, 100% { opacity: .25; }
-    50%      { opacity: .8; }
-}
-
 /* ---------------------------------------------------------------------------
-   CHAT KONTEXT (#chat-context) — priložené uzly nad promptom (E3)
+   ČIPY KONTEXTU (.ctx-*) — štítky priložených uzlov. Vznikli pre mŕtvy chat,
+   PREŽILI ho: dok Charóna (charon.js renderContextChips) skladá ten istý markup
+   do #charon-ctx (kontajner štýluje charon.css). Značky sú zdieľané a dobré,
+   preto ostávajú tu.
    --------------------------------------------------------------------------- */
-#chat-context {
-    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0);
-    padding: var(--sp-1) 12px;
-    margin-bottom: var(--sp-1);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    backdrop-filter: var(--glass-blur);
-    box-shadow: var(--elev-1);
-    animation: rise-fade var(--dur-base) var(--ease);
-}
-#chat-context.hidden { display: none; }
-
 .ctx-chip {
     display: inline-flex; align-items: center; gap: var(--sp-0);
     max-width: 100%;
@@ -2036,54 +1874,6 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     transition: color var(--dur-fast) var(--ease);
 }
 .ctx-clear:hover { color: var(--text); }
-
-/* ---------------------------------------------------------------------------
-   POTVRDZOVACIA KARTA (.suggest-card) — „Zapamätať" v chate (E2)
-   --------------------------------------------------------------------------- */
-.suggest-card {
-    align-self: stretch;
-    display: flex; flex-direction: column; gap: var(--sp-1);
-    padding: var(--sp-2);
-    background: var(--panel);
-    border: 1px solid var(--border-accent);
-    border-radius: var(--r-md);
-    box-shadow: var(--elev-1);
-    animation: rise-fade var(--dur-base) var(--ease);
-}
-.sc-head {
-    display: flex; align-items: center; gap: var(--sp-1);
-    color: var(--text);
-    font-weight: var(--fw-medium);
-    font-size: var(--fs-body);
-}
-/* KÁNON AKCENTU: hlavička karty návrhu je chróm, nie značka — amethyst (bolo --gold-text). */
-.sc-head .ms { font-size: var(--icon-sm); color: var(--accent); }
-.suggest-card .sc-label {
-    width: 100%;
-    background: var(--field-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    padding: var(--sp-1) 10px;
-    font-family: var(--font);
-    font-size: var(--fs-base);
-    color: var(--text);
-}
-.suggest-card .sc-label:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
-.sc-row { display: flex; gap: var(--sp-1); }
-.suggest-card select {
-    flex: 1;
-    min-width: 0;
-    background: var(--field-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    padding: var(--sp-1) 10px;
-    font-family: var(--font);
-    font-size: var(--fs-small);
-    color: var(--text);
-}
-.suggest-card select:focus { outline: none; border-color: var(--border-accent); box-shadow: var(--focus-ring); }
-.sc-actions { display: flex; gap: var(--sp-1); }
-.sc-actions button { flex: 1; }
 
 /* ---------------------------------------------------------------------------
    TOASTS (#toasts) — white glass, inset amethyst bar, pause-on-hover
@@ -2565,7 +2355,6 @@ body.ambient #app-header,
 body.ambient #dock,
 body.ambient #node-panel,
 body.ambient #zoomctl,
-body.ambient #prompt,
 body.ambient #toasts {
     opacity: 0;
     pointer-events: none;
@@ -3101,14 +2890,16 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
 /* Prepojiť s uzlom / dokument / do balíka — štvorcové ghost tlačidlá medzi Upraviť a mazaním */
 #node-connect,
 #node-md,
-#node-pack {
+#node-charon {
     flex: 0 0 auto;
     width: 40px; height: 40px; min-height: 40px;
     padding: 0;
     font-size: var(--icon-md);
 }
 #node-md.hidden { display: none; }
-#node-pack.in-pack { color: var(--accent-ink); background: var(--accent-soft); }   /* W3b: 2,54:1 → ink */
+/* A8: #node-pack zaniklo, #node-charon plní kontext doku. Aktívny stav nesie
+   `.in-context` (charon.js) — tá istá ink/soft dvojica, akú mal #node-pack. */
+#node-charon.in-context { color: var(--accent-ink); background: var(--accent-soft); }
 
 /* ---------------------------------------------------------------------------
    NOVÝ UZOL (#btn-new-node) — tichá prerušovaná výzva pod stromom štruktúry
@@ -3142,9 +2933,6 @@ body:not([data-screen="graf"]) #header-metrics,
    pribudne ďalší prvok hlavičky viazaný na graf, patrí do tohto zoznamu tiež. */
 body:not([data-screen="graf"]) .h-scope,
 body:not([data-screen="graf"]) #local-chip { display: none !important; }
-
-/* Chat je schovaný, kým ho v Nastaveniach nezapneš (nefunguje bez API kľúča) */
-body:not(.chat-on) #prompt { display: none !important; }
 
 /* Kontajner obrazoviek — obsahová plocha za railom, pod hlavičkou.
    Fluidná mriežka: obsah berie celú dostupnú šírku, gutter rastie s oknom. */
@@ -3523,52 +3311,10 @@ body[data-screen="graf"] #screens { display: none; }
 }
 .pack-btn.in-pack { color: var(--accent-ink); }
 
-/* ---- Pack indikátor v hlavičke ---- */
-#pack-trigger {
-    display: inline-flex; align-items: center; gap: 5px;
-    margin-right: var(--sp-1);
-    background: var(--accent-soft);
-    border: 1px solid var(--border-accent);
-    color: var(--accent-ink);          /* W3b: --accent-600 dal na tmavej 2,58:1 */
-    border-radius: var(--r-md);
-    padding: 5px 10px; min-height: 32px;
-    font-family: var(--mono); font-size: var(--fs-body); font-weight: 600;
-    transition: background var(--dur-fast) var(--ease);
-}
-#pack-trigger:hover { background: var(--accent-softer); }
-#pack-trigger .ms { font-size: var(--icon-sm); }
-#pack-count { font-variant-numeric: tabular-nums; }
-
-/* ---- Zásuvka balíka (export pre Claude Code) ---- */
-#pack-drawer {
-    position: fixed;
-    top: var(--content-top); bottom: var(--edge);
-    right: var(--edge);
-    width: var(--drawer-w);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    backdrop-filter: var(--glass-blur);
-    box-shadow: var(--elev-2);
-    z-index: calc(var(--z-panel) + 1);
-    padding: var(--sp-2);
-    display: flex; flex-direction: column;
-    animation: panel-in-r var(--dur-slow) var(--ease);
-}
-.pack-hint { font-size: var(--fs-small); color: var(--muted); margin-bottom: var(--sp-2); }
-#pack-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.pack-row {
-    display: flex; align-items: center; gap: var(--sp-1);
-    padding: var(--sp-1); border-radius: var(--r-sm);
-}
-.pack-row:hover { background: var(--hover-fill); }
-.pack-row-label {
-    flex: 1; min-width: 0;
-    font-size: var(--fs-body); color: var(--text);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.pack-row-del { flex: 0 0 auto; width: 28px; min-height: 28px; padding: 0; font-size: var(--icon-xs); }
-.pack-actions { margin-top: var(--sp-2); }
+/* A8 (R-6): indikátor balíka v hlavičke (#pack-trigger) aj zásuvka balíka
+   (#pack-drawer, .pack-row*) zanikli — „Do balíka" plní kontext doku Charóna,
+   export do schránky nahradil rozhovor. Tlačidlá .pack-btn v riadkoch ostávajú
+   (vyššie), len prepínajú členstvo v kontexte doku. */
 
 /* ---- Čítačka: pätička s viacerými akciami ---- */
 #md-foot { gap: var(--sp-1); align-items: center; }
@@ -3583,8 +3329,6 @@ body[data-screen="graf"] #screens { display: none; }
    layout (viewInsets) a nemôže sa rozísť so skutočnou šírkou panelu. */
 @media (max-width: 1280px) {
     :root { --panel-w: min(300px, 26vw); }
-    #prompt.open,
-    #prompt:focus-within { width: min(600px, calc(100vw - 96px - var(--panel-w) - 48px)); }
     #header-metrics { display: none; }
 }
 
@@ -4564,10 +4308,10 @@ button.danger.armed {
       VŠETKY miesta kontrastného dlhu sú opravené PRIAMO v svojej deklarácii
       (hľadaj komentár „W3b" pri --accent-ink), nie prepisom tu — jedna pravda
       na jedno miesto. Zoznam: .chip:hover, .pack-btn:hover, .pack-btn.in-pack,
-      #md-pack.in-pack, .queue-actions button.act-resolve:hover, #pack-trigger,
-      #node-pack.in-pack, .sug-add:hover, .badge, .tree-row.active (+ .count),
-      #btn-new-node:hover, #local-chip .lc-depth.active, #prompt-form
-      button:hover, .ctx-x:hover.
+      #md-pack.in-pack, .queue-actions button.act-resolve:hover,
+      .sug-add:hover, .badge, .tree-row.active (+ .count),
+      #btn-new-node:hover, #local-chip .lc-depth.active, .ctx-x:hover.
+      (#pack-trigger, #node-pack.in-pack a #prompt-form button:hover zanikli s A8/A9.)
    --------------------------------------------------------------------------- */
 
 /* ###########################################################################
@@ -4847,12 +4591,14 @@ button, input, select {
 .run-toggle[aria-expanded="true"] .ms { transform: none; }
 .run-toggle:hover { background: var(--accent-softer); color: var(--text); }
 
-.run-when, .run-model {
+.run-when, .run-model, .run-profile {
     color: var(--muted);
     font-size: var(--fs-caption);
 }
 
 .run-model { font-family: var(--mono); }
+/* Profil nástrojov behu — druhá tichá metadáta vedľa modelu, odlíšená tónom. */
+.run-profile { font-family: var(--mono); color: var(--accent-ink); background: var(--accent-softer); border-radius: var(--r-sm); padding: 0 6px; }
 
 .run-prompt {
     margin: 0;

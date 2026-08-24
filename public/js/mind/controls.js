@@ -349,17 +349,9 @@ export function setupControls() {
         });
     }
 
-    // FÁZA SHELL: chat je schovaný (nefunguje bez API kľúča) — prepínač ho vráti
-    const chatBtn = $('chat-toggle');
-    const chatOn = localStorage.getItem('hades.chat') === '1';
-    document.body.classList.toggle('chat-on', chatOn);
-    chatBtn.setAttribute('aria-checked', chatOn ? 'true' : 'false');
-    chatBtn.onclick = () => {
-        const on = !document.body.classList.contains('chat-on');
-        document.body.classList.toggle('chat-on', on);
-        localStorage.setItem('hades.chat', on ? '1' : '0');
-        chatBtn.setAttribute('aria-checked', on ? 'true' : 'false');
-    };
+    // A9: prepínač „Chat s Hadesom" je preč — mŕtvy chat nad grafom nahradil dok
+    // Charóna (otvára sa tlačidlom #charon-toggle a klávesou C, bez prepínača v
+    // Nastaveniach — kontrakt R-2/§1b). Trieda `chat-on` sa už nikde nenastavuje.
 
     // Zvuk — prepínač v nastaveniach
     const soundBtn = $('btn-sound');

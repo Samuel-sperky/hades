@@ -115,6 +115,24 @@ return [
     'console' => [
         'provider' => env('HADES_CONSOLE_PROVIDER', 'ollama'),
 
+        // Ktorý profil nástrojov dostane beh, keď si klient žiadny nevyžiada.
+        // `full` je dnešná dvanástka, teda default je BEZ zmeny chovania konzoly.
+        // Členstvo profilov je v kóde ({@see \App\Services\Console\ToolRegistry::PROFILES}),
+        // nie tu — v configu je len meno defaultu. Neznámy profil sa ODMIETNE
+        // (nie fallback na full): profil nesmie byť cesta k obídeniu brány zápisov.
+        'profile' => env('HADES_CONSOLE_PROFILE', 'full'),
+
+        // Kontext z grafu, ktorý dok priloží k otázke. Skladá sa NA SERVERI
+        // (klient posiela iba id) — inak by sa modelu, ktorý má zápisové tooly,
+        // dal podstrčiť popis uzla, ktorý v pamäti nie je. Čísla sa dajú ladiť
+        // bez zásahu do kódu, ale strop musí čítať z tohto configu aj validátor
+        // v RunController, inak sa dve čísla ticho rozídu.
+        'context' => [
+            'nodes' => (int) env('HADES_CONSOLE_CTX_NODES', 8),
+            'chars' => (int) env('HADES_CONSOLE_CTX_CHARS', 2400),
+            'desc_chars' => (int) env('HADES_CONSOLE_CTX_DESC', 300),
+        ],
+
         'ollama' => [
             // Default mieri na Ollamu BEŽIACU NA STROJI (host.docker.internal),
             // nie na `http://ollama:11434` — služba `ollama` v compose je

@@ -1,9 +1,8 @@
 import { closeCmdk, cmdkOpen, openCmdk } from './cmdk.js';
+import { toggleCharon } from './charon.js';
 import { closeDock, dockOpen, openDock } from './dock.js';
 import { clearLocal, setLocal } from './filters.js';
-import { collapsePrompt } from './chat.js';
 import { closeMdOverlay } from './md.js';
-import { closePackDrawer, packDrawerOpen } from './pack.js';
 import { cancelConnect, closeNodePanel, openCreateNode } from './panels.js';
 import { fitView, zoomBy } from './render.js';
 import { openNodeFromAnywhere, setScreen } from './screens.js';
@@ -20,6 +19,7 @@ export const SHORTCUTS = [
     ['↑ / ↓ / Enter', 'Pohyb v palete a potvrdenie'],
     ['1 / 2 / 3 / 4', 'Filter: celá sieť / oblasť / oddelenie / uzol'],
     ['V', 'Pohľad: Sieť ↔ Vrstvy (na Grafe)'],
+    ['C', 'Charón — rozhovor nad grafom'],
     ['Enter', 'Zamerať zvolený uzol'],
     ['Esc', 'Zrušiť filter'],
     ['Backspace', 'O úroveň von'],
@@ -109,7 +109,6 @@ export function setupShortcuts() {
         if (e.key === 'Escape') {
             // kaskáda — jeden Esc zavrie vždy len najvrchnejšiu vrstvu
             if (cmdkOpen()) { closeCmdk(); return; }
-            if (packDrawerOpen()) { closePackDrawer(); return; }
             if (S.connectFrom) { cancelConnect(); showToast('Prepájanie zrušené'); return; }
             if (S.screen === 'kontrola') {
                 const armed = document.querySelector('#kontrola-body .act-skip.armed');
@@ -125,10 +124,6 @@ export function setupShortcuts() {
             if (deptRow) { deptRow.remove(); return; }
             if (!$('node-panel').classList.contains('hidden')) { closeNodePanel(); return; }
             if (dockOpen) { closeDock(); return; }
-            if ($('prompt').classList.contains('open') || !$('chat-log').classList.contains('hidden')) {
-                collapsePrompt();
-                return;
-            }
             if (S.local) { clearLocal(); return; }
             // VLNA GRAF A: posledný stupienok kaskády = ZRUŠ FILTER. Scéna je jedna,
             // takže niet kam „vyskakovať" — Esc len vráti celú sieť do plnej sily.
@@ -196,12 +191,12 @@ export function setupShortcuts() {
                 if (S.screen !== 'graf') { showToast('Pohľad prepneš na obrazovke Graf'); break; }
                 setView(S.gview === 'layers' ? 'net' : 'layers');
                 break;
+            // C otvára/zatvára dok Charóna nad grafom (kontrakt R-2/§1b: dok sa
+            // otvára klávesou a tlačidlom, bez prepínača v Nastaveniach). Nahradil
+            // mŕtvy chat, ktorý C otváral len keď bola zapnutá trieda `chat-on`.
             case 'c': case 'C':
-                if (document.body.classList.contains('chat-on')) {
-                    e.preventDefault();
-                    $('prompt').classList.add('open');
-                    $('prompt-input').focus();
-                }
+                e.preventDefault();
+                toggleCharon();
                 break;
             case '+': case '=': zoomBy(1.3); break;
             case '-': zoomBy(1 / 1.3); break;
@@ -215,7 +210,7 @@ export const HINTS = [
     { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš sedem obrazoviek — Dnes, Denník, Graf, Knižnica, Rozhodnutia, Kontrola a Smernica. Hades sa otvorí na Dnes.' },
     { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
     { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Graf je jedna veľká sieť — chodíš po nej ťahaním a zoomom. Klik na oblasť, oddelenie alebo uzol ju len zaostrí (zvyšok stmavne), Esc filter zruší. V prepne na Vrstvy.' },
-    { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, sieť, chat) a Pomocníka.' },
+    { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, hustota, sieť) a Pomocníka.' },
 ];
 
 export function setupHints() {

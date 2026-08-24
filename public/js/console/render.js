@@ -13,9 +13,10 @@
 
 import { C } from './state.js';
 import { $, el, num } from './dom.js';
-import { renderMarkdown } from './markdown.js';
-import { historyCard, permissionCard, writeAsk } from './tools.js';
-import { costLabel, runNote } from './runstate.js';
+import { renderMarkdown } from '../shared/markdown.js';
+import { writeAsk } from '../shared/gate.js';
+import { costLabel, runNote } from '../shared/runstate.js';
+import { historyCard, permissionCard } from './tools.js';
 
 /* Koľko pixelov nad spodkom sa ešte považuje za „stojím na spodku". Menej než
    riadok textu by follow vypínalo pri doskrolovaní o pol riadka. */

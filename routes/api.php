@@ -9,7 +9,6 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SearchController as ApiSearchController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
-use App\Http\Controllers\ChatController;
 use App\Http\Controllers\Console\ModelController as ConsoleModelController;
 use App\Http\Controllers\Console\RunController as ConsoleRunController;
 use App\Http\Controllers\Console\ThreadController as ConsoleThreadController;
@@ -30,7 +29,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 
 // ---------------------------------------------------------------------------
-// Interné /api/* pre SPA (dashboard, graf, chat) — §4.3 kontraktu: SPA nikdy
+// Interné /api/* pre SPA (dashboard, graf, Charón) — §4.3 kontraktu: SPA nikdy
 // nedrží token. Od 13. 8. 2026 sú za UI guardom (AuthenticateUi) — dovtedy ich
 // nechránilo nič okrem bindingu na 127.0.0.1:8080, takže ktorýkoľvek lokálny
 // proces vedel čítať aj prepisovať celú pamäť (§8.1 docs/BEZPECNOST.md).
@@ -80,7 +79,11 @@ Route::middleware([
 
     Route::get('/activations', [ActivationController::class, 'index']);
 
-    Route::post('/chat', [ChatController::class, 'send'])->middleware('throttle:20,1');
+    // A9: mŕtvy chat nad grafom (POST /chat → ChatController@send cez Anthropic)
+    // je odpojený. Nahradil ho dok Charóna nad plátnom (/api/console/run, nižšie),
+    // ktorý beží lokálne a nesie dvojfázovú bránu zápisov. ChatController zostáva
+    // ako referenčná implementácia volania SDK (viď AnthropicProvider @see), ale
+    // nevedie k nemu žiadna route ani UI.
 
     // Foldering / štruktúra vedomia
     Route::get('/structure', [StructureController::class, 'index']);

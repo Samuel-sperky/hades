@@ -26,7 +26,7 @@ export async function selectNode(n) {
     closeCreateMode(); // výber uzla vždy vracia panel do detailného režimu
     S.selected = n;
     requestDraw(); // nový výber → prekresli zvýraznenie (slučka mohla spať)
-    updatePackUi(); // node-pack tlačidlo odzrkadlí stav balíka pre tento uzol
+    updatePackUi(); // #node-charon + .pack-btn odzrkadlia členstvo uzla v kontexte doku (A8)
     if (NARROW.matches) closeDock(); // úzke okno: dock a detail ležia na sebe
     $('node-panel').classList.remove('hidden');
     $('node-form').classList.add('hidden');

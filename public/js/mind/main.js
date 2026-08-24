@@ -4,7 +4,7 @@ import { setupCmdk } from './cmdk.js';
 import { setupControls } from './controls.js';
 import { clearLocal, setLocal } from './filters.js';
 import { installFetchGuard } from './http.js';
-import { setupPrompt } from './chat.js';
+import { setupCharon } from './charon.js';
 import { setupInput } from './interaction.js';
 import { setupPack } from './pack.js';
 import { buildLegend } from './panels.js';
@@ -76,7 +76,10 @@ async function init() {
     setView(S.view);
     setupCmdk();
     setupPack();
-    setupPrompt();
+    // A9: dok Charóna nahradil mŕtvy chat. setupCharon() beží po installFetchGuard()
+    // (potrebuje CSRF na window.fetch) a nahrádza niekdajšie setupPrompt(). Bootstrap
+    // skript v mind.blade.php, ktorý ho volal vo fáze 1, je preto preč.
+    setupCharon();
     setupHints();
     connectWs(data.ws);
     checkJournalUnread();

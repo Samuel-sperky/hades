@@ -385,6 +385,131 @@ class ConsoleRunTest extends TestCase
         }
     }
 
+    // ---- profily nástrojov -------------------------------------------------
+
+    /** B4 — neznámy profil sa ODMIETNE (422) a NEZALOŽÍ fantómový beh v logu. */
+    public function test_unknown_profile_is_refused_and_leaves_no_run(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $this->fakeTools([]);
+        $this->fakeProvider([new LlmResponse(text: 'nič')]);
+
+        $response = $this->postJson('/api/console/run', [
+            'thread' => $thread->uuid,
+            'message' => 'Ahoj',
+            'profile' => 'bash',
+        ]);
+
+        $response->assertStatus(422);
+        $frames = $this->frames($response);
+        $this->assertSame('error', $frames[0]['t']);
+        $this->assertSame('Taký profil nástrojov tu nie je.', $frames[0]['message']);
+
+        // Validácia beží PRED založením behu — inak by preklep plnil log.
+        $this->assertSame(0, \App\Models\Run::count());
+    }
+
+    /** B5 — `/decide` profil v requeste ODMIETNE; zaparkovaný zápis zostane `pending`. */
+    public function test_decide_refuses_a_profile_in_the_request(): void
+    {
+        [$thread, $edit, $call] = $this->parkedWrite([new LlmResponse(text: 'Toto sa nesmie stať.')]);
+
+        $response = $this->postJson('/api/console/decide', [
+            'thread' => $thread->uuid,
+            'call' => $call,
+            'decision' => AgentRunner::DECISION_ALLOW,
+            'profile' => 'graph',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(
+            'O profile nástrojov sa rozhoduje pri spustení behu.',
+            $this->frames($response)[0]['message'],
+        );
+
+        $this->assertSame(0, $edit->executed);
+        $this->assertDatabaseHas('console_tool_calls', ['id' => $call, 'status' => 'pending']);
+    }
+
+    /**
+     * B6 — profil pre obnovu sa čítá zo SERVERA (`console_threads.tool_profile`),
+     * nie z klienta: zápis povolený v `full` sa vykoná, nie odmietne.
+     */
+    public function test_a_parked_write_resumes_on_the_profile_the_run_started_with(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $edit = $this->fakeTool('edit_file', write: true, display: 'zapísané', preview: 'diff');
+        $this->fakeTools([$edit]);
+        $this->fakeProvider([
+            new LlmResponse(toolCalls: [new LlmToolCall('c1', 'edit_file', ['path' => 'a.txt'])], stopReason: LlmResponse::STOP_TOOL_USE),
+            new LlmResponse(text: 'Zapísal som to.'),
+        ]);
+
+        $frames = $this->frames($this->postJson('/api/console/run', [
+            'thread' => $thread->uuid, 'message' => 'Uprav a.txt', 'profile' => 'full',
+        ]));
+
+        $call = $this->frame($frames, 'permission')['id'];
+        $this->assertSame('full', $thread->fresh()->tool_profile);
+
+        $decideFrames = $this->frames($this->decide($thread, $call, AgentRunner::DECISION_ALLOW));
+
+        $this->assertSame(1, $edit->executed);
+        $this->assertSame('end', $decideFrames[count($decideFrames) - 1]['t']);
+    }
+
+    /**
+     * B7 — dvojfázová brána platí aj v malom profile: zápisový tool v profile
+     * `graph` zaparkuje, turn skončí BEZ rámca `end` (kritérium §5/9 pre dok).
+     */
+    public function test_the_graph_profile_still_parks_a_write(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $learn = $this->fakeTool('mind_learn', write: true, display: 'uložené', preview: 'pred/po');
+        $this->fakeTools([$learn]);
+        $this->fakeProvider([
+            new LlmResponse(toolCalls: [new LlmToolCall('c1', 'mind_learn', ['label' => 'x'])], stopReason: LlmResponse::STOP_TOOL_USE),
+        ]);
+
+        $frames = $this->frames($this->postJson('/api/console/run', [
+            'thread' => $thread->uuid, 'message' => 'Zapamätaj si toto', 'profile' => 'graph',
+        ]));
+
+        $this->assertNotNull($this->frame($frames, 'permission'));
+        $this->assertNull($this->frame($frames, 'end'));
+        $this->assertSame('permission', $frames[count($frames) - 1]['t']);
+        $this->assertSame(0, $learn->executed);
+        $this->assertSame('graph', $thread->fresh()->tool_profile);
+    }
+
+    /** Profil sa zapíše do logu behov — log vie povedať, s čím beh bežal. */
+    public function test_run_records_the_tool_profile_it_ran_with(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $this->fakeTools([]);
+        $this->fakeProvider([new LlmResponse(text: 'Ahoj.')]);
+
+        $this->frames($this->postJson('/api/console/run', [
+            'thread' => $thread->uuid, 'message' => 'Ahoj', 'profile' => 'memory',
+        ]));
+
+        $this->assertSame('memory', $thread->fresh()->tool_profile);
+        $this->assertDatabaseHas('runs', ['thread_id' => $thread->id, 'tool_profile' => 'memory']);
+    }
+
+    /** Bez vyžiadaného profilu beh dostane default z configu (`full`). */
+    public function test_run_without_a_profile_uses_the_config_default(): void
+    {
+        $thread = ConsoleThread::create([]);
+        $this->fakeTools([]);
+        $this->fakeProvider([new LlmResponse(text: 'Ahoj.')]);
+
+        $this->frames($this->send($thread, 'Ahoj'));
+
+        $this->assertSame('full', $thread->fresh()->tool_profile);
+        $this->assertDatabaseHas('runs', ['thread_id' => $thread->id, 'tool_profile' => 'full']);
+    }
+
     // ---- pomôcky -----------------------------------------------------------
 
     /** Zaparkovaný zápis: vlákno, tool a id `pending` riadku, na ktorý sa rozhoduje. */

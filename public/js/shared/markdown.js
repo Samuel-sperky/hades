@@ -10,6 +10,12 @@
    Povolené je presne: ```plot```, `inline`, **tučné**, *kurzíva*, odrážky,
    číslované zoznamy, nadpisy a odkazy s http(s)/relatívnou schémou. Všetko
    ostatné zostáva textom.
+
+   Zdieľaný modul (public/js/shared/) — plnú konzolu aj dok Charóna nad grafom
+   obsluhuje TEN ISTÝ renderer. NEUNIFIKOVAŤ s public/js/mind/md.js (`mdToHtml`)
+   ani s `mdToHtml` v public/js/mind/util.js: sú to iné úlohy (dokument uzla,
+   náhľad v 300 px paneli) a zlúčenie troch rendererov je samostatná úloha.
+   Modul NIČ neimportuje, takže nie je súčasťou žiadneho cyklu.
    =========================================================================== */
 
 // Zástupné znaky sú NUL — v texte od modelu sa nevyskytnú a nezasahujú do

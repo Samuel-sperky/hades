@@ -210,6 +210,9 @@ function runItemHtml(r) {
         + '<span class="badge" data-status="' + esc(r.status) + '">' + esc(STATUS_LABEL[r.status] || r.status) + '</span>'
         + '<span class="run-when">' + esc(timeAgo(r.started_at)) + '</span>'
         + (r.model ? '<span class="run-model">' + esc(r.model) + '</span>' : '')
+        // Profil nástrojov, s ktorým beh bežal (memory/files/graph/full). null = beh
+        // z čias pred profilmi, vtedy sa nič nehlási.
+        + (r.tool_profile ? '<span class="run-profile">' + esc(r.tool_profile) + '</span>' : '')
         + '<button type="button" class="run-toggle" data-toggle="' + esc(r.uuid) + '"'
         + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + esc(panelId) + '"'
         + ' aria-label="' + esc((open ? 'Zavrieť beh: ' : 'Otvoriť beh: ') + clipLabel(prompt)) + '">'

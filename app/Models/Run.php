@@ -29,7 +29,7 @@ class Run extends Model
     }
 
     protected $fillable = [
-        'uuid', 'thread_id', 'source', 'prompt', 'provider', 'model', 'status',
+        'uuid', 'thread_id', 'source', 'prompt', 'provider', 'model', 'tool_profile', 'status',
         'stop_reason', 'error', 'steps', 'tool_calls', 'tokens_in', 'tokens_out',
         'duration_ms', 'tokens_per_second', 'from_message_id', 'to_message_id',
         'started_at', 'ended_at',

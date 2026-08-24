@@ -81,6 +81,11 @@ class RunRecorder
             'prompt' => $prompt,
             'provider' => $options['provider'] ?? $thread->provider,
             'model' => $options['model'] ?? $thread->model,
+            // Profil sa berie z `$options` (nastavil ho RunController pri spustení),
+            // s fallbackom na vlákno pre segment po obnove. `resume()` beží cez
+            // ten istý `open()` len keď sa otvorený beh nenašiel, takže obnovený
+            // segment dostane profil vlákna — presne ten, s ktorým ťah začal.
+            'tool_profile' => $options['profile'] ?? $thread->tool_profile,
             'status' => 'running',
             'from_message_id' => (int) (ConsoleMessage::max('id') ?? 0) + 1,
             'started_at' => now(),

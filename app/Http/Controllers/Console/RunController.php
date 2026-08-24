@@ -8,6 +8,8 @@ use App\Models\ConsoleToolCall;
 use App\Models\Run;
 use App\Services\Console\AgentRunner;
 use App\Services\Console\RunRecorder;
+use App\Services\Console\ContextBlock;
+use App\Services\Console\ToolRegistry;
 use App\Services\Llm\ProviderFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -66,16 +68,28 @@ class RunController extends Controller
         'provider.in' => 'Taký poskytovateľ modelu tu nie je.',
         'model.string' => 'Meno modelu nemá platný tvar.',
         'model.max' => 'Meno modelu presahuje 120 znakov.',
+        'profile.string' => 'Meno profilu nástrojov nemá platný tvar.',
+        'profile.in' => 'Taký profil nástrojov tu nie je.',
+        'profile.prohibited' => 'O profile nástrojov sa rozhoduje pri spustení behu.',
     ];
 
     /** Jeden ťah: správa človeka → prúd rámcov protokolu. */
-    public function run(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder): StreamedResponse
+    public function run(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder, ToolRegistry $tools, ContextBlock $context): StreamedResponse
     {
         $validator = Validator::make($request->all(), [
             'thread' => 'required|uuid',
             'message' => 'required|string|max:8000',
             'provider' => 'sometimes|nullable|string|in:'.implode(',', $providers->names()),
             'model' => 'sometimes|nullable|string|max:120',
+            // Neznámy profil sa ODMIETNE tu, na hranici — zoznam sa skladá z kľúčov
+            // PROFILES, takže preklep nikdy neprejde ďalej a nezaloží fantómový beh
+            // (validácia beží pred `openExclusive()`).
+            'profile' => 'sometimes|nullable|string|in:'.implode(',', array_keys(ToolRegistry::PROFILES)),
+            // Kontext z grafu: dok posiela iba id, blok sa skladá na serveri
+            // (ContextBlock). Strop sa číta z toho istého configu ako ContextBlock,
+            // nie z vlastnej konštanty — inak by sa dve čísla ticho rozišli.
+            'context_node_ids' => 'sometimes|array|max:'.(int) config('hades.console.context.nodes', 8),
+            'context_node_ids.*' => 'integer',
         ], self::MESSAGES);
 
         if ($validator->fails()) {
@@ -96,7 +110,20 @@ class RunController extends Controller
             return $this->refuse('Vlákno čaká na rozhodnutie o zápise. Najprv ho povoľ alebo zamietni.');
         }
 
-        $options = ['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null];
+        // Profil sa vyberie TU, pred založením behu, a nastaví sa na singleton
+        // registra (ten istý objekt dostane `AgentRunner` cez konštruktor). Profil
+        // sa perzistuje na vlákno, aby ho obnova zaparkovaného zápisu čítala zo
+        // servera, nie z klienta — inak by sa sada toolov dala vymeniť medzi
+        // vyžiadaním povolenia a jeho vykonaním.
+        $profile = $data['profile'] ?? (string) config('hades.console.profile', 'full');
+        $tools->useProfile($profile);
+        $thread->tool_profile = $profile;
+
+        $options = [
+            'provider' => $data['provider'] ?? null,
+            'model' => $data['model'] ?? null,
+            'profile' => $profile,
+        ];
 
         // Beh sa zakladá PRED prúdom, aby existoval aj vtedy, keď model nedá ani
         // prvý rámec — práve taký beh chce človek v logu nájsť.
@@ -111,9 +138,16 @@ class RunController extends Controller
             return $this->refuse('V tomto vlákne už jeden beh prebieha. Počkaj, kým dobehne, alebo ho zastav.');
         }
 
+        // Model dostane kontext + otázku; log behu dostane LEN otázku. `runs.prompt`
+        // je zadanie, ktoré „Spustiť znovu" vracia — kontext je aktuálny výber uzlov,
+        // nie súčasť zadania, a nesmie sa doň zamiešať. `console_messages.content`
+        // (píše ho recorder->wrap cez runner) tak ostane verné tomu, čo model videl.
+        $block = $context->build($data['context_node_ids'] ?? []);
+        $withContext = $block === '' ? $data['message'] : $block."\n\n".$data['message'];
+
         return $this->stream(fn (callable $emit, callable $aborted) => $runner->run(
             $thread,
-            $data['message'],
+            $withContext,
             $recorder->wrap($run, $emit),
             $aborted,
             $options,
@@ -121,7 +155,7 @@ class RunController extends Controller
     }
 
     /** Rozhodnutie o jednom zápisovom toole — a pokračovanie toho istého ťahu. */
-    public function decide(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder): StreamedResponse
+    public function decide(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder, ToolRegistry $tools): StreamedResponse
     {
         $validator = Validator::make($request->all(), [
             'thread' => 'required|uuid',
@@ -133,6 +167,10 @@ class RunController extends Controller
             ]),
             'provider' => 'sometimes|nullable|string|in:'.implode(',', $providers->names()),
             'model' => 'sometimes|nullable|string|max:120',
+            // `/decide` profil NEPRIJÍMA. Keby ho prijalo, dal by sa zaparkovaný
+            // `write_file` dorozhodnúť v profile, ktorý ho nemá (alebo naopak) —
+            // teda vymeniť sadu toolov medzi vyžiadaním povolenia a jeho vykonaním.
+            'profile' => 'prohibited',
         ], self::MESSAGES);
 
         if ($validator->fails()) {
@@ -156,6 +194,10 @@ class RunController extends Controller
         if ($call === null) {
             return $this->refuse('Toto rozhodnutie sa nedá priradiť k žiadnemu volaniu toolu.');
         }
+
+        // Profil sa čítá z vlákna (server), nie z requestu (klient): segment po
+        // rozhodnutí musí bežať na tej istej sade toolov, s akou ťah začal.
+        $tools->useProfile((string) ($thread->tool_profile ?: config('hades.console.profile', 'full')));
 
         $options = ['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null];
 

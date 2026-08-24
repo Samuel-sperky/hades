@@ -15,7 +15,7 @@ class ConsoleThread extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['uuid', 'title', 'provider', 'model', 'auto_accept', 'last_message_at'];
+    protected $fillable = ['uuid', 'title', 'provider', 'model', 'tool_profile', 'auto_accept', 'last_message_at'];
 
     protected $casts = [
         'auto_accept' => 'bool',
