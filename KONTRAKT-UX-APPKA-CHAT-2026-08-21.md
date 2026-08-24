@@ -196,6 +196,55 @@ Docker servuje repo z jeho koreňa, takže **worktree na 8080 neuvidíš** — a
 Pracujem preto na `feat/hades-ux` v hlavnom adresári a riziko cudzej session držím
 kontrolou indexu pred každým commitom.
 
-## 8. Výsledok
+## 7b. Vedomé odchýlky od návrhu (24. 8. 2026)
 
-*(dopĺňa sa po dokončení šprintu)*
+Dve rozhodnutia sa počas behu odklonili od §1b a review ich potvrdil ako obhájiteľné:
+
+- **charon.css je variant B, nie A.** §1b/1 hovoril „nový charon.css načítaný oboma
+  stránkami". Dok má nakoniec vlastné prefixované komponenty (`.charon-msg`,
+  `.charon-bubble`, `.charon-tc-*`) načítané len v `mind.blade.php`. Je to paralelná
+  kópia povrchu konzoly — ale elegantne obchádza kolíziu `.tc-*` z `mind.css`, `w4dup`
+  ju nehlási (je medzi-súborová, nie dvojitá deklarácia v jednom súbore) a dok je tak
+  úplne oddelený od konzoly. Ak sa raz bude zjednocovať, je to samostatná úloha.
+- **ChatController.php ostal, route je odpojená.** §3 aj návrh §2.8 žiadali „zmazať
+  celý". Route `POST /chat` a `use ChatController` sú preč z `routes/api.php`, k triede
+  nevedie žiadne UI — zámer A9 (mŕtva cesta von) je splnený. Trieda ostáva ako referenčná
+  SDK implementácia, ktorú `AnthropicProvider` spomína v `@see`. Nevyužitý `use` v
+  `AnthropicProvider` je odstránený, `@see` je na FQN.
+
+## 8. Výsledok (24. 8. 2026)
+
+**Hotové a commitnuté na `feat/hades-ux`:**
+
+- **Vlna 0–2** (skôr): odkaz na Charóna v raile, `/tools`/`/cost`/`/model`, `runstate.js`;
+  dizajn systém a čitateľnosť (D1, D2, D5, D6, D18, D19, D21, D23, R2–R5, R7–R9, P5,
+  density prepínač, `-ink` kontrast, `console.css` A=15→0).
+- **Prístupnosť (P1–P4, P7, P9–P11, P13):** reduced-motion (sieť dosadne a stojí),
+  canvas `role=img` + živý aria-label (overené: „2710 uzlov · 8509 spojení"), skip-link
+  na oboch plochách, fokus po rozhodnutí, karta povolenia hlási zápis cez `#console-live`,
+  `aria-pressed` na čipoch 4 obrazoviek, zásahové ciele (`button.switch`, `#auto-accept`,
+  `.ctx-x`), prsteň composera.
+- **Desktop appka (Electron):** frameless okno s vlastnou lištou a identitou, injekcia
+  tokenu bez proxy, stavy „Hades nebeží"/offline/reconnect, tray + notifikácia „beh čaká
+  na potvrdenie" (bez obsahu zápisu), `electron-builder` (NSIS + portable, ALLOW-list).
+  **Bezpečnosť:** electron 32→43 (context-isolation bypass zavretý); zvyšné audit-nálezy
+  sú build-time toolchain `electron-builderu`, nebalia sa. Boot inštalátora **neoverený**
+  (headless, bez GUI) — vyžaduje test na reálnom stroji.
+- **Chat nad grafom (A8, A9, R-1, R-2):** dok Charóna nad plátnom na zdieľanom
+  `runclient` (jedna cesta k modelu, dvojfázová brána platí), profily nástrojov
+  (memory/files/graph/full, neznámy sa odmieta, strop testom), `graph_focus` (čítací,
+  rešpektuje `go()` ako filter), `ContextBlock` (kontext vybraných uzlov sa skladá na
+  serveri z id, stropy 8/2400/300, priznané skrátenie), mŕtvy `chat.js` zmazaný, A8
+  zlúčené (`packBtn` plní dok). Stĺpec `runs.tool_profile` (migrácia so zálohou).
+
+**Testy:** sqlite 475 passed / 45 skipped / 0 failed; MariaDB filter
+(`HybridRecall|RecallBench|ConsoleTools|McpTools`) 107 testov, 0 padnutých.
+Budget-test skalibrovaný (padne pri raste definície nástroja). `AgentRunner.php`
+nedotknutý.
+
+**Zostáva ako backlog (triáž hotová v `docs/sprint-2026-08-21/TRIAZ-A-P.md`):** IA toky
+A2 (Ctrl+K → prvá položka), A4 (detail Denníka/Kontroly na mieste), A5 (hľadanie
+v Rozhodnutiach), A10 (dok Prehľad → Dnes), A12 (pomenované grupy railu + CMDK nav pre
+Runy/Charón), A15/A17/A18 (smernica ako správa, „Povoliť vždy" v hlavičke, front správ
+počas behu), kopírovanie odpovede/kódu. A P13 prsteň composera — CSS správne, žiada
+re-verifikáciu na čistom loade (merač headless pane zamrzol computed style).

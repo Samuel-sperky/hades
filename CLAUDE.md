@@ -184,9 +184,61 @@ naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva r�
 + 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
 hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
-## Charón (`/console`)
+## Charón (`/console` a dok nad grafom)
 
-Samostatné rozhranie (nie obrazovka v raile grafu): agentová smyčka s 12 nástrojmi
+Charón žije na **dvoch plochách so zdieľaným behom** (od 24. 8. 2026): plná konzola
+`/console` a **dok nad plátnom grafu** (`public/js/mind/charon.js`, `public/css/charon.css`,
+markup v `mind.blade.php`, id `#charon-*`). Obe idú cez **jeden modul streamu**
+`public/js/shared/*` — `ndjson.js` (parser rámcov, buffer cez chunky), `runclient.js`
+(`createRunClient`: fetch + ReadableStream + CSRF, **nikdy EventSource** — nevie token),
+`gate.js` (slovník dvojfázovej brány), `runstate.js` a `markdown.js` (**presunuté** sem
+z `public/js/console/`). Druhá kópia streamu už neexistuje; konzola je re-pointnutá
+s nulovým funkčným diffom. Dok napojený cez `startRun(body)`, `body.profile='graph'`,
+`body.context_node_ids` = vybrané uzly.
+
+**Mŕtvy chat nad grafom je preč** (A9): `chat.js`, `#prompt`/`#chat-log`/`#chat-context`
+grafu aj prepínač „Chat s Hadesom" sú zmazané; `ChatController` ostal len ako referenčná
+SDK implementácia, route `POST /chat` je odpojená. A8 zlúčené: `S.pack` (Balík) plní
+kontext doku (`packBtn` už nekopíruje do schránky).
+
+**Profily nástrojov** (`ToolRegistry::PROFILES`, konštanta v kóde, nie config): `memory`
+/ `files` / `graph` / `full`. Beh dostane len tooly profilu; **neznámy profil sa ODMIETNE**
+(nie fallback na full) — členstvo rozhoduje, ktoré *zápisové* tooly v behu vôbec existujú,
+takže je to bezpečnostne tvarovaný zoznam. Dôvod nie je len strop `num_ctx` (12 definícií
+≈ 2,6k tok, 13. nezmestí), ale aj že slabý model volí z piatich toolov lepšie než
+z dvanástich. `ConsoleToolsTest` pinuje **strop tokenov na profil** (memory 1600 / files
+1400 / graph 1350 / full 2600) — test padne, keď definícia narastie (overené). `graph_focus`
+je len v profile `graph`, **nie vo `full`** — testy naň musia použiť helper `canon()`
+(13 toolov), nie `registry()` (aktívny profil). `/decide` profil **neprijíma** (`prohibited`);
+profil obnovy sa číta z `console_threads.tool_profile`, nie z klienta.
+
+**`graph_focus`** (`Tools/GraphFocusTool.php`) je **čítací** navigačný tool (neparkuje).
+Vracia presne argument `go({level,area,dept,node})` — `go()` je **filter** (nemení pozície,
+nevymieňa scénu), tak dok len zavolá `go(res.nav)` a nič neprekladá. Neznámu oblasť
+**odmietne**, nehádaní.
+
+**`ContextBlock`** (`app/Services/Console/ContextBlock.php`) skladá kontext vybraných uzlov
+**na serveri, iba z id** — nikdy z textu prehliadača (ten istý dôvod ako história z DB:
+klient by inak podstrčil uzol, ktorý v pamäti nie je, a model má zápisové tooly). Stropy
+v `config('hades.console.context')`: 8 uzlov / 2400 znakov / 300 na popis, **žiadne telo
+`.md`**, priznané skrátenie „(kontext skrátený: N z M uzlov)". `RunController::run()` pošle
+**model = kontext + otázka**, ale **`runs.prompt` = len otázka** (aby „Spustiť znovu"
+vrátilo zadanie, nie aktuálny výber). Validácia `context_node_ids` číta strop z toho istého
+configu ako `ContextBlock`. Bez validačného pravidla Laravel pole ticho zahodí — to bola
+chyba, ktorú review vlny B chytil.
+
+`runs.tool_profile` a `console_threads.tool_profile` (nullable, migrácia 21. 8.): `null`
+= beh z čias pred profilmi. Obrazovka Runy ho ukáže v `.run-profile`.
+
+**Desktop appka** je Electron shell v `electron/` (`main.js`, `preload.js`, `chrome/`,
+`states/`, `tray.js`, `electron-builder.yml`). Token sa vkladá cez
+`session.webRequest.onBeforeSendHeaders`, takže **žiadny lokálny proxy nevzniká** a token
+sa nedostane do rendereru — nevracaj proxy, viď komentár v `main.js`. `bin/hades.cmd`
+ostáva ako cesta bez inštalácie. Boot inštalátora neoverený v headless prostredí.
+
+---
+
+Historicky: samostatné rozhranie (nie obrazovka v raile grafu): agentová smyčka
 nad vlastnou pamäťou a nad súbormi projektu. Vlákna majú vlastnú URL
 (`/console/<uuid>`). Vzniklo 19. 8. 2026, meno **Charón** dostalo 20. 8. 2026 —
 prievozník je ten, kto hovorí, Hades je vedomie, za ktoré hovorí. **Charón je
