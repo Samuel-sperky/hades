@@ -44,7 +44,7 @@ import { renderMarkdown } from '../shared/markdown.js';
 // nepomiešalo s lokálnym `plural()`, ktorý skloňuje RIADKY diffu.
 import { plural as plural3 } from './threads.js';
 import {
-    argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeTarget,
+    argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeAsk, writeTarget,
 } from '../shared/gate.js';
 import { costLabel, runNote, stopNote } from '../shared/runstate.js';
 import {
@@ -1104,7 +1104,7 @@ function renderThreadBody(data) {
     closers.forEach((note) => pushNotice(note));
     [...byMessage.values()].flat().forEach((call) => appendBlock(historyCard(call)));
 
-    restoreAwaiting(awaiting, data.uuid);
+    restoreAwaiting(awaiting, data.uuid, data.awaiting_agent);
 
     if (!hasBlocks()) showEmpty();
 }
@@ -1121,17 +1121,30 @@ function hasBlocks() {
  * Dva prípady a rozdiel medzi nimi je vecný, nie kozmetický:
  *
  *  · zápisový tool → brána s náhľadom, presne ako za živého behu;
- *  · `spawn_agent` → BRÁNA SA NEKRESLÍ. Je to čítací tool a rozhodnutie oň
+ *  · `spawn_agent` → karta rodiča sa NEKRESLÍ. Je to čítací tool a rozhodnutie oň
  *    nepatrí: `allow` na ňom podagenta znova zaparkuje (tool je idempotentný na
  *    svoj call) a `deny` jeho podbeh zruší. Na človeka čaká zápis PODAGENTA, na
- *    JEHO vlákne — a payload tohto vlákna ho nenesie, pretože `awaiting` je
- *    `pendingToolCall()` tohto vlákna. Kým to server nedoplní, tok o tom aspoň
- *    nemlčí a nepredstiera rozhodnutie, ktoré by dopadlo inam.
+ *    JEHO vlákne — a `awaiting` v payloade je `pendingToolCall()` TOHTO vlákna,
+ *    teda `spawn_agent` call rodiča, s ktorým sa nedá urobiť nič.
+ *
+ *    Server to od 25. 8. 2026 dopĺňa aditívnym kľúčom `awaiting_agent` (tvar tool
+ *    callu plus `thread` a `run` dieťaťa), takže karta sa kreslí NAD NÍM a
+ *    `/decide` ide na vlákno dieťaťa. Keď ten kľúč chýba — starší payload alebo
+ *    podbeh, ktorý sa medzitým dorozhodol — tok o tom aspoň nemlčí namiesto toho,
+ *    aby predstieral rozhodnutie, ktoré by dopadlo inam.
  */
-function restoreAwaiting(call, thread) {
+function restoreAwaiting(call, thread, parked) {
     if (!call) return;
 
     if (!isWriteTool(call.name)) {
+        // Zaparkovaný zápis DIEŤAŤA: karta patrí jemu a na jeho vlákno.
+        if (parked && parked.id != null && parked.thread) {
+            appendBlock(permissionCard(parked, parked.thread));
+            announce(writeAsk(parked));
+
+            return;
+        }
+
         pushNotice('Beh čaká na rozhodnutie o zápise podagenta. Otvor jeho podbeh na obrazovke Runy — '
             + 'v tomto vlákne sa o ňom rozhodnúť nedá.');
         announce('Beh čaká na rozhodnutie o zápise podagenta.');

@@ -127,6 +127,16 @@ v serif fallbacku a rail sa rozpadol. `@font-face` bloky sú na začiatku `mind.
 Geist / Geist Mono / Playfair sú variabilné (jedna os `wght`), preto `font-weight`
 deklaruje rozsah. `latin-ext` nesie slovenskú diakritiku, načíta sa vždy.
 
+**Pozor — „CDN je preč" platí LEN pre fonty.** Zistené meraním pri zavádzaní CSP
+(25. 8. 2026): `mind.blade.php` ťahá `d3@7` a `pusher-js@8` z `https://cdn.jsdelivr.net`
+a **ani jeden nie je v `public/`** (`find public -iname '*d3*' -o -iname '*pusher*'`
+= 0 zásahov). Ani jeden nemá `integrity`, takže CSP povolí **host, nie obsah** —
+kompromitovaný jsdelivr by prešiel, a appka je verejne tunelovaná cez ngrok.
+Sú len na obrazovke Grafu (`d3.` používa `mind/sim.js`, `Pusher` `mind/ws.js`;
+`chat/*`, `console/*` ani `shared/*` na ne nesiahajú) — preto má `/` v politike CDN,
+kým `/chat` a `/console` majú `script-src 'self'`. Doplniť `integrity` alebo ich
+self-hostovať je otvorený bod, nie hotový stav.
+
 Material Symbols je **subset** (215 glyfov zo 4271, 132 kB namiesto 3 MB), vyrobený
 `pyftsubset --no-layout-closure` — bez toho flagu ligatúrová uzávera vtiahne všetky
 ikony späť. **Keď pridáš NOVÚ ikonu, subset ju nemá a vykreslí sa ako text —

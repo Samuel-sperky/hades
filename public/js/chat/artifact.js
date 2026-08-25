@@ -19,14 +19,13 @@
    `./highlight.js`, aby stáli tam, kde by grammar diagramu vznikla. Sem patrí
    len dôsledok: ```mermaid je obyčajný blok kódu s hlavičkou jazyka a Kopírovať.
 
-   KOPÍROVANIE je PREVZATÉ z `public/js/console/render.js` (`copyButton()`,
-   `flash()`, `toClipboard()`, `legacyCopy()`, `equipCode()`) vrátane textov a
-   1 600 ms držania potvrdenia — vedome tá istá mechanika, aby sa dve plochy
-   nenaučili kopírovať dvoma spôsobmi. Rozdiel je jediný a je to oprava: surový
-   text bloku sa berie PRED zvýraznením (viď `equipCode()`).
-   Správne miesto pre tento kus je `public/js/shared/copy.js`; presun sa nedá
-   urobiť z tejto vlny, pretože by musel zapísať do `console/render.js`, ktorý
-   drží iná koľaj. Presný diff je v odovzdávacej poznámke.
+   KOPÍROVANIE ŽIJE V `public/js/shared/copy.js` — jedna mechanika pre `/chat`
+   aj pre konzolu, vrátane textov a 1 600 ms držania potvrdenia. Do 25. 8. 2026
+   tu stála druhá kópia toho istého; presun sa dal urobiť až vo vlne, ktorá
+   smela zapísať aj do `console/render.js`.
+   Tomuto modulu zostali tri veci, ktoré sú naozaj jeho: `paintPre()` (zvýrazňovač
+   má len `/chat`), `codeBlock()` (blok kódu bez markdownu, pre panel artefaktu)
+   a naviazanie zdieľanej mechaniky na `announce()` tejto plochy.
 
    Exporty sú HOISTOVANÉ `export function` — modul je v cykle
    `main → run → render → artifact → main` a arrow v `const` v ňom padne na
@@ -35,6 +34,12 @@
 
 import { renderMarkdown } from '../shared/markdown.js';
 import { looksLikeDiff } from '../shared/gate.js';
+import {
+    codeHead,
+    copyButton as sharedCopyButton,
+    equipCode as sharedEquipCode,
+    equipCopy as sharedEquipCopy,
+} from '../shared/copy.js';
 import { highlight, langFromPath, normalizeLang } from './highlight.js';
 import { announce, artifactHost, openArtifact } from './main.js';
 /* `el()` sa berie z `./render.js` a nie sa píše znova: je to tá istá funkcia
@@ -43,20 +48,6 @@ import { announce, artifactHost, openArtifact } from './main.js';
    Cyklus `render ↔ artifact` je tým reálny — preto sú tu všetky exporty
    hoistované a `el()` sa volá až vnútri funkcií, nikdy na vrchole modulu. */
 import { el } from './render.js';
-
-/* Popisky kopírovania sú TEXT, nie ikona: Material Symbols je tu subset (215
-   glyfov zo 4271) a `content_copy` v ňom overený NIE JE — nevykreslená ligatúra
-   by sa ukázala ako slovo „content_copy". Tento modul preto nepridáva ani jednu
-   novú ikonu. */
-const COPY_IDLE = 'Kopírovať';
-const COPY_DONE = 'Skopírované';
-const COPY_FAIL = 'Nedá sa skopírovať';
-
-/* Ako dlho stojí potvrdenie v popisku. Kratšie než sekunda sa pri pohľade do
-   schránky stihne minúť. Tá istá hodnota ako na konzole. */
-const COPY_HOLD = 1600;
-
-const copyTimers = new WeakMap();
 
 /* Poradové číslo panela — id záložiek musia byť v dokumente jedinečné, aby
    `aria-controls` a `aria-labelledby` ukazovali na to, čo naozaj myslia. */
@@ -88,150 +79,48 @@ export function sizeLabel(text) {
    KOPÍROVANIE
    --------------------------------------------------------------------------- */
 
-/**
- * Tlačidlo, ktoré skopíruje to, čo vráti `read()`.
- *
- * `name` je PRÍSTUPNÝ NÁZOV a musí povedať, čo presne kopíruje: v jednom toku
- * stojí vedľa seba tlačidlo odpovede aj tlačidlá jednotlivých blokov kódu a
- * „Kopírovať" trikrát je pre čítačku zoznam bez rozdielu.
- *
- * Je to `<button>`, takže je dosiahnuteľné klávesnicou bez ďalšej práce; prsteň
- * fokusu nesie globálne `:focus-visible` v mind.css a vlastný tu nepíšeme.
- */
+/* Zdieľaná mechanika naviazaná na TÚTO plochu. `shared/copy.js` nesmie vedieť
+   o `chat/` ani o `console/` (bol by z toho cyklus medzi plochami), takže dve
+   veci, ktoré sa medzi plochami líšia, mu tu podávame ako argument:
+   `announce()` (táto plocha hlási do `#chat-announce`) a `paintPre` (zvýrazňovač
+   má len `/chat`). Tie tri obálky nižšie sú presne toto naviazanie a nič viac —
+   texty, časovanie ani markup tu už nie sú.
+
+   `announce` sa podáva PRI VOLANÍ, nie pri načítaní modulu: modul je v cykle
+   `main → run → render → artifact → main` a naviazanie na vrchole súboru by
+   čítalo import v okamihu, keď `main.js` ešte nemusí byť vyhodnotený. */
+
+/** @see copyButton v shared/copy.js */
 export function copyButton(name, read) {
-    const btn = el('button', 'copy-btn ghost', COPY_IDLE);
-
-    btn.type = 'button';
-    btn.setAttribute('aria-label', name);
-    btn.title = name;
-
-    btn.addEventListener('click', async () => {
-        const ok = await toClipboard(read());
-
-        flash(btn, ok ? COPY_DONE : COPY_FAIL, name);
-    });
-
-    return btn;
-}
-
-/* Bez viditeľného potvrdenia človek nevie, či klik zabral — do schránky sa
-   pozrieť nedá. Popisok sa vráti sám; `announce()` to povie aj čítačke, ktorej
-   samotná zmena textu v tlačidle nehlási nič. Časovač je PER TLAČIDLO: jeden
-   spoločný by pri druhom kliku zrušil obnovu prvého a tomu by popisok zostal na
-   „Skopírované" navždy. */
-function flash(btn, text, name) {
-    clearTimeout(copyTimers.get(btn));
-    btn.textContent = text;
-    btn.classList.toggle('is-done', text === COPY_DONE);
-    announce(`${name}: ${text.toLowerCase()}.`);
-
-    copyTimers.set(btn, setTimeout(() => {
-        btn.textContent = COPY_IDLE;
-        btn.classList.remove('is-done');
-    }, COPY_HOLD));
-}
-
-/** `navigator.clipboard` padá bez bezpečného kontextu aj bez fokusu dokumentu,
-    takže záložná cesta nie je teoretická — appka sa reálne otvára aj cez tunel. */
-async function toClipboard(text) {
-    const value = String(text ?? '');
-
-    if (navigator.clipboard?.writeText) {
-        try {
-            await navigator.clipboard.writeText(value);
-
-            return true;
-        } catch {
-            // Padáme na `execCommand` nižšie — odmietnuté povolenie nie je chyba.
-        }
-    }
-
-    return legacyCopy(value);
-}
-
-function legacyCopy(value) {
-    const back = document.activeElement;
-    const ta = el('textarea', 'copy-fallback');
-
-    ta.value = value;
-    ta.setAttribute('readonly', '');
-    ta.setAttribute('aria-hidden', 'true');
-    ta.tabIndex = -1;
-    document.body.append(ta);
-
-    let ok = false;
-
-    try {
-        ta.select();
-        ok = document.execCommand('copy');
-    } catch {
-        ok = false;
-    }
-
-    ta.remove();
-    // Výber v odloženej textarea zoberie fokus. Bez vrátenia by klávesnica po
-    // kopírovaní spadla na <body> a človek by sa musel do toku pretabovať znova.
-    if (back instanceof HTMLElement) back.focus();
-
-    return ok;
+    return sharedCopyButton(name, read, announce);
 }
 
 /**
  * Hotová odpoveď dostane tlačidlá: jedno na celú odpoveď, jedno na každý blok.
  *
- * Do schránky patrí SUROVÝ markdown, nie vykreslený text — odpoveď sa lepí do
- * zadania pre iného agenta a z `innerText` by z odrážok, nadpisov a blokov kódu
- * zostali holé riadky. Preto `read()`, ktoré dodá volajúci (surová podoba ťahu);
- * `innerText` je až záloha.
- *
  * Volať AŽ na dopísanú bublinu a PRED jej vložením do toku: `#chat-stream` je
  * `aria-live` s `aria-relevant="additions"`, takže tlačidlo pridané do už
  * vloženej bubliny by čítačka ohlásila ako nový obsah odpovede.
- * Idempotentné — druhé volanie nič nepridá.
  *
- * Selektory pokrývajú OBE názvoslovia: `.cm-who` / `.cm-bubble` je tok chatu
- * (`./render.js`), `.who` / `.bubble` je tok konzoly. Je to jedna funkcia pre
- * dva markupy, nie dve funkcie — a keď sa raz presunie do `shared/copy.js`,
- * bude to dôvod, prečo tam môže ísť bez ďalšej úpravy.
+ * Tok `/chat` túto funkciu zatiaľ nevolá — `./render.js` bubliny nespečaťuje,
+ * takže tlačidlá dnes dostávajú len bloky kódu v paneli artefaktu. Export tu
+ * stojí ako naviazaná plocha pre chvíľu, kedy sa spečatenie dopíše; zapnúť ho
+ * je zmena chovania `/chat`, teda vlastná úloha, nie vedľajší účinok presunu.
  */
 export function equipCopy(box, read) {
-    const who = box?.querySelector('.cm-who, .who');
-    const bubble = box?.querySelector('.cm-bubble, .bubble');
-
-    if (!who || !bubble || who.querySelector('.copy-btn')) return;
-
-    who.append(copyButton('Kopírovať odpoveď', () => {
-        const raw = read?.();
-
-        return raw === undefined || raw === null || raw === '' ? bubble.innerText : raw;
-    }));
-    equipCode(bubble);
+    sharedEquipCopy(box, read, announce, paintPre);
 }
 
 /**
  * Každý blok kódu v `root` dostane hlavičku (jazyk + Kopírovať) a zvýraznenie.
  *
- * Obal a hlavička NAD blokom, nie tlačidlo v ňom: `pre.code` skroluje sám
- * (`overflow-x: auto`), takže tlačidlo vnútri by pri širokom kóde odišlo mimo
- * dohľadu, a nad kódom nemá čo prekryť. Hlavička zároveň ukáže `data-lang`,
- * ktorý `renderMarkdown` dávno zapisuje.
- *
- * Surový text sa berie PRED zvýraznením a to je oprava, nie detail: pri `diff`
- * skládá `diffHtml()` riadky ako blokové `<span>` bez znakov nového riadka, tak
- * že `pre.textContent` by po zvýraznení vrátil celý diff na jednom riadku.
+ * Zvýrazňovač sem chodí ako `paint`: `shared/copy.js` prečíta surový text bloku
+ * PRED ním a drží ho v uzávere. Bez toho poradia by `diff` skončil v schránke
+ * na jednom riadku — `diffHtml()` skládá riadky ako blokové `<span>` bez znakov
+ * nového riadka, takže `pre.textContent` po zvýraznení nie je pôvodný text.
  */
 export function equipCode(root) {
-    root?.querySelectorAll('pre.code').forEach((pre) => {
-        if (pre.parentElement?.classList.contains('code-wrap')) return;
-
-        const lang = pre.dataset.lang || '';
-        const raw = (pre.querySelector('code') ?? pre).textContent ?? '';
-        const wrap = el('div', 'code-wrap');
-
-        paintPre(pre, lang);
-        pre.replaceWith(wrap);
-        wrap.append(codeHead(lang, () => raw), pre);
-    });
+    sharedEquipCode(root, announce, paintPre);
 }
 
 /**
@@ -249,16 +138,6 @@ export function paintPre(pre, lang) {
     code.innerHTML = highlight(code.textContent ?? '', lang);
 }
 
-/* Hlavička bloku kódu. Meno jazyka vľavo, kopírovanie vpravo. */
-function codeHead(lang, read, label) {
-    const head = el('div', 'code-head');
-
-    if (lang) head.append(el('span', 'code-lang', lang));
-    head.append(copyButton(label || (lang ? `Kopírovať kód (${lang})` : 'Kopírovať kód'), read));
-
-    return head;
-}
-
 /** Hotový blok kódu z textu — pre panel artefaktu, kde markdown neprechádza. */
 export function codeBlock(code, lang, label) {
     const text = String(code ?? '');
@@ -271,7 +150,7 @@ export function codeBlock(code, lang, label) {
     inner.innerHTML = highlight(text, lang);
     if (lang) pre.dataset.lang = lang;
     pre.append(inner);
-    wrap.append(codeHead(lang, () => text, label), pre);
+    wrap.append(codeHead(lang, () => text, announce, label), pre);
 
     return wrap;
 }

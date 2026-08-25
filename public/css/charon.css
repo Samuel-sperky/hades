@@ -328,6 +328,69 @@
 
 .charon-tc-more:hover { text-decoration: underline; }
 
+/* ---------- podagent (pás, nie strom) ---------- */
+
+/* Prečo pás a nie strom, je v charon.js (sekcia „podagent v doku"): v tomto
+   stĺpci by sa vnorené kroky dieťaťa nedali odlíšiť od krokov rodiča. Pás má
+   preto tvar bubliny s akcentovým pásikom zľava — je to ten istý tok o úroveň
+   hlbšie, nie karta na inom papieri. */
+.charon-agent {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.charon-agent-box {
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--r-md);
+    border-left: 3px solid var(--border-accent);
+    background: var(--surface-2);
+}
+
+/* Zaparkované dieťa je jediný stav, v ktorom pás niečo ŽIADA — nesie ho tá istá
+   akcentová rola ako karta brány, aby oko našlo miesto rozhodnutia. */
+.charon-agent.is-waiting .charon-agent-box { background: var(--accent-softer); }
+.charon-agent.is-failed .charon-agent-box { border-left-color: var(--danger-border); }
+.charon-agent.is-closed .charon-agent-box { border-left-color: var(--border); }
+
+.charon-agent-meta {
+    margin: 0;
+    font: 400 12px / 1.4 var(--mono);
+    color: var(--muted);
+}
+
+/* Zadanie podagenta napísal MODEL a môže byť dlhé; v stĺpci pod 440 px by
+   vytlačilo všetko ostatné. Tri riadky stačia na to, aby bolo vidieť, o čom
+   podbeh je — celé zadanie je v konzole, kam pás odkazuje. */
+.charon-agent-task {
+    margin: var(--sp-0) 0 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.charon-agent-note,
+.charon-agent-foot {
+    margin: var(--sp-0) 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+.charon-agent-foot { font-family: var(--mono); }
+
+.charon-agent-err {
+    margin: var(--sp-0) 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--danger-ink);
+}
+
 /* ---------- brána zápisov ---------- */
 
 .charon-perm {
@@ -339,6 +402,12 @@
 
 .charon-perm.denied { border-color: var(--danger-border); background: var(--danger-soft); }
 .charon-perm.allowed { border-color: var(--success-soft); }
+
+/* Karta zápisu PODAGENTA. V doku stojí v plochom toku (strom sa tu nekreslí),
+   takže musí byť na prvý pohľad iná než zápis vlákna doku — nesie ten istý
+   pásik zľava ako pás podbehu, aby sa dvojica čítala ako jedna vec. Vetu
+   „Toto chce zapísať podagent" hovorí `.charon-perm-ask`, farba len nasleduje. */
+.charon-perm.is-agent { border-left-width: 3px; }
 
 .charon-perm-head {
     display: flex;

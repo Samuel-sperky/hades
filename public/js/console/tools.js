@@ -10,6 +10,11 @@
    `console:decide` a run.js ju odchytí; keby si tools.js volalo run.js a run.js
    tools.js, mali by cyklus, ktorý by pri prvom `import` spadol na neinicializovaný
    modul. Udalosť je zároveň to isté rozhranie, aké už používa composer.
+
+   Detail udalosti nesie `{ id, decision, thread, agent }`. `thread` je vlákno,
+   ktorému rozhodnutie patrí, a pri zápise PODAGENTA je to jeho vlastné vlákno —
+   nie to, ktoré má klient otvorené. `agent` hovorí, že karta je karta dieťaťa,
+   takže sa rozhodnutie nesmie tichom stiahnuť na otvorené vlákno.
    =========================================================================== */
 
 import { el, num } from './dom.js';
@@ -63,7 +68,14 @@ export function toolCard(frame) {
     return card;
 }
 
-/** Doplní výsledok do už nakreslenej karty (rámec `tool_result`). */
+/**
+ * Doplní výsledok do už nakreslenej karty (rámec `tool_result`).
+ *
+ * `root` je element, v ktorom sa karta hľadá — pri rámcoch PODAGENTA je to jeho
+ * rámec v toku (`.agent-body`), nie `document`. Osirotený výsledok potom pribudne
+ * DO NEHO a nie do toku rodiča: krok dieťaťa nakreslený medzi krokmi rodiča by
+ * znamenal, že človek nevie, komu povoľuje zápis.
+ */
 export function markResult(frame, root = document) {
     const call = {
         status: frame.status,
@@ -105,7 +117,10 @@ export function markResult(frame, root = document) {
     // vykreslí aj tak — bez mena nástroja je horší než s ním, ale ticho zahodený
     // je najhorší.
     const orphan = toolCard({ id: frame.id, name: frame.name || 'nástroj', arguments: frame.arguments });
-    pushBlock(orphan);
+
+    if (root instanceof Element) root.append(orphan);
+    else pushBlock(orphan);
+
     fillResult(orphan, call);
 
     return orphan;
@@ -256,11 +271,26 @@ function toggleBody(card) {
  * Srdce konzoly: zápis sa nestane, kým človek neklikne. Karta si berie fokus, aby
  * Enter/Esc fungovali bez toho, aby na ňu musel najprv mieriť myšou — pri modeli
  * na 9 tok/s je čakanie na povolenie najčastejší okamih celej práce.
+ *
+ * `agent` je `{ thread }` PODAGENTA, alebo `null` pri zápise tohto vlákna. Nesie
+ * ho karta a nie stav behu, aby sa rozhodnutie nedalo poslať inam len preto, že
+ * medzitým prišiel ďalší rámec: `/decide` ide na `data-thread`, teda pri zápise
+ * podagenta na JEHO vlákno. Bez vlákna karta zostane označená ako karta dieťaťa
+ * (`is-agent`) a rozhodnutie sa neodošle — `run.js` ho odmietne s vetou, prečo.
+ * Tichý fallback na otvorené vlákno by povolil cudzí zápis.
  */
-export function permissionCard(frame) {
+export function permissionCard(frame, agent = null) {
     const card = el('div', 'perm-card');
     card.dataset.id = frame.id;
     card.dataset.name = frame.name || '';
+
+    const forAgent = agent !== null;
+
+    if (forAgent) {
+        card.classList.add('is-agent');
+        if (agent.thread) card.dataset.thread = String(agent.thread);
+    }
+
     // Argumenty žijú ako vlastnosť elementu a nie v `data-` atribúte: výsledok
     // zápisu si z nich neskôr poskladá kartu, ale v DOM by to bol celý JSON
     // navyše pri každom potvrdení.
@@ -282,7 +312,9 @@ export function permissionCard(frame) {
     head.append(el('span', 'pc-args', argsSummary(frame.arguments)));
     card.append(head);
 
-    card.append(el('p', 'pc-ask', 'Toto je zápis. Pustím ho?'));
+    card.append(el('p', 'pc-ask', forAgent
+        ? 'Toto chce zapísať podagent. Pustím ho?'
+        : 'Toto je zápis. Pustím ho?'));
 
     const preview = String(frame.preview ?? '');
 
@@ -305,6 +337,14 @@ export function permissionCard(frame) {
 
     const actions = el('div', 'pc-actions');
 
+    /* „Povoliť vždy" NEDOSTANE karta podagenta. `decision=allow_always` vypína
+       bránu na vlákne, ktorému rozhodnutie patrí — pri podagentovi na JEHO vlákne,
+       takže by od tej chvíle šli všetky ďalšie zápisy toho podbehu bez pýtania a
+       bez diffu. `Subagent::start()` `auto_accept` z rodiča zámerne NEDEDÍ a
+       `AgentRunner` ho vo vlákne podagenta ignoruje (aj `PATCH` na vlákno
+       podagenta ho zahodí), takže tlačidlo by sľubovalo, čo sa nestane. Navyše
+       „vždy" čítá človek vo význame „moja konverzácia", nie „každý ďalší zápis
+       úlohy, ktorú vymyslel model". Vzor je `public/js/chat/render.js`. */
     [
         // Varianty sa menujú tak, ako ich definuje `mind.css` (`button.primary` /
         // `.ghost` / `.danger`). Do 21. 8. 2026 tu boli `btn-*`, ktoré nedefinuje
@@ -313,7 +353,7 @@ export function permissionCard(frame) {
         ['allow', 'Povoliť', 'Enter', 'primary'],
         ['allow_always', 'Povoliť vždy', '', 'ghost'],
         ['deny', 'Zamietnuť', 'Esc', 'danger'],
-    ].forEach(([decision, label, key, cls]) => {
+    ].filter(([decision]) => !(forAgent && decision === 'allow_always')).forEach(([decision, label, key, cls]) => {
         const btn = el('button', `pc-btn ${cls}`);
         btn.type = 'button';
         btn.dataset.dec = decision;
@@ -381,8 +421,16 @@ function decide(card, decision) {
     // druhýkrát nepíše.
     liveAnnounce(`${decisionLabel(decision) || decision}. ${writeTarget(card.dataset.name, card.hadesArgs, card.hadesPreview)}.`);
 
+    // `thread` a `agent` nesie karta, nie stav behu: pri zápise PODAGENTA ide
+    // `/decide` na jeho vlákno a `run.js` sa nesmie spoliehať na to, že `C.awaiting`
+    // ešte drží ten istý ťah.
     document.dispatchEvent(new CustomEvent('console:decide', {
-        detail: { id: Number(card.dataset.id), decision },
+        detail: {
+            id: Number(card.dataset.id),
+            decision,
+            thread: card.dataset.thread || null,
+            agent: card.classList.contains('is-agent'),
+        },
     }));
 }
 

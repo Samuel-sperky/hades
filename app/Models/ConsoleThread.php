@@ -247,6 +247,56 @@ class ConsoleThread extends Model
     }
 
     /**
+     * Zaparkovaný zápis PODAGENTA — jeho vlákno, jeho podbeh a jeho `pending` call.
+     *
+     * Keď dieťa zaparkuje na povolení zápisu, `AgentRunner::park()` vráti do
+     * `pending` `spawn_agent` call RODIČA, takže {@see self::pendingToolCall()}
+     * hlási práve ten a o zápise, na ktorý sa čaká, nevie nič. Rozhodnutie pritom
+     * patrí vláknu DIEŤAŤA: `/decide` ide naň a call, o ktorom sa rozhoduje, je
+     * jeho. Bez tejto cesty payload rodiča o dieťati nevie a po obnove stránky sa
+     * zaparkovaný zápis nedá rozhodnúť vôbec — v tom istom sedení to funguje len
+     * preto, že si klient rámec `agent_wait` drží v pamäti.
+     *
+     * Dieťa sa hľadá cez `runs.parent_call_id` a **len medzi vláknami tohto
+     * vlákna** (`parent_thread_id`). Podmienka je v dopyte, nie v `if`e za ním:
+     * `parent_run_id` ani `parent_call_id` cudzí kľúč nemajú ({@see Run}), takže
+     * visiaci ukazovateľ je stav, s ktorým treba počítať — a payload, ktorý
+     * klientovi povie „rozhodni sa tu", nesmie ukázať na cudzie vlákno.
+     *
+     * Hlbšie než o jednu úroveň sa hľadať nemá čo: `SpawnAgentTool::CHILD_PROFILES`
+     * nepustí dieťaťu profil, v ktorom je `spawn_agent`, takže vnorení podagenti
+     * nevznikajú.
+     *
+     * @return array{run: Run, thread: self, call: ConsoleToolCall}|null
+     */
+    public function parkedSubagentWrite(): ?array
+    {
+        $parentCall = $this->pendingToolCall();
+
+        if ($parentCall === null || $parentCall->name !== 'spawn_agent') {
+            return null;
+        }
+
+        $run = Run::query()
+            ->where('parent_call_id', $parentCall->id)
+            ->whereHas('thread', fn (Builder $q) => $q->where('parent_thread_id', $this->id))
+            ->orderBy('id')
+            ->first();
+
+        $child = $run?->thread;
+        // `pending` riadok na vlákne dieťaťa je dôkaz parkovania, ktorý sa nedá
+        // prehliadnuť — z toho istého riadku ho čítá `SpawnAgentTool` pri opakovanom
+        // vykonaní svojho callu. Keď chýba, dieťa nečaká a klient nemá čo rozhodnúť.
+        $call = $child?->pendingToolCall();
+
+        if ($run === null || $child === null || $call === null) {
+            return null;
+        }
+
+        return ['run' => $run, 'thread' => $child, 'call' => $call];
+    }
+
+    /**
      * Titulok vlákna z prvej vety používateľa — konzola ho nikdy nevymýšľa
      * modelom. Na CPU inferencii by to bola sekunda čakania za kozmetiku.
      */

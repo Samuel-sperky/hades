@@ -166,7 +166,12 @@
          skládá ToolRegistry (routes/web.php), nie klient: prázdny stav sľubuje
          „vidí pamäť aj súbory" a ktorých dvanásť toolov to je, sa z UI dovtedy
          nedalo zistiť. Nie je to endpoint zámerne — je to statický fakt o behu,
-         ktorý sa medzi dvoma requestami nemení. --}}
+         ktorý sa medzi dvoma requestami nemení.
+
+         CSP: `type="application/json"` nie je spustiteľný typ, takže HTML tento
+         blok nepripraví ako skript a `script-src` naň nedosiahne — politika
+         v App\Http\Middleware\ContentSecurityPolicy preto nemá `'unsafe-inline'`
+         a tento riadok nemá nonce. Detail v MERANIE-CSP.md §5. --}}
     <script type="application/json" id="console-tools">@json($consoleTools ?? [])</script>
 
     <script type="module" src="/js/console/main.js"></script>

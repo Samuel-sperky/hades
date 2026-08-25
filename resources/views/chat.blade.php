@@ -130,6 +130,28 @@
                     <h1 id="chat-title">Chat</h1>
                 </div>
                 <div class="ch-right">
+                    {{-- Profil nástrojov pre ĎALŠÍ beh. Bez tohto ovládača bol
+                         `spawn_agent` nedosiahnuteľný z akejkoľvek plochy: je len
+                         v profile `orchestrator`, dok beží natvrdo na `graph` a
+                         `/chat` neposielal `profile` vôbec, takže sa vždy použil
+                         default `full` — v ktorom ten tool zámerne NIE JE.
+
+                         Prečo výber a nie zmena defaultu: `orchestrator` má dva
+                         tooly (recall + spawn_agent), takže ako default by z chatu
+                         zmizli súbory aj kurátorstvo pamäte. Profil je vlastnosť
+                         ŤAHU, nie plochy.
+
+                         Server je posledné slovo: neznámy profil `RunController`
+                         odmietne (422), takže tento `<select>` je pohodlie, nie
+                         hranica. --}}
+                    <label id="chat-profile-label" class="sr-only" for="chat-profile">Profil nástrojov</label>
+                    <select id="chat-profile" aria-labelledby="chat-profile-label">
+                        <option value="full" selected>Všetko</option>
+                        <option value="memory">Pamäť</option>
+                        <option value="files">Súbory</option>
+                        <option value="graph">Graf</option>
+                        <option value="orchestrator">Orchestrátor</option>
+                    </select>
                     {{-- Stav behu (sekundy, krok, tokeny) — plní vlna 3.
                          `aria-live` tu ZÁMERNE nie je: hodnota sa mení každú
                          sekundu a čítačka by tikala do rečí. Hotový ťah ohlási
@@ -231,7 +253,14 @@
     {{-- Nástroje, ktoré beh naozaj má. Zoznam skládá ToolRegistry v
          routes/web.php, nie klient — je to statický fakt o behu, ktorý sa medzi
          dvoma requestami nemení, takže endpoint by bol okruh za nič. Id je to
-         isté ako na konzole zámerne: jeden fakt, jedno meno, jeden čítač. --}}
+         isté ako na konzole zámerne: jeden fakt, jedno meno, jeden čítač.
+
+         CSP: `type="application/json"` NIE JE spustiteľný typ, takže HTML tento
+         blok nepripraví ako skript a `script-src` naň nedosiahne — politika
+         v App\Http\Middleware\ContentSecurityPolicy preto NEMÁ `'unsafe-inline'`
+         a tento riadok nemá nonce. Keby report-only režim na tomto riadku
+         violáciu hlásil, je to nález a rieši ho MERANIE-CSP.md §5, nie dopísanie
+         `'unsafe-inline'`. --}}
     <script type="application/json" id="console-tools">@json($consoleTools ?? [])</script>
 
     <script type="module" src="/js/chat/main.js"></script>

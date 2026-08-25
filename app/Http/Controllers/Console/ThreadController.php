@@ -131,7 +131,7 @@ class ThreadController extends Controller
     {
         $thread->load(['messages' => fn ($q) => $q->orderBy('id'), 'toolCalls' => fn ($q) => $q->orderBy('id')]);
 
-        return [
+        $payload = [
             'uuid' => $thread->uuid,
             'title' => $thread->title ?? 'Nové vlákno',
             'provider' => $thread->provider,
@@ -173,6 +173,65 @@ class ThreadController extends Controller
             'runs' => $this->runs($thread),
             'usage' => $this->usage($thread),
         ];
+
+        // Kľúč sa pridáva len keď je čo rozhodnúť — prázdne polia sa neposielajú,
+        // takže klient nerozlišuje `null` od „nie je", a vlákna bez podagentov
+        // (teda takmer všetky) neplatia za funkciu, ktorá sa ich netýka.
+        $awaitingAgent = $this->awaitingAgent($thread);
+
+        if ($awaitingAgent !== null) {
+            $payload['awaiting_agent'] = $awaitingAgent;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Zaparkovaný zápis podagenta — **aditívny** kľúč `awaiting_agent`.
+     *
+     * `awaiting` sa nemení. Čítajú ho tri plochy (`/console`, `/chat`, dok nad
+     * grafom) a zmena jeho tvaru by ich rozišla, takže ďalej hlási
+     * `pendingToolCall()` TOHTO vlákna — pri zaparkovanom dieťati je to
+     * `spawn_agent` call rodiča. `awaiting_agent` k nemu dopovie to, čo z payloadu
+     * rodiča dovtedy nešlo zistiť vôbec: kam rozhodnutie patrí.
+     *
+     * Tvar je zámerne tvar tool callu (`id`, `name`, `arguments`, `preview`) plus
+     * `thread`, pretože presne to isté nesie za živého behu rámec `agent_wait`
+     * (`child_call` → `id`, `thread` → `thread`). Klient tak po obnove stránky
+     * skladá tú istú kartu brány z tých istých kľúčov a `POST /api/console/decide`
+     * pošle na vlákno DIEŤAŤA.
+     *
+     * `run` je uuid podbehu a nie je to ozdoba: po obnove stránky je klientská mapa
+     * vlákien podagentov prázdna (plnia ju rámce `agent_start`), takže bez neho
+     * karta nevie, že rozhodnutie patrí podagentovi — a ponúkla by „Povoliť vždy",
+     * ktoré `AgentRunner` vo vlákne podagenta zámerne ignoruje. Tlačidlo, ktoré nič
+     * neurobí, je horšie než žiadne.
+     *
+     * `parent_call` tu NIE JE: je to `awaiting`, a druhá kópia tej istej pravdy sa
+     * rozíde pri prvej zmene.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function awaitingAgent(ConsoleThread $thread): ?array
+    {
+        $parked = $thread->parkedSubagentWrite();
+
+        if ($parked === null) {
+            return null;
+        }
+
+        return array_filter([
+            // Vlákno podagenta. Zoznam vlákien ho nevypisuje (scope
+            // `conversations()`) a `RunController::run` doňho správu odmietne —
+            // toto je jediná cesta, ako sa oň klient dozvie, a jediné, čo je naň
+            // povolené, je rozhodnutie.
+            'thread' => $parked['thread']->uuid,
+            'run' => $parked['run']->uuid,
+            'id' => $parked['call']->id,
+            'name' => $parked['call']->name,
+            'arguments' => $parked['call']->arguments,
+            'preview' => $parked['call']->preview,
+        ], fn ($v) => $v !== null);
     }
 
     /**

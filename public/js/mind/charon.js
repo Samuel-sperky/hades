@@ -150,6 +150,37 @@ const client = createRunClient({
             paintStatus();
         },
 
+        /* Podagenti. Dok z nich kreslí PÁS a KARTU BRÁNY, nie strom — dôvod je
+           v sekcii „podagent v doku" nižšie. Bez týchto štyroch callbackov beh
+           s podagentom prežil, ale zaparkované dieťa sa v doku neukázalo, takže
+           sa nedalo rozhodnúť (otvorený bod §7 kontraktu). */
+
+        onAgentStart(frame) {
+            closeBubble();
+            // `ensureAgentStrip`, nie `openAgentStrip`: pás, ktorý v toku už stojí,
+            // sa druhý raz nekreslí. Jeden podbeh = jedno uuid = jeden pás.
+            ensureAgentStrip(frame.run, frame);
+            announce(`Podagent začal pracovať s profilom ${frame.profile || 'bez profilu'}.`);
+        },
+
+        onAgent(frame) {
+            agentFrame(String(frame.run || ''), frame.frame || {});
+        },
+
+        onAgentEnd(frame) {
+            closeAgentStrip(frame);
+            paintStatus();
+        },
+
+        onAgentWait(frame) {
+            // POSLEDNÝ rámec ťahu rodiča — `end` už nepríde. `D.awaiting` (aj
+            // s vláknom podagenta) nastavil klient PRED týmto volaním.
+            closeBubble();
+            markAgentWait(frame);
+            paintStatus();
+            announce(`Podagent čaká na tvoje rozhodnutie o zápise${frame.name ? ` (${frame.name})` : ''}.`);
+        },
+
         onEnd(frame) {
             noteStop(frame.stop_reason);
             announce(endAnnounce(frame));
@@ -349,13 +380,30 @@ async function send(text) {
     }
 }
 
-/** Rozhodnutie o zápise beh nekončí — dostreamuje ho tá istá rúra. */
-async function resumeAfterDecision(id, decision) {
-    if (!D.thread) return;
+/**
+ * Rozhodnutie o zápise beh nekončí — dostreamuje ho tá istá rúra.
+ *
+ * `thread` z karty má PREDNOSŤ pred vláknom doku: pri zápise PODAGENTA je cieľom
+ * jeho vlastné vlákno (`agent_wait.thread`) a karta ho nesie od chvíle, kedy
+ * vznikla. `D.awaiting` je záloha a čítá sa PRED vynulovaním.
+ *
+ * Karta podagenta bez známeho vlákna sa NEODOŠLE — tichý fallback na vlákno doku
+ * by rozhodnutie doručil cudziemu behu.
+ */
+async function resumeAfterDecision(id, decision, thread = null, agent = false) {
+    const target = thread || D.awaiting?.thread || (agent ? null : D.thread);
+
+    if (!target) {
+        pushError(agent
+            ? 'Rozhodnutie sa nedá odoslať — nie je známe vlákno podagenta, ktorému patrí.'
+            : 'Rozhodnutie sa nedá odoslať — nie je známe vlákno, ktorému patrí.');
+
+        return;
+    }
 
     D.awaiting = null;
 
-    await client.resumeDecision({ thread: D.thread, call: id, decision });
+    await client.resumeDecision({ thread: target, call: id, decision });
 }
 
 function stopRun() {
@@ -890,6 +938,222 @@ function plural(count) {
     return count >= 2 && count <= 4 ? 'riadky' : 'riadkov';
 }
 
+/* ---------- podagent v doku ---------- */
+
+/**
+ * ROZHODNUTIE ÁNO, STROM NIE.
+ *
+ * Dok je úzky panel nad plátnom (`#charon` v charon.css: max 440 px, na malom
+ * okne menej) s výškou do 66 vh, takže z podbehu tu stojí PÁS — kto beží, s akým
+ * profilom, na ktorom kroku — a karta brány jeho zápisu. Vnorené rámce dieťaťa
+ * (jeho text, jeho čítacie nástroje, jeho kroky ako bloky) sa tu NEKRESLIA:
+ * v tomto stĺpci by sa nedali odlíšiť od krokov rodiča, a to je presne omyl, po
+ * ktorom človek nevie, komu povoľuje zápis. Celý priebeh má `/console`; pás to
+ * hovorí nahlas, aby ticho nevyzeralo ako porucha.
+ *
+ * Karta brány je jediná výnimka a musí ňou byť: zaparkovaný zápis dieťaťa sa
+ * MUSÍ dať rozhodnúť aj odtiaľto — inak by beh čakal navždy a jediná cesta by
+ * viedla na inú plochu. Karta preto nesie vlákno PODAGENTA a `/decide` ide naň.
+ *
+ * Dve vlastnosti, ktoré treba poznať:
+ *  • dok nemá obnovu histórie zo servera (vlákno si drží len `localStorage`),
+ *    takže po reloade sa zaparkovaný zápis podagenta v doku neukáže —
+ *    rozhodnuteľný je na `/console`, kde payload vlákna nesie `awaiting_agent`;
+ *  • dok beží na profile `graph`, v ktorom `spawn_agent` NIE JE, takže vlastný
+ *    podagent mu vzniknúť nemôže. Tieto rámce sem prídu len vtedy, keď to isté
+ *    vlákno rozbehol orchestrátor z inej plochy — a práve preto tu byť musia:
+ *    plocha, ktorá rámec nepozná, by hlásila „beh sa skončil bez odpovede".
+ */
+const agents = new Map();
+
+/** Pás podbehu, ktorý je ešte v dokumente, alebo `null`. */
+function agentEntry(run) {
+    const key = String(run || '');
+
+    if (key === '') return null;
+
+    const found = agents.get(key);
+
+    if (found && found.node.isConnected) return found;
+    // Odpojený pás (tok vyprázdnil prázdny stav) — záznam by ďalej držal mŕtvy
+    // DOM podbehu, ktorý už nikto neuvidí.
+    if (found) agents.delete(key);
+
+    return null;
+}
+
+function openAgentStrip(frame) {
+    const key = String(frame.run || '');
+    const node = el('div', 'charon-agent');
+
+    if (key !== '') node.dataset.run = key;
+
+    const who = el('span', 'charon-who');
+    // `hub` a nie `account_tree` (ktorým strom kreslí `/chat`): `hub` je v subsete
+    // Material Symbols overený meraním šírky glyfu (CLAUDE.md, sekcia Ikony),
+    // `account_tree` overený nie je — a ikona, ktorá v subsete nie je, sa vykreslí
+    // ako vlastné ligatúrové meno.
+    const mark = el('span', 'ms', 'hub');
+
+    mark.setAttribute('aria-hidden', 'true');
+    who.append(mark, el('span', null, 'Podagent'));
+
+    const box = el('div', 'charon-agent-box');
+    const meta = el('p', 'charon-agent-meta');
+
+    box.append(meta);
+
+    if (frame.task) box.append(el('p', 'charon-agent-task', frame.task));
+
+    box.append(el('p', 'charon-agent-note',
+        'Kroky a nástroje podagenta sa v doku nevypisujú — celý priebeh je '
+        + 'v konzole. Tu sa rozhoduje o jeho zápisoch.'));
+
+    node.append(who, box);
+    appendBlock(node);
+
+    const entry = {
+        node,
+        box,
+        meta,
+        thread: String(frame.thread || ''),
+        profile: String(frame.profile || ''),
+        steps: 0,
+        of: Number(frame.max_steps) || 0,
+    };
+
+    agents.set(key, entry);
+    paintAgentMeta(entry);
+
+    return entry;
+}
+
+/**
+ * Pás existuje, aj keď `agent_start` neprišiel: po rozhodnutí ide obnova cez
+ * `/decide` na vlákno podagenta a v tom prúde už `agent_start` nie je — vznikol
+ * v predošlom requeste.
+ *
+ * Bez uuid podbehu vracia `null`: rámec, ktorý sa nedá priradiť, nesmie skončiť
+ * v páse niekoho iného ani v páse „bez mena".
+ */
+function ensureAgentStrip(run, seed = {}) {
+    if (String(run || '') === '') return null;
+
+    return agentEntry(run) || openAgentStrip({ run, ...seed });
+}
+
+/* Kroky sú vždy zlomok („kroky 0/4"), nie „strop 4 kroky": slovenčina má tri
+   tvary a číslo pred slovom sa musí skloňovať. Zlomok skloňovanie nepotrebuje. */
+function paintAgentMeta(entry) {
+    const bits = [];
+
+    if (entry.profile) bits.push(`profil ${entry.profile}`);
+    if (entry.of) bits.push(`kroky ${num(entry.steps, 0)}/${num(entry.of, 0)}`);
+    else if (entry.steps) bits.push(`kroky ${num(entry.steps, 0)}`);
+
+    entry.meta.textContent = bits.join(' · ');
+}
+
+/** Jeden ROZBALENÝ rámec dieťaťa. Kreslí sa z neho len to, čo dok naozaj nesie. */
+function agentFrame(run, frame) {
+    const entry = ensureAgentStrip(run);
+
+    if (!entry) return;
+
+    switch (frame.t) {
+        case 'step':
+            entry.steps = Math.max(entry.steps, Number(frame.n) || 0);
+            if (!entry.of) entry.of = Number(frame.of) || 0;
+            paintAgentMeta(entry);
+            break;
+
+        case 'permission':
+            // Náhľad zmeny sa berie TU: `agent_wait` za ním nesie len meno nástroja.
+            entry.node.classList.add('is-waiting');
+            pushBlock(permissionCard(frame, { thread: entry.thread }));
+            announce(writeAsk(frame));
+            break;
+
+        case 'tool_result':
+            // Výsledok kroku, na ktorý človek naozaj klikol, sa nesmie ticho
+            // zahodiť: `markResult` ho pripojí PRIAMO pod kartu brány dieťaťa
+            // (`perm.after(...)`), takže je pri vete „Toto chce zapísať podagent"
+            // a nedá sa prečítať ako krok rodiča. Jediná karta, ktorú krok dieťaťa
+            // v doku má, je práve tá — čítacie kroky sa tu nekreslia, takže
+            // osirotené výsledky sem nepatria.
+            if (document.querySelector(`.charon-perm[data-id="${frame.id}"]`)) markResult(frame);
+            break;
+
+        case 'error':
+            entry.node.classList.add('is-failed');
+            entry.box.append(el('p', 'charon-agent-err', frame.message || 'Podagent zlyhal.'));
+            break;
+
+        default:
+            // Text, kroky nástrojov a koncové rámce dieťaťa sú zámerne ticho —
+            // viď hlavička sekcie. Neznámy typ rámca takisto: protokol sa má dať
+            // rozširovať bez toho, aby staršia plocha spadla.
+            break;
+    }
+}
+
+/**
+ * Podagent zaparkoval na zápise (rámec `agent_wait`).
+ *
+ * Karta zvyčajne už stojí — vnorený `permission` prišiel tesne pred týmto. Keď
+ * nie, poskladá sa z tohto rámca: nesie `child_call` a meno nástroja, ale nie
+ * náhľad, takže to karta PRIZNÁ. Rozhodnutie, ktoré sa nedá urobiť, je horšie
+ * než rozhodnutie bez diffu — beh by inak čakal navždy.
+ */
+function markAgentWait(frame) {
+    const entry = ensureAgentStrip(frame.run, { thread: frame.thread });
+
+    if (!entry) return;
+
+    if (frame.thread) entry.thread = String(frame.thread);
+    entry.node.classList.add('is-waiting');
+
+    const id = frame.child_call;
+
+    if (id == null || document.querySelector(`.charon-perm[data-id="${id}"]`)) return;
+
+    pushBlock(permissionCard(
+        {
+            id,
+            name: frame.name || '',
+            arguments: null,
+            // Náhľad tento rámec nenesie — a karta to musí povedať. Prázdna karta
+            // by nútila povoliť naslepo bez toho, aby bolo vidieť, že diff chýba.
+            preview: 'Náhľad zmeny nie je k dispozícii — prišlo len ohlásenie, že podagent zaparkoval na zápise.',
+        },
+        { thread: entry.thread },
+    ));
+}
+
+/** Uzavrie pás podbehu a doplní jeho cenu (rámec `agent_end`). */
+function closeAgentStrip(frame) {
+    const entry = ensureAgentStrip(frame.run);
+
+    if (!entry) return;
+
+    entry.node.classList.remove('is-waiting');
+    entry.node.classList.add('is-closed');
+
+    if (frame.steps) entry.steps = Number(frame.steps) || entry.steps;
+    paintAgentMeta(entry);
+
+    const bits = [];
+    const cost = costLabel({ tokens_in: frame.tokens_in, tokens_out: frame.tokens_out }, num);
+
+    if (cost !== '') bits.push(cost);
+    // Stav sa hlási len keď NIE JE `done`: „hotovo" je normálny konec a nemá čo
+    // dodať, kým `aborted`/`failed` je informácia, ktorá inak vypadne.
+    if (frame.status && frame.status !== 'done') bits.push(`stav ${frame.status}`);
+
+    entry.box.append(el('p', 'charon-agent-foot', bits.length ? bits.join(' · ') : 'Podagent dokončil.'));
+    scrollIfFollowing();
+}
+
 /* ---------- potvrdenie zápisu (dvojfázová brána) ---------- */
 
 /**
@@ -897,10 +1161,24 @@ function plural(count) {
  * aby Enter/Esc fungovali bez mierenia myšou. Toto je tá istá brána ako
  * v konzole — dok ju nemôže obísť, lebo beží na tej istej rúre.
  */
-function permissionCard(frame) {
+function permissionCard(frame, agent = null) {
     const card = el('div', 'charon-perm');
     card.dataset.id = frame.id;
     card.dataset.name = frame.name || '';
+
+    /* `agent` je `{ thread }` PODAGENTA, alebo `null` pri zápise vlákna doku.
+       Vlákno nesie KARTA, nie stav behu: `/decide` ide na `data-thread`, takže
+       rozhodnutie nemôže skončiť inde len preto, že medzitým prišiel ďalší rámec.
+       Keď vlákno nie je známe, karta zostane označená ako karta dieťaťa a
+       `resumeAfterDecision` ju odmietne odoslať — tichý fallback na vlákno doku
+       by povolil cudzí zápis. */
+    const forAgent = agent !== null;
+
+    if (forAgent) {
+        card.classList.add('is-agent');
+        if (agent.thread) card.dataset.thread = String(agent.thread);
+    }
+
     card.hadesArgs = frame.arguments;
     card.hadesPreview = frame.preview;
     card.tabIndex = -1;
@@ -915,7 +1193,9 @@ function permissionCard(frame) {
     head.append(el('span', 'charon-perm-args', argsSummary(frame.arguments)));
     card.append(head);
 
-    card.append(el('p', 'charon-perm-ask', 'Toto je zápis. Pustím ho?'));
+    card.append(el('p', 'charon-perm-ask', forAgent
+        ? 'Toto chce zapísať podagent. Pustím ho?'
+        : 'Toto je zápis. Pustím ho?'));
 
     const preview = String(frame.preview ?? '');
     if (preview.trim() !== '') {
@@ -934,11 +1214,19 @@ function permissionCard(frame) {
     }
 
     const actions = el('div', 'charon-perm-actions');
+
+    /* „Povoliť vždy" NEDOSTANE karta podagenta. `decision=allow_always` vypína
+       bránu na vlákne, ktorému rozhodnutie patrí — pri podagentovi na JEHO vlákne,
+       takže by od tej chvíle šli všetky ďalšie zápisy toho podbehu bez pýtania a
+       bez diffu. `Subagent::start()` `auto_accept` z rodiča zámerne NEDEDÍ,
+       `AgentRunner` ho vo vlákne podagenta ignoruje a `PATCH` na vlákno podagenta
+       ho zahodí — tlačidlo by teda sľubovalo, čo sa nestane. Vzor je
+       `public/js/chat/render.js`. */
     [
         ['allow', 'Povoliť', 'Enter', 'primary'],
         ['allow_always', 'Povoliť vždy', '', 'ghost'],
         ['deny', 'Zamietnuť', 'Esc', 'danger'],
-    ].forEach(([decision, text, key, cls]) => {
+    ].filter(([decision]) => !(forAgent && decision === 'allow_always')).forEach(([decision, text, key, cls]) => {
         const btn = el('button', `charon-perm-btn ${cls}`);
         btn.type = 'button';
         btn.dataset.dec = decision;
@@ -990,7 +1278,13 @@ function decide(card, decision) {
 
     announce(`${decisionLabel(decision) || decision}. ${writeTarget(card.dataset.name, card.hadesArgs, card.hadesPreview)}.`);
 
-    resumeAfterDecision(Number(card.dataset.id), decision);
+    // Vlákno nesie karta: pri zápise podagenta je to JEHO vlákno, nie vlákno doku.
+    resumeAfterDecision(
+        Number(card.dataset.id),
+        decision,
+        card.dataset.thread || null,
+        card.classList.contains('is-agent'),
+    );
 }
 
 function pendingCard(root = document) {

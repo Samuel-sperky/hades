@@ -547,7 +547,16 @@
 
     <!-- VLNA GRAF A: d3 je späť — layout uzlov počíta d3.forceSimulation (sim.js).
          Keby CDN nedobehlo, buildSim() to zvládne aj bez neho (uzly zostanú na
-         deterministických semienkach pri svojich kotvách, len bez relaxácie). -->
+         deterministických semienkach pri svojich kotvách, len bez relaxácie).
+
+         POZOR — CSP: toto sú JEDINÉ dva `<script src="https://…">` v celom
+         resources/views/, a preto App\Http\Middleware\ContentSecurityPolicy
+         pridáva `https://cdn.jsdelivr.net` do `script-src` len na tejto route
+         (`/`). `/chat` a `/console` majú `script-src 'self'`, teda tvrdšie —
+         kreslia výstup modelu. Keď sa d3 a pusher-js self-hostnú do
+         public/js/, treba to povolenie z middleware ZMAZAŤ; opačne, tretí CDN
+         skript pridaný na inú plochu politika nepovolí.
+         Meranie: docs/sprint-2026-08-25/MERANIE-CSP.md -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8/dist/web/pusher.min.js"></script>
     <script src="/js/charts.js"></script>

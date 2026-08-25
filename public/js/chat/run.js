@@ -583,7 +583,18 @@ export async function submit(text) {
         setTitle(R.thread.title);
     }
 
-    client.enqueue({ thread: thread.uuid, message });
+    /* Profil ide s KAŽDÝM ťahom, nie raz na vlákno: server si ho síce perzistuje
+       na `console_threads.tool_profile` (aby obnova zaparkovaného zápisu čítala
+       sadu toolov zo servera, nie z klienta), ale výber v hlavičke je vlastnosť
+       ĎALŠIEHO ťahu — človek môže jeden krok spustiť s orchestrátorom a ďalší
+       s plnou sadou. Prázdna hodnota sa neposiela: `RunController` vtedy vezme
+       default z configu. */
+    const profile = document.getElementById('chat-profile')?.value || '';
+    const body = { thread: thread.uuid, message };
+
+    if (profile) body.profile = profile;
+
+    client.enqueue(body);
 
     if (R.awaiting) {
         announce('Beh čaká na rozhodnutie o zápise. Správa stojí v poradí a odíde po ňom.');

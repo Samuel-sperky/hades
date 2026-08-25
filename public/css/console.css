@@ -476,7 +476,8 @@ button:where(.tr-open, .tool-head, #send, #stop) {
    vlastnú, užšiu mieru čítania a drží si ju v jedinom bloku `.empty-state`
    v sekcii „prázdny stav". */
 .tool-call,
-.perm-card { max-width: var(--stream-w); margin-left: auto; margin-right: auto; }
+.perm-card,
+.agent-run { max-width: var(--stream-w); margin-left: auto; margin-right: auto; }
 
 /* Znak v prázdnom stave — jediné miesto v Charónovi, kde má značka priestor.
    Dýchanie sem NEIDE: prázdny stav je ticho pred prácou, nie stav vedomia.
@@ -918,6 +919,95 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 .diff .df-meta { color: var(--muted); }
 .diff .df-ctx { color: var(--text-secondary); }
 
+/* ---------- podagent v toku ---------- */
+
+/* Rámec jedného podbehu (`spawn_agent`). Vnorené rámce dieťaťa sa kreslia DO
+   NEHO a nikdy medzi kroky rodiča — inak by človek nevedel, komu povoľuje zápis.
+   Odsadenie zľava a pás vo farbe akcentu sú celý rozdiel: nie je to karta na
+   inom papieri, je to ten istý tok o úroveň hlbšie.
+
+   Papier je `--surface-2` (ten istý, aký nesie `.tool-call`), pretože rámec
+   podbehu JE vnorený blok v toku. Tretí povrch by tvrdil tretiu rolu, ktorú
+   appka nemá. */
+/* Miera čítania a auto-okraje po stranách sú v skupine `.tool-call, .perm-card,
+   .agent-run` vyššie — tu je LEN odstup zdola, aby o okrajoch rámca neexistovali
+   dve pravdy (shorthand `margin` by tú skupinu prepísal celú). */
+.agent-run {
+    margin-bottom: 12px;
+    padding: var(--sp-1) var(--sp-2h);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-accent);
+    border-radius: var(--card-radius);
+    background: var(--surface-2);
+}
+
+/* Zaparkované dieťa je jediný stav, v ktorom rámec niečo ŽIADA — nesie ho tá istá
+   akcentová rola ako karta brány, aby oko našlo miesto rozhodnutia. */
+.agent-run.is-waiting { border-color: var(--border-accent); box-shadow: var(--glow-accent); }
+.agent-run.is-failed { border-left-color: var(--danger-border); }
+.agent-run.is-closed { border-left-color: var(--border); }
+
+.agent-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+
+.agent-head .ms { font-size: 16px; color: var(--accent-ink); }
+.agent-title { font-size: var(--fs-body); font-weight: 500; }
+
+.agent-meta {
+    flex: 1;
+    min-width: 0;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Zadanie podagenta napísal MODEL, nie človek — je to text, ktorý treba prečítať
+   celý, takže sa nekráti na jeden riadok ako meta. */
+.agent-task {
+    margin: var(--sp-0) 0 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.agent-body { margin-top: var(--sp-1); }
+.agent-body > * + * { margin-top: var(--sp-1); }
+
+/* Text dieťaťa je holý text (`textContent`), nie markdown — dôvod je v run.js.
+   Preto `pre-wrap`: odseky, ktoré model oddelil prázdnym riadkom, musia zostať
+   oddelené aj bez markdownu. */
+.agent-say {
+    margin: 0;
+    color: var(--text);
+    font-size: var(--fs-body);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.agent-note,
+.agent-foot {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--fs-small);
+}
+
+.agent-foot { font-family: var(--mono); }
+
+.agent-error {
+    margin: 0;
+    color: var(--danger-ink);
+    font-size: var(--fs-small);
+}
+
 /* ---------- potvrdenie zápisu ---------- */
 
 /* Karta potvrdenia stojí na ZÁKLADNOM papieri karty (`--card-bg`, teda `--panel`)
@@ -939,6 +1029,22 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 .perm-card:focus-visible { box-shadow: var(--focus-ring); }
 .perm-card.decided { border-color: var(--border); box-shadow: none; }
 .perm-card.denied { opacity: .72; }
+
+/* Karta zápisu PODAGENTA. Stojí vnútri `.agent-body`, kde už je odsadenie aj pás,
+   takže sa neopakuje — vlastnú mieru čítania ale zahodiť musí: `--stream-w` by
+   ju v užšom rámci nechalo pretekať. Glow tu netreba, nesie ho rámec podbehu
+   (`.agent-run.is-waiting`); dva glowy nad jedným rozhodnutím by len rozostrili,
+   čo z nich je to rozhodnutie. */
+.agent-body .perm-card {
+    max-width: none;
+    margin-bottom: 0;
+}
+
+/* `:not(:focus-visible)` a nie holé `box-shadow: none`: prsteň fokusu nesie
+   globálne `:focus-visible` (mind.css) a to je špecificita 0-1-0, teda menej než
+   `.agent-body .perm-card`. Bez tohto vyhradenia by karta v rámci podbehu prišla
+   o prsteň — a je to karta, po ktorej sa najčastejšie ide klávesnicou. */
+.agent-body .perm-card:not(:focus-visible) { box-shadow: none; }
 
 .pc-head {
     display: flex;
