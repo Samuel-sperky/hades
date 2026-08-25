@@ -1,0 +1,565 @@
+/* ===========================================================================
+   Chat — layout /chat.
+
+   Farebné tokeny, @font-face, témy, `.skip-link`, `.sr-only`, `.hidden`, bare
+   `button`, `kbd` a globálne `:focus-visible` sú v `mind.css`, ktorý sa na tejto
+   stránke načítava PRVÝ. Tento súbor nesie LEN rozloženie plochy.
+
+   Pravidlo projektu platí aj tu: žiadny raw hex ani rgba mimo `:root`, všetko
+   cez tokeny — inak by chat hovoril inou farbou než plátno grafu a než konzola.
+
+   Prsteň fokusu si tu NEPÍŠEME. Nesie ho globálne `:focus-visible` v mind.css;
+   druhá pravda o fokuse je presne to, čo predchádzajúci šprint platil.
+
+   POZOR na názvy tokenov: mind.css má --text / --text-secondary / --muted /
+   --panel / --mono, NIE --ink / --surface / --font-mono. `color: var(--ink)` sa
+   nevyhodnotí na nič, zdedí sa — a na tmavej téme je to čierny text na čiernom.
+   =========================================================================== */
+
+:root {
+    /* Šírka toku. `--stream-w` s tou istou hodnotou je aj v console.css — je to
+       JEDNO meno pre jeden fakt, zapísané dvakrát len preto, že patrí do `:root`
+       v mind.css a ten súbor je v tomto šprinte v cudzích rukách. `/chat` a
+       `/console` nikdy nenačítajú oba stylesheety, takže sa neprebíjajú; keď sa
+       token presúva do mind.css, musí zmiznúť z OBOCH miest, nie vzniknúť
+       tretíkrát. 820 z 1920 px je 42,7 % — miera riadku, ktorá sa číta. */
+    --stream-w: 820px;
+
+    /* Šírky bočných panelov. Sú to premenné, nie literály v mřížce, pretože ich
+       človek ťahá myšou a `public/js/chat/main.js` ich zapisuje INLINE na `:root`
+       (`localStorage`: hades.chat.threadsW / hades.chat.artifactW).
+
+       Zatvorený stav ich prepisuje na 0 NA `#chat-app`, nie tu — inline štýl na
+       `:root` by pravidlo v tomto súbore prebil špecificitou a panel by sa
+       nezatvoril. Sú to dve rôzne miesta zámerne, nie nedôslednosť. */
+    --chat-threads-w: 268px;
+    --chat-artifact-w: 380px;
+}
+
+.chat-body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: var(--fs-base);
+    /* Chat nikdy neskroluje telom — skroluje tok správ vo svojom kontejneri. */
+    overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   RESET CHRÓMU TLAČIDIEL — jeden zoznam, `font` len raz
+
+   `mind.css` dáva každému bare `<button>` panelové pozadie, rám, zaoblenie,
+   padding, `min-height` a vlastnú typografiu. Chat má klikacích prvkov, ktoré
+   NIE SÚ tlačidlá v tom vizuálnom zmysle.
+
+   ŠPECIFICITA JE ZÁMERNE 0-0-1 (`:where()` neprispieva vôbec): dosť na to, aby
+   reset prebil bare `button` z mind.css pri rovnakej špecificite a neskoršom
+   poradí súboru, a málo na to, aby ho prebilo každé pravidlo s triedou alebo id
+   nižšie — bez ohľadu na poradie.
+
+   Tento reset dáva LEN `font`, a to je poučenie zaplatené v console.css: tam
+   zoskupený reset rozdával aj `background`, `border` a `color`, ktoré si potom
+   deväť blokov nižšie prepisovalo pri ROVNAKEJ špecificite. Fungovalo to len
+   vďaka poradiu v zdroji a `w4dup.js` to hlásil ako 14 dvojitých právd. Tu
+   preto každý prvok, ktorý má vlastné pozadie alebo rám, dostáva ho v JEDINOM
+   vlastnom pravidle nižšie a v resete nie je. */
+:is(a, button):where(
+    .cp-top a, .cp-top button, #chat-threads-toggle, #chat-artifact-toggle,
+    #chat-artifact-close, #chat-send, #chat-stop, #chat-to-bottom
+) {
+    font: inherit;
+}
+
+/* Ikony sedia na tom istom subsete ako rail grafu a konzola. Keď pridáš NOVÚ
+   ikonu, subset ju nemá a vykreslí sa ako svoj ligatúrový názov — treba
+   regenerovať font (`pyftsubset --no-layout-closure`) a overiť MERANÍM šírky
+   glyfu (glyf ≈ 1 em = 18 px; nevykreslená ligatúra padne na fallback a je
+   násobne širšia).
+
+   Zvyšok kresby (line-height, weight, style, letter-spacing, text-transform,
+   white-space, display, direction, font-variation-settings, smoothing) dáva
+   `.ms` v mind.css na tej istej špecificite 0-0-1. Ostávajú tri odchýlky, tie
+   isté ako na konzole:
+     · `sans-serif` fallback — keď subset zhavaruje, ligatúrový názov sa aspoň
+       vykreslí bezpätkovo a nerozhodí layout;
+     · `--icon-sm` (18 px) namiesto `--icon-md` (20 px) — chat má drobnejšie ikony;
+     · `liga` naprieč prefixmi, mind.css ho nedeklaruje. */
+.ms {
+    font-family: 'Material Symbols Rounded', sans-serif;
+    font-size: var(--icon-sm);
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+}
+
+/* `arrow_downward` v subsete NIE JE (zmerané 252 px namiesto 18 px, teda by sa
+   vykreslila ako text), preto sa prevracia `arrow_upward`. */
+.ms.flip { transform: rotate(180deg); }
+
+/* ---------------------------------------------------------------------------
+   TRI OBLASTI
+
+   Jedna mřížka, tri stĺpce, šírky bočných z premenných. Zatvorenie panela je
+   preto ZMENA JEDNEJ PREMENNEJ, nie druhá definícia `grid-template-columns` —
+   dve definície mřížky by sa rozišli pri prvej zmene poradia oblastí.
+
+   Riadok sa MUSÍ vypísať. S implicitným `auto` riadkom sa výška rieši kruhom:
+   riadok sa nafúkne na max-content hlavného stĺpca, stĺpec sa v ňom zarovná
+   k spodku a hlavička skončí nad viewportom (namerané na konzole: 364 px nad).
+   `minmax(0, 1fr)` dá riadku definitnú výšku a `min-height: 0` na stĺpcoch mu
+   zabráni z nej vyrásť — sú to dve polovice tej istej opravy.
+   --------------------------------------------------------------------------- */
+#chat-app {
+    /* Kotva pre ťahadlá šírky — tie sú `position: absolute` voči mřížke. */
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--chat-threads-w) minmax(0, 1fr) var(--chat-artifact-w);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100vh;
+}
+
+body[data-threads="off"] #chat-app { --chat-threads-w: 0px; }
+body[data-artifact="off"] #chat-app { --chat-artifact-w: 0px; }
+
+/* Spoločné pre oba bočné panely. `overflow: hidden` je tu podmienka, nie
+   kozmetika: pri nulovej šírke stĺpca by obsah inak vytiekol do konverzácie.
+   Fokusovateľné prvky vnútri riešime `hidden` atribútom v JS — nulová šírka sám
+   fokus nezruší a klávesnica by chodila po neviditeľnom paneli. */
+#chat-threads,
+#chat-artifact {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--panel);
+}
+
+#chat-threads { border-right: 1px solid var(--border); }
+#chat-artifact { border-left: 1px solid var(--border); }
+
+/* ---------- ťahadlá šírky ----------
+   `position: absolute` voči `#chat-app`, presne na hranici stĺpca: šírka je tá
+   istá premenná, ktorá určuje stĺpec, takže ťahadlo nemôže od hrany odtiecť.
+   Nie sú to deti panelov — panely majú `overflow: hidden` a ťahadlo vnútri by
+   sa o tú hranu zrezalo a sadlo na scrollbar zoznamu.
+
+   V pokoji sú neviditeľné: je to hrana panela, nie ovládací prvok, ktorý si
+   žiada pozornosť. Pri hover a fokuse sa rozsvietia akcentovou linkou, takže je
+   jasné, že sa nimi hýbe. Zatvorenému panelu ťahadlo zháša pravidlo nižšie —
+   inak by ostalo visieť na nulovej šírke a dalo by sa doňho trafiť myšou. */
+.cp-grip {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    z-index: 2;
+    cursor: col-resize;
+    background: transparent;
+    transition: background var(--transition-fast);
+}
+
+#chat-threads-grip { left: calc(var(--chat-threads-w) - 2px); }
+#chat-artifact-grip { right: calc(var(--chat-artifact-w) - 2px); }
+
+.cp-grip:hover,
+.cp-grip:focus-visible { background: var(--border-accent); }
+
+body[data-threads="off"] #chat-threads-grip,
+body[data-artifact="off"] #chat-artifact-grip { display: none; }
+
+/* Počas ťahania. `user-select: none` je podmienka, nie kozmetika: bez neho gesto
+   vyznačí text v konverzácii, cez ktorú kurzor prebehne, a pustenie tlačidla
+   nechá plochu s modrou selekciou. Kurzor drží tvar aj mimo 5 px ťahadla —
+   `setPointerCapture` posiela pohyby stále jemu, takže by sa inak tvar menil
+   podľa toho, nad čím kurzor práve je. Triedu prepína `wireGrips()`. */
+body.cp-dragging {
+    cursor: col-resize;
+    user-select: none;
+}
+
+/* ---------- hlavička panela vlákien ---------- */
+
+.cp-top {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Hover v hlavičke panela je TICHÝ: nesie ho rám a text, nie výplň. Pozadie sa
+   musí vypísať, pretože reset má špecificitu 0-0-1 a `button:hover` z mind.css
+   (0-1-1) by inak podstrčil `--hover-fill`. */
+.cp-top a,
+.cp-top button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text);
+    font-size: var(--fs-body);
+    text-decoration: none;
+}
+
+.cp-top a:hover,
+.cp-top button:hover {
+    background: transparent;
+    border-color: var(--border-accent);
+    color: var(--accent-ink);
+}
+
+#chat-new { flex: 1; }
+
+/* Hľadanie nad zoznamom. Žiadny druhý indikátor fokusu — prsteň nesie globálne
+   `:focus-visible` a dva naraz oko čita ako dva rôzne stavy. */
+.cp-find {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+}
+
+.cp-find .ms { font-size: var(--icon-xs); }
+
+/* Pole hľadania je bez vlastnej kresby — rám a pozadie z mind.css by v riadku
+   s ikonou vyrobili políčko v políčku. `outline: none` sa tu ZÁMERNE nepíše
+   (konzola ho na `#thread-find` má): zhasla by tým jediná stopa po fokuse
+   a prsteň z mind.css je to, čo má na tomto poli zostať vidieť. */
+#chat-search {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 2px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: var(--fs-body);
+}
+
+#chat-thread-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-1);
+}
+
+/* ---------------------------------------------------------------------------
+   KONVERZÁCIA
+   --------------------------------------------------------------------------- */
+#chat-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+#chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    padding: 6px var(--sp-3);
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
+.ch-left,
+.ch-right {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+
+#chat-title {
+    margin: 0;
+    font-size: var(--fs-title);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--ls-heading);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Nad 900 px je zoznam vlákien viditeľný a prepínač je voliteľná vec; pod 900 px
+   je to jediná cesta k histórii. Skrytý nie je nikde — na širokom okne ním
+   človek získa celú šírku pre konverzáciu, čo je pri artefakte vedľa dôležité. */
+#chat-threads-toggle,
+#chat-artifact-toggle,
+#chat-artifact-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    width: var(--control-h);
+    color: var(--text-secondary);
+}
+
+/* Stav behu. Mono, aby čísla neposkakovali pri každom tiku sekundy. */
+#chat-run-stats {
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* ---------- tok správ ---------- */
+
+#chat-stream {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-2) var(--sp-1);
+}
+
+/* Prázdny stav. `margin: auto` ho drží v optickom strede toku, kým v ňom nie je
+   nič iné; keď vlna 3 pridá prvú bublinu, tento blok už z DOM zmizne. */
+#chat-empty {
+    margin: auto;
+    max-width: 46ch;
+    text-align: center;
+    color: var(--muted);
+}
+
+.ce-mark { opacity: .85; }
+
+#chat-empty h2 {
+    margin: var(--sp-2) 0 var(--sp-1);
+    font-size: var(--fs-display);
+    font-weight: var(--fw-heading);
+    letter-spacing: var(--ls-heading);
+    color: var(--text);
+}
+
+#chat-empty p {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: var(--lh-prose);
+}
+
+/* ---------- composer ---------- */
+
+#chat-composer {
+    position: relative;
+    padding: var(--sp-1) var(--sp-2) var(--sp-2);
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+}
+
+/* Späť na spodok. Sedí NAD composerom, nie v ňom: v riadku by ubral šírku
+   textu, a ukazuje sa len vtedy, keď človek odskroluje z konca. */
+#chat-to-bottom {
+    position: absolute;
+    top: calc(-1 * var(--sp-5));
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-h);
+    padding: 0;
+    border-radius: var(--r-pill);
+    background: var(--panel-solid);
+    color: var(--text-secondary);
+    box-shadow: var(--elev-2);
+}
+
+/* Fokus nesie RIADOK, nie textarea vnútri — dva indikátory naraz (prsteň na
+   poli plus akcentový rámik riadku) číta oko ako „vybrané", nie ako „tu píšeš".
+   Prsteň je rezervovaný v pokoji nulovou šírkou: `box-shadow` layout nikdy
+   neposúva, takže composer pri fokuse neposkočí, na rozdiel od zhrubnutia rámu. */
+.cc-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-1);
+    max-width: var(--stream-w);
+    margin: 0 auto;
+    padding: var(--sp-1) 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--field-bg);
+    box-shadow: 0 0 0 0 transparent;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.cc-row:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+
+/* Textarea je vnútri riadku bez vlastnej kresby: rám aj pozadie nesie `.cc-row`.
+   `resize: none` preto, že výšku riadi `autoGrowPrompt()` v main.js podľa obsahu
+   — ručná rukoväť by s ním bojovala o tú istú vlastnosť.
+   Prsteň z mind.css sa tu ruší, pretože ho už nesie riadok (viď vyššie). */
+#chat-prompt {
+    flex: 1;
+    min-height: 0;
+    max-height: 40vh;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    resize: none;
+    line-height: var(--lh-base);
+    overflow-y: auto;
+}
+
+#chat-prompt:focus-visible { box-shadow: none; }
+
+/* Poslať a Zastaviť. Každé má vlastné pozadie a rám v JEDINOM pravidle — do
+   resetu vyššie preto nepatria (viď poučenie z console.css). */
+#chat-send {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-h);
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-md);
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+#chat-send:hover { background: var(--accent-600); }
+
+#chat-send:disabled {
+    background: var(--accent-disabled-fill);
+    cursor: not-allowed;
+}
+
+#chat-stop {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-h);
+    padding: 0;
+    border: 1px solid var(--danger-border);
+    border-radius: var(--r-md);
+    background: var(--danger-soft);
+    /* `--danger-ink`, nie `--danger`: základná hodnota dáva na paneli 4,38:1,
+       teda pod AA pre text; `-ink` variant prechádza na všetkých ôsmich
+       povrchoch (BASELINE-MERANIA §3b). */
+    color: var(--danger-ink);
+}
+
+#chat-stop:hover { border-color: var(--danger-border-hover); }
+
+#chat-hint {
+    max-width: var(--stream-w);
+    margin: 6px auto 0;
+    font-size: var(--fs-caption);
+    color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   PANEL ARTEFAKTU
+
+   Zatiaľ len kostra: hlavička a jeden prázdny kontejner. Obsah (zvýraznená
+   syntax, náhľad HTML/SVG, tabuľky, diagramy) rieši vlna 3 a technológiu
+   diagramov rozhoduje meranie — žiadne CDN, žiadny bundler (kontrakt §2c).
+   --------------------------------------------------------------------------- */
+.ca-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-1);
+    padding: 6px 6px 6px var(--sp-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.ca-head h2 {
+    margin: 0;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-caps);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#chat-artifact-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--sp-2);
+}
+
+/* ---------------------------------------------------------------------------
+   ZALOMENIE — 900 px
+
+   `mind.css` a `console.css` majú dve úrovne (900 px pre plávajúce panely,
+   860 px pre plochy, ktoré strácajú druhý stĺpec). Chat stráca ROVNO DVA stĺpce,
+   takže patrí k 900. Premenné v `@media` nefungujú, takže hranica je literál —
+   keď ju meníš, prehľadaj všetky tri stylesheety, inak sa appka zlomí na dvoch
+   rôznych šírkach a bude to vyzerať ako chyba layoutu.
+
+   Panely sa pod 900 px nezrušia, len sa zmenia na prekryv: `position: fixed` ich
+   vyberie z mřížky, takže jednostĺpcová mřížka nižšie nemá čo riešiť.
+   --------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+    #chat-app { grid-template-columns: minmax(0, 1fr); }
+
+    #chat-threads,
+    #chat-artifact {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        z-index: var(--z-panel);
+        /* Priehľadný panel by nad tokom správ nechal presvitať text a kontrast
+           obsahu by závisel od toho, čo je pod ním. */
+        background: var(--panel-solid);
+        box-shadow: var(--elev-3);
+    }
+
+    #chat-threads {
+        left: 0;
+        width: min(320px, 88vw);
+    }
+
+    #chat-artifact {
+        right: 0;
+        width: min(460px, 94vw);
+    }
+
+    /* Na dotyku sa 5 px hrana netrafí a šírku prekryvu aj tak nemá zmysel meniť. */
+    .cp-grip { display: none; }
+
+    /* Scrim pod otvoreným prekryvom. Jedno pravidlo pre oba panely — naraz je
+       otvorený najviac jeden, klik doňho zatvára (rieši main.js). */
+    body[data-threads="on"]::after,
+    body[data-artifact="on"]::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: var(--z-chrome);
+        background: var(--scrim);
+    }
+
+    #chat-header { padding: 6px var(--sp-2); }
+    #chat-stream { padding: var(--sp-2) 12px var(--sp-1); }
+    #chat-composer { padding: var(--sp-1) 12px 10px; }
+
+    /* Text pri „Nové vlákno" zmizne, cieľ nie: tlačidlo si drží padding a
+       `min-height` z mind.css, takže zostáva nad 24×24 px. */
+    .cp-top .lbl { display: none; }
+
+    /* Nápoveda sa NEskrýva celá — s ňou by zmizla jediná stopa po skratkách.
+       Skryjú sa len klávesové kombinácie, ktoré na dotyku nemajú význam. */
+    #chat-hint .hint-keys { display: none; }
+    #chat-hint { font-size: var(--fs-micro); }
+}
