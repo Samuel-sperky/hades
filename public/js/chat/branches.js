@@ -177,11 +177,23 @@ function barMessage() {
 
     note.id = 'chat-branch-msg';
     note.hidden = !B.message;
-    note.setAttribute('role', 'status');
+    // ZÁMERNE bez `role="status"`: ohlasovanie drží `live()` do jedného
+    // zdieľaného regiónu (`#chat-live`). Dva `polite` regióny naplnené v tom
+    // istom volaní si vetu prekričia — viď `say()`.
 
     return note;
 }
 
+/**
+ * Jedna veta o vetvách — a hlási sa RAZ.
+ *
+ * Do 25. 8. 2026 tu bolo `role="status"` na `#chat-branch-msg` **a** zároveň
+ * `live(text)` do zdieľaného `#chat-live`. Dva `polite` regióny naplnené v tom
+ * istom volaní si hlásenia prekričia: čítačka ich zaradí do frontu za sebou a
+ * človek dostane tú istú vetu dvakrát, alebo — pri rýchlom druhom hlásení —
+ * ani raz. Text preto zostáva VIDITEĽNÝ v `#chat-branch-msg`, ale ten prvok už
+ * nie je `role="status"` (viď `messageNode()`); ohlasuje sa výhradne cez `live()`.
+ */
 function say(text) {
     B.message = text || '';
 
@@ -255,6 +267,16 @@ export async function activate(uuid) {
     // Prepnutie vetvy nemení správy, mení to, ktoré z nich sú história — takže
     // sa vlákno načíta znova a tok sa poskládá zo serveru.
     await loadThread(B.thread);
+
+    /* Fokus musí prežiť prekreslenie pásu. `loadThread()` vydá `chat:thread`,
+       `paintBar()` postaví pás znova a prvok, ktorý fokus držal, prestane
+       existovať — takže po prepnutí klávesnicou padol fokus na `<body>`. Je to tá
+       istá trieda nálezu ako P3 (fokus po rozhodnutí o zápise) a lieči sa rovnako:
+       vráť ho na tú vetvu, na ktorú človek prepol. Prepnutie myšou tým nič
+       nestratí — prvok pod kurzorom je ten istý. */
+    // Pilulka práve prepnutej vetvy je tá s `aria-current` — pás si ho nastavuje
+    // sám v `pill()`, takže netreba pridávať druhý identifikátor na to isté.
+    document.querySelector('#chat-branchbar .cb-pill[aria-current="true"]')?.focus();
     live('Prepnuté na inú vetvu konverzácie.');
 }
 

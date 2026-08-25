@@ -28,7 +28,14 @@ abstract class RipgrepTool extends BaseTool
      * Globy sa aplikujú v poradí a posledná zhoda vyhráva, takže deny idú VŽDY
      * za používateľov glob. Ináč by `--glob '**\/.env'` prebil zákaz.
      */
-    protected const DENY_GLOBS = ['!.*', '!vendor', '!node_modules', '!storage/framework'];
+    /*
+     * `storage/app/console-attachments` je koreň príloh chatu. `PathGuard` ho už
+     * odmieta pri čítaní jedného súboru, ale `grep`/`glob` idú cez `rg`, ktorý o
+     * `PathGuard`e nevie — obrana tak visela na tom, že `rg` ctí `storage/app/.gitignore`.
+     * To je náhoda, nie pravidlo: prílohy sú súbory od cudzieho a beh iného vlákna
+     * ich nemá čo prehľadávať.
+     */
+    protected const DENY_GLOBS = ['!.*', '!vendor', '!node_modules', '!storage/framework', '!storage/app/console-attachments'];
 
     /** Sekundy — pomalý model už tak čaká; visiaci `rg` by mu zjedol celý ťah. */
     protected const TIMEOUT = 20.0;

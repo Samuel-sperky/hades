@@ -8,11 +8,16 @@
    docs/BEZPECNOST.md). fetch + ReadableStream to zvládne aj s CSRF a podporuje
    abort.
 
-   Dve pravidlá protokolu, na ktorých tu všetko stojí:
-     • ťah končí PRESNE jedným rámcom `end` alebo `error`;
+   Tri pravidlá protokolu, na ktorých tu všetko stojí:
+     • ťah končí PRESNE jedným TOP-LEVEL rámcom `end`, `error`, `permission`
+       alebo `agent_wait`;
      • rámec `permission` ťah ukončí BEZ `end` — beh je zaparkovaný a `/decide`
        ho rozbehne a dostreamuje zvyšok. Preto sa parkovanie nesmie tváriť ako
-       koniec: `state.awaiting` drží, že sa ešte nič neskončilo.
+       koniec: `state.awaiting` drží, že sa ešte nič neskončilo;
+     • `agent_wait` je to isté parkovanie, len zápis drží PODAGENT na svojom
+       vlákne — preto `state.awaiting` nesie aj `thread` a `/decide` ide naň.
+       Vnorené `end` / `error` / `permission` dieťaťa prichádzajú v obálke
+       `{t:'agent', run, frame}` a ťah rodiča NEKONČIA; `route()` ich nikdy nevidí.
 
    FRONT ZADANÍ (nález A18) leží NAD protokolom a je čisto klientsky: server
    o ňom nevie a nevznikol preň žiadny nový rámec. Písanie počas behu bolo do
@@ -53,7 +58,10 @@ const DECIDE_URL = '/api/console/decide';
  *   onToolResult(frame, name), onPermission(frame), onEnd(frame),
  *   onError(text, fromFrame), onNotice(text), onThreadState(frame),
  *   onRunningChange(on, parked), onSettled(), onAfter(),
- *   onQueueChange(items, held), onQueueSend(item).
+ *   onQueueChange(items, held), onQueueSend(item),
+ *   onAgentStart(frame), onAgent(frame), onAgentWait(frame), onAgentEnd(frame)
+ *     — podagenti; plocha, ktorá ich nedefinuje, beh s podagentom prežije, len
+ *       ho v UI neukáže (`call()` na nedefinovaný callback je no-op).
  *   `onToolResult` dostáva aj MENO nástroja z rámca `tool` — klient si drží
  *   Map<id, name>, takže dok nemusí meno dohľadávať v DOM podľa data-id.
  *   `onError(text, fromFrame)`: fromFrame=true iba pri rámci `error` v prúde
@@ -225,6 +233,39 @@ export function createRunClient({ request, state, view } = {}) {
                 // z `state.awaiting` v `finally` rozhoduje, že sa ešte nič neskončilo.
                 state.awaiting = { id: frame.id, name: frame.name };
                 call('onPermission', frame);
+
+                return true;
+
+            /* Podagenti. `agent_start` a `agent_end` sú ohlásenia a ťah nekončia;
+               `agent` je OBÁLKA vnoreného rámca dieťaťa, takže sa nikdy neroutuje
+               ako top-level — vnorené `end`/`permission` dieťaťa ťah rodiča
+               nekončia a `route()` ich preto nesmie vidieť.
+
+               `agent_wait` JE koniec ťahu, presne ako `permission` — len zápis drží
+               podagent na SVOJOM vlákne. Preto `state.awaiting` nesie aj `thread`:
+               `/decide` sa posiela naň, nie na vlákno, ktoré má klient otvorené.
+
+               Bez týchto vetiev padali rámce do `default:`, takže `/console` a dok
+               nad grafom beh s podagentom prežili, ale zaparkované dieťa v UI
+               neukázali — a klient hlásil „beh sa skončil bez odpovede". */
+            case 'agent_start':
+                call('onAgentStart', frame);
+
+                return false;
+
+            case 'agent':
+                call('onAgent', frame);
+
+                return false;
+
+            case 'agent_end':
+                call('onAgentEnd', frame);
+
+                return false;
+
+            case 'agent_wait':
+                state.awaiting = { id: frame.child_call, name: frame.name, thread: frame.thread };
+                call('onAgentWait', frame);
 
                 return true;
 

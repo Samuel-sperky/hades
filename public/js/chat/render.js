@@ -40,6 +40,9 @@
    =========================================================================== */
 
 import { renderMarkdown } from '../shared/markdown.js';
+// Trojtvarové skloňovanie žije v `threads.js` a je exportované. Alias, aby sa
+// nepomiešalo s lokálnym `plural()`, ktorý skloňuje RIADKY diffu.
+import { plural as plural3 } from './threads.js';
 import {
     argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeTarget,
 } from '../shared/gate.js';
@@ -852,7 +855,10 @@ export function openAgent(frame) {
 
     const bits = [];
     if (frame.profile) bits.push(`profil ${frame.profile}`);
-    if (frame.max_steps) bits.push(`strop ${frame.max_steps} kroky`);
+    // Slovenčina má tri tvary, nie dva: „strop 6 kroky" bolo zle pri každom
+    // strope okrem 2–4. Trojtvarový `plural()` je v `threads.js` a je zdieľaný —
+    // štvrtá privátna kópia by sa raz rozišla.
+    if (frame.max_steps) bits.push(`strop ${frame.max_steps} ${plural3(frame.max_steps, 'krok', 'kroky', 'krokov')}`);
     if (bits.length) head.append(el('span', 'cn-meta', bits.join(' · ')));
 
     box.append(head);
@@ -892,7 +898,7 @@ export function closeAgent(frame) {
 
     const bits = [];
 
-    if (frame.steps) bits.push(`${num(frame.steps, 0)} ${frame.steps === 1 ? 'krok' : 'kroky'}`);
+    if (frame.steps) bits.push(`${num(frame.steps, 0)} ${plural3(frame.steps, 'krok', 'kroky', 'krokov')}`);
     if (frame.tool_calls) bits.push(`${num(frame.tool_calls, 0)} nástrojov`);
 
     const cost = costLabel({ tokens_in: frame.tokens_in, tokens_out: frame.tokens_out }, num);

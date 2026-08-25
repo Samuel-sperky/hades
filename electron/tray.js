@@ -28,12 +28,22 @@
 
 const { app, Tray, Menu, Notification, nativeImage } = require('electron');
 
-/** Známe zápisové nástroje Charóna → čo notifikácia povie, „na čo" beh čaká. */
+/**
+ * Známe zápisové nástroje Charóna → čo notifikácia povie, „na čo" beh čaká.
+ *
+ * Mená musia sedeť s `ToolRegistry::PROFILES`. Do 25. 8. 2026 tu boli tri, ktoré
+ * v appke neexistujú (`mind_forget`, `file_write`, `file_edit`), takže tie tri
+ * zápisy padali na vecný fallback — notifikácia fungovala, len nikdy nepovedala,
+ * o čo ide. Skutočná šestica je nižšie; keď pribudne zápisový tool, pribudne
+ * riadok aj tu.
+ */
 const TOOL_LABEL = {
     mind_learn: 'zápis do pamäte',
-    mind_forget: 'vymazanie z pamäte',
-    file_write: 'zápis do súboru',
-    file_edit: 'úpravu súboru',
+    mind_rename: 'premenovanie uzla',
+    mind_move: 'presun uzla',
+    mind_delete: 'vymazanie z pamäte',
+    write_file: 'zápis do súboru',
+    edit_file: 'úpravu súboru',
 };
 
 /** Z názvu nástroja urob vetu bez obsahu zápisu; neznámy nástroj ostane vecný. */

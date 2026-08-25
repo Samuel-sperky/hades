@@ -315,14 +315,12 @@ function agentFrame(frame) {
             return true;
 
         case 'agent_wait':
-            // POSLEDNÝ rámec ťahu rodiča. `R.awaiting` sa nastaví tu, ešte počas
-            // čítania prúdu, aby klient v `finally` vedel, že sa nič neskončilo —
-            // a aby front zadaní stál, kým sa o zápise nerozhodne.
-            R.awaiting = {
-                id: frame.child_call,
-                name: frame.name || '',
-                thread: frame.thread || null,
-            };
+            // POSLEDNÝ rámec ťahu rodiča. `R.awaiting` sa NEnastavuje tu:
+            // od 25. 8. 2026 pozná `agent_wait` priamo `route()` v `runclient.js`
+            // a nastaví ho ešte pred touto obsluhou (`state` je tento istý objekt
+            // `R`). Dvaja pisatelia jedného stavu boli dve pravdy o tom, či sa ťah
+            // skončil — a keby sa raz rozišli v tvare, front zadaní by prekročil
+            // zaparkovaný zápis. Vlastníkom je zdieľaný klient.
             markAgentWait(frame);
             paintStats();
 

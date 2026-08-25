@@ -185,7 +185,11 @@ Route::middleware([
     // Hľadanie v histórii naprieč vláknami a export vlákna do markdownu. Export je
     // GET, pretože je to čítanie — a skládá ho SERVER, aby všetky tri plochy
     // (konzola, dok, /chat) dostali ten istý text. Systémová smernica v ňom nie je.
-    Route::get('/console/search', [ConsoleSearchController::class, 'index']);
+    // `throttle` z toho istého dôvodu ako pri `/hygiene`: jeden request je
+    // `LOWER(content) LIKE '%…%'` nad celou tabuľkou správ, teda plný sken bez
+    // indexu, a PHP workerov je osem.
+    Route::get('/console/search', [ConsoleSearchController::class, 'index'])
+        ->middleware('throttle:30,1');
     Route::get('/console/threads/{thread:uuid}/export', [ConsoleSearchController::class, 'export']);
 
     // Beh agenta. Throttle je na `run`, nie na `decide`: jeden ťah drží spojenie
