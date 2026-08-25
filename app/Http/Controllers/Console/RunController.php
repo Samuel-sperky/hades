@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\ConsoleThread;
 use App\Models\ConsoleToolCall;
 use App\Models\Run;
+use App\Services\Console\AgentContext;
 use App\Services\Console\AgentRunner;
 use App\Services\Console\RunRecorder;
 use App\Services\Console\ContextBlock;
+use App\Services\Console\Subagent;
 use App\Services\Console\ToolRegistry;
 use App\Services\Llm\ProviderFactory;
 use Illuminate\Http\Request;
@@ -103,6 +105,15 @@ class RunController extends Controller
             return $this->refuse('Také vlákno neexistuje.');
         }
 
+        // Vlákno podagenta nie je konverzácia. Rámec `agent_wait` posiela jeho uuid
+        // do prehliadača (klient ho potrebuje pre `/decide`), takže bez tohto guardu
+        // by doň klient vedel písať — a správa vo vlákne podagenta by pretiekla do
+        // kontextu, ktorý má byť izolovaný. `/decide` naň povolené ZOSTÁVA; to je
+        // celá brána.
+        if ($thread->isSubagent()) {
+            return $this->refuse('Toto je vlákno podagenta — správy doň neposielaj. Podagenta spúšťa beh rodiča.');
+        }
+
         // Vlákno s nedorozhodnutým zápisom nesmie prijať ďalšiu správu — model by
         // dostal históriu s `tool_use` bez výsledku a druhý beh by písal do toho
         // istého vlákna súčasne s tým prvým.
@@ -145,17 +156,36 @@ class RunController extends Controller
         $block = $context->build($data['context_node_ids'] ?? []);
         $withContext = $block === '' ? $data['message'] : $block."\n\n".$data['message'];
 
-        return $this->stream(fn (callable $emit, callable $aborted) => $runner->run(
-            $thread,
-            $withContext,
-            $recorder->wrap($run, $emit),
-            $aborted,
-            $options,
-        ), $run, $recorder);
+        return $this->stream(function (callable $emit, callable $aborted) use ($runner, $recorder, $thread, $withContext, $options, $run): void {
+            // Kontext behu musí byť naviazaný PRED prvým toolom: `spawn_agent`
+            // z neho čítá rodičovské vlákno, rodičovský beh, `$emit` a `$aborted`,
+            // a bez naviazania sa fail-closed odmietne (beh bez `$emit` je beh bez
+            // brány zápisov). `$emit` sa podáva OBALENÝ recorderom — rámec
+            // `agent_wait` mení stav behu na `waiting`.
+            $wrapped = $recorder->wrap($run, $emit);
+
+            AgentContext::bind($thread, $run, $wrapped, $aborted);
+
+            try {
+                $runner->run($thread, $withContext, $wrapped, $aborted, $options);
+            } finally {
+                // `finally`, nie za telom: kontext nesmie prežiť do ďalšieho behu
+                // toho istého procesu (v testoch je to ten istý proces vždy).
+                AgentContext::clear();
+            }
+        }, $run, $recorder);
     }
 
-    /** Rozhodnutie o jednom zápisovom toole — a pokračovanie toho istého ťahu. */
-    public function decide(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder, ToolRegistry $tools): StreamedResponse
+    /**
+     * Rozhodnutie o jednom zápisovom toole — a pokračovanie toho istého ťahu.
+     *
+     * Od podagentov to je **jediná cesta ďalej aj pre rodičovský beh.** Keď zápis
+     * podagenta zaparkoval, `/decide` prichádza na vlákno PODAGENTA a v tom istom
+     * requeste sa dopovie dieťa, uzavrie sa jeho podbeh a rozbehne sa rodič
+     * ({@see Subagent::resumeParent()}). Klient teda v jednom prúde dostane vnorené
+     * rámce dieťaťa, `agent_end` a potom top-level rámce rodiča.
+     */
+    public function decide(Request $request, AgentRunner $runner, ProviderFactory $providers, RunRecorder $recorder, ToolRegistry $tools, Subagent $subagent): StreamedResponse
     {
         $validator = Validator::make($request->all(), [
             'thread' => 'required|uuid',
@@ -195,6 +225,15 @@ class RunController extends Controller
             return $this->refuse('Toto rozhodnutie sa nedá priradiť k žiadnemu volaniu toolu.');
         }
 
+        // Zamietnutý `spawn_agent` je zamietnutý podagent. Bez tohto by jeho dieťa
+        // zostalo naveky vo `waiting` — zametač zaparkované behy zámerne nezametá
+        // (čakajú na človeka a môžu čakať dni) — a `runs` by prestalo hovoriť pravdu
+        // o tom, čo sa deje. Je to obranné: UI takú možnosť nedá, `spawn_agent` je
+        // čítací tool bez potvrdzovacej karty.
+        if ($call->name === 'spawn_agent' && $data['decision'] === AgentRunner::DECISION_DENY) {
+            $subagent->abandon($call);
+        }
+
         // Profil sa čítá z vlákna (server), nie z requestu (klient): segment po
         // rozhodnutí musí bežať na tej istej sade toolov, s akou ťah začal.
         $tools->useProfile((string) ($thread->tool_profile ?: config('hades.console.profile', 'full')));
@@ -205,14 +244,101 @@ class RunController extends Controller
         // má ukázať jeden beh s rozhodnutím v ňom, nie dva polovičné.
         $run = $recorder->resume($thread, '', $options);
 
-        return $this->stream(fn (callable $emit, callable $aborted) => $runner->resume(
+        // Rozhodnutie vo vlákne podagenta má vlastnú cestu: jeho rámce idú do
+        // obálky a po jeho dobehnutí sa v tom istom requeste rozbehne rodič.
+        if ($thread->isSubagent()) {
+            return $this->stream(fn (callable $emit, callable $aborted) => $this->resumeSubagent(
+                $runner, $recorder, $tools, $subagent,
+                $thread, $call, $data['decision'], $run, $options,
+                $emit, $aborted,
+            ), $run, $recorder);
+        }
+
+        return $this->stream(function (callable $emit, callable $aborted) use ($runner, $recorder, $thread, $call, $data, $options, $run): void {
+            // Kontext behu aj tu: obnovený segment môže zavolať `spawn_agent`
+            // (rovnako ako môže zavolať čokoľvek iné zo svojho profilu), a to je aj
+            // cesta, ktorou sa niekto pokúsi pretlačiť okolo brány dieťaťa —
+            // `/decide allow` na `spawn_agent` call rodiča. Bez naviazaného kontextu
+            // by tool nemal ako zaparkovať znova.
+            $wrapped = $recorder->wrap($run, $this->withThreadState($thread, $emit));
+
+            AgentContext::bind($thread, $run, $wrapped, $aborted);
+
+            try {
+                $runner->resume($thread, $call, $data['decision'], $wrapped, $aborted, $options);
+            } finally {
+                AgentContext::clear();
+            }
+        }, $run, $recorder);
+    }
+
+    /**
+     * Obnova zaparkovaného zápisu vo vlákne PODAGENTA — a pokračovanie rodiča.
+     *
+     * Poradie krokov je celý zmysel tejto metódy:
+     *
+     *  1. dieťa dopovie; jeho rámce idú do obálky `{t:'agent', run, frame}`, aby
+     *     vnorené `end` / `permission` neukončili prúd rodiča a neprepli čakanie
+     *     klienta na cudzí call;
+     *  2. podbeh sa uzavrie — až potom o ňom `spawn_agent` vie povedať, že dobehol;
+     *  3. keď dieťa zaparkovalo ZNOVA (ďalší zápis v tom istom ťahu), rodič sa
+     *     nerozbehne a ťah končí opäť `agent_wait`;
+     *  4. inak `agent_end` a rozbeh rodiča.
+     *
+     * `agent_end` ide do surového `$emit`, nie cez recorder dieťaťa: je to rámec
+     * O behu, nie rámec TOHO behu, a v `STATEFUL` úmyselne nie je.
+     *
+     * @param  array{provider?: string|null, model?: string|null}  $options
+     * @param  callable(array<string, mixed>): void  $emit
+     * @param  callable(): bool  $aborted
+     */
+    private function resumeSubagent(
+        AgentRunner $runner,
+        RunRecorder $recorder,
+        ToolRegistry $tools,
+        Subagent $subagent,
+        ConsoleThread $thread,
+        ConsoleToolCall $call,
+        string $decision,
+        Run $run,
+        array $options,
+        callable $emit,
+        callable $aborted,
+    ): void {
+        $runner->resume(
             $thread,
             $call,
-            $data['decision'],
-            $recorder->wrap($run, $this->withThreadState($thread, $emit)),
+            $decision,
+            $recorder->wrap($run, $subagent->envelope($run, $this->withThreadState($thread, $emit))),
             $aborted,
             $options,
-        ), $run, $recorder);
+        );
+
+        $recorder->close($run, $aborted());
+        $run->refresh();
+
+        $pending = $thread->fresh()?->pendingToolCall();
+        $parentCall = $run->parent_call_id === null ? null : ConsoleToolCall::find($run->parent_call_id);
+
+        if ($pending !== null && $parentCall !== null) {
+            $emit($subagent->waitFrame($run, $parentCall, $pending));
+
+            return;
+        }
+
+        $emit($subagent->endFrame($run));
+
+        // Otvorený podbeh bez `pending` riadku je stav, ktorý nemá ako vzniknúť
+        // (`close()` beh v `running` uzavrie) — ale keby vznikol, rodič sa
+        // rozbehnúť NESMIE: jeho `spawn_agent` ešte nemá čo vrátiť.
+        if ($run->isOpen()) {
+            return;
+        }
+
+        $subagent->resumeParent(
+            $runner, $tools, $run, $emit, $aborted, $options,
+            fn (ConsoleThread $parent, callable $out): callable => $this->withThreadState($parent, $out),
+        );
     }
 
     /**
@@ -226,9 +352,10 @@ class RunController extends Controller
      * záleží najviac.
      *
      * Prečo pole na existujúcom rámci a nie rámec vlastný: protokol sľubuje, že
-     * ťah končí PRESNE jedným `end` / `error` / `permission` a že po ňom už nič
-     * nepríde. Samostatný rámec by sa musel poslať za koniec ťahu a ten sľub by
-     * zrušil. Pole navyše je aditívne — starší klient ho ignoruje.
+     * ťah končí PRESNE jedným top-level rámcom (`end` / `error` / `permission`,
+     * a od podagentov aj `agent_wait`) a že po ňom už nič nepríde. Samostatný rámec
+     * by sa musel poslať za koniec ťahu a ten sľub by zrušil. Pole navyše je
+     * aditívne — starší klient ho ignoruje.
      *
      * Obal sedí POD recorderom (`wrap(..., withThreadState(...))`), aby log
      * behov videl rámec presne taký, aký ho poslal `AgentRunner`.

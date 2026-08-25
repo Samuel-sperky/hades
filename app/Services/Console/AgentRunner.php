@@ -34,6 +34,11 @@ use Throwable;
  * ďalším requestom do {@see self::resume()}. Blokujúce čakanie by držalo jedného
  * z ôsmich PHP workerov na neurčito.
  *
+ * Od podagentov ({@see \App\Services\Console\Tools\SpawnAgentTool}) platí to isté
+ * aj pre ČÍTACÍ tool: keď zaparkuje dieťa, tool hodí {@see AgentParked}, jeho call
+ * sa vráti do `pending` ({@see self::park()}) a ťah rodiča skončí tiež bez `end`.
+ * Parkovanie teda nesie výnimka, nie `isWrite()`.
+ *
  * ── História je v DB, nie v requeste ───────────────────────────────────────
  *
  * Každý krok skladá správy pre model z `console_messages` a `console_tool_calls`
@@ -147,7 +152,24 @@ final class AgentRunner
                 $this->denyCall($call, $emit);
             } else {
                 $call->decided_at = now();
-                $this->executeCall($call, true, $emit);
+
+                try {
+                    // `isWrite()` a nie natvrdo `true`: cestou pokračovania rodiča
+                    // ide cez `resume()` ČÍTACÍ `spawn_agent` a rámec `tool` by ho
+                    // označil ako zápis — teda UI by na karte čítacieho toolu
+                    // napísalo „zápis". Pre každý dnešný zápisový tool je to
+                    // identické chovanie.
+                    $this->executeCall($call, $this->registry->isWrite($call->name), $emit);
+                } catch (AgentParked) {
+                    // Pokus pretlačiť sa okolo brány dieťaťa (`/decide allow` na
+                    // `spawn_agent` call rodiča, kým dieťa čaká). Tool zaparkoval
+                    // znova; call sa musí vrátiť do `pending`, inak by zostal
+                    // `running` a vlákno rodiča by prijalo ďalšiu správu.
+                    $this->park($call);
+                    $this->dropUnused($placeholder);
+
+                    return;
+                }
             }
 
             // Ostatné tooly toho istého kroku čakali vo fronte za tým, o ktorom
@@ -191,7 +213,11 @@ final class AgentRunner
         callable $aborted,
         ConsoleMessage $placeholder,
     ): void {
-        $maxSteps = max(1, (int) config('hades.console.max_steps', 12));
+        // Strop kôl je na VLÁKNE, keď ho vlákno má (podagent) — inak z configu.
+        // Serverový a prežije `/decide`: keby sa plumboval cez `$options`, klient
+        // by si ho vedel vymeniť medzi vyžiadaním povolenia a jeho vykonaním.
+        // Existujúce vlákna majú `max_steps = null`, teda chovanie sa nemení.
+        $maxSteps = max(1, (int) ($thread->max_steps ?? config('hades.console.max_steps', 12)));
         $tools = $this->registry->definitions();
 
         // Prvý krok dopíše do bubliny, ktorú klient dostal v rámci `start`;
@@ -362,20 +388,52 @@ final class AgentRunner
                 return true;
             }
 
-            $this->executeCall($call, $write, $emit);
+            try {
+                $this->executeCall($call, $write, $emit);
+            } catch (AgentParked) {
+                $this->park($call);
+
+                return true;
+            }
         }
 
         return false;
     }
 
     /**
+     * Tool, ktorý ešte nedopovedal, sa vracia do `pending` — dnes to je len
+     * `spawn_agent` so zaparkovaným podagentom.
+     *
+     * Prečo `pending` a nie nový stav: história ho aj s jeho `tool_use` vynechá
+     * (`pending` ∉ {@see self::SETTLED}), vlákno odmietne ďalšiu správu
+     * (`pendingToolCall()`) a `/decide` naň narazí znova, kým dieťa čaká. Nový stav
+     * by znamenal migráciu enumu na hot tabuľke a novú vetvu v každom `match`i,
+     * ktorý status čítá.
+     *
+     * Rámec `permission` sa TU nevydáva — vydalo ho dieťa, vnorene, a rámec
+     * `agent_wait` vydal `spawn_agent` pred hodením výnimky.
+     */
+    private function park(ConsoleToolCall $call): void
+    {
+        $call->status = 'pending';
+        $call->save();
+    }
+
+    /**
      * Vykoná tool a vydá jeho dvojicu rámcov.
      *
-     * Bez `try`: {@see ToolRegistry::call()} nehodí výnimku nikdy a aj zlyhanie
-     * prekladá na `ToolResult` s vetou, z ktorej sa model odrazí. Vlastný `catch`
-     * by tú vetu len prepísal na horšiu.
+     * Bez `try` na zlyhanie toolu: {@see ToolRegistry::call()} ho prekladá na
+     * `ToolResult` s vetou, z ktorej sa model odrazí, a vlastný `catch` by tú vetu
+     * len prepísal na horšiu.
+     *
+     * Jediná výnimka, ktorá odtiaľ vyletí, je {@see AgentParked} — riadiaci signál
+     * „podagent čaká na človeka". Chytá ju volajúci ({@see self::drain()} a priamy
+     * `executeCall` v {@see self::resume()}), pretože len on vie, čo má ťah urobiť
+     * ďalej: vrátiť call do `pending` a skončiť bez `end`.
      *
      * @param  callable(array<string, mixed>): void  $emit
+     *
+     * @throws AgentParked
      */
     private function executeCall(ConsoleToolCall $call, bool $write, callable $emit): void
     {

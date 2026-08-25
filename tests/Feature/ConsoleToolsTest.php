@@ -3,11 +3,17 @@
 namespace Tests\Feature;
 
 use App\Models\Area;
+use App\Models\ConsoleThread;
+use App\Models\ConsoleToolCall;
 use App\Models\Node;
+use App\Models\Run;
 use App\Models\Tombstone;
+use App\Services\Console\AgentContext;
+use App\Services\Console\RunRecorder;
 use App\Services\Console\ToolRegistry;
 use App\Services\Console\Tools\ConsoleTool;
 use App\Services\Console\Tools\PathGuard;
+use App\Services\Console\Tools\SpawnAgentTool;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -64,6 +70,11 @@ class ConsoleToolsTest extends TestCase
     {
         File::deleteDirectory($this->root);
 
+        // `AgentContext` je statický držiak v rámci requestu — v testoch je „request"
+        // celý proces, takže naviazaný kontext by pretiekol do ďalšieho testu a
+        // `spawn_agent` by sa tam neodmietol fail-closed.
+        AgentContext::clear();
+
         parent::tearDown();
     }
 
@@ -117,11 +128,17 @@ class ConsoleToolsTest extends TestCase
      */
     public function test_read_tools_run_without_asking_and_write_tools_do_not(): void
     {
-        // Kánon (13), nie aktívny profil: `graph_focus` je čítací a musí byť
-        // v teste vidieť, inak by fail-closed `isWrite()` zakryl dieru.
+        // Kánon (14), nie aktívny profil: `graph_focus` a `spawn_agent` sú čítacie
+        // a musia byť v teste vidieť, inak by fail-closed `isWrite()` zakryl dieru.
         $registry = $this->canon();
 
-        foreach (['mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep', 'graph_focus'] as $name) {
+        foreach ([
+            'mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep',
+            // `spawn_agent` je čítací (sám nezapíše nič), ale je PRVÝ tool, ktorý vie
+            // ťah zaparkovať — zápisom svojho dieťaťa. Že „čítací" tu neznamená
+            // „neriadený zápis", dokazuje `SubagentGate` sekcia v ConsoleRunTest.
+            'graph_focus', 'spawn_agent',
+        ] as $name) {
             $this->assertFalse($registry->isWrite($name), "{$name} musí byť čítací");
         }
 
@@ -134,7 +151,8 @@ class ConsoleToolsTest extends TestCase
         // A žiadny tool nesmie v kánone pribudnúť bez toho, aby o ňom tento test
         // vedel — inak by nová diera prešla „lebo testy sú zelené".
         $this->assertSame([
-            'mind_recall', 'mind_read', 'mind_overview', 'grep', 'glob', 'read_file', 'graph_focus',
+            'mind_recall', 'mind_read', 'mind_overview', 'grep', 'glob', 'read_file',
+            'graph_focus', 'spawn_agent',
             'mind_learn', 'mind_rename', 'mind_move', 'mind_delete', 'edit_file', 'write_file',
         ], $registry->allNames());
     }
@@ -740,8 +758,13 @@ class ConsoleToolsTest extends TestCase
     {
         $canon = $this->canon();
 
-        foreach (['mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep', 'graph_focus'] as $name) {
-            $this->assertNull($canon->get($name)->preview(['path' => 'app', 'query' => 'x', 'pattern' => 'x']));
+        foreach ([
+            'mind_recall', 'mind_read', 'mind_overview', 'read_file', 'glob', 'grep',
+            'graph_focus', 'spawn_agent',
+        ] as $name) {
+            $this->assertNull($canon->get($name)->preview([
+                'path' => 'app', 'query' => 'x', 'pattern' => 'x', 'task' => 'x', 'profile' => 'files',
+            ]));
         }
     }
 
@@ -843,10 +866,23 @@ class ConsoleToolsTest extends TestCase
      * `MindRecallTool::description()` zdvihne `full` na ~2 616 tok a test padne
      * hláškou „profil full: 2616 tok > 2600". Bez zmeny prejde a čísla sedia
      * s tabuľkou §1.2 návrhu.
+     *
+     * To isté z druhej strany pre `orchestrator` (zmerané 626 tok = 2504 znakov):
+     * pripojenie 300 znakov do `SpawnAgentTool::description()` dá 2804 znakov =
+     * **701 tok** a test padne hláškou „profil orchestrator: 701 tok > 680";
+     * pripojenie 216 znakov dá presne 680 a **prejde** — to je horná hrana stropu.
+     * Strop 680 je teda 626 + 8,6 % hlavy, v línii s ostatnými profilmi
+     * (`graph` +8 %, `files` +7 %).
      */
     public function test_tool_definitions_stay_inside_the_budget_of_every_profile(): void
     {
-        $caps = ['memory' => 1600, 'files' => 1400, 'graph' => 1350, 'full' => 2600];
+        $caps = [
+            'memory' => 1600, 'files' => 1400, 'graph' => 1350, 'full' => 2600,
+            // Najlacnejší profil zo všetkých, a to je jeho zmysel: orchestrátor
+            // rozdeľuje prácu, nerobí ju. `spawn_agent` (334 tok) v profile `full`
+            // (2541 tok) by dal 2875 tok, teda nad stropom 2600 — preto tam nie je.
+            'orchestrator' => 680,
+        ];
 
         // Nový profil bez stropu neprejde — inak by sa strop dal obísť tým, že sa
         // tool pridá do profilu, o ktorom tento test nevie.
@@ -947,6 +983,14 @@ class ConsoleToolsTest extends TestCase
         // A `full` NEobsahuje `graph_focus` — jeho efekt je klientský a /console
         // plátno nemá (§1.3 návrhu).
         $this->assertNotContains(\App\Services\Console\Tools\GraphFocusTool::class, ToolRegistry::PROFILES['full']);
+
+        // Ani `spawn_agent`, a to z dvoch nezávislých dôvodov (§2a kontraktu):
+        // číselne by `full` prerástol strop 2600 (2541 + 334 = 2875), a vecne je
+        // `full` profil, v ktorom sa PRACUJE — model s dvanástimi pracovnými toolmi
+        // by dostal trinástu možnosť, ako urobiť to isté, a delegovanie je z nich
+        // najdrahšie. Orchestrácia je iný režim práce, nie ďalší nástroj v tom istom.
+        $this->assertNotContains(SpawnAgentTool::class, ToolRegistry::PROFILES['full']);
+        $this->assertCount(12, ToolRegistry::PROFILES['full']);
     }
 
     /**
@@ -1053,5 +1097,224 @@ class ConsoleToolsTest extends TestCase
         $registry->useProfile('graph');
         $this->assertTrue($registry->has('graph_focus'));
         $this->assertFalse($registry->isWrite('graph_focus'));
+    }
+
+    // ---- 11. spawn_agent a profil orchestrator ------------------------------
+
+    /** Register zúžený na profil orchestrátora — tak, ako ho dostane jeho beh. */
+    private function orchestrator(): ToolRegistry
+    {
+        $registry = app(ToolRegistry::class);
+        $registry->useProfile('orchestrator');
+
+        return $registry;
+    }
+
+    /**
+     * Naviazaný rodičovský beh: vlákno, beh a `running` riadok `spawn_agent`.
+     *
+     * `executeCall()` nastaví `running` PRED volaním toolu a tool si svoj riadok
+     * hľadá presne takto (najnovší `running` s tým menom vo vlákne), takže test ho
+     * musí vyrobiť rovnako — inak by neoveroval tú istú cestu.
+     *
+     * @return array{0: ConsoleThread, 1: Run, 2: ConsoleToolCall}
+     */
+    private function boundRun(): array
+    {
+        $thread = ConsoleThread::create(['tool_profile' => 'orchestrator']);
+        $run = app(RunRecorder::class)->open($thread, 'zadanie', ['profile' => 'orchestrator']);
+
+        $call = ConsoleToolCall::create([
+            'thread_id' => $thread->id,
+            'call_id' => 's1',
+            'name' => 'spawn_agent',
+            'arguments' => [],
+            'status' => 'running',
+        ]);
+
+        AgentContext::bind(
+            $thread,
+            $run,
+            static function (array $frame): void {},
+            static fn (): bool => false,
+        );
+
+        return [$thread, $run, $call];
+    }
+
+    /** Členstvo profilu nemôže tichom narásť — a zápisový tool tam nesmie byť vôbec. */
+    public function test_orchestrator_profile_is_exactly_recall_and_spawn(): void
+    {
+        $names = array_map(fn (string $c) => app($c)->name(), ToolRegistry::PROFILES['orchestrator']);
+
+        $this->assertSame(['mind_recall', 'spawn_agent'], $names);
+
+        // Orchestrátor nesmie zapisovať sám: zápisy patria podagentom, kde ich vidí
+        // človek s diffom. Vedľajší efekt je, že tento profil nemá vlastnú cestu
+        // k bráne zápisov — jediná brána, ktorú zažije, je brána dieťaťa.
+        foreach (ToolRegistry::PROFILES['orchestrator'] as $class) {
+            $this->assertFalse(app($class)->isWrite(), $class);
+        }
+
+        // A `spawn_agent` nie je v žiadnom inom profile: tým je zaručené, že ho
+        // nedostane ani podagent, teda hĺbka stromu je presne 1.
+        foreach (ToolRegistry::PROFILES as $profile => $classes) {
+            if ($profile === 'orchestrator') {
+                continue;
+            }
+
+            $this->assertNotContains(SpawnAgentTool::class, $classes, "profil {$profile}");
+        }
+    }
+
+    /**
+     * §1.4 návrhu — `spawn_agent` je ČÍTACÍ tool bez náhľadu.
+     *
+     * Nie je to nedôslednosť: sám nezapíše nič a náhľad by nemal čo ukázať. Jediné,
+     * čo v okamihu potvrdenia existuje, je text úlohy — a to nie je náhľad zmeny,
+     * to je zadanie. Karta „Povoliť" nad zadaním by učila nesprávnu vec: že tým
+     * kliknutím človek schválil zápisy, ktoré podagent urobí. Neschválil; tie prídu
+     * jeden po druhom, každý s vlastným diffom, v podagentovi.
+     */
+    public function test_spawn_agent_is_a_read_tool_without_a_preview(): void
+    {
+        $canon = $this->canon();
+
+        $this->assertFalse($canon->isWrite('spawn_agent'));
+        $this->assertNull($canon->get('spawn_agent')->preview(['task' => 'nájdi to', 'profile' => 'files']));
+    }
+
+    /**
+     * §5/5 kontraktu — podagent nesmie eskalovať profil, ani keď si ho vyžiada.
+     *
+     * Dve strany, obe musia platiť:
+     *   (a) tool odmietne profil, ktorý v `CHILD_PROFILES` nie je;
+     *   (b) register dieťaťa NEVYKONÁ tool mimo profilu, aj keď ho model zavolá.
+     *
+     * KALIBRÁCIA: pridanie `'full'` do `CHILD_PROFILES` zhodí (a); zámena
+     * `new ToolRegistry()` + `useProfile()` za spoločný singleton zhodí (b), pretože
+     * singleton má v tomto teste profil `orchestrator`.
+     */
+    public function test_a_subagent_cannot_escalate_its_profile(): void
+    {
+        $this->assertSame(['memory', 'files', 'graph'], SpawnAgentTool::CHILD_PROFILES);
+
+        $this->boundRun();
+
+        foreach (['full', 'orchestrator', 'bash', 'FULL', ''] as $profile) {
+            $result = $this->orchestrator()->call('spawn_agent', [
+                'task' => 'Prečítaj README a povedz, čo je v ňom.',
+                'profile' => $profile,
+            ]);
+
+            $this->assertTrue($result->failed, "profil {$profile} prešiel");
+            $this->assertStringContainsString('memory, files, graph', $result->text);
+            $this->assertSame(0, ConsoleThread::query()->whereNotNull('parent_thread_id')->count());
+        }
+
+        // (b) — register dieťaťa na profile `graph` nemá súborové tooly ani spawn_agent
+        $child = new ToolRegistry;
+        $child->useProfile('graph');
+
+        foreach (['write_file', 'edit_file', 'read_file', 'grep', 'glob', 'spawn_agent'] as $name) {
+            $result = $child->call($name, [
+                'path' => 'x.txt', 'content' => 'y', 'task' => 't', 'profile' => 'files',
+            ]);
+
+            $this->assertTrue($result->failed, $name);
+            $this->assertStringContainsString('Unknown tool', $result->text);
+        }
+
+        $this->assertFalse(File::exists($this->root.'/x.txt'));
+    }
+
+    /**
+     * Fail-closed mimo behu. `spawn_agent` vystavený bez naviazaného kontextu (MCP,
+     * artisan, tinker) by zakladal podbehy bez rodiča a bez `$emit` — teda bez brány,
+     * ktorá zápisy dieťaťa dáva človeku na potvrdenie.
+     */
+    public function test_spawn_agent_refuses_outside_a_run(): void
+    {
+        AgentContext::clear();
+
+        $result = $this->orchestrator()->call('spawn_agent', [
+            'task' => 'Prečítaj README a povedz, čo je v ňom.',
+            'profile' => 'files',
+        ]);
+
+        $this->assertTrue($result->failed);
+        $this->assertStringContainsString('only inside a console run', $result->text);
+        $this->assertSame(0, Run::count());
+        $this->assertSame(0, ConsoleThread::count());
+
+        // A druhá polovica tej istej brány: kontext naviazaný JE, ale vo vlákne nie je
+        // žiadny `running` riadok `spawn_agent` — teda tool nebeží zo smyčky.
+        $thread = ConsoleThread::create([]);
+        $run = app(RunRecorder::class)->open($thread, 'zadanie');
+        AgentContext::bind($thread, $run, static function (array $f): void {}, static fn (): bool => false);
+
+        $orphan = $this->orchestrator()->call('spawn_agent', [
+            'task' => 'Prečítaj README a povedz, čo je v ňom.',
+            'profile' => 'files',
+        ]);
+
+        $this->assertTrue($orphan->failed);
+        $this->assertStringContainsString('only inside a console run', $orphan->text);
+        $this->assertSame(0, ConsoleThread::query()->whereNotNull('parent_thread_id')->count());
+    }
+
+    /**
+     * §2b kontraktu — strop na počet podagentov jedného behu.
+     *
+     * Odmietnutie, nie výnimka: model musí dostať výsledok na každé volanie a musí
+     * z neho vedieť, čo urobiť inak. Strop sa počíta na BEHU, nie na vlákne —
+     * patrí ťahu, nie konverzácii.
+     */
+    public function test_spawn_agent_stops_at_the_child_cap_of_the_run(): void
+    {
+        [$thread, $run] = $this->boundRun();
+
+        for ($i = 1; $i <= 3; $i++) {
+            Run::create([
+                'thread_id' => $thread->id,
+                'parent_run_id' => $run->id,
+                'source' => 'agent',
+                'prompt' => "úloha {$i}",
+                'status' => 'done',
+            ]);
+        }
+
+        $result = $this->orchestrator()->call('spawn_agent', [
+            'task' => 'Ešte jedna úloha, ktorá sa už nezmestí.',
+            'profile' => 'memory',
+        ]);
+
+        $this->assertTrue($result->failed);
+        $this->assertStringContainsString('cap of 3 subagents', $result->text);
+        $this->assertSame(0, ConsoleThread::query()->whereNotNull('parent_thread_id')->count());
+
+        // Strop je konfigurovateľný (je to výkonový limit tohto stroja), ale tvrdá
+        // podlaha v KÓDE ho drží: `.env` s nezmyslom nesmie zapáliť CPU na hodinu.
+        // Pri `max_children = 99` je skutočný strop `HARD_MAX_CHILDREN`, teda 5.
+        config(['hades.console.agent.max_children' => 99]);
+
+        for ($i = 4; $i <= 5; $i++) {
+            Run::create([
+                'thread_id' => $thread->id,
+                'parent_run_id' => $run->id,
+                'source' => 'agent',
+                'prompt' => "úloha {$i}",
+                'status' => 'done',
+            ]);
+        }
+
+        $hard = $this->orchestrator()->call('spawn_agent', [
+            'task' => 'Šiesta úloha, ktorú nesmie povoliť ani config.',
+            'profile' => 'memory',
+        ]);
+
+        $this->assertTrue($hard->failed);
+        $this->assertStringContainsString('cap of 5 subagents', $hard->text);
+        $this->assertSame(0, ConsoleThread::query()->whereNotNull('parent_thread_id')->count());
     }
 }

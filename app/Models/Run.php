@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 
 /**
@@ -29,13 +30,16 @@ class Run extends Model
     }
 
     protected $fillable = [
-        'uuid', 'thread_id', 'source', 'prompt', 'provider', 'model', 'tool_profile', 'status',
+        'uuid', 'thread_id', 'parent_run_id', 'parent_call_id',
+        'source', 'prompt', 'provider', 'model', 'tool_profile', 'status',
         'stop_reason', 'error', 'steps', 'tool_calls', 'tokens_in', 'tokens_out',
         'duration_ms', 'tokens_per_second', 'from_message_id', 'to_message_id',
         'started_at', 'ended_at',
     ];
 
     protected $casts = [
+        'parent_run_id' => 'int',
+        'parent_call_id' => 'int',
         'steps' => 'int',
         'tool_calls' => 'int',
         'tokens_in' => 'int',
@@ -54,6 +58,38 @@ class Run extends Model
     public function thread(): BelongsTo
     {
         return $this->belongsTo(ConsoleThread::class, 'thread_id');
+    }
+
+    /**
+     * Beh, ktorý tento podbeh spustil (`spawn_agent`), alebo `null` pri behu, ktorý
+     * začal človek.
+     *
+     * Stĺpec je BEZ cudzieho kľúča a je to zámer z migrácie: kaskáda by zmazaním
+     * jedného riadku vzala celý podstrom logu, `nullOnDelete` by z podbehu ticho
+     * urobil beh spustený človekom. Visiaci ukazovateľ je čitateľný stav („rodič už
+     * neexistuje"), takže relácia smie vrátiť `null` aj keď `parent_run_id` nie je.
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_run_id');
+    }
+
+    /** Podbehy, ktoré tento beh spustil. Log ich kreslí ako strom. */
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_run_id');
+    }
+
+    /** `spawn_agent` call, ktorý si tento podbeh vyžiadal. */
+    public function parentCall(): BelongsTo
+    {
+        return $this->belongsTo(ConsoleToolCall::class, 'parent_call_id');
+    }
+
+    /** Je to podbeh podagenta, nie ťah, ktorý začal človek? */
+    public function isChild(): bool
+    {
+        return $this->parent_run_id !== null;
     }
 
     public function scopeOpen(Builder $query): Builder

@@ -470,9 +470,13 @@ class McpController extends Controller
                     .'from context alone. Filters narrow the list server-side; `q` matches the prompt '
                     .'text — but `counts` always covers the WHOLE table and no filter ever narrows it, '
                     .'so do not read it as the shape of your filtered result. Read one run whole with '
-                    .'mind_run. Empty fields are omitted: no `error` means the run did not fail, no '
-                    .'`thread` means the run outlived the thread it ran in (threads can be deleted, runs '
-                    .'are kept).',
+                    .'mind_run. `parent` is the uuid of the run that spawned this one as a subagent '
+                    .'(spawn_agent), so the list is a tree; pass it to mind_run to read the turn that '
+                    .'delegated the work. Never add `duration_ms` up across a parent and its children — '
+                    .'the parent stays open for the whole subagent, so the same waiting would be counted '
+                    .'twice; `tokens_out` does add up. Empty fields are omitted: no `error` means the run '
+                    .'did not fail, no `parent` means a human started this run, no `thread` means the run '
+                    .'outlived the thread it ran in (threads can be deleted, runs are kept).',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -500,7 +504,13 @@ class McpController extends Controller
                     .'propose the same write again without saying why it is different this time. '
                     .'`pending` is a write still waiting for a decision. The system directive is left out '
                     .'of the timeline on purpose — it is configuration, not a step, and it would swamp '
-                    .'the answer. Long tool results are cut; the whole text lives in the thread.',
+                    .'the answer. Long tool results are cut; the whole text lives in the thread. '
+                    .'`children` are the subagents this run spawned, in the order it spawned them, each '
+                    .'with its own `uuid` to read whole — their steps and tokens are NOT counted in this '
+                    .'run, so a turn that delegated cost more than its own numbers say. Their '
+                    .'`duration_ms` is not a slice of this one either: this run stayed open the whole '
+                    .'time, waiting, so the two overlap and must not be added or subtracted. `parent` '
+                    .'is the run that spawned this one; no `parent` means a human started it.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

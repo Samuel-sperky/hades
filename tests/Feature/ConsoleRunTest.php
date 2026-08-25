@@ -2,10 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\Area;
 use App\Models\ConsoleMessage;
 use App\Models\ConsoleThread;
 use App\Models\ConsoleToolCall;
+use App\Models\Node;
+use App\Models\Run;
+use App\Services\Console\AgentContext;
 use App\Services\Console\AgentRunner;
+use App\Services\Console\RunRecorder;
 use App\Services\Console\ToolRegistry;
 use App\Services\Console\ToolResult;
 use App\Services\Console\Tools\ConsoleTool;
@@ -45,6 +50,13 @@ class ConsoleRunTest extends TestCase
         // throttle na /console/run potrebuje cache; array driver = čistý stav testu
         config(['cache.default' => 'array']);
         config(['hades.console.provider' => 'ollama']);
+        // Vektorová vetva recallu sa v testoch nesmie pýtať Ollamy — sekcia
+        // o podagentoch používa SKUTOČNÝ register toolov, teda aj `mind_recall`.
+        config(['hades.embeddings.enabled' => false]);
+
+        // Statický držiak rodičovského behu nesmie pretiecť z iného testu — inak by
+        // `spawn_agent` mimo behu nebol fail-closed.
+        AgentContext::clear();
     }
 
     // ---- obyčajný ťah ------------------------------------------------------
@@ -510,7 +522,348 @@ class ConsoleRunTest extends TestCase
         $this->assertDatabaseHas('runs', ['thread_id' => $thread->id, 'tool_profile' => 'full']);
     }
 
+    // ---- podagenti: dvojfázová brána sa prenáša NAHOR ----------------------
+
+    /**
+     * Rodičovský ťah, ktorý spustil podagenta — a ten zaparkoval na zápise do pamäte.
+     *
+     * Tieto testy **nepodstrkujú fake tooly**: register je skutočný a zúžený
+     * profilom (`orchestrator` u rodiča, `memory` u dieťaťa). Inak by neoverovali to,
+     * na čom brána stojí — že `spawn_agent` a zápisový tool dieťaťa sú dva rôzne
+     * riadky v dvoch rôznych vláknach.
+     *
+     * Poskytovateľ sa naväzuje **raz na test**: `ToolRegistry` je singleton, takže
+     * `Subagent` (a jeho `ProviderFactory`) prežije oba requesty testu a druhé
+     * naviazanie fake modelu by dieťa nedostalo. Jeden scenár teda obsluhuje rodiča
+     * aj dieťa v tom poradí, v akom idú na model.
+     *
+     * @param  list<LlmResponse>  $afterDecision  odpovede pre segment po `/decide`
+     * @return array{0: ConsoleThread, 1: ConsoleThread, 2: int, 3: list<array<string, mixed>>}
+     */
+    private function parkedSubagent(array $afterDecision = []): array
+    {
+        Area::create(['name' => 'Vývoj / kód', 'slug' => 'vyvoj-kod', 'color' => '#03797e', 'angle' => 0]);
+
+        $parent = ConsoleThread::create([]);
+
+        $this->fakeProvider(array_merge([
+            new LlmResponse(toolCalls: [new LlmToolCall('s1', 'spawn_agent', [
+                'task' => 'Zapamätaj si, že konzola beží dvojfázovo.',
+                'profile' => 'memory',
+            ])], stopReason: LlmResponse::STOP_TOOL_USE),
+            new LlmResponse(toolCalls: [new LlmToolCall('c1', 'mind_learn', [
+                'type' => 'skill',
+                'label' => 'Dvojfázová brána zápisov',
+                'description' => 'Zápisový tool zaparkuje ako pending a čaká na kliknutie človeka.',
+                'area' => 'Vývoj / kód',
+            ])], stopReason: LlmResponse::STOP_TOOL_USE),
+        ], $afterDecision));
+
+        $frames = $this->frames($this->postJson('/api/console/run', [
+            'thread' => $parent->uuid, 'message' => 'Deleguj to podagentovi', 'profile' => 'orchestrator',
+        ]));
+
+        $wait = $this->frame($frames, 'agent_wait');
+        $this->assertNotNull($wait, 'Rodičovský ťah nezaparkoval na podagentovi.');
+
+        return [
+            $parent,
+            ConsoleThread::where('uuid', $wait['thread'])->firstOrFail(),
+            (int) $wait['child_call'],
+            $frames,
+        ];
+    }
+
+    /**
+     * §5/4 kontraktu — zápis v podagentovi zaparkuje ťah RODIČA, a to bez rámca `end`.
+     *
+     * Toto je test, pre ktorý celá funkcia existuje: parkovanie sa prenáša nahor,
+     * takže rodič nemá ako „prečkať" dieťa a nikto sa nedostane k zápisu.
+     */
+    public function test_a_write_inside_a_subagent_parks_the_parent_turn_without_an_end_frame(): void
+    {
+        [$parent, $child, $childCall, $frames] = $this->parkedSubagent();
+
+        // Vnorené rámce dieťaťa idú v obálke `{t:'agent', run, frame}` — vnorené
+        // `permission` nesmie ukončiť prúd rodiča ani prepnúť čakanie klienta.
+        $this->assertNotNull($this->frame($frames, 'agent_start'));
+        $this->assertNotNull($this->nested($frames, 'permission'));
+        $this->assertSame('mind_learn', $this->nested($frames, 'permission')['name']);
+
+        // Ťah rodiča končí `agent_wait`, a nič po ňom.
+        $this->assertSame('agent_wait', $frames[count($frames) - 1]['t']);
+        $this->assertNull($this->frame($frames, 'end'), 'Zaparkovaný ťah nesmie poslať `end`.');
+        $this->assertNull($this->frame($frames, 'permission'), 'Povolenie patrí dieťaťu, nie rodičovi.');
+
+        // `spawn_agent` call rodiča sa vrátil do `pending` a nemá výsledok — tool
+        // ešte nedopovedal, takže história ho aj s jeho `tool_use` vynechá.
+        $spawn = ConsoleToolCall::findOrFail($this->frame($frames, 'agent_wait')['call']);
+        $this->assertSame('spawn_agent', $spawn->name);
+        $this->assertSame('pending', $spawn->status);
+        $this->assertNull($spawn->result);
+
+        // Oba behy čakajú; dieťa je zapísané ako dieťa.
+        $childRun = Run::where('thread_id', $child->id)->firstOrFail();
+        $parentRun = Run::where('thread_id', $parent->id)->firstOrFail();
+
+        $this->assertSame('waiting', $childRun->status);
+        $this->assertSame('waiting', $parentRun->status);
+        $this->assertSame($parentRun->id, $childRun->parent_run_id);
+        $this->assertSame($spawn->id, $childRun->parent_call_id);
+        $this->assertSame('agent', $childRun->source);
+        $this->assertSame('memory', $childRun->tool_profile);
+        $this->assertNull($childRun->ended_at, 'Zaparkovaný podbeh sa nesmie uzavrieť.');
+
+        // A hlavne: k zápisu sa nikto nedostal.
+        $this->assertSame(0, Node::count());
+        $this->assertSame('pending', ConsoleToolCall::findOrFail($childCall)->status);
+    }
+
+    /** Jediná cesta ďalej je `/decide` na vlákno podagenta — a rodič sa dopočíta v tom istom requeste. */
+    public function test_the_parked_subagent_resumes_only_from_decide(): void
+    {
+        [$parent, $child, $childCall] = $this->parkedSubagent([
+            new LlmResponse(text: 'Uložil som to ako skill.'),
+            new LlmResponse(text: 'Podagent to uložil, hotovo.'),
+        ]);
+
+        // Ďalšia správa do vlákna rodiča neprejde: čaká nedorozhodnutý `spawn_agent`.
+        $this->postJson('/api/console/run', ['thread' => $parent->uuid, 'message' => 'Ešte niečo'])
+            ->assertStatus(422);
+        $this->assertSame(0, Node::count());
+
+        $frames = $this->frames($this->decide($child, $childCall, AgentRunner::DECISION_ALLOW));
+
+        // Zápis sa vykonal až teraz — po kliknutí človeka.
+        $this->assertSame(1, Node::count());
+        $this->assertSame('Dvojfázová brána zápisov', Node::firstOrFail()->label);
+
+        // Prúd nesie koniec dieťaťa AJ pokračovanie rodiča.
+        $this->assertNotNull($this->frame($frames, 'agent_end'));
+        $this->assertSame('end', $frames[count($frames) - 1]['t']);
+
+        $spawn = ConsoleToolCall::where('thread_id', $parent->id)->where('name', 'spawn_agent')->firstOrFail();
+        $this->assertSame('done', $spawn->status);
+        $this->assertStringContainsString('Uložil som to ako skill.', (string) $spawn->result);
+
+        // Zhrnutie je pre model: uuid podbehu, cena, odpoveď — a NIC z jeho priebehu.
+        $summary = json_decode((string) $spawn->result, true);
+        $this->assertSame('done', $summary['status']);
+        $this->assertSame('memory', $summary['profile']);
+        $this->assertSame(Run::where('thread_id', $child->id)->firstOrFail()->uuid, $summary['agent']);
+        $this->assertStringNotContainsString('mind_learn', (string) $spawn->result);
+
+        $this->assertSame('done', Run::where('thread_id', $child->id)->firstOrFail()->status);
+        $this->assertSame('done', Run::where('thread_id', $parent->id)->firstOrFail()->status);
+    }
+
+    /**
+     * Rodič sa okolo brány dieťaťa nedostane ani cez API.
+     *
+     * `/decide allow` na `spawn_agent` call RODIČA je najpriamejší pokus: `resume()`
+     * ten call vykoná znova — a tool je idempotentný na svoj `ConsoleToolCall`, takže
+     * nájde dieťa vo `waiting`, zaparkuje znova a druhé dieťa nezaloží. Brána tým
+     * drží z konštrukcie, nie z disciplíny volajúcich.
+     */
+    public function test_the_parent_cannot_push_past_the_child_gate(): void
+    {
+        [$parent, $child, $childCall, $frames] = $this->parkedSubagent();
+
+        $spawnCall = (int) $this->frame($frames, 'agent_wait')['call'];
+
+        $pushed = $this->frames($this->decide($parent, $spawnCall, AgentRunner::DECISION_ALLOW));
+
+        $this->assertNotNull($this->frame($pushed, 'agent_wait'), 'Tool mal zaparkovať znova.');
+        $this->assertNull($this->frame($pushed, 'end'), 'Ťah rodiča sa nesmel dokončiť.');
+        $this->assertSame(0, Node::count(), 'Zápis dieťaťa sa vykonal bez povolenia.');
+
+        // Žiadne druhé dieťa a `spawn_agent` call je opäť `pending` — teda vlákno
+        // rodiča ďalej odmieta správy a `/decide` naň narazí znova.
+        $this->assertSame(1, Run::where('parent_call_id', $spawnCall)->count());
+        $this->assertSame('pending', ConsoleToolCall::findOrFail($spawnCall)->status);
+        $this->assertSame('pending', ConsoleToolCall::findOrFail($childCall)->status);
+        $this->assertSame('waiting', Run::where('thread_id', $child->id)->firstOrFail()->status);
+
+        $this->postJson('/api/console/run', ['thread' => $parent->uuid, 'message' => 'Tak inak'])
+            ->assertStatus(422);
+    }
+
+    /**
+     * Vlákno podagenta nie je konverzácia: neprijíma správy a v zozname vlákien nie je.
+     *
+     * `agent_wait` posiela jeho uuid do prehliadača (klient ho potrebuje pre
+     * `/decide`), takže bez guardu by doň klient vedel písať. `/decide` naň naopak
+     * povolené ZOSTÁVA — to je celá brána.
+     */
+    public function test_a_subagent_thread_is_not_a_conversation(): void
+    {
+        [, $child, $childCall] = $this->parkedSubagent([
+            new LlmResponse(text: 'Uložil som to.'),
+            new LlmResponse(text: 'Hotovo.'),
+        ]);
+
+        $refused = $this->postJson('/api/console/run', [
+            'thread' => $child->uuid, 'message' => 'Ahoj, podagent',
+        ]);
+
+        $refused->assertStatus(422);
+        $this->assertStringContainsString('podagenta', $this->frames($refused)[0]['message']);
+        $this->assertSame(0, Node::count());
+
+        // Zoznam konverzácií ho neukazuje (scope je jeden zdroj tej podmienky).
+        $this->assertNotContains(
+            $child->uuid,
+            ConsoleThread::query()->conversations()->pluck('uuid')->all(),
+        );
+
+        // A rozhodnutie o jeho zápise funguje.
+        $this->frames($this->decide($child, $childCall, AgentRunner::DECISION_ALLOW));
+        $this->assertSame(1, Node::count());
+    }
+
+    /**
+     * Zamietnutý `spawn_agent` nesmie nechať dieťa naveky vo `waiting` — zametač
+     * zaparkované behy zámerne nezametá (čakajú na človeka a môžu čakať dni).
+     */
+    public function test_denying_the_spawn_call_abandons_the_child(): void
+    {
+        [$parent, $child, $childCall, $frames] = $this->parkedSubagent([
+            new LlmResponse(text: 'Dobre, nechám to na teba.'),
+        ]);
+
+        $spawnCall = (int) $this->frame($frames, 'agent_wait')['call'];
+
+        $this->frames($this->decide($parent, $spawnCall, AgentRunner::DECISION_DENY));
+
+        $this->assertSame('denied', ConsoleToolCall::findOrFail($childCall)->status);
+        $this->assertSame('denied', ConsoleToolCall::findOrFail($spawnCall)->status);
+        $this->assertSame(0, Node::count());
+
+        $childRun = Run::where('thread_id', $child->id)->firstOrFail();
+        $this->assertSame('aborted', $childRun->status);
+        $this->assertNotNull($childRun->ended_at);
+        $this->assertSame(0, Run::where('status', 'waiting')->count());
+    }
+
+    /**
+     * Cena dieťaťa a cena rodiča sa nemiešajú — ani jedným smerom.
+     *
+     * Rámce dieťaťa idú cez `$emit` RODIČA, takže keby `agent` bol v
+     * `RunRecorder::STATEFUL`, kroky a tool cally dieťaťa by sa pripočítali rodičovi.
+     * Obálka to vylučuje konštrukciou; tento test to meria.
+     */
+    public function test_the_child_run_never_pays_for_the_parent_and_back(): void
+    {
+        [$parent, $child, $childCall] = $this->parkedSubagent([
+            new LlmResponse(text: 'Uložil som to.'),
+            new LlmResponse(text: 'Hotovo.'),
+        ]);
+
+        $this->frames($this->decide($child, $childCall, AgentRunner::DECISION_ALLOW));
+
+        $parentRun = Run::where('thread_id', $parent->id)->firstOrFail();
+        $childRun = Run::where('thread_id', $child->id)->firstOrFail();
+
+        // Rodič: dva kroky (jeden na segment) a dve vykonania JEDNÉHO `spawn_agent`
+        // callu — raz pred zaparkovaním, raz pri pokračovaní. `mind_learn` dieťaťa
+        // medzi nimi nie je; s `agent` v STATEFUL by tu boli čísla dieťaťa navrch.
+        $this->assertSame(2, $parentRun->steps, 'Rodič platí za kroky dieťaťa.');
+        $this->assertSame(2, $parentRun->tool_calls, 'Rodič platí za tooly dieťaťa.');
+
+        $this->assertSame(2, $childRun->steps);
+        $this->assertSame(1, $childRun->tool_calls, 'Dieťa má práve jeden tool call — svoj zápis.');
+
+        // A uzavretý podbeh sa nezatvára druhý raz: `/decide` ho uzavrie v tele a
+        // `finally` v `stream()` by mu inak prepísalo trvanie o pokračovanie rodiča.
+        $childRun->forceFill(['ended_at' => now()->subMinutes(5), 'duration_ms' => 1234])->saveQuietly();
+        app(RunRecorder::class)->close($childRun->fresh());
+
+        $this->assertSame(1234, $childRun->fresh()->duration_ms, 'Druhé `close()` prepísalo trvanie podbehu.');
+    }
+
+    /**
+     * §6.3 návrhu — `max_steps` sa CLAMPUJE, neodmieta, a skutočná hodnota sa vráti
+     * modelu aj zapíše na vlákno podagenta.
+     *
+     * Prečo clamp a nie odmietnutie: `task` a `profile` sú bezpečnostné, `max_steps`
+     * je výkonový. Model, ktorý napíše 20, chce „nech to stihne" — odmietnutie by
+     * spálilo celé kolo smyčky (~20 s na CPU) za formalitu.
+     *
+     * Strop žije na VLÁKNE podagenta, nie v `$options` behu: `/decide` ho tak čítá zo
+     * servera a klient si ho nemôže vymeniť medzi vyžiadaním povolenia a vykonaním.
+     */
+    public function test_spawn_agent_clamps_the_step_budget_of_its_child(): void
+    {
+        $parent = ConsoleThread::create([]);
+
+        // Jeden scenár na celý test: register je singleton, takže `Subagent` (a jeho
+        // `ProviderFactory`) prežije všetky tri ťahy a druhé naviazanie fake modelu
+        // by dieťa nedostalo.
+        $this->fakeProvider([
+            new LlmResponse(toolCalls: [new LlmToolCall('s1', 'spawn_agent', [
+                'task' => 'Povedz, čo je v pamäti o konzole.', 'profile' => 'memory', 'max_steps' => 20,
+            ])], stopReason: LlmResponse::STOP_TOOL_USE),
+            new LlmResponse(text: 'V pamäti je o konzole zápis o dvojfázovej bráne.'),
+            new LlmResponse(text: 'Podagent to zistil.'),
+
+            new LlmResponse(toolCalls: [new LlmToolCall('s2', 'spawn_agent', [
+                'task' => 'Povedz, čo je v pamäti o grafe.', 'profile' => 'memory', 'max_steps' => 0,
+            ])], stopReason: LlmResponse::STOP_TOOL_USE),
+            new LlmResponse(text: 'O grafe je zápis o anizotropnej gravitácii.'),
+            new LlmResponse(text: 'Aj toto zistil.'),
+
+            new LlmResponse(toolCalls: [new LlmToolCall('s3', 'spawn_agent', [
+                'task' => 'Povedz, čo je v pamäti o hranách.', 'profile' => 'memory',
+            ])], stopReason: LlmResponse::STOP_TOOL_USE),
+            new LlmResponse(text: 'O hranách je zápis o vláskovej textúre.'),
+            new LlmResponse(text: 'Tretí je hotový.'),
+        ]);
+
+        foreach ([[20, 6], [0, 1], [null, 4]] as [$requested, $granted]) {
+            $frames = $this->frames($this->postJson('/api/console/run', [
+                'thread' => $parent->uuid, 'message' => 'Deleguj to', 'profile' => 'orchestrator',
+            ]));
+
+            $this->assertSame('end', $frames[count($frames) - 1]['t']);
+
+            $child = ConsoleThread::query()->whereNotNull('parent_thread_id')->latest('id')->firstOrFail();
+            $this->assertSame($granted, $child->max_steps, 'Strop kôl dieťaťa sa nezapísal na jeho vlákno.');
+
+            $summary = json_decode((string) $this->frame($frames, 'tool_result')['result'], true);
+            $this->assertSame('done', $summary['status']);
+            $this->assertNotSame('', $summary['answer']);
+
+            // Skutočná hodnota sa vráti LEN keď sa clampovalo — model nesmie počítať
+            // s tým, čo nedostal, ale pri nezmenenom strope je to znak za nič.
+            if ($requested === null) {
+                $this->assertArrayNotHasKey('max_steps', $summary);
+            } else {
+                $this->assertSame($granted, $summary['max_steps']);
+            }
+        }
+
+        $this->assertSame(3, Run::whereNotNull('parent_run_id')->count());
+    }
+
     // ---- pomôcky -----------------------------------------------------------
+
+    /**
+     * Vnorený rámec dieťaťa daného typu — rozbalený z obálky `{t:'agent', frame}`.
+     *
+     * @param  list<array<string, mixed>>  $frames
+     * @return array<string, mixed>|null
+     */
+    private function nested(array $frames, string $type): ?array
+    {
+        foreach ($frames as $frame) {
+            if (($frame['t'] ?? '') === 'agent' && ($frame['frame']['t'] ?? '') === $type) {
+                return $frame['frame'];
+            }
+        }
+
+        return null;
+    }
+
 
     /** Zaparkovaný zápis: vlákno, tool a id `pending` riadku, na ktorý sa rozhoduje. */
     private function parkedWrite(array $afterDecision, array $extraTools = []): array

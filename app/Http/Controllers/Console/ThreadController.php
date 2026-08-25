@@ -40,10 +40,20 @@ class ThreadController extends Controller
         'auto_accept.boolean' => 'Stav brány zápisov musí byť áno alebo nie.',
     ];
 
-    /** Zoznam pre bočný panel — bez správ, len to, čo sa vypisuje v riadku. */
+    /**
+     * Zoznam pre bočný panel — bez správ, len to, čo sa vypisuje v riadku.
+     *
+     * `conversations()` odfiltruje vlákna podagentov: nie sú to konverzácie,
+     * `RunController::run` do nich správu odmietne a detail podbehu sa otvára
+     * z obrazovky Runy. Pre front zadaní to nie je kozmetika — plocha vyberá
+     * vlákno z tohto zoznamu, takže bez filtra by sa dalo zaradiť do poradia
+     * zadanie, ktoré server pri odoslaní odmietne, a človek by dostal chybu za
+     * niečo, čo mu rozhranie samo ponúklo.
+     */
     public function index(): JsonResponse
     {
         $threads = ConsoleThread::query()
+            ->conversations()
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
             ->limit(100)

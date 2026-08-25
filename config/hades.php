@@ -173,6 +173,31 @@ return [
         // Strop na jeden prečítaný súbor a na výstup ripgrepu (znaky).
         'read_cap' => (int) env('HADES_CONSOLE_READ_CAP', 60000),
         'grep_cap' => (int) env('HADES_CONSOLE_GREP_CAP', 20000),
+
+        // Podagenti (`spawn_agent`). Sú to VÝKONOVÉ stropy tohto stroja, nie
+        // bezpečnostná hranica — preto config: inferencia je CPU-only (~8 tok/s na
+        // qwen3:8b), jedno kolo dieťaťa je ~30 s, štyri kolá ~2 min a tri deti ~6
+        // min, takže používateľ ich musí vedieť stiahnuť bez deploya.
+        //
+        // Sada dovolených profilov je naopak v KÓDE
+        // ({@see \App\Services\Console\Tools\SpawnAgentTool::CHILD_PROFILES}), pretože
+        // tá rozhoduje o zápisových tooloch podagenta. A `SpawnAgentTool` má na
+        // `max_children`/`max_steps` ešte tvrdé podlahy, ktoré `.env` neprebije:
+        // preklep v konfigurácii nesmie zapáliť CPU na hodinu.
+        //
+        // Paralelnosť tu nie je a nie je to opomenutie: `spawn_agent` sa vykonáva
+        // synchronne vnútri smyčky rodiča, takže tri deti idú ZA SEBOU. Súbežné behy
+        // by si delili tie isté jadrá (wall clock rovnaký, RAM a riziko swapu
+        // horšie) a fronta s workermi by bola druhá cesta k modelu, ktorú kontrakt
+        // zakazuje.
+        'agent' => [
+            'max_children' => (int) env('HADES_AGENT_MAX_CHILDREN', 3),
+            'max_steps' => (int) env('HADES_AGENT_MAX_STEPS', 6),
+            'default_steps' => (int) env('HADES_AGENT_STEPS', 4),
+            // Strop na odpoveď podagenta, ktorú zaplatí rodič vo svojom kontexte
+            // (~2000 znakov ≈ 500 tokenov). Skrátenie sa vždy prizná.
+            'result_chars' => (int) env('HADES_AGENT_RESULT_CHARS', 2000),
+        ],
     ],
 
     // ---------------------------------------------------------------------

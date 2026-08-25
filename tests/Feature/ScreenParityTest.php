@@ -475,23 +475,39 @@ class ScreenParityTest extends TestCase
     private function build(string $serializer, array $args = []): ScreenSerializer
     {
         return match ($serializer) {
-            RunDetailScreen::class => new RunDetailScreen(Run::query()->latest('id')->firstOrFail()),
+            // Beh, ktorý MÁ dieťa, a nie len najnovší. Tretia vrstva testu
+            // preskakuje prázdne zoznamy („prázdna fixture o kľúčoch nič
+            // nedokazuje"), takže nad behom bez podagentov by preklep
+            // v `children[].tokens_out` prešel zelene — presne ten tichý únik,
+            // proti ktorému tá vrstva stojí.
+            RunDetailScreen::class => new RunDetailScreen(
+                Run::query()->has('children')->latest('id')->first()
+                    ?? Run::query()->latest('id')->firstOrFail(),
+            ),
             DnesScreen::class => app(DnesScreen::class),
             default => new $serializer($args),
         };
     }
 
+    /**
+     * Fixture logu behov: rodičovský ťah a jeden podbeh podagenta pod ním.
+     *
+     * Dieťa tu je preto, aby `items[].parent` a `children[]` neboli prázdne —
+     * inak by sa parita stromu netestovala vôbec. Vracia sa RODIČ: detail sa
+     * porovnáva na behu, ktorý má čo ukázať.
+     */
     private function seedRun(): Run
     {
         $thread = ConsoleThread::create([]);
 
-        return Run::create([
+        $parent = Run::create([
             'thread_id' => $thread->id,
             'source' => 'console',
             'status' => 'done',
             'prompt' => 'nájdi poznatok o Dockeri',
             'provider' => 'ollama',
             'model' => 'qwen3:8b',
+            'tool_profile' => 'orchestrator',
             'steps' => 2,
             'tool_calls' => 1,
             'tokens_in' => 3100,
@@ -502,6 +518,27 @@ class ScreenParityTest extends TestCase
             'started_at' => now()->subMinute(),
             'ended_at' => now(),
         ]);
+
+        Run::create([
+            'thread_id' => ConsoleThread::create(['parent_thread_id' => $thread->id])->id,
+            'parent_run_id' => $parent->id,
+            'source' => 'agent',
+            'status' => 'done',
+            'prompt' => 'Prehľadaj public/js/shared a povedz, čo tam je.',
+            'provider' => 'ollama',
+            'model' => 'qwen3:8b',
+            'tool_profile' => 'files',
+            'steps' => 3,
+            'tool_calls' => 2,
+            'tokens_in' => 1840,
+            'tokens_out' => 214,
+            'duration_ms' => 41000,
+            'stop_reason' => 'stop',
+            'started_at' => now()->subSeconds(50),
+            'ended_at' => now()->subSeconds(9),
+        ]);
+
+        return $parent;
     }
 
     /**

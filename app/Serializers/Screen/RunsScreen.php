@@ -29,7 +29,9 @@ class RunsScreen extends ScreenSerializer
         $limit = min((int) ($this->filters['limit'] ?? 50), self::MAX_LIMIT);
         $limit = max($limit, 1);
 
-        $query = Run::query()->with('thread:id,uuid,title');
+        // `parent` sa dotahuje jedným dopytom navyše, nie na riadok. Bez `with()`
+        // by strom podbehov v zozname stál N+1 dopytov pri strope 200 riadkov.
+        $query = Run::query()->with(['thread:id,uuid,title', 'parent:id,uuid']);
 
         if (($status = self::text($this->filters['status'] ?? null)) !== '') {
             $query->where('status', $status);
@@ -86,6 +88,11 @@ class RunsScreen extends ScreenSerializer
             'items[].steps', 'items[].tool_calls', 'items[].tokens_out',
             'items[].duration_ms', 'items[].stop_reason', 'items[].error',
             'items[].started_at', 'items[].thread',
+            // Uuid rodičovského behu. Pri behu, ktorý začal človek, je `null`
+            // a `dropEmpty()` ho z odpovede pre AI vyhodí — význam vynechania
+            // („tento beh nikto nespustil, začal ho človek") patrí do popisu
+            // nástroja, nie do payloadu ako `null`.
+            'items[].parent',
         ];
     }
 
@@ -128,6 +135,21 @@ class RunsScreen extends ScreenSerializer
             'day' => $run->started_at?->toDateString(),
             'thread' => $run->thread?->uuid,
             'thread_title' => $run->thread?->title,
+            // Rodičovský beh: pri podbehu podagenta uuid ťahu, ktorý ho spustil,
+            // pri behu, ktorý začal človek, `null`. `uuid` a nie `id`: verejný
+            // identifikátor nemá prezrádzať poradie ani počet behov, a takto ho
+            // volajúci môže podať `mind_run`u.
+            //
+            // Strom sa skladá TU, nie v prehliadači — je to dáta. Odsadenie riadku,
+            // ikona a slovo „podagent" sú naopak vizuál a robí ich UI.
+            //
+            // Pozor na jednu nepresnosť, ktorú tu vedome nechávam: `parent_run_id`
+            // je bez cudzieho kľúča, takže po zmazaní rodiča ukazuje na neexistujúci
+            // riadok a relácia vráti `null` — podbeh potom v tejto ploche vyzerá ako
+            // beh spustený človekom. Podstrom neprepadne (riadky zostanú), len
+            // stratí rodiča. Alternatíva by bola posielať uuid, ktoré sa nedá
+            // otvoriť, čo je horšie: klient by naň dal odkaz vedúci na 404.
+            'parent' => $run->parent?->uuid,
         ];
     }
 

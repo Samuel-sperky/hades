@@ -9,8 +9,11 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SearchController as ApiSearchController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
+use App\Http\Controllers\Console\BranchController as ConsoleBranchController;
 use App\Http\Controllers\Console\ModelController as ConsoleModelController;
+use App\Http\Controllers\Console\ProjectController as ConsoleProjectController;
 use App\Http\Controllers\Console\RunController as ConsoleRunController;
+use App\Http\Controllers\Console\SearchController as ConsoleSearchController;
 use App\Http\Controllers\Console\ThreadController as ConsoleThreadController;
 use App\Http\Controllers\ContextController;
 use App\Http\Controllers\DirectiveController;
@@ -141,6 +144,36 @@ Route::middleware([
     Route::get('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'show']);
     Route::patch('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'update']);
     Route::delete('/console/threads/{thread:uuid}', [ConsoleThreadController::class, 'destroy']);
+
+    // -----------------------------------------------------------------------
+    // Projekty (zložky vlákien) a vetvy konverzácie — `/chat`.
+    //
+    // Zaradenie vlákna do projektu je route PROJEKTU, nie vlákna: vlákno patrí
+    // najviac do jedného projektu, takže vzťah vlastní projekt a `PATCH` vlákna
+    // zostáva o vlákne samom (model, titulok, brána zápisov).
+    //
+    // Vetvenie tu KONČÍ pri zápise do `console_branches` a prepnutí aktívnej
+    // vetvy. Upravenú správu zapíše bežný beh cez `/console/run` — vetvenie sa
+    // nesmie stať druhým pisateľom do `console_messages` vedľa `AgentRunner`a.
+    // -----------------------------------------------------------------------
+    Route::get('/console/projects', [ConsoleProjectController::class, 'index']);
+    Route::post('/console/projects', [ConsoleProjectController::class, 'store']);
+    Route::get('/console/projects/{project:uuid}', [ConsoleProjectController::class, 'show']);
+    Route::patch('/console/projects/{project:uuid}', [ConsoleProjectController::class, 'update']);
+    Route::delete('/console/projects/{project:uuid}', [ConsoleProjectController::class, 'destroy']);
+    Route::post('/console/projects/{project:uuid}/threads', [ConsoleProjectController::class, 'attach']);
+    Route::delete('/console/projects/{project:uuid}/threads/{thread:uuid}', [ConsoleProjectController::class, 'detach']);
+
+    Route::get('/console/threads/{thread:uuid}/branches', [ConsoleBranchController::class, 'index']);
+    Route::post('/console/threads/{thread:uuid}/branches', [ConsoleBranchController::class, 'store']);
+    Route::post('/console/branches/{branch:uuid}/activate', [ConsoleBranchController::class, 'activate']);
+    Route::delete('/console/branches/{branch:uuid}', [ConsoleBranchController::class, 'destroy']);
+
+    // Hľadanie v histórii naprieč vláknami a export vlákna do markdownu. Export je
+    // GET, pretože je to čítanie — a skládá ho SERVER, aby všetky tri plochy
+    // (konzola, dok, /chat) dostali ten istý text. Systémová smernica v ňom nie je.
+    Route::get('/console/search', [ConsoleSearchController::class, 'index']);
+    Route::get('/console/threads/{thread:uuid}/export', [ConsoleSearchController::class, 'export']);
 
     // Beh agenta. Throttle je na `run`, nie na `decide`: jeden ťah drží spojenie
     // minúty a dvadsať za minútu je strop, ktorý §8.9 docs/BEZPECNOST.md už

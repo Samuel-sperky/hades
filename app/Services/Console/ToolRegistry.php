@@ -15,6 +15,7 @@ use App\Services\Console\Tools\MindReadTool;
 use App\Services\Console\Tools\MindRecallTool;
 use App\Services\Console\Tools\MindRenameTool;
 use App\Services\Console\Tools\ReadFileTool;
+use App\Services\Console\Tools\SpawnAgentTool;
 use App\Services\Console\Tools\ToolRefusal;
 use App\Services\Console\Tools\WriteFileTool;
 use App\Services\Llm\LlmProvider;
@@ -28,18 +29,28 @@ use Throwable;
  * vyberala tool sama (`match ($name)`), pridanie toolu by znamenalo zmenu
  * v smyčke — a práve tam sa zabudne na `isWrite()`.
  *
- * `call()` NIKDY nehodí výnimku. Model musí dostať výsledok na každé volanie:
- * keď mu tool spadne bez odpovede, buď to skúsi znova (na CPU inferencii to je
- * ~20 sekúnd za nič), alebo si výsledok vymyslí. Preto sa všetko prekladá na
- * `ToolResult::refused()` s vetou, z ktorej sa dá pokračovať.
+ * `call()` nehodí výnimku — s JEDNOU menovanou výnimkou nižšie. Model musí dostať
+ * výsledok na každé volanie: keď mu tool spadne bez odpovede, buď to skúsi znova
+ * (na CPU inferencii to je ~20 sekúnd za nič), alebo si výsledok vymyslí. Preto sa
+ * všetko prekladá na `ToolResult::refused()` s vetou, z ktorej sa dá pokračovať.
+ *
+ * Tá výnimka je {@see AgentParked}: podagent zaparkoval na povolení zápisu, takže
+ * `spawn_agent` ešte NEDOPOVEDAL a niet čo vrátiť. Keby sa preložila na
+ * `ToolResult`, smyčka by ju zapísala ako výsledok, model by na základe tej vety
+ * pokračoval a ťah by dobehol rámcom `end` — kým dieťa čaká na človeka. Je to teda
+ * riadiaci signál smyčky (súrodenec `RunAborted`), nie zlyhanie toolu, a preto ho
+ * `call()` prepustí ďalej.
  *
  * PORADIE {@see self::TOOLS} nie je kozmetika. V takomto poradí ich model vidí
  * v systémovom prompte a slabý model siaha na to, čo je vyššie — takže čítanie
  * je vpredu a zápis vzadu.
  *
- * **`TOOLS` je kánon toho, čo EXISTUJE (13); {@see self::PROFILES} je kánon toho,
+ * **`TOOLS` je kánon toho, čo EXISTUJE (14); {@see self::PROFILES} je kánon toho,
  * čo sa VYSTAVUJE.** Nie sú to tie isté množiny: `graph_focus` existuje, ale
- * profil `full` ho nemá (jeho efekt je klientský a `/console` plátno nemá).
+ * profil `full` ho nemá (jeho efekt je klientský a `/console` plátno nemá), a
+ * `spawn_agent` je len v profile `orchestrator` — `full` je dvanástka, ktorá už
+ * dnes stojí ~2,5k tokenov v každom requeste, takže štrnásty tool by ju pretlačil
+ * nad strop z kritéria §5/3 kontraktu.
  * Beh dostane len tooly svojho profilu — filtruje sa advertising ({@see self::definitions()})
  * aj vykonanie ({@see self::call()}), pretože model si tool pamätá z histórie
  * vlákna a keby sa filtroval len popis, zavolal by ho a vykonal.
@@ -56,6 +67,10 @@ class ToolRegistry
         GlobTool::class,
         ReadFileTool::class,
         GraphFocusTool::class,
+        // `spawn_agent` je čítací (sám nezapíše nič), ale je PRVÝ tool, ktorý vie
+        // ťah zaparkovať — nie svojím zápisom, ale zápisom svojho dieťaťa. Parkovanie
+        // nesie {@see AgentParked}, nie `isWrite()`.
+        SpawnAgentTool::class,
         // zápis — parkuje sa na potvrdenie človekom
         MindLearnTool::class,
         MindRenameTool::class,
@@ -117,6 +132,23 @@ class ToolRegistry
             GrepTool::class, GlobTool::class, ReadFileTool::class,
             MindLearnTool::class, MindRenameTool::class, MindMoveTool::class,
             MindDeleteTool::class, EditFileTool::class, WriteFileTool::class,
+        ],
+
+        // Orchestrátor. Rozdeľuje prácu, nerobí ju. Dva tooly a je to zámer:
+        //   `mind_recall` — bez neho by orchestrátor písal zadania podagentom
+        //     z ničoho. Smernica prikazuje „nič si nedomýšľaj, zisti to toolom"
+        //     a konvencie tohto projektu žijú v pamäti. Vymyslené zadanie je
+        //     najhoršia porucha orchestrátora, pretože podagent ju vykoná dôsledne.
+        //   `spawn_agent` — vlastná akcia profilu.
+        // ŽIADNY zápisový tool: orchestrátor nesmie zapisovať sám. Zápisy patria
+        // podagentom, kde ich vidí človek s diffom. Vedľajší efekt je, že profil
+        // `orchestrator` nemá vlastnú cestu k bráne zápisov — jediná brána, ktorú
+        // zažije, je brána dieťaťa.
+        // `spawn_agent` NIE JE v žiadnom inom profile a `orchestrator` NIE JE
+        // v `SpawnAgentTool::CHILD_PROFILES` — hĺbka stromu je teda presne 1.
+        'orchestrator' => [
+            MindRecallTool::class,
+            SpawnAgentTool::class,
         ],
     ];
 
@@ -276,9 +308,12 @@ class ToolRegistry
     }
 
     /**
-     * Vykoná tool a vráti výsledok — vždy, aj pri chybe.
+     * Vykoná tool a vráti výsledok — vždy, aj pri chybe. Jediná výnimka, ktorá
+     * prejde von, je {@see AgentParked} (viď docblock triedy).
      *
      * @param  array<string, mixed>  $args
+     *
+     * @throws AgentParked podagent čaká na povolenie zápisu; tool nedopovedal
      */
     public function call(string $name, array $args): ToolResult
     {
@@ -286,6 +321,11 @@ class ToolRegistry
 
         try {
             $result = $this->get($name)->execute($args);
+        } catch (AgentParked $e) {
+            // Riadiaci signál smyčky, nie chyba. Prekladať ho na `ToolResult` by
+            // znamenalo, že model dostane výsledok na tool, ktorý ešte nedopovedal —
+            // a ťah by dobehol, kým dieťa čaká na človeka.
+            throw $e;
         } catch (ToolRefusal $e) {
             // Očakávané odmietnutie (zlá cesta, nejednoznačný string, odpadový
             // label). Nelogujeme ako chybu appky — je to normálna súčasť behu.

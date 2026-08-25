@@ -4,6 +4,7 @@ namespace App\Services\Console;
 
 use App\Models\ConsoleMessage;
 use App\Models\ConsoleThread;
+use App\Models\ConsoleToolCall;
 use App\Models\Run;
 use Illuminate\Support\Facades\DB;
 
@@ -29,8 +30,22 @@ use Illuminate\Support\Facades\DB;
  */
 class RunRecorder
 {
-    /** Rámce, ktoré nesú stav behu. Všetko ostatné (`delta`, `start`, `tool_result`) sa neukládá. */
-    private const STATEFUL = ['step', 'tool', 'permission', 'end', 'error'];
+    /**
+     * Rámce, ktoré nesú stav behu. Všetko ostatné (`delta`, `start`, `tool_result`)
+     * sa neukládá.
+     *
+     * `agent`, `agent_start` a `agent_end` tu ÚMYSELNE NIE SÚ. Rámce podagenta idú
+     * cez `$emit` rodiča (zabalené v `{t:'agent', run, frame}`), takže keby `agent`
+     * v tomto zozname bol, `steps` a `tool_calls` dieťaťa by sa pripočítali
+     * rodičovi. Dieťa má vlastný recorder na vlastnom behu a počíta si ich PRED
+     * zabalením — obálka to teda vylučuje konštrukciou, nie disciplínou.
+     *
+     * `agent_wait` tu naopak BYŤ MUSÍ: je to posledný rámec zaparkovaného ťahu
+     * rodiča (`end` po ňom nepríde) a bez neho by rodičovský beh zostal `running`,
+     * `close()` by ho v `finally` uzavrel ako `done` a `/decide` by nemalo čo
+     * obnoviť.
+     */
+    private const STATEFUL = ['step', 'tool', 'permission', 'agent_wait', 'end', 'error'];
 
     /**
      * Založí beh, ale len ak vo vlákne žiadny iný práve nebeží.
@@ -90,6 +105,33 @@ class RunRecorder
             'from_message_id' => (int) (ConsoleMessage::max('id') ?? 0) + 1,
             'started_at' => now(),
         ]);
+    }
+
+    /**
+     * Podbeh — dieťa behu rodiča (`spawn_agent`).
+     *
+     * Vlastná metóda a nie parameter v {@see self::open()}: `open()` volajú dve
+     * existujúce cesty a jej podpis sa nemá hýbať.
+     *
+     * `source = 'agent'` nepotrebuje migráciu — `runs.source` je `string(32)` presne
+     * preto (enum by si vyžiadal migráciu na každý nový zdroj).
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public function openChild(
+        ConsoleThread $thread,
+        Run $parent,
+        ConsoleToolCall $parentCall,
+        string $task,
+        array $options = [],
+    ): Run {
+        $run = $this->open($thread, $task, $options, source: 'agent');
+
+        $run->parent_run_id = $parent->id;
+        $run->parent_call_id = $parentCall->id;
+        $run->save();
+
+        return $run;
     }
 
     /**
@@ -153,6 +195,9 @@ class RunRecorder
             'step' => $run->steps++,
             'tool' => $run->tool_calls++,
             'permission' => $run->status = 'waiting',
+            // Zaparkoval podagent, nie tento beh — ale ťah rodiča tým končí bez
+            // `end` presne tak isto, takže stav je ten istý.
+            'agent_wait' => $run->status = 'waiting',
             'error' => $this->fail($run, (string) ($frame['message'] ?? '')),
             'end' => $this->finish($run, $frame),
             default => null,
@@ -168,6 +213,20 @@ class RunRecorder
      */
     public function close(Run $run, bool $aborted = false): void
     {
+        // Uzavretý beh sa nezatvára druhý raz. Bez tohto by `ended_at` a
+        // `duration_ms` prepísalo druhé volanie v tom istom requeste a trvanie
+        // dieťaťa by obsahovalo aj pokračovanie rodiča. Latentné to bolo aj dnes;
+        // s podagentmi sa to stane vždy, pretože `/decide` uzavrie podbeh v tele
+        // a `finally` v `stream()` ho zavrie znova.
+        //
+        // Podmienka je „má koniec A NIE JE otvorený", nie len „má koniec": beh,
+        // ktorý zomrel s procesom, môže mať `ended_at` z predchádzajúceho segmentu
+        // a pritom stav `running` — a práve ten musí zametač ({@see self::reapStale()})
+        // dokončiť, inak by v logu zostal naveky ako bežiaci.
+        if ($run->ended_at !== null && ! $run->isOpen()) {
+            return;
+        }
+
         $last = (int) (ConsoleMessage::query()
             ->where('thread_id', $run->thread_id)
             ->max('id') ?? 0);
@@ -223,6 +282,19 @@ class RunRecorder
      * pravdivé tok/s aj pri behu, v ktorom sa človek dve minúty rozhodoval
      * o zápise — kým `runs.duration_ms` zámerne wall clock JE, lebo na otázku
      * „ako dlho som na to čakal" odpovedá práve on.
+     *
+     * **Pri podbehoch sa ten rozdiel znásobuje a treba ho poznať.** Rodič, ktorý
+     * zaparkoval na zápise svojho podagenta, je celý ten čas otvorený, takže jeho
+     * `duration_ms` obsahuje **celý podbeh aj celé rozhodovanie človeka** o ňom —
+     * a to môžu byť dni, pretože zaparkované behy zametač zámerne nezametá. Jeho
+     * `tokens_per_second` pritom zostane pravdivé, lebo sa počíta z generovacieho
+     * času správ.
+     *
+     * Dôsledok pre každého, kto tie čísla čítá: `duration_ms` rodiča a jeho detí sa
+     * **nedá sčítať ani odčítať** — segmenty sa prekrývajú a to isté čakanie by sa
+     * počítalo dvakrát. Tokeny sa sčítať dajú: správy dieťaťa sú v jeho vlastnom
+     * vlákne, teda mimo rozsahu id rodiča, a jeho kroky sa rodičovi
+     * nepripočítavajú (`agent` nie je v {@see self::STATEFUL}).
      */
     private function aggregate(Run $run): void
     {
