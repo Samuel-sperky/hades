@@ -195,8 +195,43 @@ overenú bránu, ktorú som neotestoval.
   takže pending call dieťaťa v payloade nie je. V tom istom sedení bez F5 to funguje.
 - `/console` a dok rámce `agent_*` nepoznajú (`runclient.js` ich hodí do `default:`) —
   beh s podagentom tam prežije, ale zaparkované dieťa sa v UI neukáže.
-- Drobné z review: throttle na `/console/search`, `RipgrepTool::DENY_GLOBS` bez koreňa
-  príloh, `TOOL_LABEL` v `tray.js` menuje tri neexistujúce tooly, chýbajúce CSP hlavičky,
-  duplikovaná mechanika kopírovania medzi `chat/artifact.js` a `console/render.js`,
-  fokus po prepnutí vetvy, dva `aria-live` regióny, ktoré si prekričia, slovenské
-  skloňovanie („5 kroky"), šesť komentárov odkazujúcich na neexistujúcu poznámku.
+### Drobné z review — zavreté (25. 8. 2026)
+
+Sedem z jedenástich, a jedno z nich malo väčšiu cenu než veľkosť:
+
+- **`runclient.js` nepoznal rámce `agent_*`** — padali do `default:`, takže `/console`
+  a dok beh s podagentom prežili, ale **zaparkované dieťa neukázali** a klient hlásil
+  „beh sa skončil bez odpovede". `route()` ich teraz obsluhuje, `agent_wait` ukončí ťah
+  ako `permission` a `state.awaiting` nesie `thread`. Vnorená obálka `{t:'agent'}`
+  zámerne do `route()` nechodí.
+- **Dva pisatelia jedného stavu:** `chat/run.js` si `R.awaiting` nastavoval sám, a keďže
+  posiela `R` ako `state` klienta, písali doň obaja. Dnes rovnaký tvar, prvýkrát pri
+  zmene dve pravdy. Vlastníkom je zdieľaný klient.
+- `RipgrepTool::DENY_GLOBS` **odmieta koreň príloh** — `PathGuard` ho odmietal pri čítaní
+  jedného súboru, ale `grep`/`glob` idú cez `rg`, ktorý o `PathGuard`e nevie, takže
+  obrana visela na tom, že `rg` ctí `storage/app/.gitignore`. To je náhoda, nie pravidlo.
+- `tray.js` menoval **tri neexistujúce tooly** (`mind_forget`, `file_write`, `file_edit`)
+  → skutočná šestica.
+- **Throttle na `/console/search`** (`LOWER(content) LIKE` sken nad celou tabuľkou).
+- **Fokus po prepnutí vetvy** — `loadThread()` prekreslí pás a prvok s fokusom zmizne
+  (tá istá trieda ako P3); vracia sa na pilulku s `aria-current`.
+- **Dva `aria-live` regióny si prekričali** hlásenie o vetve (`role="status"` na
+  viditeľnej vete **a** zdieľaný región v tom istom volaní) → jeden región.
+- **Slovenské skloňovanie**: „strop 6 kroky" bolo zlé pre každý strop okrem 2–4.
+  Použil sa trojtvarový `plural()`, ktorý `threads.js` už exportuje — vzniká tým cyklus
+  `render ↔ threads`, overený v prehliadači, že sa rozväzuje pri volaní.
+
+### Zostáva
+
+- **Zaparkovaný zápis podagenta sa po obnove stránky nedá rozhodnúť:**
+  `ThreadController::payload()` posiela `awaiting` = `pendingToolCall()` TOHTO vlákna,
+  takže pending call dieťaťa v payloade nie je. V tom istom sedení bez F5 to funguje.
+- **CSP hlavičky** appka neposiela na žiadnej HTML ploche. Nedopĺňal som ich naslepo:
+  zavedenie CSP nad živou plochou s inline `<script type="application/json">` a
+  `style` atribútmi treba **odmerať**, inak sa appka rozpadne a príčina nebude vidieť.
+  Patrí to do vlastnej úlohy s meraním, nie do dobehu šprintu.
+- **Duplikovaná mechanika kopírovania** medzi `chat/artifact.js` a `console/render.js`.
+  Správna oprava je vyňať ju do `public/js/shared/`, čo sa dotkne konzoly — teda plochy,
+  ktorú tento šprint nemal v rozsahu. Samostatná úloha.
+- `/console` a dok síce rámce `agent_*` **už dostanú** (oprava vyššie), ale svoje
+  callbacky `onAgent*` nedefinujú, takže strom podagentov v nich zatiaľ nekreslí nič.
