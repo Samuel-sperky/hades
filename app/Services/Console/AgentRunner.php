@@ -92,6 +92,7 @@ final class AgentRunner
 
         ConsoleMessage::create([
             'thread_id' => $thread->id,
+            'branch_id' => $thread->currentBranchId(),
             'role' => 'user',
             'content' => $message,
         ]);
@@ -142,8 +143,17 @@ final class AgentRunner
 
             $placeholder = $this->openAssistant($thread, $emit, $provider, $model);
 
-            if ($decision === self::DECISION_ALLOW_ALWAYS) {
-                // auto-accept na sedenie: ďalší zápis v tomto vlákne sa už nepýta
+            // auto-accept na sedenie: ďalší zápis v tomto vlákne sa už nepýta.
+            //
+            // Vo vlákne PODAGENTA sa `allow_always` chová ako obyčajné `allow` a
+            // bránu nevypne. `Subagent::start()` zámerne NEDEDÍ `auto_accept` z
+            // rodiča, pretože zadanie podagenta nepísal človek, ale model — a
+            // blanket grant udelený tu by tú obranu zrušil z druhej strany:
+            // v profile `files` znamená `write_file`/`edit_file` kdekoľvek pod
+            // `files_root`, až po strop krokov. Karta v UI to tlačidlo pre podagenta
+            // ani nekreslí; toto je tá istá hranica na serveri, kde platí aj pre
+            // klienta, ktorý si ju nakreslí sám.
+            if ($decision === self::DECISION_ALLOW_ALWAYS && ! $thread->isSubagent()) {
                 $thread->auto_accept = true;
                 $thread->save();
             }
@@ -510,7 +520,14 @@ final class AgentRunner
     {
         $window = max(2, (int) config('hades.console.history_window', 20));
 
-        $rows = $thread->messages()
+        // Okno sa počíta nad REŤAZOU VETVY, nie nad vláknom. Dopyt cez
+        // `$thread->messages()` by modelu podstrčil správy z OPUSTENEJ vetvy:
+        // vetvenie pripája na konec, takže po prepnutí vetvy sú najnovšie `id` vo
+        // vlákne často tie, ktoré do aktívnej vetvy nepatria — a okno berie
+        // `orderByDesc('id')`, teda presne ich. Vlákno bez vetiev vracia
+        // `branchMessages()` celú svoju históriu, takže lineárne chovanie sa
+        // nemení. Radenie patrí sem, nie do modelu (viď jeho docblock).
+        $rows = $thread->branchMessages()
             ->whereIn('role', ['user', 'assistant'])
             ->orderByDesc('id')
             ->limit($window)
@@ -605,6 +622,7 @@ final class AgentRunner
     {
         return ConsoleMessage::create([
             'thread_id' => $thread->id,
+            'branch_id' => $thread->currentBranchId(),
             'role' => 'assistant',
             'content' => '',
         ]);
@@ -649,6 +667,7 @@ final class AgentRunner
         if (! $thread->messages()->where('role', 'system')->exists()) {
             ConsoleMessage::create([
                 'thread_id' => $thread->id,
+                'branch_id' => $thread->currentBranchId(),
                 'role' => 'system',
                 'content' => $system,
             ]);

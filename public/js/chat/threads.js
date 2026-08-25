@@ -1,0 +1,1403 @@
+/* ===========================================================================
+   Chat — bočný panel: vlákna, projekty, hľadanie a export.
+
+   ČO TENTO SÚBOR JE: obsah `#chat-thread-list` (zoznam vlákien, zložky
+   projektov, výsledky hľadania) plus dve veci, ktoré do panela nesedia, ale
+   patria k tej istej práci — odkaz na export v hlavičke a riadkové akcie.
+
+   ČO TENTO SÚBOR NIE JE A NESMIE SA STAŤ: beh. Nepozná NDJSON, neposiela na
+   `/api/console/run` ani na `/decide`. Vlákno otvára `loadThread()` z `./run.js`
+   — teda tá istá cesta, akou ho otvára URL a `popstate`. Tri vstupy, jeden beh;
+   druhý čítač histórie vlákna by bol druhá pravda o tom, čo v ňom je.
+
+   DÁTA ZO SERVERA, SLOVÁ TU. Počty (`counts`), skupiny (`threads[]`,
+   `projects[]`), zoradenie, kľúč dňa (`day`) a krátenie útržku prichádzajú
+   z `ChatScreen` — tento súbor ich NEDOPOČÍTAVA. Popisok „dnes/včera", formát
+   času, skloňovanie a text tlačidla sú slová a robia sa tu. Je to to isté
+   pravidlo, ktoré audit 19. 8. 2026 vynútil na šiestich miestach: čip, ktorý si
+   číslo dopočíta z načítanej stránky, sľubuje viac, než zoznam dá.
+
+   KEĎ FETCH PADNE, PANEL TO POVIE. Žiadny prázdny zoznam namiesto chyby a
+   žiadne zahodenie riadkov, ktoré už v paneli sú — staré vlákna sú stále platné
+   odkazy a jedna neúspešná obnova z nich nerobí neplatné. Toto je pravidlo
+   projektu, nie štýl.
+
+   Všetko sú HOISTOVANÉ `export function`: graf modulov chatu je cyklický
+   (`main → run → render`, a tento modul siaha do všetkých troch), a
+   `export const foo = () => {}` v cykle spadne na `ReferenceError: Cannot
+   access 'foo' before initialization`.
+
+   IKONY sú len zo subsetu Material Symbols (215 glyfov zo 4271). Použité sú
+   `menu`, `add`, `edit`, `delete`, `close`, `check`, `search`, `description`,
+   `inventory_2` — každá z nich už v repozitári v kóde je (teda prešla meraním
+   šírky glyfu, glyf ≈ 1 em = 18 px), `inventory_2` je overená v subsete
+   samostatne. `arrow_downward`, `terminal`, `inventory` a `forum` v subsete NIE
+   SÚ a nesmú sa tu objaviť — vykreslili by sa ako svoj ligatúrový názov.
+   =========================================================================== */
+
+import { el } from './render.js';
+import { loadThread, request } from './run.js';
+import { live, narrow, setPanel } from './main.js';
+
+/* ---------------------------------------------------------------------------
+   STAV
+
+   Jedno vrecko, nie premenné rozsypané po súbore. Kreslenie je funkcia stavu:
+   `paint()` prekreslí panel z `T` a nič si nepamätá v DOM. Výnimka je otvorený
+   blok akcií riadku — ten sa prepína priamo na elemente (viď `actsToggle()`),
+   pretože prekreslenie celého panela by pod rukou zhaslo fokus.
+   --------------------------------------------------------------------------- */
+
+const T = {
+    /** Vlákna z `/api/console/threads` (najnovšie prvé, strop 100 na serveri). */
+    threads: [],
+    threadsState: 'idle',
+    threadsError: '',
+
+    /** Projekty z `/api/console/projects` — vrátane archivovaných, tie sú označené. */
+    projects: [],
+    projectsState: 'idle',
+    projectsError: '',
+
+    /** Vlákna projektu, načítané až pri rozbalení: uuid → { state, items }. */
+    open: new Map(),
+
+    /** uuid otvoreného vlákna — riadok ho nesie ako `aria-current`. */
+    current: '',
+
+    /** Rozpísaný dopyt. Kratší než `MIN_QUERY` znamená „nehľadá sa". */
+    query: '',
+
+    /** Filtre hľadania. `thread` / `project` sa nastavujú klikom na skupinu. */
+    filters: { role: '', from: '', to: '', thread: '', project: '' },
+
+    /** Strop výsledkov. Rastie tlačidlom, nikdy nad server `MAX_LIMIT`. */
+    limit: 30,
+
+    /** Odpoveď hľadania: { state, data, error }. */
+    search: { state: 'idle', data: null, error: '' },
+
+    /** Rozpísané premenovanie: { kind: 'thread'|'project', uuid, value }. */
+    renaming: null,
+
+    /** Zakladá sa nový projekt? Inline formulár v hlavičke sekcie. */
+    newProject: false,
+};
+
+/** Ten istý strop ako `ChatScreen::MIN_QUERY` na serveri — kratší dopyt nájde všetko. */
+const MIN_QUERY = 2;
+
+/** `ChatScreen::MAX_LIMIT`. Nad tento strop server dopyt aj tak zreže. */
+const MAX_LIMIT = 100;
+
+/** Prírastok tlačidla „Zobraziť viac". */
+const LIMIT_STEP = 30;
+
+/** Prebehla už inicializácia? `bootThreads()` je idempotentné. */
+let booted = false;
+
+/** Časovač debounce hľadania. */
+let findTimer = 0;
+
+/** Časovač debounce obnovy zoznamu (beh sa vlákna dotkne po každom ťahu). */
+let refreshTimer = 0;
+
+/**
+ * `AbortController` rozbehnutého hľadania.
+ *
+ * Bez neho platí odpoveď, ktorá dorazí posledná, a nie tá, ktorá patrí k tomu,
+ * čo je v poli napísané: dopyt „vet" a „vetva" idú na server v tomto poradí,
+ * ale vrátiť sa môžu v opačnom.
+ */
+let finding = null;
+
+/* ---------------------------------------------------------------------------
+   HTTP
+
+   Tenká vrstva nad `request()` z `./run.js` — CSRF hlavička, 401/419 do toku
+   správ. Vlastný `fetch` by bol druhá kópia tej istej hlavičky a tretia cesta
+   k internému API.
+
+   `json()` z `run.js` sa tu ZÁMERNE nepoužíva: on hlási každú chybu do toku
+   konverzácie, čo je správne pre beh a nesprávne pre panel. Zlyhané načítanie
+   zoznamu vlákien nie je udalosť konverzácie a patrí do panela, kde človek
+   vidí, čoho sa týka.
+   --------------------------------------------------------------------------- */
+
+/**
+ * Request, ktorý nikdy nevyhodí. Vracia `{ ok, status, data, message }`;
+ * `message` je slovenská veta zo servera (validátory kontrolérov ju posielajú),
+ * alebo prázdny reťazec.
+ */
+export async function api(url, opts) {
+    try {
+        const res = await request(url, opts);
+        let data = null;
+
+        try {
+            data = await res.json();
+        } catch {
+            // 500 vracia HTML, 204 nevracia nič. Telo nie je parser problém.
+            data = null;
+        }
+
+        return {
+            ok: res.ok,
+            status: res.status,
+            data,
+            message: typeof data?.message === 'string' ? data.message : '',
+        };
+    } catch (error) {
+        if (error?.name === 'AbortError') return { ok: false, status: 0, data: null, message: '', aborted: true };
+
+        return { ok: false, status: 0, data: null, message: 'Hades neodpovedal.' };
+    }
+}
+
+/** Veta o chybe pre panel. Stav sa uvádza — „nepodarilo sa" bez čísla sa nedá vyšetriť. */
+export function errorLine(res, what) {
+    if (res.message) return res.message;
+    if (res.status === 0) return `${what} — Hades neodpovedal.`;
+
+    return `${what} (HTTP ${res.status}).`;
+}
+
+/* ---------------------------------------------------------------------------
+   SLOVÁ
+
+   Formát času, skloňovanie a popisky. Nič z toho nepatrí na server: „dnes"
+   závisí od hodín prehliadača, kľúč dňa (`day` v odpovedi) od zóny servera —
+   a práve preto je kľúč dáta a popisok slovo.
+   --------------------------------------------------------------------------- */
+
+/** 1 → `one`, 2–4 → `few`, ostatné → `many`. */
+export function plural(count, one, few, many) {
+    if (count === 1) return one;
+
+    return count >= 2 && count <= 4 ? few : many;
+}
+
+/** Deň ako slovo: „dnes", „včera", inak `23. 8.` (a s rokom, keď nie je tento). */
+export function dayWord(date) {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const diff = Math.round((midnight - day) / 86400000);
+
+    if (diff === 0) return 'dnes';
+    if (diff === 1) return 'včera';
+
+    return date.toLocaleDateString('sk-SK', date.getFullYear() === now.getFullYear()
+        ? { day: 'numeric', month: 'numeric' }
+        : { day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+
+/** Okamih v riadku: „dnes 14:20". Prázdny čas je „nezačaté", nie prázdno. */
+export function whenLabel(iso) {
+    if (!iso) return 'nezačaté';
+
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const time = date.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
+
+    return `${dayWord(date)} ${time}`;
+}
+
+/** Rola v útržku hľadania. Tie isté mená, aké nesú bubliny v toku. */
+export function roleWord(role) {
+    if (role === 'user') return 'Ty';
+
+    return role === 'assistant' ? 'Hades' : String(role || '');
+}
+
+/* ---------------------------------------------------------------------------
+   ČO SERVER VIE
+
+   `GET /api/console/threads` dnes vracia `uuid, title, provider, model,
+   auto_accept, last_message_at` — teda **bez** `pinned` / `archived` /
+   `project`. Pripnutie a archiváciu vlákna preto panel NEPONÚKA: tlačidlo,
+   ktoré pošle `PATCH {pinned:true}`, by dostalo 200 a neurobilo nič (validátor
+   `ThreadController::update` ten kľúč nepozná a Laravel neznáme kľúče ticho
+   zahodí). Tichý no-op je horší než chýbajúca funkcia.
+
+   Detekcia je na tvare odpovede, nie na verzii: keď riadky prídu s kľúčom
+   `pinned`, server ich vie aj zapísať a akcie sa objavia samé. Presný diff
+   kontroléra je v odovzdávacej poznámke tejto vlny.
+
+   Projektu sa to netýka — `ProjectController::update` `pinned` aj `archived`
+   prijíma a panel ich používa.
+   --------------------------------------------------------------------------- */
+
+/** Nesie zoznam vlákien príznaky pripnutia a archivácie? */
+export function supportsThreadFlags() {
+    return T.threads.some((row) => row !== null && typeof row === 'object' && 'pinned' in row);
+}
+
+/* ---------------------------------------------------------------------------
+   NAČÍTANIE
+   --------------------------------------------------------------------------- */
+
+export async function loadThreads() {
+    T.threadsState = 'loading';
+    paint();
+
+    const res = await api('/api/console/threads');
+
+    if (!res.ok) {
+        T.threadsState = 'error';
+        T.threadsError = errorLine(res, 'Zoznam vlákien sa nepodarilo načítať');
+        paint();
+
+        return;
+    }
+
+    T.threads = Array.isArray(res.data?.threads) ? res.data.threads : [];
+    T.threadsState = 'ready';
+    T.threadsError = '';
+    paint();
+}
+
+export async function loadProjects() {
+    T.projectsState = 'loading';
+    paint();
+
+    const res = await api('/api/console/projects');
+
+    if (!res.ok) {
+        T.projectsState = 'error';
+        T.projectsError = errorLine(res, 'Projekty sa nepodarilo načítať');
+        paint();
+
+        return;
+    }
+
+    T.projects = Array.isArray(res.data?.projects) ? res.data.projects : [];
+    T.projectsState = 'ready';
+    T.projectsError = '';
+    paint();
+}
+
+/**
+ * Vlákna jedného projektu — až pri rozbalení.
+ *
+ * Zoznam vlákien totiž príslušnosť k projektu nenesie, takže zložka nie je
+ * filter nad načítaným poľom, ale vlastné čítanie (`GET /console/projects/{uuid}`).
+ * Je to jeden request na rozbalenú zložku, nie na každú — a odpoveď má `pinned`
+ * aj `archived`, takže vnútri zložky panel o vlákne vie viac než v plochom
+ * zozname. To nie je nedôslednosť, to je rozdiel medzi dvoma endpointmi.
+ */
+export async function loadProjectThreads(uuid) {
+    T.open.set(uuid, { state: 'loading', items: T.open.get(uuid)?.items || [] });
+    paint();
+
+    const res = await api(`/api/console/projects/${uuid}`);
+
+    if (!res.ok) {
+        T.open.set(uuid, {
+            state: 'error',
+            items: T.open.get(uuid)?.items || [],
+            error: errorLine(res, 'Vlákna projektu sa nepodarilo načítať'),
+        });
+        paint();
+
+        return;
+    }
+
+    T.open.set(uuid, { state: 'ready', items: Array.isArray(res.data?.threads) ? res.data.threads : [] });
+    paint();
+}
+
+/* ---------------------------------------------------------------------------
+   HĽADANIE
+
+   Fulltext v histórii naprieč vláknami (`GET /api/console/search`). Skupiny,
+   počty aj útržky skládá server; tu sa z nich robia vety.
+   --------------------------------------------------------------------------- */
+
+export function onQuery(text) {
+    T.query = String(text ?? '');
+    T.limit = LIMIT_STEP;
+
+    // Nový dopyt ruší filtre na konkrétne vlákno a projekt: sú to zúženia
+    // PREDOŠLÉHO zásahu a nechať ich visieť by znamenalo, že nový dopyt vracia
+    // prázdno bez viditeľného dôvodu.
+    T.filters.thread = '';
+    T.filters.project = '';
+
+    clearTimeout(findTimer);
+
+    if (T.query.trim().length < MIN_QUERY) {
+        finding?.abort();
+        finding = null;
+        T.search = { state: 'idle', data: null, error: '' };
+        paint();
+
+        return;
+    }
+
+    // 250 ms: pri písaní „vetvenie" by bez debounce odišlo osem dopytov a každý
+    // z nich je plný sken `console_messages` (`LOWER(content) LIKE`).
+    findTimer = setTimeout(runSearch, 250);
+}
+
+export async function runSearch() {
+    const term = T.query.trim();
+    if (term.length < MIN_QUERY) return;
+
+    finding?.abort();
+    finding = new AbortController();
+
+    T.search = { state: 'loading', data: T.search.data, error: '' };
+    paint();
+
+    const params = new URLSearchParams({ q: term, limit: String(T.limit) });
+
+    ['role', 'from', 'to', 'thread', 'project'].forEach((key) => {
+        if (T.filters[key]) params.set(key, T.filters[key]);
+    });
+
+    const res = await api(`/api/console/search?${params.toString()}`, { signal: finding.signal });
+
+    // Zrušený dopyt nie je chyba a nesmie prepísať stav novšieho hľadania.
+    if (res.aborted) return;
+
+    finding = null;
+
+    if (!res.ok) {
+        T.search = { state: 'error', data: null, error: errorLine(res, 'Hľadanie zlyhalo') };
+        paint();
+
+        return;
+    }
+
+    T.search = { state: 'ready', data: res.data, error: '' };
+    paint();
+}
+
+/* ---------------------------------------------------------------------------
+   AKCIE NAD VLÁKNOM
+   --------------------------------------------------------------------------- */
+
+export async function openThreadRow(uuid) {
+    // Na úzkom okne je panel prekryv nad konverzáciou: nechať ho otvorený by
+    // znamenalo, že po kliknutí na vlákno človek vidí zoznam, nie vlákno.
+    if (narrow()) setPanel('threads', false);
+
+    await loadThread(uuid);
+}
+
+export async function renameThread(uuid, title) {
+    const value = String(title ?? '').trim();
+    if (value === '') return;
+
+    const res = await api(`/api/console/threads/${uuid}`, { method: 'PATCH', body: { title: value } });
+
+    T.renaming = null;
+
+    if (!res.ok) {
+        T.threadsError = errorLine(res, 'Premenovanie sa neuložilo');
+        paint();
+
+        return;
+    }
+
+    T.threadsError = '';
+    patchRow(uuid, { title: res.data?.title ?? value });
+    live(`Vlákno sa teraz volá ${res.data?.title ?? value}.`);
+    paint();
+}
+
+export async function deleteThread(uuid) {
+    const res = await api(`/api/console/threads/${uuid}`, { method: 'DELETE' });
+
+    if (!res.ok) {
+        T.threadsError = errorLine(res, 'Vlákno sa nepodarilo zmazať');
+        paint();
+
+        return;
+    }
+
+    T.threadsError = '';
+    T.threads = T.threads.filter((row) => row.uuid !== uuid);
+    T.open.forEach((entry, key) => {
+        T.open.set(key, { ...entry, items: (entry.items || []).filter((row) => row.uuid !== uuid) });
+    });
+
+    live('Vlákno je zmazané.');
+
+    // Zmazané OTVORENÉ vlákno: adresa aj hlavička by ukazovali niečo, čo v DB
+    // nie je. Vlákna sa nedomýšľajú — plocha ide na `/chat`, teda na prázdny
+    // stav, ktorý si `run.js` vykreslí sám cez `popstate`.
+    if (T.current === uuid) {
+        T.current = '';
+        history.pushState({}, '', '/chat');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+
+    // Počty projektov sa zmazaním vlákna hýbu — sú zo servera, takže sa musia
+    // prečítať znova, nie odhadnúť odčítaním jednotky.
+    loadProjects();
+    paint();
+}
+
+/** Pripnutie a archivácia vlákna. Volá sa len keď to server vie (viď `supportsThreadFlags`). */
+export async function setThreadFlag(uuid, key, value) {
+    const res = await api(`/api/console/threads/${uuid}`, { method: 'PATCH', body: { [key]: value } });
+
+    if (!res.ok) {
+        T.threadsError = errorLine(res, 'Zmenu sa nepodarilo uložiť');
+        paint();
+
+        return;
+    }
+
+    T.threadsError = '';
+    patchRow(uuid, { [key]: value });
+    live(threadFlagWord(key, value));
+    paint();
+}
+
+function threadFlagWord(key, value) {
+    if (key === 'pinned') return value ? 'Vlákno je pripnuté.' : 'Vlákno už nie je pripnuté.';
+
+    return value ? 'Vlákno je v archíve.' : 'Vlákno je späť v zozname.';
+}
+
+/** Zaradenie vlákna do projektu. `''` znamená vyradiť — a to je iná route. */
+export async function moveThread(uuid, project, fromProject) {
+    if (project === '' && fromProject) {
+        const res = await api(`/api/console/projects/${fromProject}/threads/${uuid}`, { method: 'DELETE' });
+
+        if (!res.ok) {
+            T.threadsError = errorLine(res, 'Vlákno sa nepodarilo vyradiť z projektu');
+            paint();
+
+            return;
+        }
+
+        T.threadsError = '';
+        live('Vlákno je mimo projektu.');
+    } else if (project !== '') {
+        const res = await api(`/api/console/projects/${project}/threads`, { method: 'POST', body: { thread: uuid } });
+
+        if (!res.ok) {
+            T.threadsError = errorLine(res, 'Vlákno sa nepodarilo zaradiť do projektu');
+            paint();
+
+            return;
+        }
+
+        T.threadsError = '';
+        live(`Vlákno je v projekte ${T.projects.find((p) => p.uuid === project)?.name || ''}.`);
+    } else {
+        return;
+    }
+
+    // Zložky, ktoré sú rozbalené, o presune ešte nevedia; počty projektov tiež.
+    await loadProjects();
+    await Promise.all([...T.open.keys()].map((key) => loadProjectThreads(key)));
+}
+
+/* ---------------------------------------------------------------------------
+   AKCIE NAD PROJEKTOM
+   --------------------------------------------------------------------------- */
+
+export async function createProject(name) {
+    const value = String(name ?? '').trim();
+    if (value === '') return;
+
+    const res = await api('/api/console/projects', { method: 'POST', body: { name: value } });
+
+    T.newProject = false;
+
+    if (!res.ok) {
+        T.projectsError = errorLine(res, 'Projekt sa nepodarilo založiť');
+        paint();
+
+        return;
+    }
+
+    live(`Projekt ${value} je založený.`);
+    await loadProjects();
+}
+
+export async function patchProject(uuid, body, word) {
+    const res = await api(`/api/console/projects/${uuid}`, { method: 'PATCH', body });
+
+    T.renaming = null;
+
+    if (!res.ok) {
+        T.projectsError = errorLine(res, 'Zmenu projektu sa nepodarilo uložiť');
+        paint();
+
+        return;
+    }
+
+    if (word) live(word);
+    await loadProjects();
+}
+
+/**
+ * Zmazanie projektu. Vlákna prežijú (cudzí kľúč je `nullOnDelete`) — a text
+ * tlačidla to musí povedať, inak človek zmaže zložku v presvedčení, že s ňou
+ * maže konverzácie, alebo naopak.
+ */
+export async function deleteProject(uuid) {
+    const res = await api(`/api/console/projects/${uuid}`, { method: 'DELETE' });
+
+    if (!res.ok) {
+        T.projectsError = errorLine(res, 'Projekt sa nepodarilo zmazať');
+        paint();
+
+        return;
+    }
+
+    T.open.delete(uuid);
+    live('Projekt je zmazaný, vlákna zostali.');
+    await loadProjects();
+}
+
+/** Prepnutie rozbalenia zložky. Prvé rozbalenie načíta jej vlákna. */
+export function toggleProject(uuid) {
+    if (T.open.has(uuid)) {
+        T.open.delete(uuid);
+        paint();
+
+        return;
+    }
+
+    loadProjectThreads(uuid);
+}
+
+/* ---------------------------------------------------------------------------
+   KRESLENIE
+
+   Panel sa prekresľuje celý z `T`. Je to zoznam desiatok riadkov, nie tok
+   správ — inkrementálne záplaty by tu kupovali výkon, ktorý nikto nemeria, za
+   riziko, že sa DOM a stav rozídu.
+   --------------------------------------------------------------------------- */
+
+export function panelHost() {
+    return document.getElementById('chat-thread-list');
+}
+
+export function paint() {
+    const host = panelHost();
+    if (!host) return;
+
+    host.replaceChildren();
+    host.setAttribute('aria-busy', busy() ? 'true' : 'false');
+
+    if (T.query.trim().length >= MIN_QUERY) {
+        host.append(searchView());
+    } else {
+        host.append(browseView());
+    }
+
+    focusRename(host);
+}
+
+function busy() {
+    return T.threadsState === 'loading' || T.projectsState === 'loading' || T.search.state === 'loading';
+}
+
+/* ---------- prehliadanie ---------- */
+
+function browseView() {
+    const frag = document.createDocumentFragment();
+
+    frag.append(projectsSection());
+    frag.append(threadsSection());
+
+    const archived = supportsThreadFlags() ? T.threads.filter((row) => row.archived) : [];
+    const boxes = T.projects.filter((p) => p.archived);
+
+    if (archived.length || boxes.length) frag.append(archiveSection(boxes, archived));
+
+    return frag;
+}
+
+function section(title, actions) {
+    const box = el('section', 'ct-sec');
+    const head = el('div', 'ct-sec-head');
+
+    head.append(el('h3', 'ct-sec-title', title));
+    if (actions) head.append(actions);
+    box.append(head);
+
+    return box;
+}
+
+function projectsSection() {
+    const add = iconButton('add', 'Nový projekt');
+    add.classList.add('ct-sec-act');
+    add.addEventListener('click', () => {
+        T.newProject = !T.newProject;
+        paint();
+    });
+
+    const box = section('Projekty', add);
+
+    if (T.newProject) box.append(inlineForm('Názov projektu', '', (value) => createProject(value), () => {
+        T.newProject = false;
+        paint();
+    }));
+
+    if (T.projectsError) box.append(errorNote(T.projectsError, T.projectsState === 'error' ? loadProjects : null));
+
+    const shelves = T.projects.filter((p) => !p.archived);
+
+    if (!shelves.length && T.projectsState === 'ready') {
+        box.append(note('Žiadny projekt. Zložka je miesto, kam sa vlákna dajú odložiť podľa témy.'));
+
+        return box;
+    }
+
+    shelves.forEach((project) => box.append(projectRow(project)));
+
+    return box;
+}
+
+function threadsSection() {
+    const box = section('Vlákna');
+
+    // Jedno hlásenie, nie dve: zlyhané načítanie a zlyhaná akcia píšu do toho
+    // istého poľa a „Skúsiť znova" má zmysel len pri načítaní.
+    if (T.threadsError) box.append(errorNote(T.threadsError, T.threadsState === 'error' ? loadThreads : null));
+    if (T.threadsState === 'loading' && !T.threads.length) box.append(note('Načítavam vlákna…'));
+
+    const rows = supportsThreadFlags() ? T.threads.filter((row) => !row.archived) : T.threads;
+
+    if (!rows.length) {
+        if (T.threadsState === 'ready') box.append(note('Žiadne vlákna. Začni ich tlačidlom Nové vlákno.'));
+
+        return box;
+    }
+
+    rows.forEach((row) => box.append(threadRow(row)));
+
+    // Server posiela najnovších 100. Keby ich bolo viac, panel to musí povedať —
+    // ticho zrezaný zoznam vyzerá ako celý.
+    if (rows.length >= 100) box.append(note('Zobrazených je 100 najnovších vlákien. Staršie nájdeš hľadaním.'));
+
+    return box;
+}
+
+function archiveSection(projects, threads) {
+    const box = section('Archív');
+
+    box.append(note('Odložené zložky a vlákna. Nezmazané — len mimo cesty.'));
+    projects.forEach((project) => box.append(projectRow(project)));
+    threads.forEach((row) => box.append(threadRow(row)));
+
+    return box;
+}
+
+/* ---------- riadok projektu ---------- */
+
+function projectRow(project) {
+    const row = el('div', 'ct-proj');
+    row.dataset.uuid = project.uuid;
+
+    if (T.renaming?.kind === 'project' && T.renaming.uuid === project.uuid) {
+        row.append(inlineForm('Názov projektu', T.renaming.value, (value) => patchProject(
+            project.uuid, { name: value }, `Projekt sa teraz volá ${value}.`,
+        ), () => {
+            T.renaming = null;
+            paint();
+        }));
+
+        return row;
+    }
+
+    const opened = T.open.has(project.uuid);
+    const head = el('div', 'ct-head');
+
+    const open = el('button', 'ct-open');
+    open.type = 'button';
+    open.setAttribute('aria-expanded', opened ? 'true' : 'false');
+    open.append(el('span', 'ms ct-ico', 'inventory_2'));
+    open.append(el('span', 'ct-ttl', project.name));
+
+    // Počet je zo servera (`COUNT(*)` vedľa zoznamu) a znamená NEODLOŽENÉ vlákna
+    // projektu — nie to, koľko ich má panel načítaných.
+    open.append(el('span', 'ct-count', String(project.threads ?? 0)));
+    if (project.pinned) open.append(el('span', 'ct-chip', 'pripnuté'));
+    open.addEventListener('click', () => toggleProject(project.uuid));
+
+    head.append(open, actsToggle(`Akcie projektu ${project.name}`));
+    row.append(head);
+    row.append(projectActs(project));
+
+    if (opened) row.append(projectBody(project));
+
+    return row;
+}
+
+function projectActs(project) {
+    const acts = el('div', 'ct-acts');
+    acts.hidden = true;
+
+    acts.append(actButton('Premenovať', () => {
+        T.renaming = { kind: 'project', uuid: project.uuid, value: project.name || '' };
+        paint();
+    }));
+
+    acts.append(actButton(project.pinned ? 'Odopnúť' : 'Pripnúť', () => patchProject(
+        project.uuid,
+        { pinned: !project.pinned },
+        project.pinned ? 'Projekt už nie je pripnutý.' : 'Projekt je pripnutý.',
+    )));
+
+    acts.append(actButton(project.archived ? 'Vrátiť z archívu' : 'Archivovať', () => patchProject(
+        project.uuid,
+        { archived: !project.archived },
+        project.archived ? 'Projekt je späť v zozname.' : 'Projekt je v archíve.',
+    )));
+
+    acts.append(armedButton(
+        'Zmazať zložku',
+        'Naozaj? Vlákna zostanú',
+        () => deleteProject(project.uuid),
+    ));
+
+    return acts;
+}
+
+function projectBody(project) {
+    const body = el('div', 'ct-proj-body');
+    const entry = T.open.get(project.uuid) || {};
+
+    if (entry.state === 'loading' && !(entry.items || []).length) body.append(note('Načítavam…'));
+    if (entry.state === 'error') body.append(errorNote(entry.error, () => loadProjectThreads(project.uuid)));
+
+    const items = entry.items || [];
+    const rows = items.filter((row) => !row.archived);
+
+    if (!rows.length && entry.state === 'ready') {
+        body.append(note('Zložka je prázdna. Vlákno sa do nej presúva z jeho akcií.'));
+    }
+
+    rows.forEach((row) => body.append(threadRow(row, project.uuid)));
+
+    return body;
+}
+
+/* ---------- riadok vlákna ---------- */
+
+/**
+ * @param {object} row  vlákno zo zoznamu alebo z detailu projektu
+ * @param {string} [inProject]  uuid zložky, v ktorej riadok stojí — vtedy vie
+ *   panel nabídnuť vyradenie, pretože `DELETE` route potrebuje OBE uuid.
+ */
+function threadRow(row, inProject = '') {
+    const box = el('div', 'ct-row');
+    box.dataset.uuid = row.uuid;
+
+    if (T.renaming?.kind === 'thread' && T.renaming.uuid === row.uuid) {
+        box.append(inlineForm('Názov vlákna', T.renaming.value, (value) => renameThread(row.uuid, value), () => {
+            T.renaming = null;
+            paint();
+        }));
+
+        return box;
+    }
+
+    const head = el('div', 'ct-head');
+    const open = el('button', 'ct-open');
+    open.type = 'button';
+
+    if (T.current === row.uuid) {
+        open.setAttribute('aria-current', 'true');
+        box.classList.add('on');
+    }
+
+    open.append(el('span', 'ct-ttl', row.title || 'Nové vlákno'));
+    open.append(el('span', 'ct-when', whenLabel(row.last_message_at)));
+    if (row.pinned) open.append(el('span', 'ct-chip', 'pripnuté'));
+    if (row.archived) open.append(el('span', 'ct-chip', 'archív'));
+    open.addEventListener('click', () => openThreadRow(row.uuid));
+
+    head.append(open, actsToggle(`Akcie vlákna ${row.title || 'Nové vlákno'}`));
+    box.append(head);
+    box.append(threadActs(row, inProject));
+
+    return box;
+}
+
+function threadActs(row, inProject) {
+    const acts = el('div', 'ct-acts');
+    acts.hidden = true;
+
+    acts.append(actButton('Premenovať', () => {
+        T.renaming = { kind: 'thread', uuid: row.uuid, value: row.title === 'Nové vlákno' ? '' : (row.title || '') };
+        paint();
+    }));
+
+    acts.append(projectPicker(row, inProject));
+
+    // Pripnutie a archivácia vlákna len keď ich server naozaj ZAPÍŠE. Detail
+    // projektu tie príznaky vracia aj dnes, takže vnútri zložky by sa dali
+    // vykresliť — ale `PATCH` vlákna ich neprijíma, takže tlačidlo by nič
+    // nezmenilo. Brána je o zápise, nie o tom, čo panel prečítal.
+    if (supportsThreadFlags()) {
+        acts.append(actButton(row.pinned ? 'Odopnúť' : 'Pripnúť', () => setThreadFlag(row.uuid, 'pinned', !row.pinned)));
+        acts.append(actButton(row.archived ? 'Vrátiť z archívu' : 'Archivovať', () => setThreadFlag(row.uuid, 'archived', !row.archived)));
+    }
+
+    acts.append(exportLink(row.uuid, 'Exportovať'));
+    acts.append(armedButton('Zmazať vlákno', 'Naozaj zmazať?', () => deleteThread(row.uuid)));
+
+    return acts;
+}
+
+/**
+ * Presun do zložky. `<select>`, nie vnorená ponuka: je to výber jednej hodnoty
+ * z krátkeho zoznamu, teda presne to, na čo `<select>` je — a nepotrebuje
+ * vlastné pozicovanie ani zachytávanie kliku mimo, ktoré by sa v paneli
+ * s `overflow: hidden` aj tak zrezalo.
+ */
+function projectPicker(row, inProject) {
+    const wrap = el('label', 'ct-move');
+    const select = el('select', 'ct-move-sel');
+
+    select.setAttribute('aria-label', 'Zaradiť vlákno do projektu');
+
+    const placeholder = el('option', null, inProject ? 'Presunúť…' : 'Do projektu…');
+    placeholder.value = '';
+    placeholder.selected = true;
+    select.append(placeholder);
+
+    T.projects.filter((p) => !p.archived && p.uuid !== inProject).forEach((project) => {
+        const option = el('option', null, project.name);
+        option.value = project.uuid;
+        select.append(option);
+    });
+
+    if (inProject) {
+        const out = el('option', null, 'Vyradiť zo zložky');
+        out.value = '--out';
+        select.append(out);
+    }
+
+    select.addEventListener('change', () => {
+        const value = select.value;
+        select.value = '';
+
+        if (value === '') return;
+
+        moveThread(row.uuid, value === '--out' ? '' : value, inProject);
+    });
+
+    wrap.append(select);
+
+    return wrap;
+}
+
+/* ---------- výsledky hľadania ---------- */
+
+function searchView() {
+    const box = el('section', 'ct-sec ct-find');
+
+    box.append(searchHead());
+
+    if (T.search.state === 'error') {
+        box.append(errorNote(T.search.error, runSearch));
+
+        return box;
+    }
+
+    if (T.search.state === 'loading' && !T.search.data) {
+        box.append(note('Hľadám v histórii…'));
+
+        return box;
+    }
+
+    const data = T.search.data;
+    if (!data) return box;
+
+    box.append(countsLine(data));
+    box.append(filterBar());
+
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    if (!items.length) {
+        box.append(note(`Hľadaniu „${data.query}" nezodpovedá žiadna správa.`));
+
+        return box;
+    }
+
+    if (Array.isArray(data.threads) && data.threads.length > 1) box.append(facets(data));
+
+    items.forEach((item) => box.append(hitRow(item)));
+
+    const counts = data.counts || {};
+
+    if ((counts.shown ?? 0) < (counts.total ?? 0) && T.limit < MAX_LIMIT) {
+        const more = el('button', 'ct-more', 'Zobraziť viac');
+        more.type = 'button';
+        more.addEventListener('click', () => {
+            T.limit = Math.min(MAX_LIMIT, T.limit + LIMIT_STEP);
+            runSearch();
+        });
+        box.append(more);
+    }
+
+    return box;
+}
+
+function searchHead() {
+    const head = el('div', 'ct-sec-head');
+
+    head.append(el('h3', 'ct-sec-title', 'Nájdené v histórii'));
+
+    const clear = iconButton('close', 'Zrušiť hľadanie');
+    clear.classList.add('ct-sec-act');
+    clear.addEventListener('click', () => {
+        const field = document.getElementById('chat-search');
+
+        if (field) field.value = '';
+        onQuery('');
+        field?.focus();
+    });
+
+    head.append(clear);
+
+    return head;
+}
+
+/**
+ * Vety o počte. Čísla sú zo servera: `total` je nad celým zásahom, `shown` nad
+ * stránkou, `threads` nad celým zásahom. Práve preto sa tu nič nedopočítava
+ * z `items.length` — to je presne tá tichá lož, ktorú audit našiel na Kontrole.
+ */
+function countsLine(data) {
+    const counts = data.counts || {};
+    const total = counts.total ?? 0;
+    const shown = counts.shown ?? 0;
+    const threads = counts.threads ?? 0;
+
+    const bits = [`${total} ${plural(total, 'zásah', 'zásahy', 'zásahov')}`];
+
+    bits.push(`v ${threads} ${plural(threads, 'vlákne', 'vláknach', 'vláknach')}`);
+    if (shown < total) bits.push(`zobrazených ${shown}`);
+
+    return el('p', 'ct-counts', bits.join(' · '));
+}
+
+function filterBar() {
+    const bar = el('div', 'ct-filters');
+
+    const role = el('select', 'ct-filter');
+    role.setAttribute('aria-label', 'Filtrovať podľa autora');
+    [['', 'Kdokoľvek'], ['user', 'Moje správy'], ['assistant', 'Odpovede Hadesa']].forEach(([value, label]) => {
+        const option = el('option', null, label);
+        option.value = value;
+        option.selected = T.filters.role === value;
+        role.append(option);
+    });
+    role.addEventListener('change', () => {
+        T.filters.role = role.value;
+        runSearch();
+    });
+
+    bar.append(role);
+    bar.append(dateFilter('from', 'Od dátumu'));
+    bar.append(dateFilter('to', 'Do dátumu'));
+
+    // Zúženie na jedno vlákno alebo projekt sa nastavuje klikom na skupinu, ale
+    // zrušiť sa musí dať aj vtedy, keď skupiny už v odpovedi nie sú (zúžený
+    // zásah má jednu skupinu, takže sa `facets()` nevykreslia).
+    if (T.filters.thread || T.filters.project) {
+        const off = el('button', 'ct-chip-off', 'Zrušiť zúženie');
+        off.type = 'button';
+        off.addEventListener('click', () => {
+            T.filters.thread = '';
+            T.filters.project = '';
+            runSearch();
+        });
+        bar.append(off);
+    }
+
+    return bar;
+}
+
+function dateFilter(key, label) {
+    const field = el('input', 'ct-filter');
+
+    field.type = 'date';
+    field.value = T.filters[key] || '';
+    field.setAttribute('aria-label', label);
+    field.title = label;
+    field.addEventListener('change', () => {
+        T.filters[key] = field.value;
+        runSearch();
+    });
+
+    return field;
+}
+
+/** Skupiny zo servera — vlákna a projekty so zásahmi. Klik zúži dopyt. */
+function facets(data) {
+    const box = el('div', 'ct-facets');
+
+    (data.projects || []).forEach((project) => {
+        box.append(facetChip(
+            `${project.name} · ${project.matches}`,
+            T.filters.project === project.project,
+            () => {
+                T.filters.project = T.filters.project === project.project ? '' : project.project;
+                T.filters.thread = '';
+                runSearch();
+            },
+        ));
+    });
+
+    (data.threads || []).forEach((thread) => {
+        box.append(facetChip(
+            `${thread.title || 'Nové vlákno'} · ${thread.matches}`,
+            T.filters.thread === thread.thread,
+            () => {
+                T.filters.thread = T.filters.thread === thread.thread ? '' : thread.thread;
+                runSearch();
+            },
+        ));
+    });
+
+    return box;
+}
+
+function facetChip(text, on, onClick) {
+    const chip = el('button', 'ct-facet', text);
+
+    chip.type = 'button';
+    chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    chip.addEventListener('click', onClick);
+
+    return chip;
+}
+
+/**
+ * Jeden zásah. Útržok skrátil server (60 znakov pred zásahom, 140 za ním) —
+ * krátenie v prehliadači by bola druhá implementácia toho istého textu, presne
+ * ako smernica, ktorá sa skládala dvakrát a rozišla sa na 20 zo 48 riadkov.
+ */
+function hitRow(item) {
+    const row = el('button', 'ct-hit');
+    row.type = 'button';
+
+    const top = el('span', 'ct-hit-top');
+
+    top.append(el('span', 'ct-hit-ttl', item.thread_title || 'Nové vlákno'));
+    top.append(el('span', 'ct-hit-who', roleWord(item.role)));
+    top.append(el('span', 'ct-when', whenLabel(item.at)));
+    row.append(top);
+
+    if (item.project_name) row.append(el('span', 'ct-chip', item.project_name));
+    if (item.archived) row.append(el('span', 'ct-chip', 'archív'));
+    if ((item.matches ?? 0) > 1) row.append(el('span', 'ct-chip', `${item.matches}×`));
+
+    row.append(el('span', 'ct-snip', item.snippet || ''));
+    row.addEventListener('click', () => openThreadRow(item.thread));
+
+    return row;
+}
+
+/* ---------------------------------------------------------------------------
+   DROBNÉ PRVKY
+   --------------------------------------------------------------------------- */
+
+function note(text) {
+    return el('p', 'ct-note', text);
+}
+
+/**
+ * Chyba v paneli. Riadky, ktoré už v zozname sú, sa NEZAHADZUJÚ — stará
+ * odpoveď je stále platný odkaz a jedna neúspešná obnova z nej neplatnú
+ * nerobí. Preto sa hlásenie vkládá vedľa zoznamu, nie namiesto neho.
+ */
+function errorNote(text, retry) {
+    const box = el('p', 'ct-note ct-err', text || 'Niečo sa nepodarilo.');
+
+    if (retry) {
+        const again = el('button', 'ct-retry', 'Skúsiť znova');
+        again.type = 'button';
+        again.addEventListener('click', () => retry());
+        box.append(' ', again);
+    }
+
+    return box;
+}
+
+function iconButton(icon, label) {
+    const btn = el('button', 'ct-act ms', icon);
+
+    btn.type = 'button';
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+
+    return btn;
+}
+
+/**
+ * Prepínač bloku akcií riadku.
+ *
+ * Blok je INLINE pod riadkom, nie plávajúca ponuka: `#chat-threads` má
+ * `overflow: hidden` a `#chat-thread-list` vlastný skrol, takže absolútne
+ * pozicovaná ponuka by sa o tú hranu zrezala. Inline blok navyše nepotrebuje
+ * zachytávanie kliku mimo ani počítanie polohy.
+ */
+function actsToggle(label) {
+    const btn = iconButton('menu', label);
+
+    btn.classList.add('ct-more-act');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.addEventListener('click', () => {
+        const acts = btn.closest('.ct-row, .ct-proj')?.querySelector(':scope > .ct-acts');
+        if (!acts) return;
+
+        const open = acts.hidden;
+
+        // Naraz je otvorený jeden blok: dva zoznamy akcií nad sebou v 268 px
+        // paneli sa nedajú prečítať a „Naozaj zmazať?" v oboch je pasca.
+        panelHost()?.querySelectorAll('.ct-acts').forEach((node) => { node.hidden = true; });
+        panelHost()?.querySelectorAll('.ct-more-act').forEach((node) => node.setAttribute('aria-expanded', 'false'));
+
+        acts.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+
+    return btn;
+}
+
+function actButton(label, onClick) {
+    const btn = el('button', 'ct-act-btn', label);
+
+    btn.type = 'button';
+    btn.addEventListener('click', onClick);
+
+    return btn;
+}
+
+/**
+ * Nevratná akcia na dva kliky. Ten istý vzor ako fronta Kontroly a zoznam
+ * vlákien konzoly: natívny `confirm()` blokuje vlákno prehliadača aj rozbehnutý
+ * prúd behu a vyzerá ako dialóg cudzej appky.
+ */
+function armedButton(label, armedLabel, onConfirm) {
+    const btn = el('button', 'ct-act-btn ct-del', label);
+    btn.type = 'button';
+
+    let timer = 0;
+
+    const disarm = () => {
+        clearTimeout(timer);
+        btn.classList.remove('armed');
+        btn.textContent = label;
+    };
+
+    btn.addEventListener('click', () => {
+        if (btn.classList.contains('armed')) {
+            disarm();
+            onConfirm();
+
+            return;
+        }
+
+        panelHost()?.querySelectorAll('.ct-del.armed').forEach((node) => node.dispatchEvent(new CustomEvent('ct:disarm')));
+
+        btn.classList.add('armed');
+        btn.textContent = armedLabel;
+        timer = setTimeout(() => { if (btn.isConnected) disarm(); }, 3000);
+    });
+
+    btn.addEventListener('ct:disarm', disarm);
+
+    return btn;
+}
+
+/**
+ * Export. `<a>` a nie `fetch` + Blob: `GET /api/console/threads/{uuid}/export`
+ * vracia `text/markdown` s hlavičkou `Content-Disposition: attachment`, takže
+ * prehliadač uloží súbor s menom, ktoré zložil server (`ChatScreen::exportName`).
+ * Skládať markdown ani meno súboru v prehliadači by bola druhá implementácia
+ * jedného dokumentu — presne tá chyba, ktorú tento projekt platil šesťkrát.
+ *
+ * Odkaz je v guardovanom okruhu, ale je to GET, takže CSRF hlavičku nepotrebuje
+ * a session cookie ide s navigáciou sama.
+ */
+export function exportLink(uuid, label) {
+    const link = el('a', 'ct-act-btn ct-export', label);
+
+    link.href = `/api/console/threads/${uuid}/export`;
+    // `download` bez hodnoty ponechá meno zo `Content-Disposition` (rovnaký
+    // pôvod), len potlačí pokus prehliadača markdown zobraziť.
+    link.setAttribute('download', '');
+    link.title = 'Stiahnuť vlákno ako markdown';
+
+    return link;
+}
+
+/** Inline formulár na jeden text (premenovanie, nový projekt). */
+function inlineForm(label, value, onSubmit, onCancel) {
+    const form = el('form', 'ct-form');
+    const field = el('input', 'ct-input');
+
+    field.type = 'text';
+    field.value = value;
+    field.maxLength = 200;
+    field.setAttribute('aria-label', label);
+    field.placeholder = label;
+    field.dataset.autofocus = 'true';
+
+    form.append(field);
+
+    const ok = iconButton('check', 'Uložiť');
+    ok.type = 'submit';
+    form.append(ok);
+
+    const cancel = iconButton('close', 'Zrušiť');
+    cancel.addEventListener('click', onCancel);
+    form.append(cancel);
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        onSubmit(field.value);
+    });
+
+    // Esc ruší LEN toto pole a nesmie prebublať: globálny Esc v `main.js`
+    // zastavuje beh a zatvára panel, čo nie je to, čo človek pri opravovaní
+    // názvu očakáva.
+    field.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+    });
+
+    return form;
+}
+
+/** Fokus do rozpísaného poľa. Kurzor na konci — nie vybraný celý názov. */
+function focusRename(host) {
+    const field = host.querySelector('[data-autofocus]');
+    if (!field) return;
+
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+}
+
+/* ---------------------------------------------------------------------------
+   HLAVIČKA — odkaz na export
+
+   Injektuje sa do `.ch-right` z JS, nie do blade: `resources/views/chat.blade.php`
+   drží iná koľaj tejto vlny. Keď sa raz presunie do šablóny, tento blok zmizne
+   a `paintExport()` bude len prepisovať `href`.
+   --------------------------------------------------------------------------- */
+
+export function ensureExport() {
+    const right = document.querySelector('#chat-header .ch-right');
+    if (!right || document.getElementById('chat-export')) return;
+
+    const link = exportLink('', 'Export');
+
+    link.id = 'chat-export';
+    link.className = 'ct-head-act';
+    link.hidden = true;
+    link.replaceChildren(el('span', 'ms', 'description'), el('span', 'sr-only', 'Exportovať vlákno do markdownu'));
+    link.title = 'Exportovať vlákno do markdownu';
+
+    // Pred prepínačom artefaktu: ten je posledný v hlavičke zámerne (patrí
+    // k panelu, ktorý je vpravo od neho).
+    right.insertBefore(link, document.getElementById('chat-artifact-toggle'));
+}
+
+export function paintExport() {
+    const link = document.getElementById('chat-export');
+    if (!link) return;
+
+    link.hidden = T.current === '';
+    if (T.current !== '') link.href = `/api/console/threads/${T.current}/export`;
+}
+
+/* ---------------------------------------------------------------------------
+   DRÔTOVANIE
+   --------------------------------------------------------------------------- */
+
+/** Prepíše jeden riadok v oboch zoznamoch, v ktorých môže stáť. */
+function patchRow(uuid, patch) {
+    T.threads = T.threads.map((row) => (row.uuid === uuid ? { ...row, ...patch } : row));
+    T.open.forEach((entry, key) => {
+        T.open.set(key, {
+            ...entry,
+            items: (entry.items || []).map((row) => (row.uuid === uuid ? { ...row, ...patch } : row)),
+        });
+    });
+}
+
+/**
+ * Vlákno sa pohlo (dobehol ťah). Zoznam sa obnovuje s odkladom: `chat:thread`
+ * príde pri každom otvorení a `chat:thread-touched` po každom ťahu, takže bez
+ * debounce by jedna konverzácia znamenala request na každú odpoveď.
+ */
+function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(loadThreads, 500);
+}
+
+export function wireThreadsPanel() {
+    document.addEventListener('chat:search', (event) => { onQuery(event.detail?.query ?? ''); });
+
+    document.addEventListener('chat:thread', (event) => {
+        const uuid = event.detail?.uuid || '';
+        const known = T.threads.some((row) => row.uuid === uuid);
+
+        T.current = uuid;
+        paintExport();
+
+        // Titulok prvej správy vlákno pomenuje až na serveri; kým sa zoznam
+        // neobnoví, riadok by nesol „Nové vlákno". Preto sa premietne to, čo
+        // payload naozaj nesie.
+        if (known) patchRow(uuid, { title: event.detail?.title || 'Nové vlákno' });
+
+        paint();
+        if (!known) scheduleRefresh();
+    });
+
+    document.addEventListener('chat:thread-touched', scheduleRefresh);
+
+    // Adresa bez uuid znamená „žiadne otvorené vlákno" — bez tohto by odkaz na
+    // export ukazoval na vlákno, ktoré už nie je na obrazovke.
+    window.addEventListener('popstate', () => {
+        if (/^\/chat\/?$/.test(location.pathname)) {
+            T.current = '';
+            paintExport();
+            paint();
+        }
+    });
+}
+
+/** Idempotentné — na poradí drôtovania kostry nezávisí. */
+export function bootThreads() {
+    if (booted) return;
+    booted = true;
+
+    ensureExport();
+    wireThreadsPanel();
+
+    T.current = document.querySelector('meta[name="console-thread"]')?.content || '';
+    paintExport();
+
+    loadThreads();
+    loadProjects();
+}
+
+/* Panel sa rozbehne sám a nezávisí na tom, či ho `main.js` importuje kvôli
+   vedľajšiemu efektu, alebo zavolá `bootThreads()` v `boot()`. `chat:ready`
+   príde, keď plocha stojí (panely a šírky sú nastavené); makrotask je záloha
+   pre prípad, že sa modul načíta až po tej udalosti. `bootThreads()` je
+   idempotentné, takže rýchlejšia z tých dvoch ciest vyhrá a druhá je no-op. */
+document.addEventListener('chat:ready', bootThreads);
+setTimeout(bootThreads, 0);

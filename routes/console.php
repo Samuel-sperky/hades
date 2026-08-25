@@ -94,3 +94,12 @@ Schedule::command('mind:rollup')
 Schedule::command('mind:reap-runs')
     ->everyTenMinutes()
     ->withoutOverlapping(10);
+
+// Prílohy chatu: zametie osirelé priečinky po zmazaných vláknach a rozpracované
+// nahrávky, ktoré nikto nepriradil k správe. Nie v desaťminútovom bloku ako
+// `mind:reap-runs` — osirelý súbor nikoho neklame, len zaberá miesto, takže raz
+// za noc stačí. `withoutOverlapping`, pretože prechod ide po disku.
+Schedule::command('mind:reap-attachments')
+    ->dailyAt('04:20')
+    ->timezone('Europe/Bratislava')
+    ->withoutOverlapping(30);

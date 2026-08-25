@@ -34,6 +34,16 @@
        nezatvoril. Sú to dve rôzne miesta zámerne, nie nedôslednosť. */
     --chat-threads-w: 268px;
     --chat-artifact-w: 380px;
+
+    /* Papier náhľadu HTML v `<iframe sandbox>`. JEDINÁ hodnota v tomto súbore,
+       ktorá sa NEMENÍ s témou, a je to zámer: v iframe je CUDZÍ dokument —
+       9,5 kB report od modelu — ktorý si pozadie nedeklaruje a farby textu má
+       počítané pre prehliadačový default. Na tmavej téme by cez priehľadný
+       dokument presvital tmavý panel a čierny text by na ňom zmizol. Náhľad
+       preto stojí na bielom papieri prehliadača, nie na papieri Hadesa.
+       Token (nie raw hex v pravidle) preto, že pravidlo projektu je „žiadny hex
+       mimo :root" — a preto, že takto je tá výnimka NÁJDITEĽNÁ. */
+    --ca-frame-bg: #ffffff;
 }
 
 .chat-body {
@@ -465,11 +475,191 @@ body.cp-dragging {
 }
 
 /* ---------------------------------------------------------------------------
+   PRÓZA MARKDOWNU — JEDNA sada pravidiel pre obe miesta, kde próza je
+
+   `:is(.cm-md, .md)` a nie dve sady: `.cm-md` nesie bublina odpovede
+   (`public/js/chat/render.js`), `.md` náhľad markdownového artefaktu
+   (`.ca-md.md` z `public/js/chat/artifact.js`). Obsah je ten istý výstup toho
+   istého `renderMarkdown`, takže druhá sada by bola druhá pravda o tom, ako
+   vyzerá odsek — a `w4dup.js` by ju našla ako dvojitú deklaráciu.
+   `:is()` neprispieva k špecificite ničím nad svojím najsilnejším argumentom,
+   takže je to presne 0-1-0, teda to isté, čo by dala holá trieda.
+
+   POZOR pri dopisovaní toku: prózu odpovede zariaďuje TENTO blok. Keď sa niekde
+   nižšie objaví `.cm-md p`, sú to dve pravdy o jednom odseku.
+
+   `console.css` má tie isté pravidlá pod `.bubble.md`. Oba stylesheety sa nikdy
+   nenačítajú naraz (`/chat` vs `/console`), takže sa neprebíjajú; keď sa raz
+   zjednotia, presúva sa TÁTO podoba — nie tá s prefixom plochy.
+   --------------------------------------------------------------------------- */
+:is(.cm-md, .md) > *:first-child { margin-top: 0; }
+:is(.cm-md, .md) > *:last-child { margin-bottom: 0; }
+:is(.cm-md, .md) p { margin: 0 0 10px; overflow-wrap: anywhere; }
+:is(.cm-md, .md) h3 { margin: 18px 0 8px; font-size: var(--fs-title); font-weight: var(--fw-semibold); }
+:is(.cm-md, .md) h4 { margin: 14px 0 6px; font-size: var(--fs-base); font-weight: var(--fw-semibold); }
+
+:is(.cm-md, .md) ul,
+:is(.cm-md, .md) ol { margin: 0 0 10px; padding-left: 22px; }
+
+:is(.cm-md, .md) li { margin-bottom: 4px; }
+:is(.cm-md, .md) a { color: var(--accent-ink); }
+
+/* Vnorený zoznam. `renderMarkdown` ich kreslí od 25. 8. 2026 — odsadená odrážka
+   je v 8,3 % reálnych odpovedí modelu, teda častejšie než ktorákoľvek vizuálna
+   funkcia z celého merania. Bez týchto dvoch riadkov by vnorená úroveň sedela na
+   tom istom odstupe ako rodič, takže hierarchia by v UI zmizla aj po tom, čo ju
+   renderer konečne vie. */
+:is(.cm-md, .md) li > ul,
+:is(.cm-md, .md) li > ol { margin: 4px 0 0; }
+
+:is(.cm-md, .md) code {
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: var(--surface-subtle);
+    font-family: var(--mono);
+    font-size: .92em;
+    overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------------
+   BLOKY KÓDU, ZVÝRAZNENIE A KOPÍROVANIE
+
+   Selektory sú ZÁMERNE bez prefixu plochy: ten istý blok kódu stojí v bubline
+   odpovede, v náhľade markdownového artefaktu aj v paneli artefaktu, a skládá ho
+   jeden `codeBlock()` / `equipCode()` v `public/js/chat/artifact.js`.
+   --------------------------------------------------------------------------- */
+
+/* Odstup nesie `pre` (počas streamu je blok ešte neobalený) a po obalení ho
+   preberá `.code-wrap`, aby `.md > *:last-child` (nulovanie posledného odstupu)
+   trafilo prvok, ktorý je naozaj posledný. */
+pre.code {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    /* Široký kód skroluje SÁM — telo stránky nesmie ísť do vodorovného skrolu. */
+    overflow-x: auto;
+}
+
+pre.code code {
+    display: block;
+    padding: 0;
+    background: transparent;
+    font-family: var(--mono);
+    font-size: var(--fs-small);
+    line-height: 1.5;
+    white-space: pre;
+}
+
+.code-wrap { margin: 0 0 12px; }
+.code-wrap pre.code { margin: 0; }
+
+/* Hlavička bloku. Tlačidlo je NAD kódom, nie v ňom: `pre.code` skroluje sám,
+   takže tlačidlo vnútri by pri širokom kóde odišlo mimo dohľadu — a nad kódom
+   nemá čo prekryť. Hlavička zároveň ukáže `data-lang`, ktorý markdown renderer
+   dávno zapisuje a nikto nečítal. */
+.code-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 24px;
+}
+
+.code-lang {
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    color: var(--muted);
+}
+
+/* Vzhľad tlačidla nesie `.ghost` z mind.css (bez rámu, `--muted`, hover na
+   `--text`) — ďalšia varianta tlačidla tu nevzniká. Prepisuje sa len to, čo
+   dostáva od okolia: 32 px z bare `button` je v riadku hlavičky priveľa a
+   verzálka s tracking-om sa dedí z `.who`. Fokusový prsteň dáva globálne
+   `:focus-visible` — vlastný tu zámerne nie je. */
+.copy-btn {
+    min-height: 24px;
+    padding: 2px 8px;
+    font-size: var(--fs-micro);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Popisok stojí na opačnom konci riadka než meno a cena — tam ho oko hľadá a ani
+   jeden z tých údajov sa pritom neposunie. `.cm-who` je riadok mena a ceny nad
+   bublinou odpovede (`render.js`), `.code-head` hlavička bloku kódu. */
+.code-head .copy-btn,
+.cm-who .copy-btn { margin-left: auto; }
+
+/* Potvrdenie kopírovania. Bez neho človek nevie, či klik zabral — do schránky sa
+   pozrieť nedá. Svieti tie 1,6 s, kým sa popisok vráti. */
+.copy-btn.is-done { color: var(--success-ink); }
+
+/* Záložná cesta kopírovania (`document.execCommand`) potrebuje SKUTOČNE vybraný
+   text, takže textarea nesmie byť `display: none` ani `visibility: hidden` —
+   odkladá sa mimo plochy a v DOM žije zlomok sekundy. */
+.copy-fallback {
+    position: fixed;
+    top: 0;
+    left: -9999px;
+    opacity: 0;
+}
+
+/* ---------- zvýraznenie syntaxe ----------
+
+   Päť tried a päť ROLÍ, nie päť nových farieb: každá sedí na tokene, ktorý
+   v palete už je a ktorý je navrhnutý ako TEXT (`-ink` varianty — namerané
+   6,45 / 5,51 / 6,35 / 5,30:1 na papieri, na tmavej téme 8,12 / 6,26:1 na
+   paneli). Nová hodnota palety tu nevzniká (kontrakt §4).
+
+   AKCENT TU ZÁMERNE NIE JE: amethyst nesie interaktívny stav — hover, fokus,
+   aktívny prvok — a kľúčové slovo v kóde nie je ani jedno z toho. Zlatá už vôbec,
+   tá je vyhradená značke a jadru vedomia.
+
+   Triedy vkladá `highlight()` v `public/js/chat/highlight.js` do UŽ escapovaného
+   textu; iné než tieto tam nevzniknú. */
+.t-c { color: var(--muted); }                       /* komentár */
+.t-s { color: var(--cert-overene-ink); }            /* reťazec */
+.t-k { color: var(--warn-ink); }                    /* kľúčové slovo, meno tagu */
+.t-n { color: var(--cert-pasca-ink); }              /* číslo, hex farba, jednotka */
+
+/* Premenná, atribút, kľúč v JSON, vlastnosť v CSS. Tichšia než ostatné — je to
+   meno, nie štruktúra; váha ju odlíši od okolitého kódu bez ďalšej farby. */
+.t-v {
+    color: var(--text-secondary);
+    font-weight: var(--fw-medium);
+}
+
+/* ---------- diff ----------
+
+   Tie isté triedy, aké vydáva `diffHtml()` v `public/js/shared/gate.js` — teda
+   diff v chate farbí tá istá jediná implementácia ako náhľad pri bráne zápisov.
+   Tokeny sú `--success` / `--danger` (SMER zmeny), nie `--cert-*` (istota
+   poznatku v grafe); kontrasty tohto páru sú namerané v console.css nad tým istým
+   markupom. `/chat` a `/console` nikdy nenačítajú oba stylesheety, takže je to
+   jedno pravidlo zapísané dvakrát, nie dve pravdy. */
+.diff .dl {
+    display: block;
+    padding: 0 6px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.diff .df-add { background: var(--success-soft); color: var(--success-ink); }
+.diff .df-del { background: var(--danger-soft); color: var(--danger-ink); }
+.diff .df-hunk { color: var(--accent-ink); }
+.diff .df-meta { color: var(--muted); }
+.diff .df-ctx { color: var(--text-secondary); }
+
+/* ---------------------------------------------------------------------------
    PANEL ARTEFAKTU
 
-   Zatiaľ len kostra: hlavička a jeden prázdny kontejner. Obsah (zvýraznená
-   syntax, náhľad HTML/SVG, tabuľky, diagramy) rieši vlna 3 a technológiu
-   diagramov rozhoduje meranie — žiadne CDN, žiadny bundler (kontrakt §2c).
+   Hlavička plus jeden kontejner (`#chat-artifact-body`), do ktorého kreslí
+   `public/js/chat/artifact.js`. Artefakt v tejto appke je NAMERANE súbor
+   zapísaný cez `write_file` (2× 9,5 kB HTML so `<style>` a `<table>`, 1,8 kB
+   markdown) a náhľad diffu pri bráne (priemer 442 B) — nie diagram. Diagramy sa
+   nekreslia vôbec a dôvod aj spúšťač na prehodnotenie sú v hlavičke
+   `public/js/chat/highlight.js`.
    --------------------------------------------------------------------------- */
 .ca-head {
     display: flex;
@@ -497,6 +687,112 @@ body.cp-dragging {
     min-height: 0;
     overflow: auto;
     padding: var(--sp-2);
+}
+
+.ca-art {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+/* Riadok s cestou, veľkosťou a stiahnutím. Cesta má prednosť v šírke a láme sa
+   kdekoľvek — `app/Http/Controllers/McpController.php` sa do 380 px panela
+   nevojde na jeden riadok a výpustka by z nej urobila hádanku. */
+.ca-meta {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-1);
+}
+
+.ca-path {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
+    letter-spacing: var(--ls-mono);
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.ca-size {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    color: var(--muted);
+}
+
+.ca-dl {
+    flex: none;
+    min-height: 24px;
+    padding: 2px 8px;
+    font-size: var(--fs-micro);
+}
+
+/* ---------- záložky Náhľad / Zdroj ----------
+   Sú to dva POHĽADY na jeden artefakt, nie dve akcie — preto `role="tablist"`
+   s podčiarknutím aktívnej, nie dva gombíky. Podčiarknutie je akcentové: aktívny
+   stav je presne to, čo amethyst v tejto appke nesie. */
+.ca-tabs {
+    display: flex;
+    gap: var(--sp-0);
+    border-bottom: 1px solid var(--border);
+}
+
+.ca-tab {
+    min-height: 26px;
+    padding: 4px 10px;
+    border: 0;
+    /* Podčiarknutie je rezervované aj v pokoji: bez priehľadnej linky by sa pri
+       prepnutí záložky celý riadok posunul o 2 px. */
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: var(--fs-body);
+}
+
+/* Hover je tichý — nesie ho text, nie výplň. Pozadie sa musí vypísať, pretože
+   `button:hover` z mind.css (0-1-1) by inak podstrčil `--hover-fill`. */
+.ca-tab:hover {
+    background: transparent;
+    color: var(--text);
+}
+
+.ca-tab[aria-selected="true"] {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+}
+
+/* Odstup od záložiek nesie panel, nie tablist: skryté panely majú `display: none`
+   (atribút `hidden`), takže vidno vždy práve jeden odstup. */
+.ca-pane {
+    min-width: 0;
+    margin-top: var(--sp-1);
+}
+
+/* Náhľad HTML od modelu. Pevná výška, nie 100 %: panel skroluje ako celok
+   (`#chat-artifact-body` má `overflow: auto`) a iframe s vlastným vertikálnym
+   skrolom vnútri skrolovaného panela by dal dva pruhy vedľa seba — a koliesko by
+   mierilo do toho, ktorý človek práve nechce. */
+.ca-frame {
+    width: 100%;
+    height: 60vh;
+    min-height: 260px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--ca-frame-bg);
+}
+
+.ca-md {
+    font-size: var(--fs-body);
+    line-height: var(--lh-prose);
+}
+
+.ca-note {
+    margin: 0;
+    font-size: var(--fs-caption);
+    line-height: var(--lh-prose);
+    color: var(--muted);
 }
 
 /* ---------------------------------------------------------------------------

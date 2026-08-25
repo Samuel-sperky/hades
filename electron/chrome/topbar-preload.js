@@ -10,7 +10,7 @@
  *
  * Smer komunikácie:
  *   • lišta → main: navigácia appky (späť/vpred/obnoviť), prepnutie obrazovky
- *     (Graf/Charón) a systémové okno (minimalizovať/maximalizovať/zavrieť). Každý
+ *     (Graf/Chat/Charón) a systémové okno (minimalizovať/maximalizovať/zavrieť). Každý
  *     príkaz main proces overí proti vlastnej bielej listine.
  *   • main → lišta: stav (`state`) a téma (`theme`). Lišta z nich len prekresľuje;
  *     nič nerozhoduje.
@@ -21,7 +21,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 /** Whitelist navigačných príkazov; main ho overuje ešte raz. */
 const NAV = ['back', 'forward', 'reload'];
 /** Whitelist obrazoviek, na ktoré lišta vie prepnúť appku. */
-const SCREENS = ['graf', 'charon'];
+const SCREENS = ['graf', 'chat', 'charon'];
 /** Whitelist systémových okenných príkazov. */
 const WINDOW = ['minimize', 'maximize', 'close'];
 
@@ -33,7 +33,7 @@ const api = {
         }
     },
 
-    /** Prepnutie obrazovky appky (Graf / Charón). */
+    /** Prepnutie obrazovky appky (Graf / Chat / Charón). */
     screen(name) {
         if (SCREENS.includes(name)) {
             ipcRenderer.send('hades:chrome:screen', name);

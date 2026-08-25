@@ -7,9 +7,19 @@
    dostal `<img onerror=…>` z uzla, ktorý si model prečítal z pamäte. Navyše by
    to bol build step, ktorý tento projekt nemá.
 
-   Povolené je presne: ```plot```, `inline`, **tučné**, *kurzíva*, odrážky,
-   číslované zoznamy, nadpisy a odkazy s http(s)/relatívnou schémou. Všetko
-   ostatné zostáva textom.
+   Povolené je presne: ```plot```, `inline`, **tučné**, *kurzíva*, odrážky
+   (aj VNORENÉ), číslované zoznamy, nadpisy a odkazy s http(s)/relatívnou
+   schémou. Všetko ostatné zostáva textom.
+
+   Vnorené zoznamy pribudli 25. 8. 2026 a je to jediná funkcia, ktorú do tohto
+   renderera priniesla vlna vizuálov — pretože je to jediná, ktorú meranie
+   naozaj našlo: odsadená odrážka je v **3 z 36** (8,3 %) reálnych odpovedí
+   modelu, teda častejšie než ktorákoľvek vizuálna funkcia z celého auditu
+   (oplotený blok kódu 0/36, diagram 0/36, tabuľka 0/36). Dovtedy `^\s{0,3}`
+   spracovalo odsadenú odrážku ako plochú položku a hierarchia odpovede sa
+   v UI stratila. Zmena je ADITÍVNA — plochý zoznam vyzerá presne ako predtým —
+   ale mení VŠETKY TRI plochy naraz: plnú konzolu, dok Charóna nad grafom aj
+   `/chat`. To je zámer tohto modulu, nie vedľajší účinok.
 
    Zdieľaný modul (public/js/shared/) — plnú konzolu aj dok Charóna nad grafom
    obsluhuje TEN ISTÝ renderer. NEUNIFIKOVAŤ s public/js/mind/md.js (`mdToHtml`)
@@ -49,14 +59,29 @@ export function renderMarkdown(src) {
     );
 
     const out = [];
-    let list = null;
+    /* ZÁSOBNÍK otvorených zoznamov, nie jedna premenná — a to je celý rozdiel
+       medzi plochým a vnoreným zoznamom. Každý prvok je `{ tag, indent, items }`
+       a `indent` je počet medzier, ktorými riadok začínal. */
+    const lists = [];
     let para = [];
 
-    function closeList() {
-        if (!list) return;
+    /**
+     * Zavrie všetky zoznamy hlbšie než `toIndent`. Bez argumentu zavrie všetky.
+     *
+     * Hotový vnorený zoznam sa pripája DOVNÚTRA poslednej položky rodiča, nie za
+     * ňu: `<ul><li>a<ul>…</ul></li></ul>`. Za položkou by to bol súrodenec a
+     * prehliadač by ho odsadil rovnako, takže by hierarchia opäť zmizla —
+     * a zoznam by mal navyše `<ul>` priamo v `<ul>`, čo je neplatné HTML.
+     */
+    function closeLists(toIndent = -1) {
+        while (lists.length > 0 && lists[lists.length - 1].indent > toIndent) {
+            const done = lists.pop();
+            const html = `<${done.tag}>${done.items.map((i) => `<li>${i}</li>`).join('')}</${done.tag}>`;
+            const parent = lists[lists.length - 1];
 
-        out.push(`<${list.tag}>${list.items.map((i) => `<li>${i}</li>`).join('')}</${list.tag}>`);
-        list = null;
+            if (parent) parent.items[parent.items.length - 1] += html;
+            else out.push(html);
+        }
     }
 
     function closePara() {
@@ -71,14 +96,14 @@ export function renderMarkdown(src) {
         const fence = line.match(CODE_LINE);
 
         if (fence) {
-            closeList();
+            closeLists();
             closePara();
             out.push(codeBlock(blocks[Number(fence[1])]));
             continue;
         }
 
         if (line.trim() === '') {
-            closeList();
+            closeLists();
             closePara();
             continue;
         }
@@ -86,7 +111,7 @@ export function renderMarkdown(src) {
         const head = line.match(/^(#{1,6})\s+(.*)$/);
 
         if (head) {
-            closeList();
+            closeLists();
             closePara();
             // h3/h4 a nie h1/h2: h1 je titulok vlákna, h2 patrí prázdnemu stavu —
             // odpoveď modelu nesmie prepísať štruktúru dokumentu pod sebou.
@@ -94,23 +119,43 @@ export function renderMarkdown(src) {
             continue;
         }
 
-        const bullet = line.match(/^\s{0,3}[-*+]\s+(.*)$/);
-        const number = line.match(/^\s{0,3}\d+[.)]\s+(.*)$/);
+        /* Jeden vzor pre odrážku aj číslovanú položku: rozhoduje o tom istom
+           (otvoriť/zavrieť/vnoriť) a dva vzory sa pri vnorení rozišli.
+           Odsadenie už NIE JE zhora ohraničené na 3 medzery — práve to robilo
+           z odsadenej odrážky plochú položku. Odsadený blok kódu tento renderer
+           zámerne nepozná (0 z 36 nameraných odpovedí ho malo), takže o žiadnu
+           inú interpretáciu štyroch medzier tu nesúťažíme. */
+        const item = line.match(/^([ \t]*)(?:([-*+])|\d+[.)])\s+(.*)$/);
 
-        if (bullet || number) {
-            const tag = bullet ? 'ul' : 'ol';
+        if (item) {
+            // Tab sa počíta ako štyri medzery — inak by zoznam odsadený tabom
+            // a zoznam odsadený medzerami skončili na rôznych úrovniach.
+            const indent = item[1].replace(/\t/gu, '    ').length;
+            const tag = item[2] ? 'ul' : 'ol';
+
             closePara();
-            if (list && list.tag !== tag) closeList();
-            if (!list) list = { tag, items: [] };
-            list.items.push(inline((bullet || number)[1]));
+            closeLists(indent);
+
+            const top = lists[lists.length - 1];
+
+            // Hlbšie odsadenie = nový vnorený zoznam. Zmena typu na TEJ ISTEJ
+            // úrovni zavrie starý a otvorí nový (odrážky a čísla sú dva zoznamy,
+            // nie jeden s dvoma tvarmi).
+            if (!top || indent > top.indent) lists.push({ tag, indent, items: [] });
+            else if (top.tag !== tag) {
+                closeLists(indent - 1);
+                lists.push({ tag, indent, items: [] });
+            }
+
+            lists[lists.length - 1].items.push(inline(item[3]));
             continue;
         }
 
-        closeList();
+        closeLists();
         para.push(inline(line));
     }
 
-    closeList();
+    closeLists();
     closePara();
 
     return out.join('');

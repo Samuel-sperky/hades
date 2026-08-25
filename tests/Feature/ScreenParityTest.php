@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ConsoleThread;
 use App\Models\Run;
+use App\Serializers\Screen\ChatScreen;
 use App\Serializers\Screen\DennikScreen;
 use App\Serializers\Screen\DnesScreen;
 use App\Serializers\Screen\HygienaScreen;
@@ -58,6 +59,20 @@ class ScreenParityTest extends TestCase
     private function registry(): array
     {
         return [
+            // Hľadanie v histórii chatu. `requires_mariadb` NIE JE potrebné:
+            // `ChatScreen::base()` je `LOWER(...) LIKE`, nie `COLLATE`, takže beží
+            // na sqlite aj na MariaDB — a preto ho tento test naozaj meria.
+            'chat-search' => [
+                'serializer' => ChatScreen::class,
+                'tool' => 'mind_chat_search',
+                'route' => 'api/console/search',
+                // `q` je povinné na oboch stranách — dopyt bez hľadaného výrazu je
+                // 422, nie prázdny výsledok (krátky dopyt by inak vrátil celú
+                // históriu). Preto ho musí niesť aj `query` pre endpoint, aj `args`
+                // pre tool: sú to dve projekcie tej istej požiadavky.
+                'query' => ['q' => 'vetvenie'],
+                'args' => ['q' => 'vetvenie'],
+            ],
             'runy' => [
                 'serializer' => RunsScreen::class,
                 'tool' => 'mind_runs',

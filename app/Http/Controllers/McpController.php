@@ -11,6 +11,7 @@ use App\Models\Run;
 use App\Models\Tag;
 use App\Serializers\Screen\DennikScreen;
 use App\Serializers\Screen\DnesScreen;
+use App\Serializers\Screen\ChatScreen;
 use App\Serializers\Screen\HygienaScreen;
 use App\Serializers\Screen\KniznicaScreen;
 use App\Serializers\Screen\KontrolaScreen;
@@ -695,6 +696,41 @@ class McpController extends Controller
                     ],
                 ],
             ],
+            [
+                'name' => 'mind_chat_search',
+                'description' => 'Search the text of past Charon conversations — the chat history, not the '
+                    .'memory graph. Use it when the user refers to something you discussed before ("what '
+                    .'did we decide about the write gate?") and mind_recall comes back empty, because a '
+                    .'conversation is not a node: it is only in the mind if someone stored it with '
+                    .'mind_learn. Matching is substring, case-insensitive for ASCII, and the human\'s '
+                    .'`%` and `_` are text, not wildcards. Snippets are cut around the hit, so read one '
+                    .'in full with the thread uuid if the context matters. The system directive is never '
+                    .'searchable — it is configuration, not a turn, and it would otherwise match in every '
+                    .'thread. Abandoned branches ARE searchable on purpose: a decision that was later '
+                    .'forked away still happened.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'q' => [
+                            'type' => 'string',
+                            'description' => 'What to look for; at least 2 characters',
+                        ],
+                        'thread' => [
+                            'type' => 'string',
+                            'description' => 'Limit to one thread (uuid)',
+                        ],
+                        'role' => [
+                            'type' => 'string',
+                            'description' => 'Only `user` or only `assistant` turns',
+                        ],
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'How many hits to return',
+                        ],
+                    ],
+                    'required' => ['q'],
+                ],
+            ],
         ];
     }
 
@@ -716,6 +752,7 @@ class McpController extends Controller
                 'mind_delete' => $this->toolDelete($args, $mind),
                 'mind_update' => $this->toolUpdate($args, $mind),
                 'mind_link' => $this->toolLink($args, $mind),
+                'mind_chat_search' => $this->toolChatSearch($args),
                 'mind_hygiene' => $this->toolHygiene($args),
                 'mind_runs' => $this->toolRuns($args),
                 'mind_run' => $this->toolRun($args),
@@ -1324,6 +1361,17 @@ class McpController extends Controller
      * `mind_rename` / `mind_move` / `mind_update`, kde je vidieť, čo presne sa
      * deje s ktorým uzlom.
      */
+    /**
+     * Hľadanie v histórii konverzácií — TÁ ISTÁ plocha, akú dostane človek na
+     * `GET /api/console/search`. Jeden serializér, dve projekcie: endpoint vráti
+     * `data()`, tool `dropEmpty(project(data(), fieldsForAi()))`. Bez tohto toolu
+     * by `ChatScreen::fieldsForAi()` sľuboval plochu, ktorú nikto nevolá.
+     */
+    protected function toolChatSearch(array $args): array
+    {
+        return (new ChatScreen($args))->forAi();
+    }
+
     protected function toolHygiene(array $args): array
     {
         return (new HygienaScreen($args))->forAi();

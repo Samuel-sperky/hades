@@ -63,7 +63,16 @@
             50% { opacity: .3; }
         }
 
-        .text { color: var(--fg); }
+        /* Pás je jeden riadok vysoký 30 px: dlhší text (režim „run") sa musí zmestiť
+           na jednu linku a v úzkom okne sa radšej skrátiť, než pretlačiť pás von. */
+        .text {
+            min-width: 0;
+            margin: 0;
+            color: var(--fg);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .text b { font-weight: 600; }
         .text span { color: var(--fg-dim); }
     </style>
@@ -71,7 +80,7 @@
 <body>
     <span class="dot" aria-hidden="true"></span>
     <p class="text" role="status" aria-live="polite">
-        <b>Stratené spojenie</b> <span>— skúšam sa pripojiť znova…</span>
+        <b id="head">Stratené spojenie</b> <span id="tail">— skúšam sa pripojiť znova…</span>
     </p>
 
     <script>
@@ -80,10 +89,41 @@
 
             var api = window.hadesState;
             var root = document.documentElement;
+            var head = document.getElementById('head');
+            var tail = document.getElementById('tail');
+
+            /*
+             * Dva režimy, dva texty (main proces posiela ktorý; stránka nič nerozhoduje):
+             *
+             *   ws  — zmizol Reverb listener. Živé prírastky nechodia, appka funguje.
+             *   run — POST behu zomrel na sieti. Rozpísaná odpoveď sa NEDOKONČÍ:
+             *         prúd NDJSON bol telom toho requestu a obnova beží len z
+             *         /api/console/decide, nikdy z prekreslenia okna. Preto pás
+             *         hovorí aj to, čo zostáva — front rozpísaných správ v okne —
+             *         a že sa okno samo neobnoví, aby ho nezahodilo.
+             */
+            var TEXT = {
+                ws: {
+                    head: 'Stratené spojenie',
+                    tail: '— skúšam sa pripojiť znova…'
+                },
+                run: {
+                    head: 'Beh sa prerušil',
+                    tail: '— rozpísaná odpoveď sa nedokončí. Okno sa samo neobnoví, '
+                        + 'aby ti neodišli rozpísané správy.'
+                }
+            };
 
             if (api) {
                 api.onTheme(function (theme) {
                     root.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+                });
+
+                api.onBanner(function (info) {
+                    var text = TEXT[info && info.mode === 'run' ? 'run' : 'ws'];
+
+                    head.textContent = text.head;
+                    tail.textContent = text.tail;
                 });
 
                 api.ready();

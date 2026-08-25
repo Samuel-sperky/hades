@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SearchController as ApiSearchController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\SyncController;
+use App\Http\Controllers\Console\AttachmentController as ConsoleAttachmentController;
 use App\Http\Controllers\Console\BranchController as ConsoleBranchController;
 use App\Http\Controllers\Console\ModelController as ConsoleModelController;
 use App\Http\Controllers\Console\ProjectController as ConsoleProjectController;
@@ -168,6 +169,18 @@ Route::middleware([
     Route::post('/console/threads/{thread:uuid}/branches', [ConsoleBranchController::class, 'store']);
     Route::post('/console/branches/{branch:uuid}/activate', [ConsoleBranchController::class, 'activate']);
     Route::delete('/console/branches/{branch:uuid}', [ConsoleBranchController::class, 'destroy']);
+
+    // Prílohy vlákna. `throttle` je na uploade zámerne: `store()` prijíma súbor od
+    // človeka, ukladá ho na disk a pri PDF z neho ťahá text — teda jeden request
+    // robí veľa práce, a appka je verejne tunelovaná cez ngrok.
+    //
+    // `show()` je binárny výdaj a NIE JE pod throttlom: náhľady obrázkov v toku by
+    // ho vyčerpali pri prvom otvorení dlhšieho vlákna.
+    Route::get('/console/threads/{thread:uuid}/attachments', [ConsoleAttachmentController::class, 'index']);
+    Route::post('/console/threads/{thread:uuid}/attachments', [ConsoleAttachmentController::class, 'store'])
+        ->middleware('throttle:20,1');
+    Route::get('/console/attachments/{attachment:uuid}', [ConsoleAttachmentController::class, 'show']);
+    Route::delete('/console/attachments/{attachment:uuid}', [ConsoleAttachmentController::class, 'destroy']);
 
     // Hľadanie v histórii naprieč vláknami a export vlákna do markdownu. Export je
     // GET, pretože je to čítanie — a skládá ho SERVER, aby všetky tri plochy

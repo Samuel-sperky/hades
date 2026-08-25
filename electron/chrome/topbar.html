@@ -181,9 +181,21 @@
         </svg>
         <span>Graf</span>
       </button>
-      <button id="scr-charon" type="button" title="Charón — chat s vedomím" aria-label="Charón">
+      <!-- Chat (`/chat`) je plnohodnotná appka, Charón (`/console`) zostáva technická
+           konzola (kontrakt C-1: URL sa neláme). Ikony to musia rozlíšiť, inak sú to
+           dve bubliny: chat má bublinu s riadkami, konzola šípku s podčiarkovníkom. -->
+      <button id="scr-chat" type="button" title="Chat s vedomím" aria-label="Chat">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M20 12a7 6 0 0 1-7 6H8l-4 3 1-4.5A6 6 0 0 1 4 12a7 6 0 0 1 16 0Z"></path>
+          <line x1="8.5" y1="10.5" x2="15.5" y2="10.5"></line>
+          <line x1="8.5" y1="13.5" x2="13" y2="13.5"></line>
+        </svg>
+        <span>Chat</span>
+      </button>
+      <button id="scr-charon" type="button" title="Charón — technická konzola" aria-label="Charón">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="6,8 9.5,12 6,16"></polyline>
+          <line x1="12" y1="16" x2="18" y2="16"></line>
         </svg>
         <span>Charón</span>
       </button>
@@ -212,6 +224,7 @@
     const back = el('nav-back');
     const forward = el('nav-forward');
     const grafBtn = el('scr-graf');
+    const chatBtn = el('scr-chat');
     const charonBtn = el('scr-charon');
     const maxIcon = el('win-max-icon');
     const maxBtn = el('win-max');
@@ -223,6 +236,7 @@
     back.addEventListener('click', () => bridge.nav('back'));
     forward.addEventListener('click', () => bridge.nav('forward'));
     grafBtn.addEventListener('click', () => bridge.screen('graf'));
+    chatBtn.addEventListener('click', () => bridge.screen('chat'));
     charonBtn.addEventListener('click', () => bridge.screen('charon'));
     el('win-min').addEventListener('click', () => bridge.window('minimize'));
     maxBtn.addEventListener('click', () => bridge.window('maximize'));
@@ -233,11 +247,12 @@
       back.disabled = !s.canGoBack;
       forward.disabled = !s.canGoForward;
 
-      const graf = s.screen === 'graf';
-      grafBtn.classList.toggle('active', graf);
-      charonBtn.classList.toggle('active', s.screen === 'charon');
-      grafBtn.setAttribute('aria-pressed', String(graf));
-      charonBtn.setAttribute('aria-pressed', String(s.screen === 'charon'));
+      // Jedna pravda o aktívnej obrazovke: trieda aj aria-pressed z tej istej zhody.
+      [[grafBtn, 'graf'], [chatBtn, 'chat'], [charonBtn, 'charon']].forEach(([btn, name]) => {
+        const on = s.screen === name;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', String(on));
+      });
 
       maxIcon.innerHTML = s.maximized ? ICON_RESTORE : ICON_MAX;
       maxBtn.title = s.maximized ? 'Obnoviť' : 'Maximalizovať';

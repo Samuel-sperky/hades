@@ -141,6 +141,26 @@
         .retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
         .retry[disabled] { opacity: .6; cursor: default; }
 
+        /* Druhá voľba po prerušenom behu: „Načítať znovu" zahadzuje rozpísané, takže
+           nesmie vyzerať ako hlavná akcia — tichšia varianta toho istého tlačidla. */
+        .retry.ghost {
+            color: var(--fg);
+            background: transparent;
+            border: 1px solid var(--border);
+            font-weight: 500;
+        }
+
+        .retry.ghost:hover { background: var(--panel); }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .hidden { display: none; }
+
         .status {
             min-height: 20px;
             margin: 16px 0 0;
@@ -156,15 +176,20 @@
             <circle class="core" cx="50" cy="50" r="15"></circle>
         </svg>
 
-        <h1>Vedomie sa nepodarilo prebudiť</h1>
-        <p class="lede">Server neodpovedá — skontroluj, či Hades beží.</p>
+        <h1 id="head">Vedomie sa nepodarilo prebudiť</h1>
+        <p class="lede" id="lede">Server neodpovedá — skontroluj, či Hades beží.</p>
 
         <div class="step">
             <p class="step-label">Spusti v koreni projektu</p>
             <code>docker compose up -d</code>
         </div>
 
-        <button class="retry" id="retry" type="button">Skúsiť znova</button>
+        <div class="actions">
+            <button class="retry" id="retry" type="button">Skúsiť znova</button>
+            <button class="retry hidden" id="resume" type="button">Pokračovať v okne</button>
+            <button class="retry ghost hidden" id="reload" type="button">Načítať znovu</button>
+        </div>
+
         <p class="status" id="status" role="status" aria-live="polite"></p>
     </main>
 
@@ -175,8 +200,35 @@
             var api = window.hadesState;
             var root = document.documentElement;
             var btn = document.getElementById('retry');
+            var resumeBtn = document.getElementById('resume');
+            var reloadBtn = document.getElementById('reload');
+            var head = document.getElementById('head');
+            var lede = document.getElementById('lede');
             var status = document.getElementById('status');
             var countdown = null;
+
+            /*
+             * Dva režimy tej istej obrazovky (main proces posiela, ktorý platí):
+             *
+             *   load — appka sa nenačítala. Niet čo stratiť, takže sa zotavuje sama:
+             *          keď backend nabehne, okno sa načíta a obrazovka zmizne.
+             *   run  — backend spadol POČAS behu. Stránka je načítaná a drží veci,
+             *          ktoré v DB nie sú (rozpísaná správa, front správ). Preto sa
+             *          tu nič nenačíta samo a po návrate servera rozhoduje človek:
+             *          „Pokračovať v okne" (nechať tak) alebo „Načítať znovu"
+             *          (zahodiť rozpísané a poskladať vlákno z DB).
+             */
+            var TEXT = {
+                load: {
+                    head: 'Vedomie sa nepodarilo prebudiť',
+                    lede: 'Server neodpovedá — skontroluj, či Hades beží.'
+                },
+                run: {
+                    head: 'Spojenie spadlo počas behu',
+                    lede: 'Rozpísaná odpoveď sa nedokončí — uložené je to, čo server stihol. '
+                        + 'Okno nechávam tak, ako je, aby ti neodišli rozpísané správy.'
+                }
+            };
 
             function stopCountdown() {
                 if (countdown !== null) {
@@ -185,10 +237,35 @@
                 }
             }
 
+            function show(el, visible) {
+                el.classList.toggle('hidden', !visible);
+            }
+
             function render(st) {
                 stopCountdown();
 
-                if (!st || st.phase === 'connecting') {
+                var mode = st && st.mode === 'run' ? 'run' : 'load';
+                var phase = st && st.phase ? st.phase : 'connecting';
+                var text = TEXT[mode];
+
+                head.textContent = text.head;
+                lede.textContent = text.lede;
+
+                // 'ready' nastáva len v režime 'run': backend je späť a čaká sa na
+                // rozhodnutie človeka, nie na ďalší automatický pokus.
+                var decide = phase === 'ready';
+
+                show(btn, !decide);
+                show(resumeBtn, decide);
+                show(reloadBtn, decide);
+
+                if (decide) {
+                    status.textContent = 'Hades je späť. „Načítať znovu" zahodí rozpísané správy.';
+
+                    return;
+                }
+
+                if (phase === 'connecting') {
                     btn.disabled = true;
                     status.textContent = 'Pripájam sa…';
 
@@ -221,6 +298,17 @@
                     btn.disabled = true;
                     status.textContent = 'Pripájam sa…';
                     api.retry();
+                });
+
+                resumeBtn.addEventListener('click', function () {
+                    stopCountdown();
+                    api.resume();
+                });
+
+                reloadBtn.addEventListener('click', function () {
+                    stopCountdown();
+                    status.textContent = 'Načítavam…';
+                    api.reload();
                 });
 
                 api.ready();

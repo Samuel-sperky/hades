@@ -14,15 +14,33 @@
  *      spadne počas behu. Automaticky skúša pripojiť s narastajúcim odstupom;
  *      keď HTTP backend (8080) nabehne, znovu načíta graf a obrazovka zmizne.
  *
- *   2. `banner.html` — NEVTIERAVÝ pás „stratené spojenie", nie modál. Sleduje sa
- *      ním živé spojenie (Reverb WebSocket, TCP 8081). Keď listener zmizne, pás
- *      sa ukáže; keď sa vráti, zmizne. Beží len počas toho, čo je appka viditeľná.
+ *   2. `banner.html` — NEVTIERAVÝ pás „stratené spojenie", nie modál. Má dva
+ *      režimy: `ws` (zmizol Reverb listener na TCP 8081) a `run` (beh sa prerušil,
+ *      viď nižšie). Pás režimu `run` má prednosť — je to horšia správa.
  *
  * Detekcia je z main procesu a NEZASAHUJE do rendereru ani do preloadu appky:
  *   • HTTP backend — `http.get` na vlastný origin; akákoľvek odpoveď (aj 401 za
  *     `auth.ui`) znamená „server žije", len odmietnuté/odklepnuté spojenie je pád,
  *   • Reverb — `net.connect` na 127.0.0.1:8081; nadviazané TCP spojenie stačí ako
  *     dôkaz, že listener beží (obsah handshaku nepotrebujeme).
+ *
+ * ─── Pád BACKENDU POČAS BEHU: prečo sa okno neobnoví samo ───────────────────
+ *
+ * `runInterrupted()` volá `main.js`, keď POST na `/api/console/run` (alebo
+ * `/decide`) zomrel na sieti (`runwatch.js`). To je iná situácia než „appka sa
+ * nenačítala", a preto sa aj rieši inak:
+ *
+ *   • Stránka je NAČÍTANÁ a drží veci, ktoré v DB nie sú — rozpísaný text
+ *     v composeri a front správ nazbieraných počas behu (kontrakt §3, nález A18).
+ *     Automatické `loadURL()`, ktorým sa zotavuje nenačítaná appka, by ich
+ *     zahodilo. Preto je v tomto režime obnova VÝHRADNE na klik človeka a
+ *     tlačidlo priznáva, že rozpísané správy pri ňom padnú.
+ *   • Rozpísaná odpoveď sa nedokončí. Prúd NDJSON je telo toho jedného requestu:
+ *     keď spadol, nemá čo pokračovať, a obnova beží len z `/api/console/decide`
+ *     (dvojfázová brána), nikdy z prekreslenia okna. Text, ktorý zostal na
+ *     obrazovke, je preto neúplný a **autoritatívna je DB** — po obnovení sa
+ *     vlákno poskladá z `console_messages`, teda presne po miesto, ktoré server
+ *     stihol uložiť. Pás to hovorí nahlas, aby to človek nemusel hádať.
  */
 
 const http = require('node:http');
@@ -38,6 +56,15 @@ const BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
 
 /** Ako často sa kontroluje živé spojenie (Reverb) počas behu appky (ms). */
 const WS_POLL_MS = 5000;
+
+/**
+ * Ako dlho zostane pás o prerušenom behu, keď backend odpovedá (ms).
+ *
+ * Nie je to stav, ktorý by sa sám vyriešil (beh je stratený tak či tak), takže pás
+ * musí sám odísť — inak by visel nad appkou do zavretia okna. Dosť dlho, aby sa
+ * dal prečítať po návrate od kávy; ďalší beh ho zhasne skôr (`runStarted`).
+ */
+const RUN_BANNER_MS = 20000;
 
 /** Timeouty jednotlivých sond (ms) — krátke, aby stav reagoval, nie čakal. */
 const HTTP_PROBE_TIMEOUT = 2500;
@@ -99,9 +126,11 @@ function probeWs(port) {
  * @param {string} deps.startUrl        URL grafu — kam sa appka vráti po nábehu.
  * @param {number} deps.wsPort          Port Reverb WebSocketu (8081).
  * @param {() => string} deps.getTheme  Aktuálna téma appky ('dark' | 'light').
+ * @param {() => string} [deps.getUrl]  Adresa, na ktorej appka práve je (kam ju vrátiť
+ *                                      po prerušenom behu — nie vždy je to graf).
  */
 function createStateManager(deps) {
-    const { win, appView, liftChrome, chromeHeight, origin, startUrl, wsPort, getTheme } = deps;
+    const { win, appView, liftChrome, chromeHeight, origin, startUrl, wsPort, getTheme, getUrl } = deps;
 
     const preload = path.join(__dirname, 'state-preload.js');
 
@@ -112,14 +141,28 @@ function createStateManager(deps) {
 
     let backoffStep = 0;
     let retryTimer = null;
-    let lastStatus = { phase: 'connecting' };
+    let lastStatus = { phase: 'connecting', mode: 'load' };
 
     let wsTimer = null;
     let wsUp = true;
 
+    /**
+     * Čo priviedlo offline obrazovku: `load` (appka sa nenačítala) alebo `run`
+     * (backend spadol počas behu). V režime `run` sa appka NEOBNOVUJE sama — viď
+     * hlavička súboru.
+     */
+    let offlineMode = 'load';
+
+    /** Pás: dva nezávislé dôvody, jeden pás. `run` má prednosť pred `ws`. */
+    let wsDown = false;
+    let runLost = false;
+    let runBannerTimer = null;
+
     // Držané kvôli odhláseniu v `destroy()` — inak by pri obnove okna stackovali.
     let onRetry = null;
     let onReady = null;
+    let onResume = null;
+    let onReload = null;
 
     /** Spoločné bezpečné webPreferences pre interné stránky shellu. */
     function statePrefs() {
@@ -175,22 +218,33 @@ function createStateManager(deps) {
         }
     }
 
+    /**
+     * Stav pre offline obrazovku. `mode` sa dopĺňa tu, nie na každom volaní —
+     * stránka podľa neho volí celý text a tlačidlá, takže nesmie chýbať ani
+     * v stave, ktorý si vyžiada po načítaní (`hades:state:ready`).
+     */
     function sendStatus(status) {
-        lastStatus = status;
+        lastStatus = { ...status, mode: offlineMode };
 
         if (stateView && !stateView.webContents.isDestroyed()) {
-            stateView.webContents.send('hades:state:status', status);
+            stateView.webContents.send('hades:state:status', lastStatus);
         }
     }
 
     /* ── Offline obrazovka „Hades nebeži" ──────────────────────────────────── */
 
-    function showOffline() {
+    /** V režime `run` obnovu spúšťa výhradne človek (viď hlavička súboru). */
+    function isManualRecovery() {
+        return offlineMode === 'run';
+    }
+
+    function showOffline(mode) {
         if (offlineShown) {
             return;
         }
 
         offlineShown = true;
+        offlineMode = mode === 'run' ? 'run' : 'load';
         stopWsMonitor();
 
         if (!stateView) {
@@ -211,6 +265,7 @@ function createStateManager(deps) {
         }
 
         offlineShown = false;
+        offlineMode = 'load';
 
         if (retryTimer !== null) {
             clearTimeout(retryTimer);
@@ -220,6 +275,9 @@ function createStateManager(deps) {
         if (stateView) {
             win.contentView.removeChildView(stateView);
         }
+
+        // Pás sa mohol schovávať len preto, že nad ním bola offline obrazovka.
+        syncBanner();
     }
 
     /** Naplánuje pokus o odstup `delay` (ms). */
@@ -255,6 +313,15 @@ function createStateManager(deps) {
         }
 
         if (up) {
+            if (isManualRecovery()) {
+                // Backend je späť, ale appka je stále načítaná a drží rozpísané veci,
+                // ktoré v DB nie sú. Tu sa preto zastavíme a slovo dostane človek:
+                // „Pokračovať" (nechať okno tak) alebo „Načítať znovu" (zahodiť).
+                sendStatus({ phase: 'ready' });
+
+                return;
+            }
+
             // Backend odpovedá — skús načítať appku. Obrazovka zmizne až po úspešnom
             // `did-finish-load`; ak load napriek tomu padne, `did-fail-load` obnoví
             // backoff (viď `attach`). Preto sa tu nič neplánuje.
@@ -266,13 +333,32 @@ function createStateManager(deps) {
         resumeBackoff();
     }
 
-    /** Backend nabehol — znovu načítaj graf. Obrazovka zmizne až po úspešnom load. */
+    /**
+     * Backend nabehol — znovu načítaj appku. Obrazovka zmizne až po úspešnom load.
+     *
+     * Cieľom je adresa, na ktorej appka bola (`getUrl`), nie vždy graf: po
+     * prerušenom behu v chate by `startUrl` odviezol človeka na inú obrazovku, než
+     * z ktorej odišiel. Keď adresa nie je čitateľná (nenačítaná appka, chybový list
+     * Chromium), padá sa na `startUrl`.
+     */
     function recover() {
         sendStatus({ phase: 'connecting' });
 
-        if (appView && !appView.webContents.isDestroyed()) {
-            appView.webContents.loadURL(startUrl);
+        if (!appView || appView.webContents.isDestroyed()) {
+            return;
         }
+
+        let target = startUrl;
+
+        if (typeof getUrl === 'function') {
+            const current = String(getUrl() || '');
+
+            if (isOwnOrigin(current)) {
+                target = current;
+            }
+        }
+
+        appView.webContents.loadURL(target);
     }
 
     /** Okamžitý pokus z tlačidla „Skúsiť znova". */
@@ -291,34 +377,72 @@ function createStateManager(deps) {
         attempt();
     }
 
-    /* ── Pás „stratené spojenie" (Reverb) ──────────────────────────────────── */
+    /* ── Pás: „stratené spojenie" (Reverb) a „beh sa prerušil" ─────────────── */
 
-    function showBanner() {
-        if (bannerShown || offlineShown) {
-            return;
+    /**
+     * Ktorý pás má byť vidieť. `run` prebíja `ws`, pretože hovorí o niečom, čo sa
+     * samo nespraví; offline obrazovka prebíja oboje (je nad nimi cez celé okno).
+     */
+    function bannerMode() {
+        if (offlineShown) {
+            return null;
         }
 
-        bannerShown = true;
+        if (runLost) {
+            return 'run';
+        }
+
+        return wsDown ? 'ws' : null;
+    }
+
+    /** Dorovná pás podľa dôvodov. Idempotentné — volá sa po každej zmene stavu. */
+    function syncBanner() {
+        const mode = bannerMode();
+
+        if (mode === null) {
+            if (bannerShown) {
+                bannerShown = false;
+
+                if (bannerView) {
+                    win.contentView.removeChildView(bannerView);
+                }
+            }
+
+            return;
+        }
 
         if (!bannerView) {
             bannerView = makeView('banner.html');
         }
 
-        win.contentView.addChildView(bannerView);
-        liftChrome();
-        relayout();
-        pushTheme(bannerView.webContents);
-    }
-
-    function hideBanner() {
         if (!bannerShown) {
-            return;
+            bannerShown = true;
+            win.contentView.addChildView(bannerView);
+            liftChrome();
+            relayout();
+            pushTheme(bannerView.webContents);
         }
 
-        bannerShown = false;
+        pushBanner(bannerView.webContents, mode);
+    }
 
-        if (bannerView) {
-            win.contentView.removeChildView(bannerView);
+    /** Pošli pásu jeho režim (stránka z neho volí text, nič nerozhoduje). */
+    function pushBanner(wc, mode) {
+        if (wc && !wc.isDestroyed()) {
+            wc.send('hades:state:banner', { mode });
+        }
+    }
+
+    /** Zhasni pás o prerušenom behu (uplynul čas alebo začal nový beh). */
+    function clearRunBanner() {
+        if (runBannerTimer !== null) {
+            clearTimeout(runBannerTimer);
+            runBannerTimer = null;
+        }
+
+        if (runLost) {
+            runLost = false;
+            syncBanner();
         }
     }
 
@@ -331,10 +455,12 @@ function createStateManager(deps) {
 
             if (up && !wsUp) {
                 wsUp = true;
-                hideBanner();
+                wsDown = false;
+                syncBanner();
             } else if (!up && wsUp) {
                 wsUp = false;
-                showBanner();
+                wsDown = true;
+                syncBanner();
             }
         };
 
@@ -348,7 +474,44 @@ function createStateManager(deps) {
             wsTimer = null;
         }
 
-        hideBanner();
+        wsDown = false;
+        syncBanner();
+    }
+
+    /* ── Beh sa prerušil (volá `main.js` z `runwatch.js`) ───────────────────── */
+
+    /**
+     * POST na `/api/console/run` alebo `/decide` zomrel na sieti. Povedz to pásom
+     * a zisti, či je backend celý dole; ak áno, prepni na offline obrazovku
+     * v režime `run` (obnova len na klik — viď hlavička súboru).
+     */
+    async function runInterrupted() {
+        if (offlineShown) {
+            return;
+        }
+
+        runLost = true;
+        syncBanner();
+
+        if (runBannerTimer !== null) {
+            clearTimeout(runBannerTimer);
+        }
+
+        runBannerTimer = setTimeout(clearRunBanner, RUN_BANNER_MS);
+
+        const up = await probeHttp(origin);
+
+        if (up || offlineShown) {
+            return;
+        }
+
+        clearRunBanner();
+        showOffline('run');
+    }
+
+    /** Začal nový beh — stará správa o prerušenom behu už neplatí. */
+    function runStarted() {
+        clearRunBanner();
     }
 
     /* ── Napojenie na appku ────────────────────────────────────────────────── */
@@ -411,10 +574,41 @@ function createStateManager(deps) {
             if (stateView && event.sender === stateView.webContents) {
                 event.sender.send('hades:state:status', lastStatus);
             }
+
+            if (bannerView && event.sender === bannerView.webContents) {
+                pushBanner(event.sender, bannerMode() || 'ws');
+            }
+        };
+
+        /* Po prerušenom behu: „Pokračovať" nechá stránku presne tak, ako je —
+           rozpísaná správa aj front zostávajú, len zmizne prekrytie. Sleduje sa
+           znovu živé spojenie, pretože to `did-finish-load` (ktorý ho normálne
+           spúšťa) tu nenastane; žiadne načítanie sa nedeje. */
+        onResume = (event) => {
+            if (!stateView || event.sender !== stateView.webContents || !offlineShown) {
+                return;
+            }
+
+            hideOffline();
+            startWsMonitor();
+        };
+
+        /* „Načítať znovu" je vedomé zahodenie rozpísaného (tlačidlo to hovorí).
+           Tým prestáva byť dôvod držať manuálnu obnovu — ďalší pokus už môže
+           dobehnúť automaticky, tak ako pri nenačítanej appke. */
+        onReload = (event) => {
+            if (!stateView || event.sender !== stateView.webContents || !offlineShown) {
+                return;
+            }
+
+            offlineMode = 'load';
+            recover();
         };
 
         ipcMain.on('hades:state:retry', onRetry);
         ipcMain.on('hades:state:ready', onReady);
+        ipcMain.on('hades:state:resume', onResume);
+        ipcMain.on('hades:state:reload', onReload);
     }
 
     function isOwnOrigin(url) {
@@ -433,6 +627,11 @@ function createStateManager(deps) {
             retryTimer = null;
         }
 
+        if (runBannerTimer !== null) {
+            clearTimeout(runBannerTimer);
+            runBannerTimer = null;
+        }
+
         if (onRetry) {
             ipcMain.removeListener('hades:state:retry', onRetry);
             onRetry = null;
@@ -443,11 +642,21 @@ function createStateManager(deps) {
             onReady = null;
         }
 
+        if (onResume) {
+            ipcMain.removeListener('hades:state:resume', onResume);
+            onResume = null;
+        }
+
+        if (onReload) {
+            ipcMain.removeListener('hades:state:reload', onReload);
+            onReload = null;
+        }
+
         stateView = null;
         bannerView = null;
     }
 
-    return { attach, relayout, setTheme, destroy };
+    return { attach, relayout, setTheme, runInterrupted, runStarted, destroy };
 }
 
 module.exports = { createStateManager, BANNER_H };

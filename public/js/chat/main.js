@@ -10,22 +10,38 @@
    oznamy pre čítačku.
 
    ČO TENTO SÚBOR NIE JE A NESMIE SA STAŤ: beh. Neposiela ani jeden fetch,
-   nepozná NDJSON, nepozná dvojfázovú bránu zápisov. Beh napojí vlna 3 a pôjde
-   cez `public/js/shared/runclient.js` na `/api/console/run` a
-   `/api/console/decide` — tam, kam ide konzola aj dok nad grafom. Tri vstupy,
-   jeden beh; tretia cesta k modelu je chyba, nie funkcia.
+   nepozná NDJSON, nepozná dvojfázovú bránu zápisov. Beh drží `./run.js` nad
+   `public/js/shared/runclient.js` (`/api/console/run`, `/api/console/decide`) —
+   tam, kam ide konzola aj dok nad grafom. Tri vstupy, jeden beh; tretia cesta
+   k modelu je chyba, nie funkcia. Jediná niť medzi nimi je `wireRun()` v `boot()`.
 
-   Rozhranie pre vlnu 3 je preto ZÁMERNE dvojaké:
+   Rozhranie pre beh je preto ZÁMERNE dvojaké:
      · exportované funkcie (nižšie) — čo sa dá volať,
      · udalosti na `document` (`chat:*`) — čo plocha hlási. Kostra len oznamuje
-       zámer človeka; kto ho vykoná, sa rozhoduje vo vlne 3, takže sa beh nedá
-       omylom zadrôtovať sem.
+       zámer človeka; vykonáva ho `run.js`, takže sa beh nedá omylom zadrôtovať
+       sem.
 
    Všetko sú HOISTOVANÉ `export function`. Nie je to štýl, je to podmienka:
    graf modulov chatu bude mať cyklus (render ↔ artefakt ↔ táto plocha) rovnako
    ako ho má graf a konzola, a `export const foo = () => {}` v cykle spadne na
    `ReferenceError: Cannot access 'foo' before initialization`.
    =========================================================================== */
+
+/* Jediný import behu. Cyklus `main → run → render → main` je tým reálny a je to
+   presne ten prípad, pre ktorý je hoistovanie vyššie povinné: `render.js` na
+   svojom vrchole importuje tento modul, ktorý sa v tej chvíli ešte vyhodnocuje. */
+import { wireRun } from './run.js';
+/* Zvyšok plochy. Do 25. 8. 2026 tu bol len `run.js` a ostatných sedem modulov
+   vlny 3 sa na stránku NENAČÍTALO VÔBEC — blade má jediný `<script type="module">`
+   a ten vedie sem, takže modul bez importu odtiaľto je mŕtvy kód. Nález finálneho
+   review, označený ako KRITICKÝ, a bol na ňom celý zvyšok vlny. Keď pridáš ďalší
+   modul chatu, pridaj mu import a `wire*()` v `boot()` — inak sa nespustí. */
+import { wireArtifact } from './artifact.js';
+import { bootThreads, wireThreadsPanel } from './threads.js';
+import { bootBranches, wireBranches } from './branches.js';
+import { bootAttach, wireDrop, wirePaste } from './attach.js';
+import { bootVoice, wireVoice } from './voice.js';
+import { bootAgents, wireAgents } from './agents.js';
 
 /* Kľúče v localStorage. Prefix `hades.chat.` zámerne — `hades.theme` je
    zdieľaná s grafom a konzolou (jedna téma pre celú appku), všetko ostatné je
@@ -567,7 +583,31 @@ export function boot() {
     autoGrowPrompt();
     paintJump();
 
-    // Plocha je pripravená. Vlna 3 sa má zavesiť na túto udalosť a nie na
+    // Beh sa drôtuje PRED ohlásením `chat:ready`, inak by si tú udalosť nemal kto
+    // odchytiť: `run.js` na nej otvára vlákno z URL. Esc si drôtuje sám a v
+    // ZÁCHYTNEJ fáze, teda pred `wireShortcuts()` vyššie — nad zaparkovaným
+    // zápisom patrí Esc rozhodnutiu, nie zatváraniu panela.
+    wireRun();
+
+    /* Zvyšok plochy sa drôtuje TU, teda ešte pred `chat:ready`: každý z týchto
+       modulov sa na tú udalosť vesí (vlákna z URL, vetvy vlákna, panel príloh),
+       takže po nej by ju už nemal kto odchytiť. `wire*` len naväzuje listenery,
+       `boot*` dopĺňa počiatočný stav — preto sú to dva kroky a nie jeden. */
+    wireArtifact();
+    wireThreadsPanel();
+    wireBranches();
+    wireDrop();
+    wirePaste();
+    wireVoice();
+    wireAgents();
+
+    bootThreads();
+    bootBranches();
+    bootAttach();
+    bootVoice();
+    bootAgents();
+
+    // Plocha je pripravená. Beh sa vesí na túto udalosť a nie na
     // `DOMContentLoaded` — vtedy ešte nie sú nastavené panely ani šírky, takže
     // by prvé meranie výšky toku prečítalo layout, ktorý o milisekundu neplatí.
     document.dispatchEvent(new CustomEvent('chat:ready', {

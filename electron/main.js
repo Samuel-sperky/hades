@@ -4,6 +4,14 @@
  * Jedno okno, otvorí sa rovno v grafe, prihlásenie sa nepýta. Vizualizácia sa
  * nemení: shell je len rám okolo tej istej webovej appky na 127.0.0.1:8080.
  *
+ * Čo shell pridáva nad prehliadač (kontrakt `KONTRAKT-CHAT-APPKA-2026-08-25.md` §3
+ * „Lokálny rast"): vlastnú lištu, offline stavy, tray, **globálnu skratku
+ * s rýchlym vstupom do chatu** (`shortcut.js`), **notifikáciu o dobehnutí behu**
+ * (`runwatch.js` meria beh na sieti, `tray.js` ho hlási bez obsahu odpovede),
+ * **správanie pri páde backendu počas behu** (`states/manager.js`) a **voliteľné
+ * spustenie Dockeru so súhlasom človeka** (`docker.js`). Nastavenia týchto vecí
+ * žijú v `settings.json` a čítá ich len main proces (`settings.js`).
+ *
  * ═══════════════════════════════════════════════════════════════════════════
  *  PREČO TENTO SHELL NEPOTREBUJE PROXY — a prosím, nevracaj ju sem
  * ═══════════════════════════════════════════════════════════════════════════
@@ -67,6 +75,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createStateManager } = require('./states/manager');
 const { createTray } = require('./tray');
+const { createRunWatcher } = require('./runwatch');
+const { createShortcut } = require('./shortcut');
+const { loadSettings, updateSettings, ensureSettingsFile } = require('./settings');
+const { offerDockerStart, runDockerNow, toggleDockerStart } = require('./docker');
 
 /**
  * Koreň balíka appky (o úroveň vyššie než tento adresár). V dev behu je to koreň
@@ -133,19 +145,32 @@ const WINDOW_ACTIONS = new Set(['minimize', 'maximize', 'close']);
 /** Obrazovka → URL na vlastnom origine. Lišta smie prepnúť len na tieto. */
 const SCREEN_URL = {
     graf: `${ORIGIN}/?screen=graf`,
+    chat: `${ORIGIN}/chat`,
     charon: `${ORIGIN}/console`,
 };
 
 /** Obrazovka → titulok podľa značky (`docs/BRAND-HADES.md` §7). */
 const SCREEN_TITLE = {
     graf: 'Hades — Vedomie',
+    chat: 'Hades — Chat',
     charon: 'Hades — Charón',
 };
 
-/** Z URL appky odvodí, ktorá obrazovka je aktívna (kvôli zvýrazneniu v lište). */
+/**
+ * Z URL appky odvodí, ktorá obrazovka je aktívna (kvôli zvýrazneniu v lište).
+ *
+ * `/chat` a `/chat/<uuid>` sú tá istá obrazovka; `/console` a `/console/<uuid>`
+ * takisto (kontrakt C-1 — obe URL žijú vedľa seba a ani jedna sa neláme).
+ */
 function screenOf(url) {
     try {
-        return new URL(url).pathname.startsWith('/console') ? 'charon' : 'graf';
+        const { pathname } = new URL(url);
+
+        if (pathname.startsWith('/chat')) {
+            return 'chat';
+        }
+
+        return pathname.startsWith('/console') ? 'charon' : 'graf';
     } catch {
         return 'graf';
     }
@@ -323,6 +348,12 @@ let currentScreen = SCREEN;
 
 /** Posledná známa téma appky ('dark' | 'light'). Značka má tmavú ako default. */
 let currentTheme = 'dark';
+
+/** Sledovanie behov Charóna (`runwatch.js`). Visí na session, teda prežije okno. */
+let runWatcher = null;
+
+/** Globálna skratka (`shortcut.js`). Registruje sa pri štarte, odhlasuje v `will-quit`. */
+let shortcut = null;
 
 /**
  * Rozloženie oboch views: lišta hore (`CHROME_H`), appka pod ňou. Volané pri
@@ -516,6 +547,9 @@ function createWindow() {
         startUrl: START_URL,
         wsPort: WS_PORT,
         getTheme: () => currentTheme,
+        // Kam appku vrátiť po prerušenom behu: tam, kde bola. `startUrl` (graf) by
+        // človeka z chatu odviezol inde, než z čoho vypadol.
+        getUrl: () => (appView && !appView.webContents.isDestroyed() ? appView.webContents.getURL() : ''),
     });
     stateManager.attach();
 
@@ -557,6 +591,12 @@ function createWindow() {
         if (stateManager) {
             stateManager.destroy();
             stateManager = null;
+        }
+
+        // Rozbehnuté requesty tohto okna už nikdy nedostanú `onCompleted` — bez
+        // vyčistenia by ich sledovač držal do konca behu appky.
+        if (runWatcher) {
+            runWatcher.reset();
         }
 
         win = null;
@@ -602,9 +642,12 @@ ipcMain.on('hades:nav', (event, action) => {
 });
 
 /**
- * „Beh čaká na potvrdenie zápisu." Preload to vyčíta z DOM a posiela sem;
- * spotrebuje to agent od tray notifikácií. Main tu zatiaľ len drží stav a
- * vypustí `app` udalosť, aby sa tray dal pripojiť bez zmeny tohto súboru.
+ * „Beh čaká na potvrdenie zápisu." Preload to vyčíta z DOM a posiela sem.
+ *
+ * Stav má dvoch odberateľov: notifikáciu o čakaní (`app` udalosť nižšie → tray) a
+ * notifikáciu o dobehnutí, ktorá sa práve podľa neho MLČÍ — zaparkovaný ťah skončí
+ * request rovnako ako dobehnutý, takže je to jediné, čím sa dajú rozlíšiť
+ * (`announceRunFinished`).
  */
 const pendingWrites = new Map();
 
@@ -657,15 +700,11 @@ ipcMain.on('hades:chrome:nav', (event, action) => {
 });
 
 ipcMain.on('hades:chrome:screen', (event, name) => {
-    if (!fromBar(event) || !appView || appView.webContents.isDestroyed()) {
+    if (!fromBar(event)) {
         return;
     }
 
-    const url = SCREEN_URL[name];
-
-    if (url) {
-        appView.webContents.loadURL(url);
-    }
+    gotoScreen(name);
 });
 
 ipcMain.on('hades:chrome:window', (event, action) => {
@@ -711,15 +750,165 @@ function showWindow() {
     win.focus();
 }
 
+/**
+ * Prepni obrazovku appky (lišta aj tray menu).
+ *
+ * Klik na obrazovku, na ktorej appka UŽ JE, zámerne nenačíta nič. V chate by to
+ * zahodilo rozpísanú správu a front správ nazbieraný počas behu — a „prepni ma tam,
+ * kde som" nie je žiadosť o zahodenie. Kto chce naozaj prekresliť, má v lište
+ * tlačidlo Obnoviť.
+ */
+function gotoScreen(name) {
+    const url = SCREEN_URL[name];
+
+    if (!url || !appView || appView.webContents.isDestroyed()) {
+        return;
+    }
+
+    if (screenOf(appView.webContents.getURL() || '') === name) {
+        return;
+    }
+
+    appView.webContents.loadURL(url);
+}
+
 /** Prepni obrazovku appky z tray menu; najprv vytiahni okno. */
 function trayScreen(name) {
     showWindow();
+    gotoScreen(name);
+}
 
-    const url = SCREEN_URL[name];
+/* ── Rýchly vstup do chatu (globálna skratka, tray „Nový chat") ──────────────
+   Kontrakt §3 bod 1: skratka otvorí `/chat` s prázdnym composerom a fokusom v ňom. */
 
-    if (url && appView && !appView.webContents.isDestroyed()) {
-        appView.webContents.loadURL(url);
+/**
+ * Zaostri composer chatu.
+ *
+ * Vyberá sa GENERICKY — posledný viditeľný `textarea` alebo `contenteditable` na
+ * stránke — a to zámerne: značky a triedy `/chat` sú frontend, ktorý sa vyvíja
+ * samostatne, a shell si na ne nemá stavať kontrakt (presne to je dôvod, prečo sa
+ * dobehnutie behu meria na sieti a nie v DOM, viď `runwatch.js`). Composer je
+ * v chate posledné pole zdola, takže sa ide odzadu. Keď sa nič nenájde, nestane sa
+ * nič — okno je aj tak vytiahnuté a človek klikne sám.
+ */
+function focusComposer(wc) {
+    wc.executeJavaScript(`(function(){
+        var nodes = document.querySelectorAll('textarea:not([disabled]):not([readonly]), [contenteditable="true"]');
+
+        for (var i = nodes.length - 1; i >= 0; i--) {
+            var node = nodes[i];
+            var box = node.getBoundingClientRect();
+
+            if (box.width > 0 && box.height > 0) {
+                node.focus();
+
+                return true;
+            }
+        }
+
+        return false;
+    })();`).catch(() => {});
+}
+
+/**
+ * Vytiahni okno a buď v chate.
+ *
+ * Keď appka už v chate JE, nikam sa nenaviguje — načítanie by zahodilo rozpísanú
+ * správu aj front správ, a to je presne to, čo si sem človek prišiel dopísať.
+ * Inak sa otvorí `/chat` bez uuid, teda nové vlákno s prázdnym composerom.
+ */
+function openQuickChat() {
+    showWindow();
+
+    if (!appView || appView.webContents.isDestroyed()) {
+        return;
     }
+
+    const wc = appView.webContents;
+
+    wc.focus();
+
+    if (screenOf(wc.getURL() || '') === 'chat') {
+        focusComposer(wc);
+
+        return;
+    }
+
+    wc.once('dom-ready', () => focusComposer(wc));
+    wc.loadURL(SCREEN_URL.chat);
+}
+
+/* ── Notifikácie o behu ──────────────────────────────────────────────────────
+   Fakty prichádzajú z `runwatch.js` (sieť), rozhodnutie je tu. */
+
+/**
+ * Ako dlho po skončení requestu sa čaká, kým sa vysloví „dobehol".
+ *
+ * Zaparkovaný ťah skončí request tiež — z requestu sa nedá prečítať, či prúd
+ * skončil rámcom `end` alebo `permission`. Rozdiel povie DOM: preload nahlási
+ * kartu povolenia (`hades:pending-write`). Karta sa vykresľuje z rámca, ktorý
+ * prišiel ešte pred zavretím prúdu, takže je otázka milisekúnd — toto okno je
+ * rezerva na poradie, nie na čakanie.
+ */
+const PARK_SETTLE_MS = 900;
+
+/** Vidí človek okno práve teraz? Komu beh beží pred očami, nepotrebuje bublinu. */
+function windowIsWatched() {
+    return Boolean(win && !win.isDestroyed() && win.isFocused() && !win.isMinimized());
+}
+
+/** „Beh dobehol" — ale len keď to naozaj platí a keď o to človek stojí. */
+function announceRunFinished(info) {
+    const settings = loadSettings();
+
+    if (!settings.notify.runFinished || !tray) {
+        return;
+    }
+
+    if (settings.notify.onlyWhenUnfocused && windowIsWatched()) {
+        return;
+    }
+
+    // Zaparkovaný zápis: o ňom už notifikoval tray a beh NEdobehol — mlč.
+    if (pendingWrites.size > 0) {
+        return;
+    }
+
+    setTimeout(() => {
+        if (!tray || pendingWrites.size > 0) {
+            return;
+        }
+
+        if (loadSettings().notify.onlyWhenUnfocused && windowIsWatched()) {
+            return;
+        }
+
+        tray.notifyRunFinished(info);
+    }, PARK_SETTLE_MS);
+}
+
+/** Ťah zomrel. Sieťová chyba je zároveň offline stav — o ten sa stará správca. */
+function announceRunFailed(info) {
+    if (info.reason === 'network' && stateManager) {
+        stateManager.runInterrupted();
+    }
+
+    if (tray && !windowIsWatched()) {
+        tray.notifyRunFailed(info);
+    }
+}
+
+/* ── Nastavenia shellu (skratka, Docker, notifikácie) ────────────────────────
+   Čítajú a píšu sa LEN tu; renderer na ne nemá most (viď `settings.js`). */
+
+/** Adresár projektu pre Docker: ten istý, v ktorom sa hľadá `.env`. */
+function projectDir() {
+    return envDirs().find((dir) => fs.existsSync(path.join(dir, '.env'))) || envDirs()[0] || '';
+}
+
+/** Spoločné závislosti pre dialógy Dockeru (okno pre modálnosť, ikona pre notifikáciu). */
+function dockerDeps() {
+    return { win, iconPath: APP_ICON, projectDir: projectDir() };
 }
 
 /* ── Životný cyklus ──────────────────────────────────────────────────────── */
@@ -778,17 +967,69 @@ if (!app.requestSingleInstanceLock()) {
         session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
         session.defaultSession.setPermissionCheckHandler(() => false);
 
+        /* Sledovanie behov Charóna. Musí byť na TEJ ISTEJ session ako injekcia
+           tokenu, ale na iných udalostiach `webRequest` — na každú udalosť smie byť
+           len jeden poslúchač a druhý na `onBeforeSendHeaders` by token vypnul
+           (podrobne v `runwatch.js`). */
+        runWatcher = createRunWatcher({
+            session: session.defaultSession,
+            origin: ORIGIN,
+            onStart: () => {
+                if (stateManager) {
+                    stateManager.runStarted();
+                }
+            },
+            onFinish: announceRunFinished,
+            onFail: announceRunFailed,
+            // Zastavenie behu človekom nie je udalosť pre notifikáciu: zastavil ho ten,
+            // komu by prišla.
+            onAbort: () => {},
+        });
+        runWatcher.install();
+
         createWindow();
 
-        // Tray: hlavne kvôli notifikácii „beh čaká na potvrdenie zápisu". Auto-start
-        // je defaultne vypnutý — tray ho nikdy nezapína sám (viď `tray.js`).
+        // Tray: notifikácie o behu (čaká na potvrdenie / dobehol) a prepínače
+        // lokálneho rastu. Spustenie pri prihlásení aj spúšťanie Dockeru sú
+        // defaultne vypnuté — tray ich nikdy nezapína sám (viď `tray.js`).
         tray = createTray({
             iconPath: APP_ICON,
             version: readVersion(),
             onOpen: showWindow,
+            onQuickChat: openQuickChat,
             onScreen: trayScreen,
+            getSettings: loadSettings,
+            getShortcutStatus: () => (shortcut ? shortcut.status() : { accelerator: null, failure: null }),
+            onToggleShortcut: (on) => {
+                updateSettings({ shortcut: { enabled: Boolean(on) } });
+
+                return shortcut ? shortcut.apply() : null;
+            },
+            onToggleRunNotify: (on) => updateSettings({ notify: { runFinished: Boolean(on) } }),
+            onToggleDocker: (on) => toggleDockerStart(dockerDeps(), Boolean(on)),
+            onRunDocker: () => runDockerNow(dockerDeps()),
+            onOpenSettings: () => shell.openPath(ensureSettingsFile()),
             onQuit: () => app.quit(),
         });
+
+        /* Globálna skratka: vytiahne okno a postaví kurzor do composeru chatu.
+           Zapnutá defaultne, vypnuteľná v tray menu; obsadený akcelerátor sa v menu
+           prizná (`shortcut.js`). Odhlasuje sa vo `will-quit` nižšie. */
+        shortcut = createShortcut({
+            getAccelerator: () => loadSettings().shortcut.accelerator,
+            isEnabled: () => loadSettings().shortcut.enabled,
+            onTrigger: openQuickChat,
+        });
+        shortcut.apply();
+
+        // Menu už stojí; prekresli ho, aby ukázalo skutočný stav skratky (napr. keď
+        // ju drží iná appka).
+        tray.refresh();
+
+        /* Voliteľné spustenie Dockeru. Defaultne vypnuté; keď je zapnuté, pýta sa
+           dialógom a vypíše presný príkaz (kontrakt §3 bod 4). Nezdržuje štart okna —
+           okno už beží a offline obrazovka sama zmizne, keď backend nabehne. */
+        offerDockerStart(dockerDeps());
 
         // Main proces už drží stav zaparkovaných zápisov (`hades:pending-write`);
         // tu sa naň napojí len notifikácia. Vypúšťa sa raz pri prechode do čakania,
@@ -804,6 +1045,16 @@ if (!app.requestSingleInstanceLock()) {
                 createWindow();
             }
         });
+    });
+
+    /* Globálna skratka je systémový prostriedok: kým ju appka drží, nikto iný ju
+       nedostane. Odhlásenie preto nevisí na zavretí okna, ale na ukončení appky —
+       `will-quit` príde aj vtedy, keď sa ukončuje z tray menu bez okna. */
+    app.on('will-quit', () => {
+        if (shortcut) {
+            shortcut.unregister();
+            shortcut = null;
+        }
     });
 
     app.on('window-all-closed', () => app.quit());

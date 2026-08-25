@@ -602,12 +602,21 @@ class Attachments
         // `stream` … `endstream` je jediná časť PDF, v ktorej text býva. Hlavičky
         // objektov sa preskakujú, pretože na rozhodnutie „je toto text?" nie sú
         // potrebné.
+        // Strop na ROZBALENÝ obsah, nie len na vstup. Deflate dosahuje pomer okolo
+        // 1000:1, takže 8 MB PDF (`extract_max_bytes`) vie nafúknuť gigabajty —
+        // a beží to v jednom z ôsmich PHP workerov, nad súborom od cudzieho, v
+        // appke tunelovanej cez ngrok. Strop `text_cap` sa uplatňuje až v
+        // `textOf()`, teda PO celom cykle, takže sám nechráni pamäť.
+        // Násobok 4: `pdfStreamText()` z obsahového streamu vytiahne zlomok jeho
+        // dĺžky, takže rezerva musí byť nad `text_cap`, nie rovná mu.
+        $inflateCap = $this->intConfig('text_cap', self::TEXT_CAP) * 4;
+
         if (preg_match_all('/stream\r?\n?(.*?)endstream/s', $binary, $matches) !== false) {
             foreach ($matches[1] ?? [] as $stream) {
-                $decoded = @gzuncompress($stream);
+                $decoded = @gzuncompress($stream, $inflateCap);
 
                 if ($decoded === false) {
-                    $decoded = @gzinflate($stream);
+                    $decoded = @gzinflate($stream, $inflateCap);
                 }
 
                 if ($decoded === false) {
@@ -627,6 +636,13 @@ class Attachments
                 }
 
                 $out .= $this->pdfStreamText($decoded);
+
+                // Druhá polovica obrany: jednotlivé streamy môžu byť pod stropom
+                // každý, a pritom ich stovky. Cyklus sa preto zastaví na tom istom
+                // čísle, na ktorom sa text aj tak zreže.
+                if (strlen($out) > $inflateCap) {
+                    break;
+                }
             }
         }
 

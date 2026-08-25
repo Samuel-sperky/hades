@@ -102,6 +102,16 @@ class ThreadController extends Controller
             'auto_accept' => 'sometimes|boolean',
         ], self::MESSAGES);
 
+        // Bránu zápisov sa vo vlákne PODAGENTA nedá vypnúť touto cestou. `index()`
+        // vlákna podagentov nevypisuje (scope `conversations()`), takže z UI sa
+        // sem nedostanú — ale uuid podagenta klient POZNÁ: posiela mu ho rámec
+        // `agent_wait`, aby vedel, kam poslať `/decide`. Bez tohto riadku by teda
+        // stačil jeden PATCH na to, čo `Subagent::start()` a `allow_always`
+        // v `AgentRunner` zámerne nepripúšťajú.
+        if ($thread->isSubagent()) {
+            unset($data['auto_accept']);
+        }
+
         $thread->fill($data)->save();
 
         return response()->json($this->payload($thread));
