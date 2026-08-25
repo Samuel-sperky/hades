@@ -221,17 +221,60 @@ Sedem z jedenástich, a jedno z nich malo väčšiu cenu než veľkosť:
   Použil sa trojtvarový `plural()`, ktorý `threads.js` už exportuje — vzniká tým cyklus
   `render ↔ threads`, overený v prehliadači, že sa rozväzuje pri volaní.
 
-### Zostáva
+### Vlna 4 — všetky štyri otvorené body zavreté (25. 8. 2026, 5 agentov)
 
-- **Zaparkovaný zápis podagenta sa po obnove stránky nedá rozhodnúť:**
-  `ThreadController::payload()` posiela `awaiting` = `pendingToolCall()` TOHTO vlákna,
-  takže pending call dieťaťa v payloade nie je. V tom istom sedení bez F5 to funguje.
-- **CSP hlavičky** appka neposiela na žiadnej HTML ploche. Nedopĺňal som ich naslepo:
-  zavedenie CSP nad živou plochou s inline `<script type="application/json">` a
-  `style` atribútmi treba **odmerať**, inak sa appka rozpadne a príčina nebude vidieť.
-  Patrí to do vlastnej úlohy s meraním, nie do dobehu šprintu.
-- **Duplikovaná mechanika kopírovania** medzi `chat/artifact.js` a `console/render.js`.
-  Správna oprava je vyňať ju do `public/js/shared/`, čo sa dotkne konzoly — teda plochy,
-  ktorú tento šprint nemal v rozsahu. Samostatná úloha.
-- `/console` a dok síce rámce `agent_*` **už dostanú** (oprava vyššie), ale svoje
-  callbacky `onAgent*` nedefinujú, takže strom podagentov v nich zatiaľ nekreslí nič.
+- **Zaparkovaný zápis podagenta sa dá rozhodnúť aj po F5.** Kľúč, ktorý to celé držal:
+  `awaiting` nikdy nebolo prázdne — `AgentRunner::park()` vracia do `pending`
+  `spawn_agent` call **rodiča**, takže payload nesie id, s ktorým sa nedá urobiť nič.
+  Nový **aditívny** kľúč `awaiting_agent` (tvar tool callu + `thread` a `run` dieťaťa)
+  hovorí, kam rozhodnutie patrí. Čítajú ho **obe** plochy.
+- **CSP je zavedené ako `Report-Only`** (`ContentSecurityPolicy` middleware), politika
+  vyšla z merania (`docs/sprint-2026-08-25/MERANIE-CSP.md`). Review našiel, že sa
+  **na stránku 401 nikdy nedostalo** — `AuthenticateUi` je v prioritnom zozname a
+  odpovedal skôr — a práve tá stránka je celé odôvodnenie `style-src 'unsafe-inline'`.
+  Zaradené pred guard, **zmerané**: 401 hlavičku nesie. A posledná neodmeraná direktíva
+  je odmeraná: `srcdoc` iframe so `sandbox=""` na `/chat` vytvoril browsing context,
+  vykreslil sa (268×357) a pod `frame-src 'none'` **nespôsobil violáciu**.
+- **Kopírovanie je jedna implementácia** (`public/js/shared/copy.js`, leaf bez importov).
+  Štyri funkcie boli znak po znaku rovnaké — **zmerané, nie odhadnuté**. Jeden skutočný
+  rozdiel bol v `equipCode()`: konzola čítala `pre.textContent` pri KLIKU, chat PRED
+  zvýraznením. Správna je chatová, pretože `diffHtml()` spája riadky ako `display:block`
+  spany **bez `\n`** — po zvýraznení by konzola skopírovala celý diff na jednom riadku.
+  Pre konzolu dokázateľne nulový funkčný diff.
+- **Podagenti sú aj na `/console` a v doku** (rámce, meta, karta brány na vlákno dieťaťa).
+
+### Najvážnejší nález review: funkcia bola nedosiahnuteľná
+
+`spawn_agent` bol implementovaný, otestovaný a mal celé UI — ale **žiadna plocha
+neposielala `profile`**, a ten tool je len v profile `orchestrator`, kým default je
+`full`, v ktorom zámerne NIE JE. Celá funkcia bola v prehliadači mŕtva. `/chat` dostal
+prepínač profilu v hlavičke; **dokázané zachytením requestu**:
+`{"message":"test orchestratora","profile":"orchestrator","thread":"db535b66…"}`.
+
+Je to **druhýkrát v tomto šprinte**, čo agenti postavili niečo nedosiahnuteľné (prvý raz
+sedem nenačítaných modulov). Uložené v Hadesovi ako pasca (uzol 2784) s postupom: po
+každej vlne si polož otázku *čo presne musí človek v prehliadači urobiť*, a tú cestu
+prejdi — u modulov cez `read_network_requests`, u backendu zachytením requestu.
+
+### Testy
+
+sqlite **592 passed / 45 skipped / 0 failed** (na začiatku šprintu 475).
+MariaDB **114 testov, 0 padnutých**.
+
+### Zostáva (do backlogu, nie do tohto šprintu)
+
+- **`d3@7` a `pusher-js@8` idú z `cdn.jsdelivr.net` bez `integrity`** a nie sú
+  v `public/`. CSP povolí host, nie obsah — na verejne tunelovanej appke je to reálna
+  plocha. Buď `integrity`, alebo self-hostovať. (CLAUDE.md opravené, uzol 2785.)
+- **Sekcia podagentov je teraz dvakrát** — `console/run.js` a `mind/charon.js` majú
+  zhodnú štruktúru. Vlna zavrela jednu dvojicu kópií (kopírovanie) a otvorila druhú.
+  Vyňať aspoň texty a skladanie meta zlomku do `shared/`.
+- **CSS kopírovania je stále dve zhodné kópie** (`console.css` × `chat.css`) — JS je
+  jeden, päť pravidiel patrí do `mind.css`.
+- Prepnutie CSP na **vynucované** — až po období reálneho používania v Report-Only,
+  aby sa zachytilo to, čo syntetická sonda nevie (napr. artefakt od modelu s inline
+  `onclick`).
+- Drobné z review: mŕtvy `copyButton` v `artifact.js`, konzola po F5 ohlási cudzí zápis
+  (karta rodiča nad čítacím `spawn_agent`), `markAgentWait` nedoplní `data-thread` na už
+  stojacu kartu, a jedno nereprodukovateľné meranie v `MERANIE-CSP.md` (grep na `url()`
+  vracia 7 zásahov, nie 0 — všetky `/fonts/`).
