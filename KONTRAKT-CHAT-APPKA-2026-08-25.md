@@ -128,6 +128,75 @@ renderer pre podmnožinu diagramov. **Nezavádzať bundler nad `public/js`.**
 | Dve session v jednom strome | pred commitom `git diff --cached --name-only`, stageovať explicitne, nikdy `git add -A`. |
 | Horúce súbory medzi agentmi | delenie **podľa súborov**, koľaje paralelne len bez spoločného súboru. |
 
-## 7. Výsledok
+## 7. Výsledok (25. 8. 2026)
 
-*(dopĺňa sa po dokončení)*
+**18 agentov v troch vlnách** (4 + 7 + 7), commitnuté a pushnuté na `feat/hades-ux`.
+Plánoval som 20; vlny vyšli na 18, pretože integračného agenta som do vlny 3 nedal —
+a to bola chyba, viď nižšie.
+
+### Čo je hotové
+
+- **`/chat` a `/chat/<uuid>`** pod `auth.ui`: layout na celú obrazovku (vlákna,
+  konverzácia, artefakt), beh napojený cez zdieľaný `runclient` — **tri vstupy, jeden
+  beh**. Zmerané: mriežka `268/704/0`, prepnutie artefaktu `268/324/380`.
+- **Orchestrátor:** `spawn_agent`, profil `orchestrator` (2 tooly, 626 tok proti stropu
+  680), `Subagent`, `AgentParked`, strom podbehov v logu, vizualizácia stromu v UI.
+- **Vlákna, projekty, vetvenie, hľadanie, export** — všetko so serializérom a paritou.
+- **Prílohy** (MIME whitelist, náhodné meno na disku, sha256, PDF → text), **hlas**
+  (prehliadačové Web Speech API, nič do cloudu), **front správ počas behu**.
+- **Zvýrazňovanie kódu** vlastným ~1,8 kB zvýrazňovačom; **mermaid sa nerobí** (§7b).
+- **Desktop appka:** globálna skratka, rýchly vstup do chatu, notifikácia o dobehnutí,
+  offline režim, voliteľné spustenie Dockeru (defaultne vypnuté).
+- **Lokálne korene** + inkrementálne indexovanie dokumentov do pamäte.
+
+### Kde ma review zachránil
+
+Finálny review vrátil **KRITICKE** a najhorší nález bol môj: `chat.blade.php` má jediný
+`<script type="module">`, `main.js` importoval len `run.js`, a **ostatných sedem modulov
+vlny 3 sa na stránku nenačítalo vôbec** — celá vlna bola mŕtvy kód. Príčina je
+orchestračná: vo vlne 3 nebol integračný agent, takže každý dodal svoj kus a nikto
+nevlastnil ich zapojenie. Po oprave sa načíta všetkých 10 modulov (zmerané, 200, bez
+chýb v konzole).
+
+Ďalej boli skutočné a opravené:
+- **Vetvenie bolo kozmetika** — `AgentRunner` zakladal správy bez `branch_id` a
+  `history()` čítalo okno nad vláknom, teda po odbočení práve tie `id`, ktoré aktívnej
+  vetve nepatria.
+- **Dekompresná bomba v PDF** — `gzuncompress`/`gzinflate` bez `max_length` v cykle;
+  deflate dáva ~1000:1, takže 8 MB upload nafúkne gigabajty v jednom z ôsmich workerov.
+- **„Povoliť vždy" na karte podagenta** — nastavovalo `auto_accept` na jeho vlákne, čím
+  z druhej strany rušilo to, čo `Subagent::start()` zámerne nededí. Zavreté na klientovi
+  aj na serveri (aj `PATCH` na vlákno podagenta `auto_accept` zahodí).
+- **Prílohy nemali ani jednu route** (celá funkcia nedosiahnuteľná, UI klamalo),
+  zametač nebol naplánovaný, a `ChatScreen` sľuboval plochu pre AI, ktorú nikto
+  nevolal → `mind_chat_search` + riadok v paritnom registri.
+
+Pri poslednom z nich test pinujúci zoznam MCP nástrojov padol — a **správna oprava bola
+presunúť nový tool na koniec, nie prepísať test**: ten test existuje presne preto, aby
+preradenie toho, čo vidí živá session, neprešlo nepozorovane.
+
+### Testy
+
+sqlite **589 passed / 45 skipped / 0 failed** (na začiatku 475). MariaDB
+(`ScreenParity|ConsoleTools|McpTools|HybridRecall|RecallBench`) **121 testov, 0
+padnutých**. Parita narástla z 262 na 499 asercií. Migrácie (5) nad svežou zálohou,
+zálohy prerezané na tri.
+
+**Tri brány boli kalibrované rozbitím naschvál:** budget test padá na 701 > 680,
+eskalácia profilu padá po pridaní `full` do `CHILD_PROFILES`, a parkovanie padá, keď
+`drain()` prestane chytať `AgentParked`. Pri tej tretej som **najprv trafil zlý `catch`**
+(`resume()` namiesto `drain()`) a test prešiel — keby som to nechal tak, hlásil by som
+overenú bránu, ktorú som neotestoval.
+
+### Zostáva
+
+- **Zaparkovaný zápis podagenta sa po obnove stránky nedá rozhodnúť:**
+  `ThreadController::payload()` posiela `awaiting` = `pendingToolCall()` TOHTO vlákna,
+  takže pending call dieťaťa v payloade nie je. V tom istom sedení bez F5 to funguje.
+- `/console` a dok rámce `agent_*` nepoznajú (`runclient.js` ich hodí do `default:`) —
+  beh s podagentom tam prežije, ale zaparkované dieťa sa v UI neukáže.
+- Drobné z review: throttle na `/console/search`, `RipgrepTool::DENY_GLOBS` bez koreňa
+  príloh, `TOOL_LABEL` v `tray.js` menuje tri neexistujúce tooly, chýbajúce CSP hlavičky,
+  duplikovaná mechanika kopírovania medzi `chat/artifact.js` a `console/render.js`,
+  fokus po prepnutí vetvy, dva `aria-live` regióny, ktoré si prekričia, slovenské
+  skloňovanie („5 kroky"), šesť komentárov odkazujúcich na neexistujúcu poznámku.

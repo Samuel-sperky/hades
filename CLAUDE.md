@@ -221,10 +221,64 @@ naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva r�
 + 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
 hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
-## Charón (`/console` a dok nad grafom)
+## Charón (`/chat`, `/console` a dok nad grafom)
 
-Charón žije na **dvoch plochách so zdieľaným behom** (od 24. 8. 2026): plná konzola
-`/console` a **dok nad plátnom grafu** (`public/js/mind/charon.js`, `public/css/charon.css`,
+**Tri vstupy, JEDEN beh** (od 25. 8. 2026). Od `/chat` a `/chat/<uuid>` je Charón
+plnohodnotná appka: layout na celú obrazovku (vlákna vľavo, konverzácia, panel
+artefaktu vpravo), projekty, vetvenie konverzácie, hľadanie v histórii, export do
+markdownu, prílohy, diktovanie a strom podagentov. `/console` zostáva **technická
+konzola** a jej názvoslovie (`console_*`, `Console*`) sa nepremenúva; dok nad grafom
+je rýchly prístup. Všetky tri idú cez `public/js/shared/runclient.js` na
+`/api/console/run` a `/api/console/decide` — **tretia cesta k modelu nesmie vzniknúť**,
+pretože by to bola cesta okolo dvojfázovej brány.
+
+**Frontend `/chat` je `public/js/chat/*` a `main.js` je jeho JEDINÝ vstup.**
+`chat.blade.php` má jediný `<script type="module">`, takže **modul bez importu
+z `main.js` sa nikdy nenačíta** — presne tak sa 25. 8. 2026 stalo, že sedem hotových
+modulov vlny bolo mŕtvym kódom a PHP testy o tom nepovedali nič. Keď pridáš modul,
+pridaj mu import **a** `wire*()`/`boot*()` do `boot()`, a over to **meraním**
+(`read_network_requests` na `/js/chat/<modul>.js` musí dať 200, a `wire*` musí naozaj
+niečo pripojiť do DOM).
+
+**Podagenti: `spawn_agent` a parkovanie prenášané nahor.** Profil `orchestrator`
+(`mind_recall` + `spawn_agent`, 626 tok proti stropu 680) je jediný, ktorý ten tool
+má — `TOOLS` je 14, ale **`full` zostáva presne dvanástka**. Dieťa môže zaparkovať na
+človeku, ale rodič nesmie držať jedného z ôsmich PHP workerov, takže: dieťa vydá
+vnorený `permission`, tool vydá top-level `agent_wait` a hodí `AgentParked`, `drain()`
+vráti `spawn_agent` call rodiča do `pending` a ťah skončí **BEZ `end`**. Oba behy sú
+`waiting` a jediná cesta ďalej je `/decide` na vlákno **podagenta**. Tool je
+**idempotentný na svoj `ConsoleToolCall`**, takže `/decide allow` na rodičov vlastný
+call znova zaparkuje — **brána drží z konštrukcie, nie z disciplíny volajúcich**.
+
+Tri veci, ktoré sa okolo toho dajú ľahko pokaziť:
+- `ToolRegistry::call()` má plošný `catch (Throwable)`. Bez `catch (AgentParked) { throw; }`
+  ako **prvého** by sa parkovanie preložilo na odmietnutý tool, ťah by skončil `end`
+  a dieťa by čakalo navždy.
+- `AgentRunner` má `catch (AgentParked)` na **dvoch** miestach (`drain()` aj `resume()`).
+  Bez toho v `resume()` zostane po `/decide allow` call v stave `running` a **vlákno
+  rodiča prijme ďalšiu správu** — fail-open presne v mieste brány.
+- `allow_always` sa vo vlákne podagenta **ignoruje** (a `PATCH` na vlákno ho zahodí):
+  `Subagent::start()` zámerne nededí `auto_accept`, pretože zadanie podagenta nepísal
+  človek, ale model.
+
+**Vetvenie:** vetvy pripájajú na konec, nikdy nevkladajú do stredu, takže rozsahy
+`from_message_id`–`to_message_id` v `runs` prežijú. Správy nesú `branch_id` a
+`AgentRunner::history()` číta okno cez **`branchMessages()`**, nie cez vlákno — inak by
+model po odbočení dostal práve tie `id`, ktoré aktívnej vetve nepatria. Exkluzivita behu
+je na úrovni **vlákna, nie vetvy**.
+
+**Diagramy sa nekreslia a je to zmerané rozhodnutie**, nie opomenutie: z 36 reálnych
+odpovedí modelu malo oplotený blok **0**, diagramov 0, tabuliek 0 — a mermaid stojí
+195 kB gzip pred prvým diagramom. ` ```mermaid ` je preto blok kódu; **spúšťač na
+prehodnotenie je 5 % odpovedí**. Zvýrazňovanie nesie vlastný ~1,8 kB zvýrazňovač
+(highlight.js je CJS a bez bundlera sa self-hostovať nedá). Zvýrazňovač beží **nad už
+escapovaným textom** — escapovať po ňom by zhodilo obranu `markdown.js`. Náhľad HTML
+je **`<iframe sandbox>`**, nikdy `innerHTML`: je to výstup modelu.
+
+---
+
+Historicky (24. 8. 2026): Charón žil na **dvoch plochách so zdieľaným behom**: plná
+konzola `/console` a **dok nad plátnom grafu** (`public/js/mind/charon.js`, `public/css/charon.css`,
 markup v `mind.blade.php`, id `#charon-*`). Obe idú cez **jeden modul streamu**
 `public/js/shared/*` — `ndjson.js` (parser rámcov, buffer cez chunky), `runclient.js`
 (`createRunClient`: fetch + ReadableStream + CSRF, **nikdy EventSource** — nevie token),
