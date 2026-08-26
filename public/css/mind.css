@@ -1735,8 +1735,6 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     color: var(--muted);
 }
 
-#growth-chart { width: 100%; height: auto; display: block; margin-top: var(--sp-1); }
-
 #search-input { margin-top: 0; }
 #search-results { margin-top: var(--sp-2); }
 
@@ -2647,19 +2645,12 @@ body.ambient #toasts {
    Dôvod, prečo je číslo v paneli mono a nie serif, sa presunul tam — serif má
    v celej appke jediné miesto (`.hero-val`, manuál §4). */
 
-#stats-recent, #journal-list { display: flex; flex-direction: column; gap: var(--sp-1); }
-
-.mini-record {
-    display: flex; align-items: center; gap: var(--sp-1);
-    width: 100%; text-align: left;
-    background: none; border: none; border-bottom: 1px solid var(--line-soft);
-    border-radius: 0; padding: var(--sp-1) 2px; min-height: auto;
-    font-size: var(--fs-small); color: var(--text-secondary);
-}
-.mini-record:hover { background: var(--hover-fill); }
-.mini-record .ms { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
-.mr-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mr-time { color: var(--muted); font-family: var(--mono); font-size: var(--fs-caption); flex-shrink: 0; }
+/* `#stats-recent` a rodina `.mini-record` / `.mr-title` / `.mr-time` tu boli do
+   24. 8. 2026. Kreslila ich jedine `refreshStats()` do sekcie doku `#sec-stats`
+   („Prehľad"), ktorú zmazal nález A10 — s ňou padla aj funkcia, takže tieto
+   pravidlá nemali v DOM čo chytiť. `#journal-list` je živý a rovnaké
+   flex-stĺpcové rozloženie si nesie ďalej sám. */
+#journal-list { display: flex; flex-direction: column; gap: var(--sp-1); }
 
 .record {
     display: block; width: 100%;

@@ -3,7 +3,7 @@ import { reloadGraph } from './api.js';
 import { dockOpen } from './dock.js';
 import { clearLocal } from './filters.js';
 import { anchorOf } from './layout.js';
-import { closeNodePanel, refreshStats } from './panels.js';
+import { closeNodePanel } from './panels.js';
 import { markJournalSeen, setJournalDot } from './rail.js';
 import { requestDraw } from './render.js';
 import { renderJournal } from './screens/dennik.js';
@@ -176,7 +176,6 @@ export function handlePulse(type, data) {
         if (h) h.flash = 1;
     }
 
-    if (dockOpen === 'stats') refreshStats();
     if (dockOpen === 'structure' && /^(node|department)\./.test(type)
         && !$('structure-tree').querySelector('.dept-actions')) renderStructure();
     updateHeaderMetrics();

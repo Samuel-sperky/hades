@@ -7,7 +7,7 @@ import { updatePackUi } from './pack.js';
 import { draw, focusNode, requestDraw } from './render.js';
 import { buildSim, go, kickSim } from './sim.js';
 import { S, canvas } from './state.js';
-import { T, mutedColor } from './theme.js';
+import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
 
 /* Pod 900 px dostanú dock aj detail uzla v mind.css rovnaké `right: var(--edge)`
@@ -17,7 +17,7 @@ import { showToast } from './toasts.js';
    zmeň ju aj tu. */
 const NARROW = window.matchMedia('(max-width: 900px)');
 
-import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, renderEmpty, timeAgo, typeName, updateHeaderMetrics } from './util.js';
+import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, typeName, updateHeaderMetrics } from './util.js';
 
 /* ---------- panely ---------- */
 export async function selectNode(n) {
@@ -552,87 +552,4 @@ export function fillDeptOptions(areaId, deptId) {
     dSel.innerHTML = '<option value="">— bez oddelenia —</option>'
         + depts.map((d) => '<option value="' + d.id + '">' + esc(d.name) + '</option>').join('');
     dSel.value = deptId || '';
-}
-/* POZOR, DNES JE TO MŔTVA CESTA. Sekciu doku `#sec-stats` („Prehľad") zmazal
-   nález A10 (24. 8. 2026) a `dock.js` odvtedy `openDock('stats')` PREPOSIELA na
-   obrazovku Dnes cez DOCK_ALIAS, takže `dockOpen` už nikdy nenadobudne hodnotu
-   `'stats'` — a to je jediná podmienka, pod ktorou `ws.js:179` túto funkciu volá.
-   Funkcia zostáva len preto, že ju `ws.js` importuje; zmazať sa musia obe miesta
-   naraz, inak modul spadne pri načítaní. Preto tu pribudol aj strážca nižšie:
-   kontejnery v DOM nie sú a `$('stats-cards').innerHTML` by hodilo TypeError
-   v obsluhe WS správy. */
-export async function refreshStats() {
-    if (!$('stats-cards')) return;
-    let st;
-    try {
-        const res = await fetch('/api/mind/stats');
-        st = await res.json();
-    } catch (e) {
-        renderEmpty($('stats-cards'), 'cloud_off', 'Nepodarilo sa načítať prehľad', 'Skús obnoviť stránku.');
-        return;
-    }
-
-    /* D9: jedna rodina pre „číslo s popiskom". Toto bola `.metric-*`, teda druhá
-       rodina pre to isté, čo `.kpi-*` na obrazovkách; ostáva `.kpi-*` a dvojriadková
-       podoba je modifikátor `--block`. Mriežka `#stats-cards` musí mať pri oživení
-       aj `.kpi-grid .kpi-grid--pair` — `auto-fit` dá v 300px paneli jeden stĺpec. */
-    const card = (label, value, sub) =>
-        '<div class="kpi-card kpi-card--block"><div class="kpi-val">' + value + '</div>'
-        + '<div class="kpi-label">' + label + '</div>'
-        + (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</div>';
-
-    const w = st.week || {};
-    $('stats-cards').innerHTML =
-        card('uzlov', st.totals.nodes, '+' + (w.new_nodes || 0) + ' tento týždeň')
-        + card('skillov', st.totals.skills || 0, '')
-        + card('záznamov', st.totals.sessions || 0, '+' + (w.new_sessions || 0) + ' tento týždeň')
-        + card('spojení', st.totals.edges, '');
-
-    $('stats-recent').innerHTML = (st.recent_records || []).map((r) =>
-        '<button type="button" class="mini-record" data-id="' + r.id + '">'
-        + '<span class="ms" aria-hidden="true">article</span>'
-        + '<span class="mr-title">' + esc(prettyProject(plainInline(r.label))) + '</span>'
-        + '<span class="mr-time">' + timeAgo(r.created_at) + '</span></button>'
-    ).join('') || emptyCardHtml('Zatiaľ žiadne záznamy');
-
-    $('stats-recent').querySelectorAll('.mini-record').forEach((el) => {
-        el.onclick = () => {
-            const n = S.byId.get(+el.dataset.id);
-            if (n) { S.cam.k = Math.max(S.cam.k, 1); focusNode(n); selectNode(n); }
-        };
-    });
-
-    $('stats-areas').innerHTML = [...S.areas.values()].map((a) =>
-        '<div class="stat-row"><span><span class="swatch" style="background:' + esc(mutedColor(a.color)) + '"></span>'
-        + esc(a.name) + '</span><span class="val">' + (st.by_area[a.id] || 0) + '</span></div>'
-    ).join('');
-
-    $('stats-top').innerHTML = st.top_nodes.map(
-        (n) => row(esc(prettyProject(plainInline(n.label))), n.strength.toFixed(0))
-    ).join('') || emptyCardHtml('Zatiaľ žiadne uzly');
-
-    const gc = $('growth-chart');
-    const dpr = window.devicePixelRatio || 1;
-    if (gc.clientWidth > 0) {
-        gc.width = gc.clientWidth * dpr;
-        gc.height = 60 * dpr;
-    }
-    const gctx = gc.getContext('2d');
-    gctx.clearRect(0, 0, gc.width, gc.height);
-    if (st.growth.length) {
-        const max = Math.max(...st.growth.map((g) => g.count));
-        const bw = gc.width / Math.max(st.growth.length, 10);
-        st.growth.forEach((g, i) => {
-            const h = (g.count / max) * (gc.height - 6 * dpr);
-            // akcent z témy, nie zadrôtovaný hex — inak sparkline zostane pri starej
-            // farbe a na tmavej téme stmavne do nečitateľna
-            gctx.fillStyle = `rgb(${T.accent})`;
-            gctx.globalAlpha = 0.9;
-            gctx.fillRect(i * bw + dpr, gc.height - h, Math.max(bw - 2 * dpr, 2), h);
-        });
-    }
-
-    function row(k, v) {
-        return '<div class="stat-row"><span>' + k + '</span><span class="val">' + v + '</span></div>';
-    }
 }
