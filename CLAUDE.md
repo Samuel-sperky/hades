@@ -127,15 +127,23 @@ v serif fallbacku a rail sa rozpadol. `@font-face` bloky sú na začiatku `mind.
 Geist / Geist Mono / Playfair sú variabilné (jedna os `wght`), preto `font-weight`
 deklaruje rozsah. `latin-ext` nesie slovenskú diakritiku, načíta sa vždy.
 
-**Pozor — „CDN je preč" platí LEN pre fonty.** Zistené meraním pri zavádzaní CSP
-(25. 8. 2026): `mind.blade.php` ťahá `d3@7` a `pusher-js@8` z `https://cdn.jsdelivr.net`
-a **ani jeden nie je v `public/`** (`find public -iname '*d3*' -o -iname '*pusher*'`
-= 0 zásahov). Ani jeden nemá `integrity`, takže CSP povolí **host, nie obsah** —
-kompromitovaný jsdelivr by prešiel, a appka je verejne tunelovaná cez ngrok.
-Sú len na obrazovke Grafu (`d3.` používa `mind/sim.js`, `Pusher` `mind/ws.js`;
-`chat/*`, `console/*` ani `shared/*` na ne nesiahajú) — preto má `/` v politike CDN,
-kým `/chat` a `/console` majú `script-src 'self'`. Doplniť `integrity` alebo ich
-self-hostovať je otvorený bod, nie hotový stav.
+**„CDN je preč" platí od 26. 8. 2026 aj pre skripty.** Dovtedy ťahal `mind.blade.php`
+`d3@7` a `pusher-js@8` z `https://cdn.jsdelivr.net`, ani jeden nebol v `public/` a ani
+jeden nemal `integrity` — CSP tak povolila **host, nie obsah**, a kompromitovaný
+jsdelivr by na appke tunelovanej cez ngrok prešiel. Oba sú teraz **self-hostované
+v `public/js/vendor/`** (d3 **7.9.0**, pusher-js **8.6.0**, bajt na bajt z upstreamu;
+sha256, licencie a postup pri aktualizácii sú v `public/js/vendor/README.md`).
+
+Sú to **UMD** balíky, takže si globály `d3` a `Pusher` nastavia samy — presne tie mená,
+ktoré čítajú `mind/sim.js` (so strážou `d3ok()`) a `mind/ws.js`. Preto to bol drop-in
+a tie dva súbory sa nemuseli meniť. **Poradie v blade drž:** oba vendor skripty musia
+stáť **pred** `/js/mind/main.js`, inak `sim.js` d3 nenájde.
+
+Dôsledok pre CSP: `script-src 'self'` platí **na všetkých troch plochách bez vetvenia
+podľa route** a drží to **test** (`tests/Feature/ContentSecurityPolicyTest.php`,
+kalibrovaný z oboch strán — vrátenie CDN do politiky aj do blade zhodí každé svoj test).
+Predtým to bola len disciplína toho, kto naposledy editoval blade: docblock sľuboval
+test, ktorý **nikdy neexistoval**.
 
 Material Symbols je **subset** (215 glyfov zo 4271, 132 kB namiesto 3 MB), vyrobený
 `pyftsubset --no-layout-closure` — bez toho flagu ligatúrová uzávera vtiahne všetky
@@ -224,6 +232,21 @@ s rovnakou špecificitou v tej skupine vráti závislosť na poradí; nerob to.
 - **Rez, ktorý sa nepriznáva, je lož.** `.lib-skill-meta` je `nowrap` + `overflow: hidden`,
   takže čipy sa režú — `data-more` preto sčítava klientsky rez **aj** serverový
   `tags_more`. Keby sčítal len jedno, karta by hlásila menšie číslo než realita.
+- **Kresba bloku kódu a kopírovania je JEDNA a je v `mind.css`** (od 26. 8. 2026) —
+  je to jediný stylesheet, ktorý sa načítava na `/`, `/console` aj `/chat`. Markup
+  skladá jeden `renderMarkdown()` a mechaniku jeden `public/js/shared/copy.js`.
+  Per-plochu zostáva **len** rodič riadka mena pri `margin-left: auto`
+  (`.msg .who` na konzole, `.cm-who` na chate — a ten je dnes inertný, `.cm-who`
+  nie je flexový; je to zapísané pri pravidle).
+- **Keď chceš pravidlo ÚMYSELNE oslabiť, použi `:where()`, nie `:is()`.** `:is()`
+  berie **najsilnejší** zo svojich argumentov. Zaplatené 26. 8. 2026: prepis
+  `.bubble.md code` na `:is(.bubble.md, .msg.system) code` mal držať (0,1,1), ale
+  `.bubble.md` sú **dve triedy**, takže to je (0,2,1) — a reset bloku kódu
+  `pre.code code` (0,1,2) tým neprebil. Zmerané: `code` vnútri `pre.code` si nechal
+  `padding: 1px 5px` a podfarbenie. Správne je `:where(...)` = (0,0,1). Pozor na
+  asymetriu: `:is(.cm-md, .md) code` v `chat.css` (0,1,1) **je** správne, pretože
+  `.cm-md` je jedna trieda — ten istý zápis je teda na jednej ploche dobrý a na
+  druhej nie. **Spočítaj triedy v najsilnejšom argumente a zmeraj computed style.**
 
 **Keď meníš CSS, over, že zmena je inertná, výmenou stylesheetu nad TÝM ISTÝM DOM**
 (`w8/cssswap.js`) — nie dvoma načítaniami stránky, Hades je živý a medzi nimi sa

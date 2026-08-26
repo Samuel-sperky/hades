@@ -261,6 +261,22 @@ prejdi — u modulov cez `read_network_requests`, u backendu zachytením request
 sqlite **592 passed / 45 skipped / 0 failed** (na začiatku šprintu 475).
 MariaDB **114 testov, 0 padnutých**.
 
+### Dokončené 26. 8. 2026 (posledná vlna, 5 agentov + dorobenie)
+
+- **CDN je preč aj pre skripty.** `d3@7.9.0` a `pusher-js@8.6.0` sú self-hostované
+  v `public/js/vendor/` (provenance a sha256 v jeho README, overené proti druhému
+  npm mirroru). Z CSP zanikla výnimka `cdn.jsdelivr.net` a `script-src 'self'`
+  platí bez vetvenia — **drží to test**, ktorý dovtedy len docblock sľuboval.
+- **Kresba bloku kódu a kopírovania je jedna** (`mind.css`); `console.css` a
+  `chat.css` majú po jednom per-plochovom pravidle. `mind.css A=0`, `console.css A=0`,
+  `chat.css A=0`.
+- **Sekcia podagentov nie je dvakrát** (`public/js/shared/agents.js` ako leaf;
+  kreslenie zostalo per-plochu). `markAgentWait` dopĺňa `data-thread` na už stojacu
+  kartu — dovtedy bola záloha na `state.awaiting` jediná obrana.
+- **Mŕtvy stats dok zametený** (`refreshStats`, jeho import, vetva a CSS).
+- Konzola po F5 už nehlási cudzí zápis; „zapisuje tento nástroj" má jednu odpoveď
+  (serverovú); mŕtvy `copyButton` zmazaný; nereprodukovateľné merania opravené.
+
 ### Zostáva (do backlogu, nie do tohto šprintu)
 
 - **`d3@7` a `pusher-js@8` idú z `cdn.jsdelivr.net` bez `integrity`** a nie sú
