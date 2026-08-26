@@ -522,88 +522,24 @@ body.cp-dragging {
 }
 
 /* ---------------------------------------------------------------------------
-   BLOKY KÓDU, ZVÝRAZNENIE A KOPÍROVANIE
+   ZVÝRAZNENIE SYNTAXE
 
-   Selektory sú ZÁMERNE bez prefixu plochy: ten istý blok kódu stojí v bubline
-   odpovede, v náhľade markdownového artefaktu aj v paneli artefaktu, a skládá ho
-   jeden `codeBlock()` / `equipCode()` v `public/js/chat/artifact.js`.
+   Kresba bloku kódu a kopírovania je od 26. 8. 2026 v mind.css (jedna pre
+   všetky tri plochy). Tu zostáva len paleta zvýrazňovača, ktorá je vlastná
+   tejto ploche.
    --------------------------------------------------------------------------- */
 
-/* Odstup nesie `pre` (počas streamu je blok ešte neobalený) a po obalení ho
-   preberá `.code-wrap`, aby `.md > *:last-child` (nulovanie posledného odstupu)
-   trafilo prvok, ktorý je naozaj posledný. */
-pre.code {
-    margin: 0 0 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    background: var(--surface-2);
-    /* Široký kód skroluje SÁM — telo stránky nesmie ísť do vodorovného skrolu. */
-    overflow-x: auto;
-}
+/* Riadok mena a ceny nad bublinou odpovede (`render.js`); zvyšok kresby
+   kopírovania je v mind.css.
 
-pre.code code {
-    display: block;
-    padding: 0;
-    background: transparent;
-    font-family: var(--mono);
-    font-size: var(--fs-small);
-    line-height: 1.5;
-    white-space: pre;
-}
-
-.code-wrap { margin: 0 0 12px; }
-.code-wrap pre.code { margin: 0; }
-
-/* Hlavička bloku. Tlačidlo je NAD kódom, nie v ňom: `pre.code` skroluje sám,
-   takže tlačidlo vnútri by pri širokom kóde odišlo mimo dohľadu — a nad kódom
-   nemá čo prekryť. Hlavička zároveň ukáže `data-lang`, ktorý markdown renderer
-   dávno zapisuje a nikto nečítal. */
-.code-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 24px;
-}
-
-.code-lang {
-    font-family: var(--mono);
-    font-size: var(--fs-micro);
-    color: var(--muted);
-}
-
-/* Vzhľad tlačidla nesie `.ghost` z mind.css (bez rámu, `--muted`, hover na
-   `--text`) — ďalšia varianta tlačidla tu nevzniká. Prepisuje sa len to, čo
-   dostáva od okolia: 32 px z bare `button` je v riadku hlavičky priveľa a
-   verzálka s tracking-om sa dedí z `.who`. Fokusový prsteň dáva globálne
-   `:focus-visible` — vlastný tu zámerne nie je. */
-.copy-btn {
-    min-height: 24px;
-    padding: 2px 8px;
-    font-size: var(--fs-micro);
-    text-transform: none;
-    letter-spacing: 0;
-}
-
-/* Popisok stojí na opačnom konci riadka než meno a cena — tam ho oko hľadá a ani
-   jeden z tých údajov sa pritom neposunie. `.cm-who` je riadok mena a ceny nad
-   bublinou odpovede (`render.js`), `.code-head` hlavička bloku kódu. */
-.code-head .copy-btn,
+   POZOR — dnes je to pravidlo INERTNÉ a zmerané: `.cm-who` je obyčajný
+   `<span>` (`render.js:264`) a `chat.css` mu nikde nedáva `display: flex`,
+   takže `margin-left: auto` sa použije ako 0. Na `/console` to funguje, lebo
+   tam je `.who` flexový. Ponechané zámerne: keď `.cm-who` flexovým bude,
+   tlačidlo si odskočí doprava samo — a zmazať pravidlo by ten zámer stratilo.
+   Overené 26. 8. 2026, že to tak bolo AJ PRED zjednotením kresby, takže to nie
+   je jeho vedľajší efekt. */
 .cm-who .copy-btn { margin-left: auto; }
-
-/* Potvrdenie kopírovania. Bez neho človek nevie, či klik zabral — do schránky sa
-   pozrieť nedá. Svieti tie 1,6 s, kým sa popisok vráti. */
-.copy-btn.is-done { color: var(--success-ink); }
-
-/* Záložná cesta kopírovania (`document.execCommand`) potrebuje SKUTOČNE vybraný
-   text, takže textarea nesmie byť `display: none` ani `visibility: hidden` —
-   odkladá sa mimo plochy a v DOM žije zlomok sekundy. */
-.copy-fallback {
-    position: fixed;
-    top: 0;
-    left: -9999px;
-    opacity: 0;
-}
 
 /* ---------- zvýraznenie syntaxe ----------
 

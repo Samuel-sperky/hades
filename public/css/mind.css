@@ -2239,6 +2239,109 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 }
 .md-body .md-hr { border: none; border-top: 1px solid var(--line-soft); margin: var(--sp-2) 0; }
 
+/* ---------------------------------------------------------------------------
+   BLOKY KÓDU A KOPÍROVANIE — jedna kresba pre všetky tri plochy
+
+   Markup skladá jeden `renderMarkdown()` (`public/js/shared/markdown.js` emituje
+   `<pre class="code"><code>`) a mechaniku jeden `public/js/shared/copy.js`
+   (tlačidlo, potvrdenie, záložná cesta). Ten istý blok kódu preto stojí na
+   `/console`, na `/chat` aj v doku nad grafom — a `mind.css` je jediný
+   stylesheet, ktorý sa načítava na všetkých troch.
+
+   Do 26. 8. 2026 tu nebolo nič a kresba žila DVAKRÁT (`console.css` ×
+   `chat.css`). Zmerané diffom, nie odhadnuté: z desiatich pravidiel malo deväť
+   deklarácie znak po znaku rovnaké a jediný rozdiel v deklaráciách bol
+   `pre.code code`, kde chat navyše nesie `display: block` a `font-family`.
+
+   Selektory sú ZÁMERNE bez prefixu plochy. Prefix `.bubble.md`, ktorý mala
+   konzola, nenesie nič: ten istý blok stojí v bubline odpovede, v náhľade
+   markdownového artefaktu aj v paneli artefaktu. Jediné, čo zostáva
+   per-plochu, je rodič riadka mena pri `margin-left: auto` (viď nižšie).
+   --------------------------------------------------------------------------- */
+
+/* Odstup nesie `pre` (počas streamu je blok ešte neobalený) a po obalení ho
+   preberá `.code-wrap`, aby `.md > *:last-child` (nulovanie posledného odstupu)
+   trafilo prvok, ktorý je naozaj posledný. */
+pre.code {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    /* Široký kód skroluje SÁM — telo stránky nesmie ísť do vodorovného skrolu. */
+    overflow-x: auto;
+}
+
+/* Reset `code` vnútri bloku. Nie je nadbytočný: inline-kódové pravidlo plochy
+   (`:is(.cm-md, .md) code` na /chat, `:is(.bubble.md, .msg.system) code` na
+   /console) dáva každému `code` padding, pozadie a `.92em`, a to sa dedí aj do
+   bloku. Špecificita `(0,1,2)` je tu podmienka, nie náhoda — musí prebiť to
+   inline-kódové pravidlo, ktoré je na oboch plochách `(0,1,1)`. */
+pre.code code {
+    display: block;
+    padding: 0;
+    background: transparent;
+    font-family: var(--mono);
+    font-size: var(--fs-small);
+    line-height: 1.5;
+    white-space: pre;
+}
+
+.code-wrap { margin: 0 0 12px; }
+.code-wrap pre.code { margin: 0; }
+
+/* Hlavička bloku. Tlačidlo je NAD kódom, nie v ňom: `pre.code` skroluje sám,
+   takže tlačidlo vnútri by pri širokom kóde odišlo mimo dohľadu — a nad kódom
+   nemá čo prekryť. Hlavička zároveň ukáže `data-lang`, ktorý markdown renderer
+   dávno zapisuje a nikto nečítal. */
+.code-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 24px;
+}
+
+.code-lang {
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    color: var(--muted);
+}
+
+/* Vzhľad tlačidla nesie `.ghost` (bez rámu, `--muted`, hover na `--text`) —
+   ďalšia varianta tlačidla tu nevzniká. Prepisuje sa len to, čo tlačidlo
+   dostáva od okolia: 32 px z bare `button` je v riadku hlavičky priveľa
+   a verzálka s trackingom sa dedí z riadka mena. Fokusový prsteň dáva
+   globálne `:focus-visible` — vlastný tu zámerne nie je. */
+.copy-btn {
+    min-height: 24px;
+    padding: 2px 8px;
+    font-size: var(--fs-micro);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Popisok stojí na opačnom konci riadka než meno a cena — tam ho oko hľadá a ani
+   jeden z tých údajov sa pritom neposunie. Hlavička bloku kódu je zdieľaná;
+   riadok mena má na každej ploche vlastný názov, takže jeho selektor zostáva
+   v console.css (`.msg .who`) a chat.css (`.cm-who`). */
+.code-head .copy-btn { margin-left: auto; }
+
+/* Potvrdenie kopírovania — bez neho človek nevie, či klik zabral; do schránky sa
+   pozrieť nedá. Ako dlho svieti, drží `COPY_HOLD` v `shared/copy.js`; číslo je
+   pri tej konštante a NIE tu, aby sa nemalo s čím rozísť. */
+.copy-btn.is-done { color: var(--success-ink); }
+
+/* Záložná cesta kopírovania (`document.execCommand`) potrebuje SKUTOČNE vybraný
+   text, takže textarea nesmie byť `display: none` ani `visibility: hidden` —
+   odkladá sa mimo plochy a v DOM žije zlomok sekundy. */
+.copy-fallback {
+    position: fixed;
+    top: 0;
+    left: -9999px;
+    opacity: 0;
+}
+
+
 #md-foot {
     display: flex; justify-content: flex-end;
     padding: var(--sp-2) var(--sp-3);

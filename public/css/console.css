@@ -625,8 +625,17 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 .bubble.md li { margin-bottom: 4px; }
 .bubble.md a { color: var(--accent-ink); }
 
-.bubble.md code,
-.msg.system code {
+/* `:where()`, NIE `:is()`. Toto pravidlo musí byť SLABŠIE než reset bloku kódu
+   z mind.css (`pre.code code`, (0,1,2)), inak inline-kódová kresba pretečie do
+   bloku — zmerané 26. 8. 2026: `code` vnútri `pre.code` malo `padding: 1px 5px`
+   a podfarbenie, hoci reset dáva `padding: 0` a `transparent`.
+
+   `:is()` by to nespravilo: berie NAJSILNEJŠÍ argument, a `.bubble.md` sú dve
+   triedy, takže `:is(.bubble.md, .msg.system) code` je (0,2,1) — teda stále nad
+   resetom. `:where()` nepridáva špecificitu vôbec, takže je to (0,0,1).
+   `chat.css` má `:is(.cm-md, .md) code`, čo (0,1,1) naozaj je — `.cm-md` je JEDNA
+   trieda. Preto tam `:is()` stačí a tu nie. */
+:where(.bubble.md, .msg.system) code {
     padding: 1px 5px;
     border-radius: 5px;
     background: var(--surface-subtle);
@@ -635,78 +644,9 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     overflow-wrap: anywhere;
 }
 
-.bubble.md pre.code {
-    margin: 0 0 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    background: var(--surface-2);
-    /* široký kód skroluje SÁM — telo stránky nesmie ísť do vodorovného skrolu */
-    overflow-x: auto;
-}
-
-.bubble.md pre.code code {
-    padding: 0;
-    background: transparent;
-    font-size: var(--fs-small);
-    line-height: 1.5;
-    white-space: pre;
-}
-
-/* ---------- kopírovanie odpovede a kódu (A19) ---------- */
-
-/* Vzhľad nesie `.ghost` z mind.css (bez rámu, `--muted`, hover na `--text`) —
-   šiesta varianta tlačidla tu nevzniká. Prepisuje sa len to, čo tlačidlo dostáva
-   od okolia: 32 px z bare `button` je v riadku hlavičky správy priveľa a
-   `text-transform` s `letter-spacing` sa dedia z `.msg .who`, kde je verzálka.
-   Fokusový prsteň dáva globálne `:focus-visible` — vlastný tu nie je zámerne. */
-.copy-btn {
-    min-height: 24px;
-    padding: 2px 8px;
-    font-size: var(--fs-micro);
-    text-transform: none;
-    letter-spacing: 0;
-}
-
-/* Popisok stojí na opačnom konci riadka než meno a cena — tam ho oko hľadá a
-   ani jeden z tých údajov sa pritom neposunie. */
-.msg .who .copy-btn,
-.code-head .copy-btn { margin-left: auto; }
-
-/* Potvrdenie kopírovania. `--success-ink` je tá istá rola ako pri ostatných
-   „hotovo" textoch v appke; svieti len tie 1,6 s, kým sa popisok vráti. */
-.copy-btn.is-done { color: var(--success-ink); }
-
-/* Hlavička bloku kódu. Tlačidlo je NAD blokom, nie v ňom: `pre.code` skroluje
-   sám, takže tlačidlo vnútri by pri širokom kóde odišlo mimo dohľadu — a nad
-   kódom nemá čo prekryť. Spodný odstup preberá obal, aby
-   `.bubble.md > *:last-child` (nulovanie posledného odstupu) trafilo prvok,
-   ktorý je naozaj posledný. */
-.code-wrap { margin: 0 0 12px; }
-.bubble.md .code-wrap pre.code { margin: 0; }
-
-.code-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 24px;
-}
-
-.code-lang {
-    font-family: var(--mono);
-    font-size: var(--fs-micro);
-    color: var(--muted);
-}
-
-/* Záložná cesta kopírovania (`document.execCommand`) potrebuje SKUTOČNE vybraný
-   text, takže textarea nesmie byť `display: none` ani `visibility: hidden` —
-   odkladá sa mimo plochy a v DOM žije zlomok sekundy. */
-.copy-fallback {
-    position: fixed;
-    top: 0;
-    left: -9999px;
-    opacity: 0;
-}
+/* Riadok mena a ceny je na každej ploche inak pomenovaný, takže tento jeden
+   selektor zostáva tu; zvyšok kresby kopírovania je v mind.css. */
+.msg .who .copy-btn { margin-left: auto; }
 
 .help-list { margin: 8px 0; padding-left: 20px; }
 .help-list li { margin-bottom: 4px; }
