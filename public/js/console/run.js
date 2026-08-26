@@ -41,6 +41,9 @@ import { markResult, permissionCard, pendingCard, decidePending, toolCard } from
 import { writeAsk } from '../shared/gate.js';
 import { cleanStop, costLabel, stopNote } from '../shared/runstate.js';
 import { createRunClient } from '../shared/runclient.js';
+import {
+    agentErrorText, agentFootText, agentMetaText, agentStartAnnounce, agentWaitAnnounce, agentWaitCard,
+} from '../shared/agents.js';
 
 let ticker = 0;
 
@@ -104,7 +107,7 @@ const client = createRunClient({
             // `ensureAgent`, nie `openAgent`: rámec, ktorý v toku už stojí, sa
             // druhý raz nekreslí. Jeden podbeh = jedno uuid = jeden rámec.
             ensureAgent(frame.run, frame);
-            announce(`Podagent začal pracovať s profilom ${frame.profile || 'bez profilu'}.`);
+            announce(agentStartAnnounce(frame));
         },
 
         onAgent(frame) {
@@ -123,7 +126,7 @@ const client = createRunClient({
             closeBubble();
             markAgentWait(frame);
             paintStats();
-            announce(`Podagent čaká na tvoje rozhodnutie o zápise${frame.name ? ` (${frame.name})` : ''}.`);
+            announce(agentWaitAnnounce(frame));
         },
 
         onEnd(frame) {
@@ -165,6 +168,11 @@ const client = createRunClient({
    nástrojov, karty jeho nástrojov, jeho text a — to podstatné — karta brány jeho
    zápisu. Čo v ňom NIE JE: hodiny s rozpadom čakania na človeka (to je strom
    v `/chat`), a nič z toho sa nekreslí do toku rodiča.
+
+   Texty (ohlásenia, veta o chýbajúcom náhľade), meta zlomok a argumenty karty
+   brány z rámca `agent_wait` žijú v `public/js/shared/agents.js` — dok Charóna
+   nad grafom hovorí o podagentovi tie isté vety. Zostáva tu KRESLENIE: konzola
+   je technická plocha a nesie celý priebeh dieťaťa, dok len pás a kartu.
    --------------------------------------------------------------------------- */
 
 /**
@@ -259,22 +267,11 @@ function ensureAgent(run, seed = {}) {
 }
 
 /**
- * Kroky a nástroje podbehu.
- *
- * Kroky sú VŽDY zlomok („kroky 0/4"), nie „strop 4 kroky": slovenčina má tri
- * tvary a číslo pred slovom sa musí skloňovať (kontrakt, drobné z review —
- * „strop 6 kroky" bolo zlé pre každý strop okrem 2–4). Zlomok skloňovanie
- * nepotrebuje a navyše hovorí aj to, kam sa ide.
+ * Kroky a nástroje podbehu. Zlomok skladá `agentMetaText()` v shared/agents.js
+ * (dok nad grafom ho hlási rovnako); tu zostáva len zápis do DOM.
  */
 function paintMeta(entry) {
-    const bits = [];
-
-    if (entry.profile) bits.push(`profil ${entry.profile}`);
-    if (entry.of) bits.push(`kroky ${num(entry.steps, 0)}/${num(entry.of, 0)}`);
-    else if (entry.steps) bits.push(`kroky ${num(entry.steps, 0)}`);
-    if (entry.tools) bits.push(`nástroje ${num(entry.tools, 0)}`);
-
-    entry.meta.textContent = bits.join(' · ');
+    entry.meta.textContent = agentMetaText(entry, num);
 }
 
 /**
@@ -346,7 +343,7 @@ function childFrame(run, frame) {
 
         case 'error':
             entry.box.classList.add('is-failed');
-            entry.body.append(el('p', 'agent-error', frame.message || 'Podagent zlyhal.'));
+            entry.body.append(el('p', 'agent-error', agentErrorText(frame)));
             break;
 
         default:
@@ -377,9 +374,15 @@ function childSay(entry, text) {
  * Podagent zaparkoval na zápise (rámec `agent_wait`).
  *
  * Karta už zvyčajne stojí — vnorený rámec `permission` prišiel tesne pred týmto.
- * Keď nie, karta sa poskladá z tohto rámca: nesie `child_call` a meno nástroja,
- * ale nie náhľad, takže sa to na nej PRIZNÁ. Rozhodnutie, ktoré sa nedá urobiť,
- * je horšie než rozhodnutie bez diffu — beh by inak čakal navždy.
+ * Keď nie, poskladá ju `agentWaitCard()`: rámec nesie `child_call` a meno
+ * nástroja, ale nie náhľad, takže sa to na nej PRIZNÁ. Rozhodnutie, ktoré sa nedá
+ * urobiť, je horšie než rozhodnutie bez diffu — beh by inak čakal navždy.
+ *
+ * Vlákno sa dopĺňa aj karte, ktorá už stojí. Je to bezpečnostné: vnorený
+ * `permission` vzniká skôr a vlákno podagenta nenesie, takže karta môže stáť bez
+ * `data-thread` — a `/decide` ide práve naň. Do 26. 8. 2026 sa aktualizoval len
+ * `entry.thread`, čím bola jedinou obranou záloha v `C.awaiting`, teda stav, ktorý
+ * medzitým môže prepísať ďalší rámec. Rozhodnutie MUSÍ ísť na vlákno PODAGENTA.
  */
 function markAgentWait(frame) {
     const entry = ensureAgent(frame.run, { thread: frame.thread });
@@ -389,21 +392,19 @@ function markAgentWait(frame) {
     if (frame.thread) entry.thread = String(frame.thread);
     entry.box.classList.add('is-waiting');
 
-    const id = frame.child_call;
+    const seed = agentWaitCard(frame);
 
-    if (id == null || entry.body.querySelector(`.perm-card[data-id="${id}"]`)) return;
+    if (!seed) return;
 
-    entry.body.append(permissionCard(
-        {
-            id,
-            name: frame.name || '',
-            arguments: null,
-            // Náhľad tento rámec nenesie — a karta to musí povedať. Prázdna karta
-            // by nútila povoliť naslepo bez toho, aby bolo vidieť, že diff chýba.
-            preview: 'Náhľad zmeny nie je k dispozícii — prišlo len ohlásenie, že podagent zaparkoval na zápise.',
-        },
-        { thread: entry.thread },
-    ));
+    const standing = entry.body.querySelector(`.perm-card[data-id="${seed.id}"]`);
+
+    if (standing) {
+        if (!standing.dataset.thread && entry.thread) standing.dataset.thread = entry.thread;
+
+        return;
+    }
+
+    entry.body.append(permissionCard(seed, { thread: entry.thread }));
 }
 
 /** Uzavrie rámec podbehu a doplní jeho cenu (rámec `agent_end`). */
@@ -420,15 +421,9 @@ function closeAgent(frame) {
     if (frame.tool_calls) entry.tools = Number(frame.tool_calls) || entry.tools;
     paintMeta(entry);
 
-    const bits = [];
     const cost = costLabel({ tokens_in: frame.tokens_in, tokens_out: frame.tokens_out }, num);
 
-    if (cost !== '') bits.push(cost);
-    // Stav sa hlási len keď NIE JE `done`: „hotovo" je normálny konec a nemá čo
-    // dodať, kým `aborted`/`failed` je informácia, ktorá inak vypadne.
-    if (frame.status && frame.status !== 'done') bits.push(`stav ${frame.status}`);
-
-    entry.body.append(el('p', 'agent-foot', bits.length ? bits.join(' · ') : 'Podagent dokončil.'));
+    entry.body.append(el('p', 'agent-foot', agentFootText(cost, frame.status)));
     scrollIfFollowing();
 }
 

@@ -18,7 +18,7 @@
    =========================================================================== */
 
 import { el, num } from './dom.js';
-import { pushBlock, scrollIfFollowing } from './render.js';
+import { isWriteTool, pushBlock, scrollIfFollowing } from './render.js';
 import { argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeTarget } from '../shared/gate.js';
 
 /* Slovník a formát brány (ikona, argumenty na riadok, diff, ľudský popis zápisu)
@@ -133,7 +133,7 @@ export function historyCard(call) {
         call_id: call.call_id,
         name: call.name,
         arguments: call.arguments,
-        write: call.status === 'pending' || isWriteName(call.name),
+        write: call.status === 'pending' || isWriteTool(call.name),
     });
 
     if (call.status === 'pending') {
@@ -160,9 +160,12 @@ export function historyCard(call) {
     return card;
 }
 
-function isWriteName(name) {
-    return /(^|_)(write|edit|apply|delete|learn|remember|decision|move|rename)/i.test(String(name || ''));
-}
+/* `isWriteName()` — regex nad MENOM nástroja — tu bol do 26. 8. 2026. Zanikol,
+   pretože to bola DRUHÁ pravda o tom, čo zapisuje: server ju posiela v bloku
+   `#console-tools` (`ToolRegistry::isWrite()`), a regex by sa pri prvom novom
+   toole rozišiel — read-only nástroj s menom typu `apply_patch` by označil za
+   zápis. `isWriteTool()` v `render.js` číta ten blok; dnes dávajú obe cesty na
+   každom z dvanástich toolov tú istú odpoveď, takže presun nič nemení. */
 
 /* Stav volania má DVA slovníky: drôtový protokol posiela `status: "done"` /
    `"error"`, ale enum v `console_tool_calls` pozná `failed` (a `running`).

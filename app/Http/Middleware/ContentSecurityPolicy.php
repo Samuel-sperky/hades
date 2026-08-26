@@ -59,20 +59,6 @@ final class ContentSecurityPolicy
      */
     private const REPORT_ONLY = true;
 
-    /**
-     * Hostiteľ skriptov, ktorý appka reálne používa.
-     *
-     * ZMERANÉ 25. 8. 2026: jediné dva `<script src="https://…">` v celom
-     * `resources/views/` sú `d3@7` a `pusher-js@8` z jsdelivr a sú v
-     * `mind.blade.php`. `d3.` sa v `public/js` vyskytuje len v
-     * `public/js/mind/sim.js`, `Pusher` len v `public/js/mind/ws.js` —
-     * `public/js/chat/*`, `public/js/console/*` ani `public/js/shared/*`
-     * nesiahajú ani na jedno. Preto CDN dostane v politike len plocha grafu
-     * (viď {@see self::scriptSources()}) a plochy, ktoré kreslia výstup modelu,
-     * majú `script-src 'self'`.
-     */
-    private const CDN_SCRIPT = 'https://cdn.jsdelivr.net';
-
     public function handle(Request $request, Closure $next): Response
     {
         $response = $next($request);
@@ -115,7 +101,17 @@ final class ContentSecurityPolicy
             // nie je ani jeden inline `<script>` so spustiteľným typom a v
             // `public/js` ani jeden `onclick=`/`onerror=` v generovanom HTML,
             // `eval(` ani `new Function`.
-            'script-src '.$this->scriptSources($request),
+            //
+            // `'self'` je tu SAMO a rovnaké na všetkých troch plochách. Do
+            // 26. 8. 2026 dostávala route `/` navyše `https://cdn.jsdelivr.net`,
+            // pretože `mind.blade.php` odtiaľ ťahal `d3@7` a `pusher-js@8` —
+            // ani jeden s `integrity`, takže politika povolila hosta, nie obsah.
+            // F1 ich self-hostla do `public/js/vendor/` (provenance a sha256 sú
+            // v `public/js/vendor/README.md`) a tým tá výnimka zanikla. Odteraz
+            // platí bez vetvenia: `<script src="https://…">` pridaný na
+            // ktorúkoľvek plochu politika nepovolí — v report-only režime sa to
+            // prejaví violáciou v konzole, po vynútení rozbitou plochou.
+            "script-src 'self'",
 
             // `'unsafe-inline'` je tu ZMERANÁ nutnosť, nie pohodlie: 10 miest
             // v `public/js/mind` vkladá cez `innerHTML` HTML s atribútom
@@ -172,25 +168,6 @@ final class ContentSecurityPolicy
             // (`webviewTag: false`). Rámovať ju teda nemá dôvod nikto zvonku.
             "frame-ancestors 'self'",
         ]);
-    }
-
-    /**
-     * `script-src`. CDN dostane len plocha grafu — dôvod a meranie
-     * v {@see self::CDN_SCRIPT}.
-     *
-     * Rozlišuje sa podľa URI route, nie podľa obsahu odpovede. Je to spojenie
-     * s `resources/views/mind.blade.php`, ktoré nič nevynucuje: keď sa d3
-     * a pusher-js self-hostnú, `'self'` tu má zostať samo, a naopak keby CDN
-     * skript pribudol na `/chat` alebo `/console`, táto metóda ho nepovolí.
-     * V report-only režime sa to prejaví violáciou v konzole; po prepnutí na
-     * vynucovanú politiku už len rozbitou plochou — preto k tomu patrí test,
-     * ktorý pinuje, že CDN `<script src>` je len v `mind.blade.php`.
-     */
-    private function scriptSources(Request $request): string
-    {
-        return $request->route()?->uri() === '/'
-            ? "'self' ".self::CDN_SCRIPT
-            : "'self'";
     }
 
     /**

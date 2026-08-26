@@ -444,10 +444,14 @@ function renderThreadBody(stream, data) {
     const byMessage = new Map();
 
     (data.tool_calls || []).forEach((call) => {
-        // Zaparkovaný zápis dostane KARTU POTVRDENIA, nie kartu nástroja. Bez tejto
+        // Zaparkovaný ZÁPIS dostane KARTU POTVRDENIA, nie kartu nástroja. Bez tejto
         // výnimky sa kreslil dvakrát: raz ako „čaká na rozhodnutie" a hneď pod ním
         // ako prompt s tlačidlami, čo vyzeralo ako dva čakajúce zápisy.
-        if (data.awaiting && call.id === data.awaiting) return;
+        //
+        // Zaparkovaný ČÍTACÍ tool (`spawn_agent`) kartu nástroja naopak DOSTANE:
+        // brána sa preň nekreslí (`restoreAwaiting()` nižšie), takže bez nej by
+        // z toku zmizol krok, ktorý beh práve drží.
+        if (data.awaiting && call.id === data.awaiting && isWriteTool(call.name)) return;
 
         const key = call.message_id ?? 0;
         if (!byMessage.has(key)) byMessage.set(key, []);
@@ -498,13 +502,7 @@ function renderThreadBody(stream, data) {
     if (data.awaiting) {
         const pending = (data.tool_calls || []).find((call) => call.id === data.awaiting);
 
-        if (pending) {
-            appendBlock(permissionCard(pending));
-            // Otvorené vlákno so zaparkovaným zápisom je to isté rozhodnutie ako
-            // za živého behu, len prišlo po obnove stránky — a čítačka o ňom
-            // dovtedy nedostala ani slovo.
-            announce(writeAsk(pending));
-        }
+        if (pending) restoreAwaiting(pending, data.awaiting_agent);
     }
 
     // Hlavička po obnove hovorí cenu POSLEDNÉHO ZAZNAMENANÉHO behu, nie nulu.
@@ -518,6 +516,94 @@ function renderThreadBody(stream, data) {
     C.follow = true;
     jumpToBottom();
     paintJump();
+}
+
+/**
+ * Zaparkované rozhodnutie po obnove stránky.
+ *
+ * Dva prípady a rozdiel medzi nimi je vecný, nie kozmetický:
+ *
+ *  · zápisový tool → karta brány s náhľadom, presne ako za živého behu;
+ *  · čítací tool (v praxi `spawn_agent`) → BRÁNA sa nad ním NEKRESLÍ (kartu nástroja
+ *    dostane, viď filter v `renderThreadBody()`). Do 26. 8. 2026 sa brána kreslila
+ *    a bola to lož v troch smeroch naraz: `announce(writeAsk(pending))` ohlásil
+ *    čítací tool ako zápis, „Povoliť vždy" na nej by `allow_always` poslalo na
+ *    vlákno RODIČA a vypnulo bránu zápisov celej konverzácie, a „Povoliť" by
+ *    `spawn_agent` (idempotentný na svoj `ConsoleToolCall`) len znova zaparkovalo.
+ *    Na človeka čaká zápis PODAGENTA, na JEHO vlákne — `awaiting` v payloade je
+ *    `pendingToolCall()` tohto vlákna, teda `spawn_agent` call rodiča.
+ *
+ *    Odkiaľ sa berie to správne vlákno: server od 25. 8. 2026 posiela aditívny kľúč
+ *    `awaiting_agent` (tvar tool callu plus `thread` a `run` dieťaťa), takže karta sa
+ *    kreslí NAD NÍM a `/decide` ide na vlákno dieťaťa. Keď kľúč chýba — starší
+ *    payload alebo podbeh, ktorý sa medzitým dorozhodol — tok o tom povie vetu.
+ *    Predstierať rozhodnutie, ktoré by dopadlo inam, je horšie než ho nemať.
+ *
+ * Vzor je `public/js/chat/render.js`, funkcia `restoreAwaiting()` — tie dve plochy
+ * musia po F5 nakresliť to isté.
+ */
+function restoreAwaiting(call, parked) {
+    if (!isWriteTool(call.name)) {
+        /* Zaparkovaný zápis DIEŤAŤA. Kartu tu ZÁMERNE NEKRESLÍME — vlastní ju
+           `run.js:restoreAgentWait()`, ktorý na tú istú udalosť robí strictne viac:
+           otvorí rámec podagenta, napíše vetu, a hlavne prepíše `C.awaiting` na
+           call DIEŤAŤA. Bez toho prepisu zostane v `C.awaiting` to, čo tam vložil
+           `main.js` — teda `spawn_agent` call RODIČA — a globálne Esc aj kontrola
+           pred odoslaním by potom hovorili o cudzom volaní.
+
+           Poradie je dané a nie je to náhoda: `main.js` kreslí tok PRIAMO a až
+           potom posiela `console:thread`, takže táto funkcia beží PRVÁ. Keby sme
+           kartu nakreslili tu, `restoreAgentWait()` by ju našiel (je idempotentný
+           na `data-id`) a odišiel by — a s ním by zmizol rámec, veta aj oprava
+           stavu. Presne to bol nález review z 26. 8. 2026. */
+        if (parked && parked.id != null && parked.thread) return;
+
+        pushNotice('Beh čaká na rozhodnutie o zápise podagenta. Otvor jeho podbeh na obrazovke Runy — '
+            + 'v tomto vlákne sa o ňom rozhodnúť nedá.');
+        announce('Beh čaká na rozhodnutie o zápise podagenta.');
+
+        return;
+    }
+
+    appendBlock(permissionCard(call));
+    // Otvorené vlákno so zaparkovaným zápisom je to isté rozhodnutie ako za živého
+    // behu, len prišlo po obnove stránky — a čítačka o ňom dovtedy nedostala ani slovo.
+    announce(writeAsk(call));
+}
+
+/* Zapisuje tento nástroj? Odpoveď je SERVEROVÁ: `#console-tools` v `console.blade.php`
+   nesie `{name, write}` z `ToolRegistry::isWrite()` (skládá ho jedna funkcia
+   v `routes/web.php` pre `/console` aj `/chat`). Regulárny výraz nad menom by bol
+   druhá pravda o tom, čo zapisuje, a rozišiel by sa pri prvom novom toole. `/chat`
+   to má cez `toolList()` v `chat/main.js`; tu sa blok čítá na mieste, pretože
+   `console/main.js` ho nevystavuje a `console/slash.js` si ho drží privátne.
+
+   Zoznam sa čítá RAZ — je to statický blok stránky, nie stav behu.
+
+   Meno, ktoré v zozname NIE JE, sa za zápis nepočíta, a presne touto cestou sem
+   chodí `spawn_agent`: v kánone `ToolRegistry::TOOLS` je, ale blok sa skládá
+   z DEFAULT PROFILU (`hades.console.profile`, default `full`) a ten ho nemá. Keby
+   default bol `orchestrator`, v zozname by bol — s `write: false`, teda s tou istou
+   odpoveďou. Cena tej voľby je pomenovaná: keby sa blok nedal prečítať vôbec, dostal
+   by zaparkovaný zápis vetu namiesto brány. Fail-closed je tu zámer — opačná voľba
+   by na `spawn_agent` calle rodiča ponúkla „Povoliť vždy", teda vypnutie brány
+   zápisov celej konverzácie. */
+let writeFlags = null;
+
+export function isWriteTool(name) {
+    if (writeFlags === null) {
+        writeFlags = new Map();
+
+        try {
+            const list = JSON.parse(document.getElementById('console-tools')?.textContent || '[]');
+
+            if (Array.isArray(list)) list.forEach((tool) => writeFlags.set(String(tool?.name), !!tool?.write));
+        } catch {
+            // Nečitateľný blok necháva mapu prázdnu — rozhodne fail-closed, viď vyššie.
+        }
+    }
+
+    return writeFlags.get(String(name || '')) === true;
 }
 
 /** /clear — vyčistí ZOBRAZENIE. História vlákna v DB zostáva nedotknutá. */

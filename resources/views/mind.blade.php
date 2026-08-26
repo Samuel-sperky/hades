@@ -546,19 +546,31 @@
     </div>
 
     <!-- VLNA GRAF A: d3 je späť — layout uzlov počíta d3.forceSimulation (sim.js).
-         Keby CDN nedobehlo, buildSim() to zvládne aj bez neho (uzly zostanú na
-         deterministických semienkach pri svojich kotvách, len bez relaxácie).
+         Keby sa d3 nenačítalo, buildSim() to zvládne aj bez neho (`d3ok()` v
+         sim.js): uzly zostanú na deterministických semienkach pri svojich
+         kotvách, len bez relaxácie. `ws.js` naopak volá `new Pusher(...)` bez
+         stráže, takže bez pusher-js by živé pulzy padli s výnimkou.
 
-         POZOR — CSP: toto sú JEDINÉ dva `<script src="https://…">` v celom
-         resources/views/, a preto App\Http\Middleware\ContentSecurityPolicy
-         pridáva `https://cdn.jsdelivr.net` do `script-src` len na tejto route
-         (`/`). `/chat` a `/console` majú `script-src 'self'`, teda tvrdšie —
-         kreslia výstup modelu. Keď sa d3 a pusher-js self-hostnú do
-         public/js/, treba to povolenie z middleware ZMAZAŤ; opačne, tretí CDN
-         skript pridaný na inú plochu politika nepovolí.
+         SELF-HOSTOVANÉ (F1, 26. 8. 2026). Do tohto dňa oba skripty prišli
+         z `cdn.jsdelivr.net` a ani jeden nemal `integrity`, takže CSP povolila
+         HOSTA, nie obsah — na appke tunelovanej cez ngrok reálna plocha.
+         Presunuté do public/js/vendor/ z toho istého dôvodu ako fonty do
+         public/fonts/. Verzie, sha256 a postup overenia sú
+         v public/js/vendor/README.md; oba súbory sú UMD, takže globály `d3`
+         a `Pusher` nastavia samé a pre sim.js/ws.js je to drop-in.
+
+         Poradie drž: oba musia stáť PRED /js/mind/main.js.
+
+         Dôsledok pre CSP: `script-src 'self'` platí odteraz na VŠETKÝCH troch
+         plochách, výnimka pre `/` v App\Http\Middleware\ContentSecurityPolicy
+         zanikla. V celom `resources/views/` už nie je ani jeden script tag
+         mieriaci na cudzí host — keď sem niekto CDN skript pridá, politika ho
+         nepovolí, a to je zámer. (Zámerne to tu nie je napísané ako doslovný
+         `script src` s https adresou: audit, ktorý CDN skripty hľadá grepom, by
+         na tejto vete falošne zabral. Naletel som na to pri overovaní.)
          Meranie: docs/sprint-2026-08-25/MERANIE-CSP.md -->
-    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pusher-js@8/dist/web/pusher.min.js"></script>
+    <script src="/js/vendor/d3.min.js"></script>
+    <script src="/js/vendor/pusher.min.js"></script>
     <script src="/js/charts.js"></script>
     <script type="module" src="/js/mind/main.js"></script>
     {{-- A9/fáza 2: setupCharon() volá priamo main.js (po installFetchGuard),

@@ -36,7 +36,6 @@ import { renderMarkdown } from '../shared/markdown.js';
 import { looksLikeDiff } from '../shared/gate.js';
 import {
     codeHead,
-    copyButton as sharedCopyButton,
     equipCode as sharedEquipCode,
     equipCopy as sharedEquipCopy,
 } from '../shared/copy.js';
@@ -83,17 +82,23 @@ export function sizeLabel(text) {
    o `chat/` ani o `console/` (bol by z toho cyklus medzi plochami), takže dve
    veci, ktoré sa medzi plochami líšia, mu tu podávame ako argument:
    `announce()` (táto plocha hlási do `#chat-announce`) a `paintPre` (zvýrazňovač
-   má len `/chat`). Tie tri obálky nižšie sú presne toto naviazanie a nič viac —
+   má len `/chat`). Tie dve obálky nižšie sú presne toto naviazanie a nič viac —
    texty, časovanie ani markup tu už nie sú.
 
    `announce` sa podáva PRI VOLANÍ, nie pri načítaní modulu: modul je v cykle
    `main → run → render → artifact → main` a naviazanie na vrchole súboru by
-   čítalo import v okamihu, keď `main.js` ešte nemusí byť vyhodnotený. */
+   čítalo import v okamihu, keď `main.js` ešte nemusí byť vyhodnotený.
 
-/** @see copyButton v shared/copy.js */
-export function copyButton(name, read) {
-    return sharedCopyButton(name, read, announce);
-}
+   TRETIA OBÁLKA TU BOLA A JE ZMAZANÁ (26. 8. 2026): `copyButton(name, read)`,
+   ktorá zo zdieľanej funkcie dopĺňala jediný argument `announce`. Po presune
+   mechaniky do `shared/copy.js` jej zostali dva volajúci — `codeHead()` a
+   `equipCopy()` — a oba odišli do toho istého zdieľaného modulu, takže v repe
+   nemala ani jedného. Nezostala tu ako „naviazaná plocha" (na rozdiel od
+   `equipCopy()` nižšie, ktorá dopisuje CHÝBAJÚCE spečatenie bubliny a viaže aj
+   zvýrazňovač): jednoargumentová obálka nie je naviazanie, ale synonymum, a dva
+   exportované vstupy do jedného tlačidla sú presne tá dvojkoľajnosť, ktorou sa
+   plochy tejto appky už raz rozišli. Budúci volajúci si vezme
+   `copyButton(name, read, announce)` zo `shared/copy.js` priamo. */
 
 /**
  * Hotová odpoveď dostane tlačidlá: jedno na celú odpoveď, jedno na každý blok.

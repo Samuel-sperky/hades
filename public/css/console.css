@@ -1166,13 +1166,28 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 #composer #prompt:focus-visible { box-shadow: none; }
 #composer.parked .composer-row { border-color: var(--warn); }
 
-/* JEDEN stylesheet nesie graf aj konzolu, a graf má na id `#prompt` svoju
-   plávajúcu lištu chatu: `position: fixed`, `width: 320px` a — čo je horšie —
-   `body:not(.chat-on) #prompt { display: none !important }`. Konzola má textarea
-   s tým istým id (je súčasťou kontraktu shellu), takže bez tohto bloku sa NEDÁ
-   VÔBEC vidieť: pole bolo `display: none` a klik doň skončil na paneli vlákien.
-   `#composer #prompt` je (2,0,0), teda prebije `#prompt` aj `body:not(…) #prompt`,
-   a `display` sa dá odomknúť len druhým `!important`. */
+/* JEDEN stylesheet nesie graf aj konzolu, takže konzolová textarea dostáva
+   z `mind.css` bare kresbu poľa (`input:not([type="range"]), textarea`):
+   `width: 100%`, `--field-bg` pozadie, 1 px rám, `padding`, a z `textarea`
+   ešte `min-height: 72px` a `resize: vertical`. Tento blok je preto stále
+   potrebný — pole v composeri je bez vlastnej kresby (rám a pozadie nesie
+   `.composer-row`) a výšku mu počíta JS.
+
+   POZOR na to, čo tu STÁLO do 26. 8. 2026: komentár tvrdil, že graf má na
+   `#prompt` plávajúcu lištu chatu (`position: fixed`, `width: 320px`,
+   `body:not(.chat-on) #prompt { display: none !important }`) a že bez tohto
+   bloku pole vôbec nevidno. Tie pravidlá odišli s A9 (mŕtvy chat nad grafom)
+   a v `mind.css` dnes NIE SÚ — zmerané grepom: `#prompt` má 1 zásah a je to
+   komentár, `.chat-on` nula. Komentár teda pomenúval protivníka, ktorý už
+   neexistuje.
+
+   Dôsledok, ktorý sa NEOPRAVIL a je otvorený bod: šesť deklarácií nižšie
+   (`display: block !important`, `position: static`, `inset: auto`,
+   `transform: none`, `z-index: auto`, `transition: none`) bránilo výhradne
+   tej zmazanej plávajúcej lište a dnes nemá čo prebíjať. Dôkaz nie je úvaha:
+   `#chat-prompt` v `chat.css` stojí na tej istej bare kresbe z `mind.css`
+   a ani jednu z tých šiestich nepotrebuje. Odstrániť ich je samostatná zmena
+   s preklikom, nie vedľajší efekt tohto komentára. */
 #composer #prompt {
     display: block !important;
     position: static;

@@ -1,6 +1,7 @@
 # Meranie — CSP pre tri HTML plochy (W4-D, kontrakt §7 „Zostáva")
 
 Dátum: 25. 8. 2026 · vetva `feat/hades-ux` @ `b021e69`
+Oprava §1.6 (príkaz sa nereprodukoval): 26. 8. 2026 @ `c81fa63`
 
 Kontrakt §7 to napísal presne: *„Nedopĺňal som ich naslepo: zavedenie CSP nad živou
 plochou s inline `<script type="application/json">` a `style` atribútmi treba
@@ -28,7 +29,9 @@ zavádza ako **report-only** a `howToVerify` nesie presné asercie (§6).
 | WebSocket | Reverb, adresa sa rozhoduje **v prehliadači** | `connect-src` s obidvomi vetvami (§3.5) |
 | `<iframe>` | **1**, `srcdoc` + `sandbox=""` (náhľad artefaktu) | `frame-src 'none'` — **jediná neoverená direktíva** (§4) |
 | `<object>`, `<embed>`, `<base>`, `<form action>` | **0** | `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` |
-| Fonty, obrázky | self-hosted, absolútne cesty od korene | pokryje `default-src 'self'` |
+| `url()` v `public/css/*.css` | **7**, všetkých 7 na `/fonts/*.woff2` (§1.6) | fonty sú self-hosted |
+| Z toho `url()` mimo cesty od korene | **0**; `@import` tiež 0 (§1.6) | pokryje `default-src 'self'` |
+| Obrázky | `/brand/*`, `/favicon.ico`, `/api/console/attachments/*` (§1.6) | to isté, plus `data:` a `blob:` vyššie |
 
 Politika teda **nepotrebuje `'unsafe-inline'` pre skripty**, čo je pri ploche, ktorá
 kreslí výstup lokálneho modelu, celá pointa. Pre štýly ho potrebuje a §5.2 hovorí
@@ -166,9 +169,25 @@ sa neroutuje).
 
 ### 1.6 Fonty a obrázky
 
-`grep -rhon "url([^)]*)" public/css/*.css | grep -v "url(/"` → **0 zásahov**, teda
-každý `url()` vedie na absolútnu cestu od korene. Sedem `@font-face` súborov je
-v `/fonts/*.woff2`, `@import` v CSS nie je ani raz. Obrázky: `/brand/*`
+V `public/css/*.css` je **7** `url()` a všetkých 7 vedie na absolútnu cestu od
+korene — sú to práve tie súbory zo siedmich `@font-face` blokov v `mind.css`:
+
+```
+grep -rhon "url([^)]*)" public/css/*.css | wc -l                  # → 7
+grep -rhon "url([^)]*)" public/css/*.css | grep -vE "url\(['\"]?/" # → 0 zásahov
+```
+
+**Prvá verzia tohto merania (25. 8. 2026) tu mala filter `grep -v "url(/"`
+a tvrdila 0 zásahov. Spustený presne tak vráti 7** — všetky sú tvaru
+`url('/fonts/geist-latin.woff2')`, teda s apostrofom medzi `url(` a `/`, ktorý
+ten vzor nepustí. Číslo bolo správne, príkaz pod ním nie, a meranie, ktoré sa
+nereprodukuje, je horšie než žiadne. Filter preto povoľuje voliteľnú úvodzovku
+(`['\"]?`), a keďže `?` je ERE, príkaz musí byť `grep -vE`. Prekontrolované
+26. 8. 2026 na `feat/hades-ux` @ `c81fa63`: 7 celkovo, 0 mimo korene, všetkých 7
+v `mind.css` (`charon.css`, `chat.css`, `console.css` majú 0).
+
+`@import` v CSS nie je ani raz (`grep -rn "@import" public/css/*.css` → 0).
+Obrázky: `/brand/*`
 (`apple-touch-icon`, `og:image`), `/favicon.ico`, prílohy z
 `/api/console/attachments/{uuid}`. Všetko `'self'`.
 
