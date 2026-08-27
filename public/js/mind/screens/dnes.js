@@ -3,7 +3,7 @@ import { openNodeFromAnywhere, setScreen } from '../screens.js';
 import { setJournalProject } from './dennik.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
-import { $, busy, emptyCardHtml, emptyHtml, esc, fmtNum, getJson, prettyLabel, renderEmpty, timeAgo } from '../util.js';
+import { $, busy, deferSkeleton, emptyCardHtml, errorHtml, esc, fmtNum, getJson, prettyLabel, renderError, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
 
@@ -19,25 +19,21 @@ export function originBadge(origin) {
         + '<span class="ms" aria-hidden="true">' + icon + '</span>' + ORIGIN_LABEL[o] + '</span>';
 }
 
-// Shimmer skeleton počas načítania dashboardu (loading stav). Kostra kopíruje
-// hierarchiu hotovej obrazovky (hľadanie → hero → druhý rad → karty), aby sa
-// rozloženie po dobehnutí dát neprelialo.
-export function todaySkeleton() {
-    const bar = (w, h) => '<div class="shimmer" style="width:' + w + ';height:' + h + ';border-radius:var(--r-md);"></div>';
-    return '<div style="display:flex;flex-direction:column;gap:var(--gutter);">'
-        + bar('100%', '46px')
-        + bar('min(420px, 60%)', '84px')
-        + '<div class="kpi-grid">' + [0, 0, 0, 0].map(() => bar('100%', '58px')).join('') + '</div>'
-        + '<div class="dash-grid">' + bar('100%', '160px') + bar('100%', '160px') + '</div>'
-        + '</div>';
-}
-
 export async function renderToday() {
     const body = $('dnes-body');
     if (!body) return;
-    // Šírku rieši fluidná mriežka v CSS (#screens padding-inline + auto-fill grids),
-    // nie inline max-width — inak dashboard nikdy nevyužije široké okno.
-    body.innerHTML = todaySkeleton();
+    /* Skeleton v tvare obsahu (`shape: 'dashboard'` — hero → KPI mriežka → karty).
+       Kostra si už rozmery NEPÍŠE: `todaySkeleton()` ich skládal ako inline atribút
+       štýlu v JS, čo je pre CSSOM neviditeľné, takže žiadna asercia nad stylesheetom
+       o tej kresbe nevedela. Dnes ich drží rodina `.skel*` v `mind.css`.
+
+       Šírku rieši fluidná mriežka v CSS (#screens padding-inline + auto-fill grids),
+       nie inline max-width — inak dashboard nikdy nevyužije široké okno.
+
+       `deferSkeleton` kreslí až po 300 ms: `renderToday()` sa volá aj po
+       synchronizácii, teda nad už vykreslenou obrazovkou, a blik kostry nad hotovým
+       obsahom pôsobí pomalšie než ticho. */
+    const cancelSkeleton = deferSkeleton(body, 'dashboard');
 
     /* JEDNO volanie na celú obrazovku. Do 20. 8. 2026 sa Dnes skládalo z dvoch
        (`/api/today` + `/api/dashboard`), takže obsah obrazovky nemal jeden zdroj —
@@ -48,8 +44,12 @@ export async function renderToday() {
     let d;
     try {
         d = await getJson('/api/today');
+        cancelSkeleton();
     } catch (e) {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať prehľad', 'Skús obnoviť stránku.');
+        cancelSkeleton();
+        // Jeden chybový komponent: predmet vo vete + jedna akcia. `renderToday`
+        // ako `retry` je bezpečné — číta `/api/today`, nie DOM, ktorý práve zmizol.
+        renderError(body, 'prehľad', renderToday);
         return;
     }
     // `dash` je ten istý objekt — agregáty sú v koreni odpovede pod tými istými
@@ -75,9 +75,13 @@ export async function renderToday() {
         // KPI rad aj všetky štyri karty a zostal jediný riadok o týždni — vyzeralo to
         // ako prázdne vedomie, nie ako chyba. Zvyšok (z /api/today) je platný, takže
         // sa nezahadzuje; chýbajúca časť to o sebe povie sama.
+        /* `errorHtml`, nie `renderError`: skládame reťazec do zvyšku obrazovky,
+           takže tu nie je kam napojiť listener — a tlačidlo „Skúsiť znova" bez
+           listenera by bolo mŕtve. Vetu skládá helper, RADU si drží toto miesto:
+           priznanie „Zvyšok obrazovky je aktuálny" je jediné svojho druhu v appke
+           a zjednotenie chýb ho nesmie zošúchať na generické „Server neodpovedá". */
         h += weekLine(wb);
-        h += emptyHtml('cloud_off', 'Súhrnné čísla sa nepodarilo načítať',
-            'Zvyšok obrazovky je aktuálny — skús obnoviť stránku.');
+        h += errorHtml('súhrnné čísla', 'Zvyšok obrazovky je aktuálny — skús obnoviť stránku.');
     }
 
     // ---- Naposledy / záznamy / projekty (z /api/today) ----
@@ -364,7 +368,7 @@ export async function doSync(btn) {
         const st = j.stats || j.sync || j.run || j;
         showToast('Synchronizácia hotová: +' + (st.created ?? 0) + ' / ~' + (st.updated ?? 0), null, 'success');
         renderToday();
-    }, 'Synchronizujem…');
+    }, 'Synchronizuje sa…');
 }
 
 // SK plurál 1 / 2-4 / 5+ (a 0)

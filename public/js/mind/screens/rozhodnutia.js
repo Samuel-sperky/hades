@@ -2,7 +2,7 @@ import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyHtml, esc, getJson, plainBlock, plainInline, renderEmpty, renderLoading } from '../util.js';
+import { $, busy, deferSkeleton, emptyHtml, esc, getJson, plainBlock, plainInline, renderError, renderFilterEmpty } from '../util.js';
 
 /* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
    Časová os rozhodnutí zoskupená po mesiacoch (.dtl*), filtre obdobie/oblasť
@@ -56,17 +56,21 @@ function applyDecisionsPayload(d) {
 export async function renderDecisions() {
     const body = $('rozhodnutia-body');
     if (!body) return;
-    renderLoading(body, 'Načítavajú sa rozhodnutia…');
+    // Skeleton v tvare obsahu (rad filtračných čipov + karty) namiesto dýchajúceho znaku.
+    const cancelSkeleton = deferSkeleton(body, 'cards');
     const seq = ++decisionsState.seq;
     try {
         const d = await getJson(decisionsQuery());
+        // pred `seq` kontrolou, inak by kostra zahodenej odpovede dosadla nad výsledok
+        cancelSkeleton();
         if (seq !== decisionsState.seq) return;
         applyDecisionsPayload(d);
         pruneDecisionFilters();
         renderDecisionsView();
     } catch (e) {
+        cancelSkeleton();
         if (seq !== decisionsState.seq) return;
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať rozhodnutia', 'Skús obnoviť stránku.');
+        renderError(body, 'rozhodnutia', renderDecisions);
     }
 }
 
@@ -199,13 +203,36 @@ export function renderDecisionsList() {
     const filtered = decisionsState.year !== null || decisionsState.areaId !== null || decisionsState.q.trim() !== '';
 
     if (!rows.length) {
-        list.innerHTML = emptyHtml('gavel',
-            anyAtAll && filtered ? 'Žiadne rozhodnutia pre tento filter' : 'Zatiaľ žiadne rozhodnutia',
-            anyAtAll && filtered ? 'Zruš filter a uvidíš celú os.' : 'Objavia sa, keď Hades zaznamená prvé rozhodnutie.');
+        /* Prázdno z filtra má vlastnú rolu a JEDNU akciu. `pruneDecisionFilters()`
+           zhodí rok a oblasť, ktoré v serverovej osi nie sú, ale `q` nepruneuje —
+           takže sem sa dá dostať s PLATNÝM filtrom (napr. výraz bez zásahu alebo
+           kombinácia rok + oblasť), a vtedy tlačidlo naozaj niečo urobí.
+           Popisok je „Zruš filter" aj pri hľadaní: `clearDecisionFilters()` ruší
+           všetky tri osi naraz, tak by „Zruš hľadanie" sľubovalo menej, než robí. */
+        if (anyAtAll && filtered) {
+            renderFilterEmpty(list, 'Žiadne rozhodnutia pre tento filter',
+                'Zruš filter a uvidíš celú os.', clearDecisionFilters);
+        } else {
+            list.innerHTML = emptyHtml('gavel', 'Zatiaľ žiadne rozhodnutia',
+                'Objavia sa, keď Hades zaznamená prvé rozhodnutie.');
+        }
     } else {
         list.innerHTML = decisionsTimelineHtml(rows);
     }
     wireDecisionList(list);
+}
+
+/* Zrušenie všetkých troch osí filtra naraz. Ide cez `renderDecisions()`, nie cez
+   `refreshDecisionList()`: prázdny filter môže odomknúť rady čipov, ktoré sa
+   vypisujú len keď je z čoho vyberať, takže lišta sa musí prestaviť. */
+function clearDecisionFilters() {
+    decisionsState.year = null;
+    decisionsState.areaId = null;
+    decisionsState.q = '';
+    clearTimeout(decisionsState.qTimer);
+    const search = $('dec-search');
+    if (search) search.value = '';
+    renderDecisions();
 }
 
 export function decAddFormHtml() {
@@ -444,6 +471,9 @@ export async function deleteDecision(btn, id) {
     }, 'Maže sa…');
 }
 
+/* Uloženie rozhodnutia do pamäte. „Uloženie", nie „zápis": zápis je tool Charóna,
+   ktorý zaparkuje na dvojfázovej bráne (docs/BRAND-HADES.md §1). Toto je bežná
+   akcia človeka a bránou neprechádza. */
 export async function saveDecision(btn) {
     const text = ($('dec-text').value || '').trim();
     if (!text) { showToast('Napíš text rozhodnutia'); $('dec-text').focus(); return; }

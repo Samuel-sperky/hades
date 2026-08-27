@@ -1,6 +1,6 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeDetail } from '../screens.js';
-import { $, esc, getJson, prettyLabel, renderEmpty, renderLoading } from '../util.js';
+import { $, deferSkeleton, esc, getJson, prettyLabel, renderEmpty, renderError, renderFilterEmpty } from '../util.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
@@ -37,10 +37,15 @@ export function timeHM(iso) {
    kým sa filtrovalo nad oknom 50 záznamov, čip sľuboval 22 a zoznam dal 9. */
 export async function renderJournal() {
     const list = $('journal-list');
-    renderLoading(list, 'Načítava sa denník…');
+    /* SKELETON, nie dýchajúci znak: `/api/journal` beží 3–4 s a plní zoznam, teda
+       obsah so známym tvarom (kľúč dňa + záznamy). Do 27. 8. 2026 tu bol dýchajúci
+       znak — pri najpomalšom endpointe appky práve ten stav, ktorý najviac
+       potreboval predkresliť rozloženie. */
+    const cancelSkeleton = deferSkeleton(list, 'list');
     try {
         const q = journalProject ? '?project=' + encodeURIComponent(journalProject) : '';
         const data = await getJson('/api/journal' + q);
+        cancelSkeleton();
         journalRecords = data.records || [];
         journalGroups = data.project_groups || [];
         journalTotal = data.total || 0;
@@ -56,7 +61,8 @@ export async function renderJournal() {
         renderJournalFilter();
         renderJournalList();
     } catch (e) {
-        renderEmpty(list, 'cloud_off', 'Nepodarilo sa načítať denník', 'Skús obnoviť stránku.');
+        cancelSkeleton();
+        renderError(list, 'denník', renderJournal);
     }
 }
 
@@ -131,8 +137,20 @@ export function renderJournalList() {
     const list = $('journal-list');
 
     if (!journalRecords.length) {
-        if (journalProject) renderEmpty(list, 'filter_alt_off', 'Žiadne záznamy pre tento projekt', 'Zruš filter a uvidíš celý denník.');
-        else renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy', 'Pribudnú, keď si Hades zapamätá prvý poznatok.');
+        /* Dve rôzne správy, dva rôzne stavy. „Filter to skryl" má vlastnú rolu
+           (`.empty--filter`) a JEDNU akciu, ktorá filter naozaj zruší.
+
+           Tlačidlo je tu legitímne, nie ozdobné: filter, ktorý v skupinách zo
+           servera už nie je, zhodila `renderJournal()` vyššie a načítala znovu —
+           takže ak sme sa dostali sem, `journalProject` je PLATNÁ skupina, ktorá
+           dáta naozaj skrýva. */
+        if (journalProject) {
+            renderFilterEmpty(list, 'Žiadne záznamy pre tento projekt',
+                'Zruš filter a uvidíš celý denník.', () => setJournalProject(null));
+        } else {
+            renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy',
+                'Pribudnú, keď si Hades zapamätá prvý poznatok.');
+        }
         return;
     }
 

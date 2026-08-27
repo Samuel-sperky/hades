@@ -33,7 +33,7 @@ Poradie je poradie otázok; každé je záväzné pre agentov.
 | 16 | **Jeden chybový komponent** pre všetky plochy. |
 | 17 | **Rail sa rozbalí** na široký s labelmi (80 → ~208 px) s možnosťou zbaliť, persistovane. Zmerané: pri 594 px výšky má rail 562 px a žiadny `overflow-y`. |
 | 18 | **Desktop prvý** (1280–1920); na 768–900 px nesmie nič prekrývať. Telefón sa nerieši. |
-| 19+21 | **Vlastná sada inline SVG ikon, celá naraz** (37 použitých ligatúr). Material Symbols subset ide von. |
+| 19+21 | **Vlastná sada inline SVG ikon, celá naraz** (**41** použitých ligatúr — pôvodne tu stálo 37, sonda A §4.1 namerala 41; štyri vstupujú do DOM cestami, ktoré grep nad markupom nevidí). Material Symbols subset ide von. |
 | 20 | **Hlas vecný a presný** ako teraz; zjednotí sa len terminológia (vlákno/konverzácia, beh/ťah, zápis/uloženie). |
 | 22+25 | **Hĺbka = sklo a priehľadnosť, ale LEN na tmavej téme.** Na svetlej plné povrchy — pod polopriehľadnými čipmi tam kontrast textu závisel od obsahu grafu. |
 | 23 | **Grafy zjednotiť na jeden jazyk** osi, mriežky, tooltipov a rámp. Heatmapa si drží `role="img"` a `.sr-only` tabuľku. |
@@ -85,4 +85,76 @@ nie podľa témy — dva agenti píšuci do jedného súboru sa ticho prepíšu.
 
 ## 6. Výsledok
 
-*(dopĺňa sa)*
+### Vlna 1 — hustota, stavy, pohyb, serif (27. 8. 2026)
+
+Beh: 2 sondy → koordinátor → 2 implementátori. Delenie **podľa súborov** vyšlo:
+I1 vlastnil `public/css/mind.css` + hlavičku `mind.blade.php`, I2 sedem obrazoviek,
+`util.js`, `structure.js` a `charts.js`. **Prieniku nula** — nikto nikomu nič neprepísal.
+
+Zavedené: tri rolové tokeny hustoty (`--fs-data` 13 px / `--fs-data-chip` 12 px /
+`--fs-chart-axis` 11 px) a zdvih 44 deklarácií dátového textu, jeden chybový komponent
+`.empty--error` na desiatich call-site šiestich obrazoviek, kostra v tvare obsahu
+(rodina `.skel*`, jedna mechanika, perióda `--dur-pulse`), prázdno z filtra
+`.empty--filter` s jednou funkčnou akciou, serif na `.screen-head h1` vedľa
+`.hero-val`, jeden jazyk osi grafov (`.chart-axis`), sklo len na tmavej cez
+`--scrim-blur`, `.ms` fallback + `liga`, neosobný hlas.
+
+**Namerané (DOM a computed style, nie snímka):**
+
+| Vec | Číslo |
+|---|---|
+| `php artisan test` | 596 passed · 0 failed · 45 skipped (základná čiara) |
+| Dvojité deklarácie `mind.css` | A=0 B=1 C=16 · kalibrované na predvlnovom súbore (A=0 B=1 C=17) |
+| Kalibrácia chrómu (nesmel sa zdvihnúť) | `.rail-eyebrow` 10 px · `.kpi-label` 11 px · `body` 14 px |
+| Preload fontov | presne 6, v poradí zo T9 |
+| Kostra: posun videného obsahu | **0 px** titulok, **0 px** zoznam · záhyb vyplnený 98,3 % |
+| Kostra pod 300 ms | pri 0 ms sa neobjaví (obsah 1 ms), pri 120 ms sa neobjaví (obsah 132 ms) |
+| Inline rozmery a `font-size` v JS | 0 (predtým `font-size:10px` na osi grafu) |
+| Chyba na 6 obrazovkách | vlastný predmet + `cloud_off` + presne 1 akcia · iná kresba chyby 0 |
+| Kontrast ikony chyby | svetlá **4,02:1** · tmavá **6,65:1** (kalibrácia `body` 15,88 / 16,48) |
+| Sklo | svetlá `--scrim-blur: none`, tri scrimy `backdrop-filter: none` · tmavá `blur(4px)` |
+| Os grafu | 11 px Geist Mono, prokládka 13,2 px |
+| Prvá osoba v DOM | 0 zásahov |
+| Načítané moduly | všetkých 11 dotknutých (žiadny mŕtvy kód) |
+
+**Tri veci, ktoré som po implementátoroch zavrel sám** — spadli do medzery medzi
+vlastníctvami súborov, takže ich nemohol dokončiť ani jeden:
+
+1. `.skel-list` nenieslo `font-size`, hoci komentár nad `.skel-line` to vyžadoval.
+   Bez toho `1em` dedilo 14 px z `body` namiesto 13 px, teda skeleton zachoval presne
+   ten CLS skok, ktorý má odstrániť. Zmerané po oprave: riadok = 13 px.
+2. `.skel-block--hero` emitoval JS a CSS ho nekreslilo — hero pás Dnes padal na
+   default 58 px namiesto 84 px. Zmerané: 84 vs 58.
+3. `.shimmer` prežila ako mŕtvy kód a komentár I1 o nej **lhal** („má vo vlne 1 stále
+   volajúceho `screens/dnes.js`"). Zmerané: nula volajúcich. Trieda zmazaná,
+   `@keyframes hades-shimmer` a `--shimmer-sheen` ostávajú (používa ich `.skel`).
+
+**Šesť odchýlok od litery plánu, všetky prijaté** (každá mala lepší dôvod než plán):
+umiestnenie rolových tokenov za škálu, `margin-top` osi 6 px z vymenovaného zoznamu,
+`.empty--filter` zámerne bez vlastnej kresby (manuál §8), `renderError` s akciou
+v Smernici namiesto `errorHtml`, Kontrola pri `soft` kostru **nekreslí** (plán si
+v tej istej sekcii protirečil, manuál §8 rozhodol), a rozšírenie opravy hlasu z piatich
+reťazcov na deväť.
+
+**Dve moje vlastné falošné merania, opravené pred zápisom** (patria sem, lebo to je
+opakovaná pasca projektu): (a) CLS som najprv počítal ako rast celkovej výšky kontejnera
+a dostal „82,9 % pád" — rast pod okrajom nie je posun, správne je 0 px posunu videného;
+(b) podlahu `*` v reduced-motion bloku môj regex nenašiel, pretože prehliadač
+normalizuje `*::before` na `::before` — podlaha tam je, s `!important`.
+
+### Otvorené (vlna 2 a 3)
+
+URL a hlboký odkaz (rozhodnutia 9/10/27) · 41 vlastných SVG ikon a odchod Material
+Symbols · animácie znaku a jeden zdroj faviconu (geometria je zapísaná 8× + raz
+v Pythone) · rozbalenie railu 80 → ~208 px · `charon.css` na typografickú škálu ·
+chybový komponent na `/console`, `/chat` a v doku · audit 64 pohybov bez pomenovanej
+tichej verzie · zjednotenie breakpointov.
+
+**Otvorená otázka, ktorá patrí používateľovi:** kto serializuje filtre do URL — server
+(invariant dvojitej plochy hovorí „filtre sú dáta a patria na server") alebo klient
+(rozhodnutie 27 hovorí „jedno miesto serializuje aj deserializuje"). Tie dve vety si
+pri filtroch protirečia a vlna 2 na tom stojí.
+
+**Oprava kontraktu:** rozhodnutie 19 hovorí „37 použitých ligatúr". Správne číslo je
+**41** (sonda A §4.1) — štyri vstupujú do DOM cestami, ktoré grep nad markupom nevidí
+(`search_off`, `filter_alt_off`, `play_arrow`, `pause`).

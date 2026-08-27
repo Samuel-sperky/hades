@@ -3,15 +3,17 @@ import { dockOpen } from './dock.js';
 import { S } from './state.js';
 import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
-import { $, busy, emptyHtml, esc, getJson, markTreeActive, renderEmpty, renderLoading, setFocus, typeName } from './util.js';
+import { $, busy, deferSkeleton, emptyHtml, esc, getJson, markTreeActive, renderEmpty, renderError, renderLoading, setFocus, typeName } from './util.js';
 
 /* ---------- štruktúra (oblasti a oddelenia) ---------- */
 
 export async function renderStructure() {
     const wrap = $('structure-tree');
-    renderLoading(wrap, 'Načítava sa štruktúra…');
+    // Skeleton v tvare obsahu: strom je zoznam riadkov, teda tvar sa dá predkresliť.
+    const cancelSkeleton = deferSkeleton(wrap, 'list');
     try {
         const data = await getJson('/api/structure');
+        cancelSkeleton();
         const cnt = (v) => (v && typeof v === 'object') ? (v.node_count || v.count || 0) : (v || 0);
 
         let html = '';
@@ -34,7 +36,10 @@ export async function renderStructure() {
         if (core > 0) html += '<div class="tree-muted"><span>Jadro</span><span class="count">' + core + '</span></div>';
         if (unassigned > 0) html += '<div class="tree-muted"><span>Nezaradené</span><span class="count">' + unassigned + '</span></div>';
 
-        wrap.innerHTML = html || emptyHtml('account_tree', 'Zatiaľ žiadna štruktúra');
+        // Prázdny stav UČÍ: čo to je aj prečo je prázdne. Akcia tu nie je, pretože
+        // oblasti sa nezakladajú z tohto panela — vznikajú zaradením uzlov.
+        wrap.innerHTML = html || emptyHtml('account_tree', 'Zatiaľ žiadna štruktúra',
+            'Oblasti a oddelenia pribudnú, keď Hades zaradí prvé uzly.');
 
         const rowActivate = (row, fn) => {
             row.onclick = (e) => { if (!e.target.closest('.dept-more')) fn(); };
@@ -66,7 +71,10 @@ export async function renderStructure() {
 
         markTreeActive();
     } catch (e) {
-        renderEmpty(wrap, 'cloud_off', 'Nepodarilo sa načítať');
+        cancelSkeleton();
+        // Do 27. 8. 2026 tu stálo „Nepodarilo sa načítať" — bez predmetu aj bez rady,
+        // teda najtichšie priznanie chyby v celej appke. Predmet skládá helper.
+        renderError(wrap, 'štruktúru', renderStructure);
     }
 }
 
@@ -155,11 +163,18 @@ export async function deptRequest(deptId, method, body, okMsg) {
 
 export async function findDuplicates() {
     const wrap = $('dup-list');
+    /* Dýchajúci znak ZOSTÁVA (nie skeleton): hľadanie duplicít je porovnávanie
+       párov a dopredu nie je známe ani to, či nejaký pár nájde — predkresliť sa
+       teda nedá tvar, ktorý ešte neexistuje. */
     renderLoading(wrap, 'Hľadajú sa duplicity…');
     try {
         const data = await getJson('/api/duplicates');
         const pairs = data.pairs || [];
-        if (!pairs.length) { renderEmpty(wrap, 'done_all', 'Žiadne duplicity'); return; }
+        if (!pairs.length) {
+            renderEmpty(wrap, 'done_all', 'Žiadne duplicity',
+                'Nič sa v pamäti neopakuje — nie je čo zlučovať.');
+            return;
+        }
 
         const nodeHtml = (n) => '<div class="dup-node"><span class="dup-label">' + esc(n.label) + '</span>'
             + '<span class="tag muted">' + esc(typeName(n.type)) + '</span></div>';
@@ -186,12 +201,16 @@ export async function findDuplicates() {
                     return;
                 }
                 card.remove();
-                if (!wrap.querySelector('.dup-card')) renderEmpty(wrap, 'done_all', 'Žiadne duplicity');
+                if (!wrap.querySelector('.dup-card')) {
+                    renderEmpty(wrap, 'done_all', 'Žiadne duplicity',
+                        'Nič sa v pamäti neopakuje — nie je čo zlučovať.');
+                }
                 showToast('Zlúčené');
                 await reloadGraph();
-            }, 'Zlúčujem…');
+            }, 'Zlučuje sa…');
         });
     } catch (e) {
-        renderEmpty(wrap, 'cloud_off', 'Nepodarilo sa načítať');
+        // to isté ako v `renderStructure()`: predmet aj rada boli doteraz nikde
+        renderError(wrap, 'duplicity', findDuplicates);
     }
 }

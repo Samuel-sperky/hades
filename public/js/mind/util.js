@@ -479,27 +479,222 @@ export async function busy(btn, fn, busyText) {
     finally { btn.disabled = false; btn.textContent = old; }
 }
 
-/* ---------- prázdne a načítavacie stavy ----------
-   Hlas značky: vecne, krátko, po slovensky, bez zdrobnenín a bez „Ups!".
-   Prvý riadok povie ČO JE, nepovinný druhý ČO S TÝM — a to len tam, kde sa
-   naozaj dá niečo urobiť. Nepovinný `hint` je pridaný ako TRETÍ parameter, aby
-   ostali funkčné volania z modulov, ktoré táto vlna nevlastní (cmdk.js, md.js,
-   pack.js) — tie ho jednoducho neposielajú. */
-export function emptyHtml(icon, text, hint) {
+/* ---------- prázdne, chybové a načítavacie stavy ----------
+
+   JEDEN slovník pre celú plochu `/`. Základ je `.empty`, modifikátor nesie
+   PRÍČINU — a to je informácia, nie kozmetika: „nič tu nie je", „tvoj filter to
+   skryl" a „načítanie padlo" sú tri rôzne správy a do 27. 8. 2026 mali všetky tri
+   ten istý tvar (ikona + veta + rada), takže sa nedali odlíšiť ani okom, ani
+   aserciou nad DOM.
+
+     .empty          — dáta neexistujú
+     .empty--filter  — dáta existujú, filter ich skryl (jediná akcia: zruš filter)
+     .empty--error   — načítanie padlo (jediná akcia: skús znova)
+
+   Hlas: vecne, krátko, po slovensky a NEOSOBNE (docs/BRAND-HADES.md §1).
+   Prvý riadok povie ČO JE, druhý ČO S TÝM. Akcia je NAJVIAC JEDNA — dve akcie
+   znamenajú, že stav nevie, ktorá je jeho jedna cesta ďalej.
+
+   Kresba všetkých troch je v `mind.css`; tento modul píše len markup. */
+
+/* Akcia prázdneho stavu. `data-act` je značka pre napojenie zvonku, listener
+   pripája renderer nižšie — inline `onclick=` by pod `script-src 'self'` bez
+   `unsafe-inline` bol mŕtvy kód (ContentSecurityPolicy.php). */
+function actionHtml(action) {
+    if (!action || !action.label) return '';
+    return '<button type="button" class="empty-act"'
+        + (action.act ? ' data-act="' + esc(action.act) + '"' : '') + '>'
+        + esc(action.label) + '</button>';
+}
+
+/* Napojí JEDINÉ `.empty-act` v kontejneri. Keď `on` nie je funkcia, nerobí nič —
+   a renderery nižšie v tom prípade tlačidlo vôbec nevykreslia, takže mŕtve
+   tlačidlo nevznikne. */
+function wireAction(container, on) {
+    if (typeof on !== 'function') return;
+    const btn = container.querySelector('.empty-act');
+    if (btn) btn.addEventListener('click', on);
+}
+
+/* `hint` je TRETÍ a `action` ŠTVRTÝ parameter, a to je väzba, nie štýl: tvar
+   `emptyHtml(icon, text)` volá päť modulov, ktoré táto vlna nevlastní (cmdk.js,
+   md.js, panels.js, pack.js, charon.js). Zmena poradia alebo významu prvých troch
+   parametrov by ich rozbila TICHO — vykreslil by sa nesprávny text alebo
+   „undefined". Preto sa `emptyHtml` nesmie prepísať ani na objektový argument.
+
+   `action` je `{ label, act, on }`: `on` je nepovinná funkcia a napojí ju
+   `renderEmpty`. Volajúci, ktorý vracia reťazec, si listener pripojí sám podľa
+   `data-act`. */
+export function emptyHtml(icon, text, hint, action) {
     return '<div class="empty"><span class="ms" aria-hidden="true">' + icon + '</span><p>' + esc(text) + '</p>'
         + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '')
+        + actionHtml(action)
         + '</div>';
 }
 
-export function renderEmpty(container, icon, text, hint) {
-    container.innerHTML = emptyHtml(icon, text, hint);
+export function renderEmpty(container, icon, text, hint, action) {
+    if (!container) return;
+    container.innerHTML = emptyHtml(icon, text, hint, action);
+    if (action) wireAction(container, action.on);
+}
+
+/* ---------- chyba: JEDEN komponent ---------- */
+
+const ERROR_HINT = 'Server neodpovedá — skús to znova.';
+
+/* Vetu skládá HELPER, nie volajúci. `subject` je predmet v 4. páde a bez slova
+   „nepodarilo": „denník", „knižnicu", „behy", „frontu". Helper z neho vyrobí
+   „Denník sa nepodarilo načítať".
+
+   Prečo tu a nie u volajúceho: jedenásť chybových ciest si vetu skládalo samo a
+   rozišli sa — dve z nich (structure.js) nepovedali ani predmet („Nepodarilo sa
+   načítať") a jedna (smernica.js) kreslila chybu ako tichý riadok prázdneho stavu.
+
+   Ikona `cloud_off` je grafika s prahom 3:1, nie text. Text chyby ide vždy cez
+   `--text` / `--muted`; `--danger` nesie kresbu, pre text má appka `--danger-ink`. */
+function errorMarkup(subject, hint, action) {
+    const s = String(subject || '').trim();
+    const title = (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Obsah') + ' sa nepodarilo načítať';
+    return '<div class="empty empty--error">'
+        + '<span class="ms" aria-hidden="true">cloud_off</span>'
+        + '<p class="title">' + esc(title) + '</p>'
+        + '<p class="hint">' + esc(hint || ERROR_HINT) + '</p>'
+        + actionHtml(action)
+        + '</div>';
+}
+
+/* Chyba BEZ akcie — pre miesta, kde volajúci vracia reťazec a nemá kam napojiť
+   listener (čiastočný pád dashboardu, zoznam uložených smerníc). Tlačidlo tu
+   zámerne nie je: mŕtve „Skúsiť znova" je horšie než žiadne. */
+export function errorHtml(subject, hint) {
+    return errorMarkup(subject, hint, null);
+}
+
+/* `retry` je funkcia, typicky ta istá render funkcia, v ktorej fetch spadol.
+   MUSÍ čítať stav z modulu, nie z DOM — DOM, ktorý ju vyvolal, práve zmizol.
+   Bez `retry` sa tlačidlo nevykreslí. */
+export function renderError(container, subject, retry, hint) {
+    if (!container) return;
+    const action = typeof retry === 'function' ? { label: 'Skúsiť znova', act: 'retry' } : null;
+    container.innerHTML = errorMarkup(subject, hint, action);
+    wireAction(container, retry);
+}
+
+/* ---------- prázdno spôsobené filtrom ---------- */
+
+function filterMarkup(text, hint, action) {
+    return '<div class="empty empty--filter">'
+        + '<span class="ms" aria-hidden="true">filter_alt_off</span>'
+        + '<p>' + esc(text) + '</p>'
+        + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '')
+        + actionHtml(action)
+        + '</div>';
+}
+
+// Varianta pre volajúceho, ktorý skládá reťazec a napojí `.empty-act` sám
+// (obrazovka Runy stavia celú časovú os jedným `innerHTML`).
+export function filterEmptyHtml(text, hint) {
+    return filterMarkup(text, hint, null);
+}
+
+/* JEDINÉ miesto, kde prázdny stav MENÍ stav appky. `clear` musí filter naozaj
+   zrušiť — appka má tri funkcie, ktoré neplatný filter rušia samé
+   (`pruneLibraryArea`, `pruneDecisionFilters`, `pruneRunFilters`), takže tlačidlo
+   sa smie ponúknuť len tam, kde je filter PLATNÝ a naozaj skrýva dáta. Inak
+   vznikne tlačidlo, ktoré nič nerobí.
+   `label` je nepovinný, pretože „zruš hľadanie" a „zruš filter" sú pre človeka
+   dve rôzne veci — príčinu pozná volajúci, nie helper. */
+export function renderFilterEmpty(container, text, hint, clear, label) {
+    if (!container) return;
+    const action = typeof clear === 'function'
+        ? { label: label || 'Zruš filter', act: 'clear-filter' }
+        : null;
+    container.innerHTML = filterMarkup(text, hint, action);
+    wireAction(container, clear);
+}
+
+/* ---------- skeleton v tvare obsahu ----------
+
+   `/api/journal` a `/api/dashboard` bežia 3–4 s, takže načítavanie nie je
+   okrajový stav a prázdna plocha je z možností najhoršia. Skeleton drží
+   ROZLOŽENIE, aby obsah po prílete neposkočil.
+
+   `shape` je ENUM, nie objekt s rozmermi: rozmery patria CSS (`--skel-h`), inak
+   sú pre CSSOM neviditeľné a žiadna asercia ich nenájde — presne tak vznikol
+   inline `font-size:10px` na osi grafu. Neznámy `shape` padne na `list`. */
+
+const SKEL_LINE = '<div class="skel skel-line"></div>';
+const SKEL_LINE_HALF = '<div class="skel skel-line skel-line--half"></div>';
+const SKEL_LINE_SHORT = '<div class="skel skel-line skel-line--short"></div>';
+const SKEL_BLOCK = '<div class="skel skel-block"></div>';
+const SKEL_CARD = '<div class="skel skel-card"></div>';
+
+function rep(html, n) {
+    let out = '';
+    for (let i = 0; i < n; i++) out += html;
+    return out;
+}
+
+/* Tvary kopírujú hierarchiu hotovej obrazovky, nie abstraktné „boxy".
+   `dashboard` používa SKUTOČNÉ mriežky obrazovky Dnes (`.kpi-grid`,
+   `.dash-grid`), nie ich napodobeninu — stĺpce, medzery aj zalomenie na úzkom
+   okne sú preto tie isté, aké bude mať obsah.
+
+   Hľadacie pole v `dashboard` ZÁMERNE nie je, hoci ho starý `todaySkeleton()`
+   kreslil ako prvý pás: veľké hľadanie odišlo z obrazovky Dnes do hlavičky,
+   takže skeleton sľuboval prvok, ktorý po dobehnutí dát nepríde. */
+const SKEL_SHAPES = {
+    dashboard: '<div class="skel-list">'
+        + '<div class="skel skel-block skel-block--hero"></div>'
+        + '<div class="kpi-grid">' + rep(SKEL_BLOCK, 4) + '</div>'
+        + '<div class="dash-grid">' + rep(SKEL_CARD, 2) + '</div>'
+        + '</div>',
+    // zoznam po dňoch: kľúč dňa (krátky riadok) + záznamy pod ním
+    list: '<div class="skel-list">' + rep(SKEL_LINE_SHORT + rep(SKEL_BLOCK, 3), 3) + '</div>',
+    // rad filtračných čipov + karty
+    cards: '<div class="skel-list">' + SKEL_LINE_HALF + rep(SKEL_CARD, 4) + '</div>',
+    // rad filtračných čipov + hustejšie riadky časovej osi
+    table: '<div class="skel-list">' + SKEL_LINE_HALF + rep(SKEL_BLOCK, 6) + '</div>',
+    prose: '<div class="skel-list">' + rep(SKEL_LINE, 4) + SKEL_LINE_HALF + '</div>',
+};
+
+/* `sr-only` oznámenie je povinná časť skeletonu, nie ozdoba: plochy samotné sú
+   kresba bez textu, takže bez tejto vety čítačka obrazovky o načítavaní nedostane
+   nič. Vzor je `console/main.js`. */
+export function skeletonHtml(shape) {
+    return '<p class="sr-only">Obsah sa načítava…</p>'
+        + (SKEL_SHAPES[shape] || SKEL_SHAPES.list);
+}
+
+export function renderSkeleton(container, shape) {
+    if (!container) return;
+    container.innerHTML = skeletonHtml(shape);
+}
+
+const SKELETON_DELAY = 300;
+
+/* Skeleton pod 300 ms je BLIK a pôsobí pomalšie než ticho. `deferSkeleton` preto
+   kresbu len naplánuje a vráti funkciu, ktorou volajúci čakanie zruší; tá vráti
+   true, keď sa skeleton ešte nevykreslil (kontejner teda drží pôvodný obsah).
+
+   Zrušiť sa MUSÍ pred zápisom obsahu, nie v `finally` za ním: naplánovaná kresba
+   by inak dosadla nad hotový obsah a zmazala ho. */
+export function deferSkeleton(container, shape) {
+    let timer = setTimeout(() => { timer = null; renderSkeleton(container, shape); }, SKELETON_DELAY);
+    return function cancelSkeleton() {
+        if (timer === null) return false;
+        clearTimeout(timer);
+        timer = null;
+        return true;
+    };
 }
 
 /* Prázdno VNÚTRI karty je iná veta než prázdno na celej obrazovke. Karta má
    vlastný nadpis, ktorý už povedal, o čo ide, takže 28px ikona pod ním len
    zdvojí to isté a z malej kartičky urobí plakát — presne tak vyzerali „Aktivita"
    a „Podľa oblasti", keď nemali dáta. Zostáva jeden tichý riadok v --muted.
-   Zámerne bez ikony a bez hintu: v karte nie je čo robiť, len sa ešte nič nestalo. */
+   Zámerne bez ikony a bez hintu: v karte nie je čo robiť, len sa ešte nič nestalo.
+   NEZLIEVAŤ s `.empty` — je to iná rola, nie zabudnutý variant. */
 export function emptyCardHtml(text) {
     return '<p class="card-empty">' + esc(text) + '</p>';
 }
@@ -508,7 +703,11 @@ export function emptyCardHtml(text) {
    dýchajú (rovnaký motív ako jadro vedomia a favicon), namiesto generických
    presýpacích hodín.
 
-   Text je NEOSOBNÝ („Načítava sa…"). Do 20. 8. 2026 tu stálo „Načítavam…" a tento
+   Pôsobisko sa zúžilo: kde endpoint plní ZOZNAM alebo MRIEŽKU, kreslí sa
+   skeleton — má čo kopírovať. Dýchajúci znak zostáva tam, kde tvar obsahu
+   dopredu známy NIE JE: hľadanie duplicít a skladanie kontextu smernice.
+
+   Text je NEOSOBNÝ („Načítava sa…"). Do 20. 8. 2026 tu stála prvá osoba a tento
    komentár to zdôvodňoval tým, že Hades o sebe hovorí v prvej osobe — čo prestalo
    platiť rozhodnutím o hlase značky (docs/BRAND-HADES.md §1). Prvá osoba je pri
    dlhej práci rušivá a mýtus už nesie meno; nemusí ho niesť aj každá hláška.

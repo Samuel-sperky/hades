@@ -5,7 +5,7 @@ import { openNodeDetail, openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast, showUndoToast } from '../toasts.js';
-import { $, busy, emptyHtml, esc, getJson, plainInline, plainText, renderEmpty, renderLoading, timeAgo, typeName } from '../util.js';
+import { $, busy, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo, typeName } from '../util.js';
 
 /* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
    Fronta needs_review uzlov (.queue*), klávesnica j/k/Enter/v/r/Delete (len na
@@ -49,6 +49,19 @@ export function kontrolaFiltersActive() {
     return !!(f.type || f.certainty || f.area || f.q);
 }
 
+/* Zruší všetky štyri osi filtra naraz — akcia prázdneho stavu `.empty--filter`.
+   Strop ide späť na prvú stránku (rovnako ako pri každej inej zmene filtra) a
+   pole hľadania sa vyprázdni ručne: toolbar prekreslenie PREŽIJE (stavia sa len
+   pri zmene osí), takže by v ňom inak zostal výraz, ktorý už nefiltruje. */
+function clearKontrolaFilters() {
+    clearTimeout(kontrolaQTimer);
+    kontrolaState.f = { type: '', certainty: '', area: '', q: '' };
+    kontrolaState.limit = KONTROLA_PAGE;
+    const q = $('kontrola-q');
+    if (q) q.value = '';
+    renderKontrola(true);
+}
+
 function kontrolaQuery() {
     const f = kontrolaState.f;
     const p = new URLSearchParams();
@@ -68,10 +81,18 @@ export async function renderKontrola(soft) {
     if (!body) return;
     const seq = ++kontrolaSeq;
     const list = $('kontrola-list');
-    if (soft && list) renderLoading(list, 'Načítava sa fronta…');
-    else renderLoading(body, 'Načítavam frontu…');
+    /* SOFT prekreslenie nechá starý obsah STÁŤ a povie to len `aria-busy`.
+       Skeleton (ani dýchajúci znak) tu byť nesmie: `soft` je filtrovanie a
+       „Načítať ďalších" nad UŽ VYKRESLENÝM zoznamom, takže kostra by zmazala
+       presne to, čo má človek pred očami — to je regresia, nie zlepšenie.
+       Prvé načítanie kostru dostane, a v tvare zoznamu. */
+    const softList = soft && list ? list : null;
+    if (softList) softList.setAttribute('aria-busy', 'true');
+    const cancelSkeleton = softList ? null : deferSkeleton(body, 'list');
     try {
         const d = await getJson('/api/review/queue' + kontrolaQuery());
+        if (cancelSkeleton) cancelSkeleton();
+        if (softList) softList.setAttribute('aria-busy', 'false');
         if (seq !== kontrolaSeq) return;                // medzitým prišiel novší dotaz
         kontrolaState.items = d.queue || [];
         // `total` je serverové číslo a nesie ho rail. Fallback na `items.length`
@@ -97,10 +118,16 @@ export async function renderKontrola(soft) {
         // niečo, čo s ňou nesúvisí. Filtrovanie fronty ju nespúšťa znovu.
         loadHygiena(false);
     } catch (e) {
+        if (cancelSkeleton) cancelSkeleton();
+        if (softList) softList.setAttribute('aria-busy', 'false');
         if (seq !== kontrolaSeq) return;
-        // pri filtrovaní ostáva toolbar, inak by sa zlý filter nedal ani zrušiť
-        renderEmpty((soft && $('kontrola-list')) || body,
-            'cloud_off', 'Nepodarilo sa načítať frontu', 'Skús obnoviť stránku.');
+        /* Cieľ chyby má DVA tvary a je to nutnosť, nie štýl: pri filtrovaní ide
+           chyba do zoznamu, aby ostal toolbar — inak by sa zlý filter nedal ani
+           zrušiť. Pri prvom načítaní berie chyba celé telo, pretože toolbar ešte
+           neexistuje.
+           `retry` nesie ten istý `soft`, teda mieri tam, odkiaľ prišla; číta
+           `kontrolaState`, nie DOM, ktorý práve zmizol. */
+        renderError(softList || body, 'frontu', () => renderKontrola(soft));
     }
 }
 
@@ -133,12 +160,20 @@ export function rerenderKontrola(moveFocus) {
     const list = $('kontrola-list');
     const items = kontrolaState.items;
     if (!items.length) {
-        // Prázdno POD filtrom je iná veta než prázdna fronta — a musí ísť do
-        // zoznamu, nie cez celé telo: keby zmizol toolbar, filter, ktorý všetko
-        // odrezal, by sa nedal zrušiť ničím okrem prechodu na inú obrazovku.
-        list.innerHTML = kontrolaFiltersActive()
-            ? emptyHtml('fact_check', 'Filtru nevyhovuje ani jeden uzol', 'Zruš filter a uvidíš celú frontu.')
-            : emptyHtml('fact_check', 'Fronta na overenie je prázdna', 'Nové poznatky sem prídu po ďalšej session.');
+        /* Prázdno POD filtrom je iná veta než prázdna fronta — a musí ísť do
+           zoznamu, nie cez celé telo: keby zmizol toolbar, filter, ktorý všetko
+           odrezal, by sa nedal zrušiť ničím okrem prechodu na inú obrazovku.
+           Odteraz to nie je len iná veta, ale aj iná rola (`.empty--filter`) a
+           jedna akcia. Tlačidlo naozaj niečo urobí: `pruneKontrolaFilters()`
+           vyššie zhodilo osi, ktoré v novej odpovedi nemajú čip, takže filter,
+           ktorý prežil, je platný — a `f.q` sa nepruneuje vôbec. */
+        if (kontrolaFiltersActive()) {
+            renderFilterEmpty(list, 'Filtru nevyhovuje ani jeden uzol',
+                'Zruš filter a uvidíš celú frontu.', clearKontrolaFilters);
+        } else {
+            renderEmpty(list, 'fact_check', 'Fronta na overenie je prázdna',
+                'Nové poznatky sem prídu po ďalšej session.');
+        }
         return;
     }
     kontrolaState.idx = Math.max(0, Math.min(kontrolaState.idx, items.length - 1));
@@ -686,7 +721,8 @@ function hygienaHtml() {
         + '</div>';
 
     if (hygienaState.loading) {
-        return head + '<p class="dash-note">Meriam… prechádza sa celá sieť, chvíľu to trvá.</p>';
+        // Neosobne (docs/BRAND-HADES.md §1) — dovtedy tu bolo jediné „ja" tejto sekcie.
+        return head + '<p class="dash-note">Prechádza sa celá sieť, chvíľu to trvá.</p>';
     }
     if (hygienaState.error) {
         return head + '<p class="dash-note">Hygienu sa nepodarilo zmerať.</p>';

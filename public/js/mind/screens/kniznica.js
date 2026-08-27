@@ -3,7 +3,7 @@ import { openMdOverlay } from '../md.js';
 import { bindPackButtons, packBtn } from '../pack.js';
 import { originBadge } from './dnes.js';
 import { mutedColor } from '../theme.js';
-import { $, esc, getJson, plainInline, plainText, renderEmpty, renderLoading, timeAgo } from '../util.js';
+import { $, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Knižnica (/api/library) ----------
 
@@ -87,11 +87,16 @@ export async function renderLibrary() {
     // zoznam necháme stáť a iba ho ztlmíme — inak obrazovka pri každom stlačení
     // klávesy zablikala naprázdno (a s výraznejšou značkou to bije ešte viac).
     const hasList = !!body.querySelector('.lib-area');
+    // Skeleton v tvare obsahu (rad filtračných čipov + karty) namiesto dýchajúceho
+    // znaku; text hlásenia tým zaniká celý — a s ním aj jeho prvá osoba.
+    const cancelSkeleton = hasList ? null : deferSkeleton(body, 'cards');
     if (hasList) body.classList.add('is-stale');
-    else renderLoading(body, 'Načítavam knižnicu…');
     try {
         const url = '/api/library' + (q ? ('?q=' + encodeURIComponent(q)) : '');
         const d = await getJson(url);
+        // Zrušiť PRED `seq` kontrolou: naplánovaná kostra zahodenej odpovede by inak
+        // dosadla nad výsledok toho dotazu, ktorý medzitým vyhral.
+        if (cancelSkeleton) cancelSkeleton();
         if (seq !== librarySeq) return;                 // medzitým prišiel novší dotaz
         body.classList.remove('is-stale');
         libraryState.areas = d.areas || [];
@@ -101,11 +106,22 @@ export async function renderLibrary() {
         pruneLibraryArea();
         renderLibraryView();
     } catch (e) {
+        if (cancelSkeleton) cancelSkeleton();
         if (seq !== librarySeq) return;
         body.classList.remove('is-stale');
         libraryAxisSig = null;
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať knižnicu', 'Skús obnoviť stránku.');
+        renderError(body, 'knižnicu', renderLibrary);
     }
+}
+
+/* Zrušenie hľadania — jedna akcia prázdneho stavu `.empty--filter`.
+   `#library-search` je SÚRODENEC `#library-body` (mind.blade.php), takže prežije
+   prepis tela a dá sa vyprázdniť odtiaľto; `renderLibrary()` si výraz z toho poľa
+   aj tak číta sám, takže sa mu nič nepodstrkuje. */
+function clearLibrarySearch() {
+    const inp = $('library-search');
+    if (inp) inp.value = '';
+    renderLibrary();
 }
 
 /* Oblasť, ktorá po zúžení textom už žiadny skill nemá, stratí svoj čip — a keby
@@ -126,9 +142,18 @@ export function renderLibraryView() {
     if (!areas.length) {
         // Niet ani osi, z ktorej by sa dal poskladať filter — prázdno berie celé telo.
         libraryAxisSig = null;
-        renderEmpty(body, 'menu_book',
-            q ? 'Nič sa nenašlo' : 'Knižnica je prázdna',
-            q ? 'Skús kratší výraz.' : 'Playbooky sa tu objavia, keď ich Hades dostane.');
+        /* Prázdno z HĽADANIA je iná správa než prázdna knižnica a má jednu akciu.
+           Akcia sa dá ponúknuť len pri `q`: oblasť sem nedosiahne (filtruje sa nad
+           `areas`, a keď je pole prázdne, `pruneLibraryArea()` slug už zhodil), takže
+           bez výrazu naozaj nie je čo zrušiť.
+           Popisok je „Zruš hľadanie", nie „Zruš filter" — je to iné gesto a stojí
+           na inom prvku (`#library-search`, ktoré je mimo tohto kontejnera). */
+        if (q) {
+            renderFilterEmpty(body, 'Nič sa nenašlo', 'Skús kratší výraz.', clearLibrarySearch, 'Zruš hľadanie');
+        } else {
+            renderEmpty(body, 'menu_book', 'Knižnica je prázdna',
+                'Playbooky sa tu objavia, keď ich Hades dostane.');
+        }
         return;
     }
     ensureLibraryShell(body);

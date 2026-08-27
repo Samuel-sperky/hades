@@ -103,6 +103,13 @@
     --glass-blur-sm: none;
     --glass-blur: none;
     --glass-blur-lg: none;
+    /* Štvrtý prepínateľný token vedľa --glass-blur*: SCRIM POD MODÁLOM.
+       Je to POMENOVANÁ VÝNIMKA rozhodnutia 22+25, nie chyba — rozostrenie tam
+       nenesie hĺbku povrchu, ale vetu „pod tým je obsah, ktorý teraz nečítaš".
+       Podmienky výnimky (docs/BRAND-HADES.md §5): platí len pre scrim pod
+       modálom, nikdy pre panel, a má JEDNU hodnotu. Do vlny 1 mali #help-overlay
+       a #md-overlay 4 px a #cmdk 6 px, teda dve hodnoty pre jednu rolu. */
+    --scrim-blur: none;
     --surface-2: #fbf7f9;
     --field-bg: #fbf7f9;                  /* --surface-2, not a bg-alpha */
     /* Papier karty — pomenovaná rola, nie náhoda. Základ je --panel; „druhý
@@ -276,12 +283,17 @@
     /* Škála je PÁROVÁ (veľkosť + jej prokládka) a je to ÚPLNÁ škála, nie zoznam
        použitých hodnôt. --sp-5 dnes nič nevolá; nemaž ho —
        diera v škále je horšia než nepoužitý stupeň, lebo ďalší človek na jej mieste
-       zadrôtuje číslo. Overené (24. 8. 2026, po D9): všetkých 12 --fs-* má aspoň
-       jedného volajúceho — --fs-headline ho má jediného (.md-body h1.md-h), lebo
+       zadrôtuje číslo. Overené (24. 8. 2026, po D9): všetkých 12 STUPŇOV škály
+       (--fs-micro … --fs-headline + --fs-hero / --fs-kpi) má aspoň jedného
+       volajúceho — --fs-headline ho má jediného (.md-body h1.md-h), lebo
        druhý (rolový alias --fs-metric) s rodinou .metric-* zanikol.
-       (--lh-small volajúceho MÁ od 21. 8. 2026: nález R3 odhalil, že form
-       controls bežali na UA `normal`, takže dátové telá kariet a technické
-       výpisy musia svoju prokládku deklarovať nahlas.) */
+       --lh-small je od vlny 1 redizajnu (27. 8. 2026) BEZ VOLAJÚCEHO: mal ich
+       štyri (.record-time, .lib-skill-snip, .run-cost, .run-args) a všetky štyri
+       to boli DATA, teda odišli na --lh-data. Krok v škále zostáva — viď veta
+       o diere vyššie; nález R3 (form controls dedia UA `normal`, takže prokládku
+       treba deklarovať nahlas) platí ďalej, len ju deklarujú rolové tokeny nižšie.
+       ROLOVÉ tokeny hustoty (--fs-data*, --fs-chart-axis) NIE SÚ stupne škály —
+       majú vlastný blok za škálou a vlastné zdôvodnenie. */
     --fs-micro: 10px;     --lh-micro: 1.3;
     --fs-caption: 11px;   --lh-caption: 1.4;
     --fs-small: 12px;     --lh-small: 1.4;
@@ -291,6 +303,25 @@
     --fs-display: 20px;   --lh-display: 1.25;
     --fs-headline: 24px;  --lh-headline: 1.25;   /* stupeň nad display; nesie h1 prózy v čítačke */
     --lh-prose: 1.6;
+    /* ---- ROLOVÉ tokeny hustoty (rozhodnutie 13) ----
+       Nie sú to nové stupne škály: hodnoty sú zámerne ROVNÉ existujúcim stupňom
+       (13 = --fs-body, 12 = --fs-small, 11 = --fs-caption). Mení sa pomenovanie
+       ROLE a priradenie, nie škála — preto sú tu doslovné px a nie var(--fs-*):
+       rola sa má dať posunúť bez toho, aby sa posunul stupeň škály pre všetkých
+       ostatných. Preto stoja ZA škálou, nie v nej: škála nad nimi je úplná a jej
+       poradie micro → … → headline nemá prerušiť rolový token.
+         --fs-data      hodnota, ktorú človek číta ako obsah: čas, cesta, počet,
+                        snippet, kľúč dňa, cena behu. PODLAHA 13 px.
+         --fs-data-chip tá istá hodnota vnútri badge, kde ju rámuje obrys.
+         --fs-chart-axis os, legenda a stupnica grafu. 11 px je maximum, ktoré os
+                        unesie: heatmapa má 365 buniek a 12 mesačných popiskov
+                        nad nimi, 13 px by ich zlepilo.
+       CHRÓM sa NEZDVÍHA a zostáva na --fs-caption / --fs-micro: popisok, jednotka,
+       eyebrow, klávesová nápoveda, názov jazyka bloku kódu. Keby sa zdvihol aj on,
+       rozhodnutie 13 by prestalo platiť v druhej polovici. */
+    --fs-data: 13px;        --lh-data: 1.45;
+    --fs-data-chip: 12px;   --lh-data-chip: 1.3;
+    --fs-chart-axis: 11px;  --lh-chart-axis: 1.2;
     --ls-caps: 0.08em;
     --ls-normal: 0;
     --ls-mono: 0.01em;                    /* mono tracking for readouts */
@@ -361,7 +392,7 @@
        Rebrík má päť priečok a každá má prácu. --dur-press je stlačenie: musí byť
        POD hranicou, kde sa pohyb ešte vníma ako prechod (~100 ms), inak tlačidlo
        reaguje „až potom". --dur-pulse je perióda NEURČITÉHO čakania (bodky
-       premýšľania, dýchajúci znak načítania, shimmer, bežiaci beh) — dovtedy tu
+       premýšľania, dýchajúci znak načítania, skeleton, bežiaci beh) — dovtedy tu
        boli tri rôzne hodnoty (1,2 / 1,4 / 1,8 s) pre jeden a ten istý význam,
        takže tri indikátory toho istého stavu tikali každý inak.
        Značkové trvania (dýchanie jadra 4 s, zrod znaku 760 + 460 ms, zrod grafov
@@ -395,7 +426,7 @@
        ====================================================================== */
 
     /* ---- layered neutral surfaces (one step above paper/white) ---- */
-    --surface-raised: #f1ebef;            /* fill above white panels: kpi inner, shimmer base */
+    --surface-raised: #f1ebef;            /* fill above white panels: kpi inner, skeleton base */
     --track: #ece4ea;                     /* inset track for dbar / progress (neutral, bez akcentu) */
 
     /* ---- certainty ramp (semantic, third role — ani interaktívna, ani značková)
@@ -451,7 +482,7 @@
     --fs-kpi: 30px;   --lh-kpi: 1;        /* big mono KPI readouts */
     /* Rolové mená NEDRŽIA vlastnú hodnotu, ukazujú na stupeň škály — inak by sa
        dve mená pre tú istú veľkosť mohli rozísť (--fs-h2 : --fs-title). */
-    --fs-h1: 28px;                        /* screen title (Geist) — vlastná, mimo škály */
+    --fs-h1: 28px;                        /* titulok obrazovky (SERIF od 27. 8. 2026) — vlastná, mimo škály */
     --fs-h2: var(--fs-title);             /* dashboard block / section heading */
 
     /* ---- spacing extras ---- */
@@ -668,6 +699,7 @@
     --glass-blur-sm: var(--blur-1);
     --glass-blur: var(--blur-2);
     --glass-blur-lg: var(--blur-3);
+    --scrim-blur: var(--blur-scrim);
     /* tmavý graf je jasný glow na takmer čiernej — znesie o kúsok viac života */
     /* opacity .30 → .25: pod poloprehľadnými chipmi presvitá plátno, takže kontrast
        textu kolíše podľa obsahu grafu (merané 4,89–5,61:1). .25 pridá rezervu nad
@@ -884,8 +916,16 @@ kbd {
     font-weight: var(--fw-medium);
 }
 
+/* `, sans-serif` a `liga` NIE SÚ kozmetika. Keď subset zhavaruje, každá ikona sa
+   vykreslí ako svoj ligatúrový názov („wb_sunny", „hub") — a `/` je plocha
+   s ôsmimi destináciami v raile, breadcrumbom a grafovými nástrojmi, takže sa
+   rozpadne celý chróm. Presne tá porucha, kvôli ktorej z projektu odišlo Google
+   Fonts CDN. Fallback bez pätiek to aspoň nechá čitateľné.
+   console.css a chat.css to mali; mind.css do vlny 1 nie. */
 .ms {
-    font-family: 'Material Symbols Rounded';
+    font-family: 'Material Symbols Rounded', sans-serif;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
     font-weight: normal;
     font-style: normal;
     font-size: var(--icon-md);
@@ -907,7 +947,7 @@ kbd {
    poslala do cudzieho fontu. Zúžime ju teda opticky, znak zostáva. −.34em vezme
    monobunku (~.6em) na ~.26em, čo je šírka úzkej medzery.
 
-   .hero-val tu ZÁMERNE NIE JE: od 20. 8. 2026 je to Playfair (manuál §4 — serif
+   .hero-val tu ZÁMERNE NIE JE: od 20. 8. 2026 je to Playfair (manuál §6 — serif
    drží hero metriku), a tam medzera meria .239em, teda už je to tá úzka medzera.
    S −.34em by vyšla na −.10em a číslice by sa zliali. Zmerané renderom, nie
    z tabuliek: mono .600em / Playfair .239em / Geist .236em na 44 px. */
@@ -1426,7 +1466,8 @@ button.close:active { background: var(--accent-soft); }
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: var(--ls-mono);
-    font-size: var(--fs-small);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--muted);
     white-space: nowrap;
 }
@@ -2100,7 +2141,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     position: fixed; inset: 0;
     z-index: var(--z-overlay);
     background: var(--scrim);
-    backdrop-filter: var(--blur-scrim);
+    backdrop-filter: var(--scrim-blur);
     display: flex; align-items: center; justify-content: center;
     animation: fade-in var(--dur-base) var(--ease);
 }
@@ -2147,7 +2188,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     position: fixed; inset: 0;
     z-index: var(--z-overlay);
     background: var(--scrim);
-    backdrop-filter: var(--blur-scrim);
+    backdrop-filter: var(--scrim-blur);
     display: flex; align-items: center; justify-content: center;
     padding: var(--sp-3);
     animation: fade-in var(--dur-base) var(--ease);
@@ -2452,7 +2493,10 @@ pre.code code {
       by stál posledný v poradí, takže by ho orezanie zjedlo PRVÉ — a značka
       prepadu, ktorú nevidno, je horšia než žiadna. `padding-right` mu drží
       miesto, takže neprekrýva čip, len stojí za ním; --sp-3 (24px) uveze tri
-      znaky mono na 11px, teda až „+99".
+      znaky mono na 12px, teda až „+99". Rezerva sa vlnou 1 zúžila (11 → 12px,
+      rola --fs-data-chip); keby prestala držať, správna oprava je zväčšiť
+      `padding-right`, NIE zmenšiť písmo — ::after je `right: 0`, takže by
+      dorástol do čipu, nie za hranu riadka.
    2) `white-space: nowrap` na riadku: `.tag` je `inline-flex` bez `nowrap`, takže
       dvojslovná značka by sa v úzkom riadku zalomila VNÚTRI čipu a jednoriadkový
       rytmus by padol na 34px. */
@@ -2474,7 +2518,8 @@ pre.code code {
     position: absolute;
     right: 0; top: 50%;
     transform: translateY(-50%);
-    font-family: var(--mono); font-size: var(--fs-caption);
+    font-family: var(--mono); font-size: var(--fs-data-chip);
+    line-height: var(--lh-data-chip);
     letter-spacing: var(--ls-mono);
     color: var(--muted);
 }
@@ -2532,6 +2577,53 @@ pre.code code {
     max-width: 34ch;
     color: var(--muted);
 }
+
+/* ---- STAVY: titulok, chyba, prázdno z filtra, jedna akcia ----
+   Rozhodnutia 14 a 16: prázdny stav UČÍ (čo to je · prečo je prázdne · JEDNA
+   akcia) a chyba POMENUJE PREDMET. Všetko sú to modifikátory `.empty`, nie nové
+   základy — `.empty-network` je hero nad plátnom (`position: fixed; inset: 0;
+   pointer-events: none`) a chyba v karte obrazovky fixed byť nesmie.
+
+   `.empty--error` a `.empty--hero` sa NIKDY nekombinujú na jednom prvku:
+   `.empty--hero` ruší `align-items`, `text-align`, `padding` aj `gap`, obidva sú
+   modifikátory tej istej triedy, takže by rozhodovalo poradie v zdroji. */
+
+/* Prvý riadok stavu, keď nesie PREDMET („Denník sa nepodarilo načítať").
+   PÍSMO JE GEIST, nie serif — manuál §6 vyhradzuje serif titulku obrazovky
+   a jednému primárnemu číslu; v chybe je mýtické písmo zakázané (§8), pretože
+   je to text, ktorý má človek použiť na opravu.
+   Špecificita 0-2-0, takže `.empty.empty-network .title` (0-3-0) si svoju
+   veľkosť --fs-h1 drží ďalej. */
+.empty .title {
+    font-family: var(--font);
+    font-weight: var(--fw-heading);
+    font-size: var(--fs-title);
+    line-height: var(--lh-title);
+    letter-spacing: var(--ls-heading);
+    color: var(--text);
+}
+
+/* Ikona chyby je GRAFIKA s prahom 3:1, nie text — preto plná základná hodnota
+   `--danger` a `opacity: 1` (základ `.empty .ms` stmieva na polovicu).
+   Namerané tokenovo (kompozícia nie je potrebná, obe pozadia sú nepriehľadné):
+   svetlá 4,02:1 na papieri a 4,38:1 na paneli, tmavá 6,65:1 a 6,26:1.
+   Presne ten istý precedens ako `.empty.empty-network .ms` nižšie.
+   TEXT chyby ide vždy cez --text / --muted, NIKDY cez --danger: pre text má
+   appka --danger-ink a základná hodnota by v texte spadla pod prah. */
+.empty--error .ms { color: var(--danger); opacity: 1; }
+
+/* `.empty--filter` (prázdno spôsobené filtrom, nie neexistenciou dát) tu VLASTNÚ
+   KRESBU nemá a je to rozhodnutie, nie diera: manuál §8 zakazuje prázdnemu stavu
+   vymýšľať si novú farbu, takže sa od základu líši TEXTOM a svojou jednou akciou
+   („Zruš filter"), nie tónom ani veľkosťou. Trieda žije v markupe I2 ako značka
+   stavu; keby dostala vlastnú farbu, prestal by byť prázdny stav jednou tichou
+   plochou. */
+
+/* Jedna akcia stavu. Kresbu nesie bare `button` (RESET & BASE), takže tu je len
+   odstup — a ŽIADNY vlastný fokusový prsteň: jedno globálne `:focus-visible`
+   (0-1-0) stačí a per-komponentné pravidlo sa pridáva len vtedy, keď nesie
+   niečo iné než prsteň. */
+.empty .empty-act { margin-top: var(--sp-1); }
 
 /* Načítavanie — súosé kruhy značky (amethystový prstenec + zlaté jadro), ktoré dýchajú.
    Ten istý motív nesie favicon aj #brand-core, takže čakanie vyzerá ako Hades,
@@ -2604,7 +2696,13 @@ pre.code code {
     50%      { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-    .empty.empty-loading .load-mark { animation: none; }
+    /* Tichá verzia dýchania: prstenec stojí na PLNEJ mierke, nie v spodnej fáze.
+       `animation: none` sám o sebe už dnes ten výsledok dáva (bez behu keyframes
+       zostane transform na základnej hodnote), `transform: none !important` ho
+       PRIPÍNA — keby prstenec neskôr dostal inú pomenovanú animáciu, tichý režim
+       by ho aj tak nenechal v scale(.84). Špecificita 0-3-0 prebíja plošnú
+       podlahu `*` (0-0-0), pretože `!important` deklarácie súťažia špecificitou. */
+    .empty.empty-loading .load-mark { animation: none; transform: none !important; }
 }
 
 /* Zoznam, ktorý čaká na novšiu odpoveď — ostáva čitateľný, len ustúpi. Náhrada
@@ -2622,6 +2720,17 @@ pre.code code {
 .screen .empty {
     min-height: 220px;
     justify-content: center;
+}
+/* Stav VNÚTRI karty nesmie brať 220 px z mriežky dashboardu — karta má vlastnú
+   výšku a 220 px vysoká chyba by rad roztrhla (`.dash-grid` je stretch, výšku
+   radu dáva najvyššia karta). Špecificita 0-3-0, teda prebíja `.screen .empty`
+   nad ňou bez toho, aby vznikli dve pravdy na rovnakej špecificite.
+   Dnes tu nič nekreslí: jediný čiastočný pád (`screens/dnes.js`) stavia svoj
+   `.empty` NAD mriežku, nie do karty. Je to podlaha pre chybu, ktorá do karty
+   raz spadne, nie kresba existujúceho stavu. */
+.screen :is(.dash-card, .kpi-card) .empty {
+    min-height: 0;
+    padding: var(--sp-2) 0;
 }
 
 /* Hero podoba prázdneho stavu — uvítacia plocha, ktorá je prvá vec na obrazovke
@@ -2724,7 +2833,22 @@ body.ambient #toasts {
    to menuje manuál (§2): „znak je rovno hotový, nie neviditeľný".
    Plátno tento blok NEDOSIAHNE — canvas nie je DOM prechod. Fyziku stráži
    pump() v public/js/mind/sim.js (dosadne ticho a kreslí až hotový stav),
-   ambient život anim.js cez REDUCED_MOTION a zrod grafov charts.js. */
+   ambient život anim.js cez REDUCED_MOTION a zrod grafov charts.js.
+
+   TOTO PRAVIDLO JE PODLAHA A NESMIE SA „UPRAVIŤ". Merané 27. 8. 2026:
+   **64 pohybov** (z 79 živých) má tichú verziu JEDINE cez toto pravidlo — vrátane
+   dýchania znaku (`core-pulse`), ktoré pomenovaný blok na r. ~1215 nevypína.
+   Každé „upratanie" — `:where(*)`, `0s`, alebo odstránenie `!important` — vypne
+   tichú verziu tým 64 pohybom naraz a nikto si to nevšimne, pretože sa to prejaví
+   len u človeka, ktorý má preferenciu zapnutú.
+
+   Ako sa podlaha LEGÁLNE prebije, keď komponent potrebuje zmysluplný okamžitý
+   ekvivalent namiesto „nič sa nedeje": pravidlo v TOMTO ISTOM @media bloku, so
+   selektorom aspoň triedovej špecificity, s `!important` na tých vlastnostiach,
+   ktoré sa majú líšiť. `!important` deklarácie súťažia medzi sebou
+   ŠPECIFICITOU: `*` je 0-0-0, `.skel::after` 0-1-0, takže trieda vyhrá.
+   Príklady v tomto súbore: `.skel::after { display: none !important }` (pokojná
+   plocha namiesto zamrznutého sweepu) a `.empty.empty-loading .load-mark`. */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: .01ms !important;
@@ -2745,8 +2869,11 @@ body.ambient #toasts {
    (`--surface-2` namiesto `--card-bg`), vlastnou mriežkou (`1fr 1fr`) a vlastnou
    veľkosťou čísla (`--fs-metric` = 24px vs `--fs-kpi` = 30px). Zlúčené do `.kpi-*`
    + modifikátory `.kpi-grid--pair` a `.kpi-card--block` (viď blok KPI GRID nižšie).
-   Dôvod, prečo je číslo v paneli mono a nie serif, sa presunul tam — serif má
-   v celej appke jediné miesto (`.hero-val`, manuál §4). */
+   Dôvod, prečo je číslo v paneli mono a nie serif, sa presunul tam — serif nesie
+   podľa manuálu (§6 „Rola serifu") DVE role a KPI číslo medzi ne nepatrí:
+   `.hero-val` (jedno primárne číslo obrazovky) a `.screen-head h1` (titulok).
+   Do 27. 8. 2026 tu stálo „serif má v celej appke jediné miesto"; to už neplatí,
+   ale zákaz serifu na KPI čísle platí ďalej. */
 
 /* `#stats-recent` a rodina `.mini-record` / `.mr-title` / `.mr-time` tu boli do
    24. 8. 2026. Kreslila ich jedine `refreshStats()` do sekcie doku `#sec-stats`
@@ -2771,14 +2898,15 @@ body.ambient #toasts {
 /* R7: čas záznamu je DÁTA, nie popisok — 11px bola podlaha, na ktorej bolo
    85,6 % textu appky. 12px (--fs-small) drží hierarchiu voči 13px titulku
    a `flex-shrink: 0` znamená, že o šírku sa podelí titulok, nie rozloženie. */
-.record-time { font-family: var(--mono); font-size: var(--fs-small); line-height: var(--lh-small); color: var(--muted); flex-shrink: 0; }
+.record-time { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); flex-shrink: 0; }
 .record-tags { display: flex; flex-wrap: wrap; gap: var(--sp-0); margin-top: var(--sp-0h); }
 
 /* .tag — NEUTRAL at rest (business-clean); amethyst only as --accent / active.
    Contract §4.5: .tag / .tag--accent own tag styling (aliases .tag-chip NOT used). */
 .tag {
     display: inline-flex; align-items: center;
-    font-size: var(--fs-caption); font-family: var(--mono);
+    font-size: var(--fs-data-chip); font-family: var(--mono);
+    line-height: var(--lh-data-chip);
     letter-spacing: var(--ls-mono);
     padding: 1px var(--sp-1); border-radius: var(--r-pill);
     background: var(--surface-2); color: var(--text-secondary);
@@ -2813,11 +2941,12 @@ body.ambient #toasts {
 /* počet záznamov v chipe — z filtra sa tým stane aj malá štatistika */
 .chip-n {
     margin-left: var(--sp-0h);
-    font-family: var(--mono); font-size: var(--fs-caption);
+    font-family: var(--mono); font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--muted); font-weight: 400;
 }
 .chip.active .chip-n { color: var(--accent-ink); }
-.chip-more { color: var(--muted); font-family: var(--mono); font-size: var(--fs-caption); }
+.chip-more { color: var(--muted); font-family: var(--mono); font-size: var(--fs-data-chip); line-height: var(--lh-data-chip); }
 
 /* Active filter chip (project filter in the journal) */
 .chip.active {
@@ -2827,12 +2956,17 @@ body.ambient #toasts {
     font-weight: var(--fw-semibold);
 }
 
-/* Day group header in the journal timeline — mono micro-label + hairline rule */
+/* Kľúč dňa v Denníku — mono verzálky + vlásková linka.
+   Od vlny 1 redizajnu je to DATA, nie chróm: je to hodnota, podľa ktorej človek
+   v Denníku hľadá, takže ide na --fs-data (13 px, predtým --fs-micro 10 px).
+   Zdvih nie je tichý posun rozloženia: .day-head NIE JE sticky a nemá fixnú
+   výšku (jediné `position: sticky` v tomto súbore je .dir-preview-wrap), takže
+   výška riadka rastie a obsah pod ňou sa nepodsúva. */
 .day-head {
     display: flex; align-items: center; gap: var(--sp-1);
     font-family: var(--mono);
-    font-size: var(--fs-micro);
-    line-height: var(--lh-caption);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
     font-weight: var(--fw-medium);
@@ -2885,8 +3019,8 @@ body.ambient #toasts {
     margin: 0;
     padding-left: var(--sp-3);
     font-family: var(--mono);
-    font-size: var(--fs-caption);
-    line-height: 1.5;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     letter-spacing: var(--ls-mono);
     color: var(--text-secondary);
 }
@@ -2903,7 +3037,8 @@ body.ambient #toasts {
     border-radius: var(--r-pill);
     padding: 1px 10px;
     font-family: var(--mono);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-data-chip);
+    line-height: var(--lh-data-chip);
     letter-spacing: var(--ls-mono);
     color: var(--text-secondary);
     white-space: nowrap;
@@ -2920,7 +3055,8 @@ body.ambient #toasts {
 .rec-commit {
     display: flex; align-items: center; gap: var(--sp-1);
     padding: var(--sp-0) 0;
-    font-size: var(--fs-small);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--text-secondary);
 }
 .rec-commit .ms { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
@@ -2930,8 +3066,8 @@ body.ambient #toasts {
 }
 
 .rec-final {
-    font-size: var(--fs-small);
-    line-height: var(--lh-prose);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--muted);
     white-space: pre-wrap;
 }
@@ -2968,7 +3104,8 @@ body.ambient #toasts {
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: var(--ls-mono);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--muted);
     flex-shrink: 0;
 }
@@ -3007,7 +3144,8 @@ body.ambient #toasts {
 .tree-muted .count {
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
-    font-size: var(--fs-caption);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
 }
 
 /* Inline action row under a department (rename / move / delete) */
@@ -3079,7 +3217,8 @@ body.ambient #toasts {
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: var(--ls-mono);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--muted);
 }
 .dup-side button {
@@ -3276,17 +3415,30 @@ body[data-screen="graf"] #screens { display: none; }
 .screen.active { display: block; animation: rise-fade var(--dur-base) var(--ease); }
 
 .screen-head { margin-bottom: var(--section-gap); }
-/* Kánon: nadpis weight ~660, letter-spacing −.025em, veľkosť --fs-h1.
-   PÍSMO JE GEIST, nie serif — docs/BRAND-HADES.md §4: „Serif je vzácny, a preto
-   významný: len hero metriky. Nadpisy obrazoviek sú Geist." Do 20. 8. 2026 tu bol
-   Playfair so zdôvodnením „serif je štandard APPIEK rodiny Aura"; to zdôvodnenie
-   protirečilo hlavičke manuálu („Hades je samostatná značka, nemení sa s Aurou")
-   a naviac malo role vymenené — serif nesol nadpis a hero metrika bežala v mono.
-   Manuál je zdroj pravdy, takže serif sa presunul na .hero-val. */
+/* PÍSMO JE SERIF (Playfair) — a je to ZMENA predchádzajúceho rozhodnutia, nie
+   jeho prehliadnutie.
+
+   Do 20. 8. 2026 tu Playfair bol so zdôvodnením „serif je štandard APPIEK rodiny
+   Aura"; to zdôvodnenie protirečilo hlavičke manuálu („Hades je samostatná
+   značka") a naviac malo role vymenené (serif nesol nadpis, hero metrika bežala
+   v mono), takže serif odišiel na .hero-val a tu ostal Geist.
+   27. 8. 2026 sa PREPÍSAL MANUÁL (§6 „Rola serifu"): serif nesie DVE role —
+   jedno primárne číslo obrazovky (.hero-val) a titulok obrazovky. Dôvod je
+   meraný: zaplatený font (59 544 B woff2, latin-ext sa načíta vždy kvôli
+   slovenskej diakritike) mal JEDNU deklaráciu proti 86 deklaráciám mono.
+   Zaplatený font s jedným volajúcim je plytvanie identitou.
+   TRETIA SESSION TO NESMIE VRÁTIŤ NA GEIST bez toho, aby najprv prepísala manuál.
+
+   Hodnoty sú SERIFOVÉ, nie hodnoty ladené pre Geist: váha 600 (nie --fw-heading
+   660 — Playfair je vysokokontrastný a pri 700+ zhustne a na tmavej téme zaleje)
+   a letter-spacing 0 (nie --ls-heading −.025em — negatívne prostrkanie na serife
+   zlepuje pätky).
+   Serif NIKDY: chyba, prázdny stav, chróm, os grafu, telo textu. Preto má
+   `.empty.empty-network .title` ďalej Geist a `.empty .title` (T3) tiež. */
 .screen-head h1 {
-    font-family: var(--font);
-    font-size: var(--fs-h1); font-weight: var(--fw-heading);
-    letter-spacing: var(--ls-heading);
+    font-family: var(--serif);
+    font-size: var(--fs-h1); font-weight: var(--fw-semibold);
+    letter-spacing: 0;
     color: var(--text); line-height: 1.2;
 }
 /* Akcentované slovo v nadpise = amethyst (kánon). Zatiaľ ho nič nepoužíva — názvy
@@ -3434,7 +3586,12 @@ body[data-screen="graf"] #screens { display: none; }
     position: fixed; inset: 0;
     z-index: var(--z-overlay);
     background: var(--scrim);
-    backdrop-filter: var(--blur-1);
+    /* 6 px → --scrim-blur (4 px na tmavej, none na svetlej). Paleta je scrim pod
+       modálom ako #help-overlay a #md-overlay, takže má tú istú jednu hodnotu.
+       Na svetlej téme je plátno mimo Grafu skryté práve preto, že pod
+       poloprehľadnými čipmi tam kontrast textu závisel od obsahu grafu — tu teda
+       rozostrenie odchádza a podklad nesie `--scrim` nad papierom. */
+    backdrop-filter: var(--scrim-blur);
     display: flex; align-items: flex-start; justify-content: center;
     padding-top: 12vh;
 }
@@ -3514,14 +3671,17 @@ body[data-screen="graf"] #screens { display: none; }
     background: var(--surface-subtle);
     border: 1px solid var(--border);
     border-radius: var(--r-pill);
-    font-size: var(--fs-small); color: var(--text-secondary);
+    font-size: var(--fs-data-chip); color: var(--text-secondary);
 }
 .today-chip .n { font-family: var(--mono); color: var(--accent); font-weight: 600; }
 /* Čip je od 20. 8. 2026 <button> (preklik do Denníka s filtrom), nie <span>.
    `font: inherit` je nutné — tlačidlo by inak vzalo systémové písmo prehliadača
    a rad čipov by sa rozišiel so zvyškom obrazovky. */
 .today-chip {
-    font: inherit; font-size: var(--fs-small);
+    /* Prokládka stojí AŽ TU a je to nutné: `font: inherit` pred ňou je skratka,
+       ktorá `line-height` resetuje na dedenú hodnotu, takže deklarácia v prvom
+       bloku .today-chip vyššie by sa zahodila. */
+    font: inherit; font-size: var(--fs-data-chip); line-height: var(--lh-data-chip);
     cursor: pointer;
     transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
@@ -3546,15 +3706,15 @@ body[data-screen="graf"] #screens { display: none; }
 .ti-ico { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .ti-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .ti-title { font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ti-snip { font-size: var(--fs-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ti-snip { font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ti-tag {
-    font-size: var(--fs-caption); color: var(--muted);
+    font-size: var(--fs-data-chip); line-height: var(--lh-data-chip); color: var(--muted);
     background: var(--surface-subtle);
     border: 1px solid var(--border);
     border-radius: var(--r-pill);
     padding: 1px var(--sp-1); flex-shrink: 0;
 }
-.ti-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+.ti-time { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); flex-shrink: 0; }
 
 /* ---- obrazovka Knižnica ---- */
 .lib-area { margin-bottom: var(--sp-3); }
@@ -3563,7 +3723,7 @@ body[data-screen="graf"] #screens { display: none; }
     display: flex; align-items: center; gap: var(--sp-1);
 }
 .lib-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.lib-count { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
+.lib-count { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); font-weight: 400; }
 .lib-skills {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--card-cols), 1fr));
@@ -3600,7 +3760,7 @@ body[data-screen="graf"] #screens { display: none; }
    Titulok je --lh-title, nie prózová 1,5: je to titulok karty, nie odstavec. */
 .lib-skill-label { font-size: var(--fs-body); line-height: var(--lh-title); font-weight: var(--fw-medium); }
 .lib-skill-snip {
-    font-size: var(--fs-small); line-height: var(--lh-small); color: var(--muted);
+    font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted);
     overflow: hidden; text-overflow: ellipsis;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
@@ -3641,12 +3801,12 @@ body[data-screen="graf"] #screens { display: none; }
 }
 .tcl-meta { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
 .tcl-proj {
-    font-size: var(--fs-caption); color: var(--muted);
+    font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted);
     background: var(--surface-subtle); border: 1px solid var(--border);
     border-radius: var(--r-pill); padding: 1px var(--sp-1);
     max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tcl-time { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); flex-shrink: 0; }
+.tcl-time { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); flex-shrink: 0; }
 
 /* Oblasť a oddelenie v detaile uzla sú NAVIGÁCIA, nie popiska — zúžia filter
    rovnako ako breadcrumb. Vyzerajú ako text, kým na ne človek nesiahne: meta riadok
@@ -3793,7 +3953,7 @@ body[data-screen="graf"] #screens { display: none; }
     color: var(--text); margin-bottom: var(--sp-1);
 }
 .dir-group-head .ms { font-size: var(--icon-sm); color: var(--accent); }
-.dir-group-n { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
+.dir-group-n { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); font-weight: 400; }
 
 /* Položka návrhu — reuse label.check (18px amethyst box), vlastný text layout */
 label.check.dir-check {
@@ -3812,12 +3972,13 @@ label.check.dir-check.off { opacity: .5; }
     font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text);
 }
 .dir-sub {
-    font-size: var(--fs-small); color: var(--muted);
+    font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted);
     overflow: hidden; text-overflow: ellipsis;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .dir-path {
-    font-family: var(--mono); font-size: var(--fs-caption);
+    font-family: var(--mono); font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--accent); word-break: break-all;
 }
 .dir-badge {
@@ -3869,7 +4030,7 @@ label.check.dir-check.off { opacity: .5; }
 .dir-saved-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .dsi-text { display: flex; flex-direction: column; min-width: 0; }
 .dsi-title { font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dsi-path { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dsi-path { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 860px) {
     .dir-cols { grid-template-columns: 1fr; }
@@ -3902,29 +4063,77 @@ label.check.dir-check.off { opacity: .5; }
     flex-shrink: 0;
 }
 
-/* ---------------------------------------------------------------------------
-   SHIMMER SKELETON (E8) — neutral raised base + single ink sweep
-   Size it with inline width/height or utility spans; respects reduced-motion.
-   --------------------------------------------------------------------------- */
+/* Sweep skeletonu. `@keyframes` stojí SAMOSTATNE a nie vnútri bloku nižšie,
+   pretože ho zdieľa `.skel::after` aj token `--shimmer-sheen` v oboch témach.
+   Trieda `.shimmer` tu do 27. 8. 2026 bola a je ZMAZANÁ: jej jediným volajúcim
+   bol `todaySkeleton()` v `screens/dnes.js`, ktorý rozhodnutie 15 zrušilo celé.
+   Zmerané po zmene: `grep -rn shimmer --include=*.js --include=*.blade.php`
+   nedá na triedu ani jeden zásah. Keyframe a token volajúcich majú (7×). */
 @keyframes hades-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-.shimmer {
+
+/* ---- SKELETON V TVARE OBSAHU (.skel*) — rozhodnutie 15 ----
+   Rodina NAHRADILA `.shimmer` (zmazanú vyššie, nula volajúcich) a prevzala jej
+   mechaniku: jeden sweep cez `::after` a `translateX`, perióda `--dur-pulse` —
+   nie ručne napísané 1.4s. Pre jeden význam „neurčité čakanie" už v projekte
+   existovali tri periódy; štvrtá nesmie pribudnúť.
+
+   Prefix je `.skel`, nie `.sk-*`: `.sk-row` už existuje v console.css a mind.css
+   sa načítava PRVÝ na všetkých troch plochách, takže rovnaké meno by na /console
+   prehralo a na / vyhralo — jedna trieda, dve kresby podľa plochy.
+
+   ROZMERY DRŽÍ CSS, nie volajúci. Rozmer napísaný v JS je pre CSSOM neviditeľný
+   a žiadna asercia ho nenájde; presne tak vznikol inline `font-size:10px` na osi
+   grafu. Volajúci si smie posunúť len výšku bloku tokenom `--skel-h`.
+   `--skel-h` sa v `:root` zámerne NEDEKLARUJE — default nesie fallback vo `var()`,
+   inak by sa fallback stal mŕtvym kódom. */
+.skel {
     position: relative;
     overflow: hidden;
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     background: var(--surface-raised);
-    color: transparent !important;
     user-select: none;
     pointer-events: none;
 }
-.shimmer::after {
+.skel::after {
     content: "";
     position: absolute; inset: 0;
     transform: translateX(-100%);
     background: linear-gradient(90deg, transparent, var(--shimmer-sheen), transparent);
     animation: hades-shimmer var(--dur-pulse) var(--ease) infinite;
 }
+/* `1em` a nie px: riadok skeletonu má byť vysoký ako riadok, ktorý nahrádza.
+   Kontejner preto MUSÍ mať font-size z tokenu — bez neho zdedí 14 px z body
+   a CLS skok, ktorý má skeleton odstrániť, zostane. */
+.skel-line { height: 1em; }
+.skel-line--half  { width: 50%; }
+.skel-line--short { width: 30%; }
+.skel-block { height: var(--skel-h, 58px); }
+.skel-card  { height: var(--skel-h, 160px); border-radius: var(--card-radius); }
+/* Prvý pás Dnes je hero číslo, nie riadok zoznamu — 58 px by na jeho mieste
+   sľuboval menší obsah, než potom dosadne, a skeleton by CLS skok spôsobil
+   namiesto toho, aby ho odstránil. Výška je tu a nie v JS zámerne: rozmer
+   napísaný vo volajúcom je pre CSSOM neviditeľný. */
+.skel-block--hero { --skel-h: 84px; }
+/* Kontejner NESIE PÍSMO, a to je jeho druhá úloha vedľa rozloženia: `.skel-line`
+   je vysoký `1em`, takže bez tohto pravidla by zdedil 14 px z `body` a riadok
+   skeletonu by bol vyšší než riadok dát (13 px), ktorý nahrádza — teda presne ten
+   CLS skok, ktorý má skeleton odstrániť: `1em` zo zdedených 14 px je 14 px,
+   z `--fs-data` je 13 px. */
+.skel-list  {
+    display: flex; flex-direction: column; gap: var(--gutter);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .shimmer::after { animation: none; }
+    /* TICHÁ VERZIA skeletonu je POKOJNÁ ZDVIHNUTÁ PLOCHA, nie zastavený sweep:
+       `animation: none` by nechal gradient zamrznutý v polovici plochy, teda
+       skeleton by vyzeral ako rozbitá kresba. Plocha `.skel` pod tým stále hlási
+       „tu bude obsah", len bez lesku.
+       `!important` a trieda sú tu NUTNÉ, nie zvyk: plošná stráž nižšie je `*`
+       (0-0-0) s `!important`, a `!important` deklarácie súťažia špecificitou —
+       `.skel::after` je 0-1-0, takže vyhrá. Bez `!important` by prehralo. */
+    .skel::after { display: none !important; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -3980,10 +4189,12 @@ select {
     gap: var(--sp-2) var(--gutter);
 }
 .hero-main { min-width: 0; }
-/* HERO METRIKA — jediný serif v celej appke (docs/BRAND-HADES.md §4: „Serif je
-   vzácny, a preto významný: len hero metriky"). Do 20. 8. 2026 tu bežalo Geist Mono
-   a Playfair nesol nadpis obrazovky, teda presne opačne než manuál; manuál je zdroj
-   pravdy. Serif tu má prácu: odlišuje JEDNO primárne číslo obrazovky od radu
+/* HERO METRIKA — prvá z DVOCH rolí serifu (docs/BRAND-HADES.md §6 „Rola serifu";
+   druhá je titulok obrazovky, .screen-head h1). Do 20. 8. 2026 tu bežalo Geist
+   Mono a Playfair nesol nadpis; manuál je zdroj pravdy a role boli vymenené.
+   Do 27. 8. 2026 tu stálo „jediný serif v celej appke" — manuál to už nehovorí,
+   pretože font s jedným volajúcim je plytvanie identitou.
+   Serif tu má prácu: odlišuje JEDNO primárne číslo obrazovky od radu
    monospace odpočtov pod ním (.kpi-val, #header-metrics, .tc-val), takže
    hierarchiu nesie aj rez písma, nie len veľkosť.
    Tabulárne číslice drží globálny font-variant-numeric z body; word-spacing tu
@@ -4097,7 +4308,8 @@ button.hero-action:hover { border-color: var(--accent); }
     order: 1;
 }
 .kpi-suffix {
-    font-size: var(--fs-small);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     font-weight: var(--fw-medium);
     color: var(--muted);
     margin-left: 3px;
@@ -4108,10 +4320,32 @@ button.hero-action:hover { border-color: var(--accent); }
    a implicitná hodnota je 0, takže bez tohto riadku by sa doplnok vykreslil ako
    PRVÝ, nad číslom. */
 .kpi-sub {
-    font-size: var(--fs-caption);
-    line-height: var(--lh-caption);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--accent);
     order: 3;
+}
+
+/* ---------------------------------------------------------------------------
+   GRAFY — JEDEN JAZYK OSI (rozhodnutie 23)
+
+   `.chart-axis` je os KAŽDÉHO grafu: mono, --fs-chart-axis (11 px), --muted,
+   --ls-mono. Do vlny 1 stála tá istá kresba INLINE v public/js/charts.js
+   (`axis.style.cssText`, 10 px), teda rozmer, ktorý CSSOM nevidí a žiadna
+   asercia nenájde. Kresba je zámerne tá istá, len 10 px → token.
+
+   Krok pod osou je --sp-0h (6 px); inline verzia mala 4 px. Rozdiel je 2 px
+   a je vedomý — sprint plán §1/T6 vymenoval --sp-0h.
+   --------------------------------------------------------------------------- */
+.chart-axis {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-chart-axis);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+    margin-top: var(--sp-0h);
 }
 
 /* ---------------------------------------------------------------------------
@@ -4149,7 +4383,8 @@ button.hero-action:hover { border-color: var(--accent); }
     gap: var(--chart-gap);
     margin-bottom: var(--sp-0);
     font-family: var(--mono);
-    font-size: var(--fs-micro);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-chart-axis);
     letter-spacing: var(--ls-mono);
     color: var(--muted);
     width: max-content;
@@ -4159,7 +4394,7 @@ button.hero-action:hover { border-color: var(--accent); }
     display: flex; align-items: center; gap: var(--sp-0);
     margin-top: var(--sp-1);
     font-family: var(--mono);
-    font-size: var(--fs-micro); letter-spacing: var(--ls-mono);
+    font-size: var(--fs-chart-axis); line-height: var(--lh-chart-axis); letter-spacing: var(--ls-mono);
     color: var(--muted);
 }
 .heat-legend .heat-cell { pointer-events: none; }
@@ -4188,7 +4423,7 @@ button.hero-action:hover { border-color: var(--accent); }
 }
 .donut-total .dt-lbl {
     font-family: var(--mono);
-    font-size: var(--fs-micro); text-transform: uppercase;
+    font-size: var(--fs-chart-axis); line-height: var(--lh-chart-axis); text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
     color: var(--muted);
     margin-top: 2px;
@@ -4197,7 +4432,7 @@ button.hero-action:hover { border-color: var(--accent); }
 .cert-legend { display: flex; flex-direction: column; gap: var(--sp-0); }
 .cert-legend .cl-row {
     display: flex; align-items: center; gap: var(--sp-1);
-    font-size: var(--fs-small); color: var(--text-secondary);
+    font-size: var(--fs-data); line-height: var(--lh-data); color: var(--text-secondary);
 }
 .cert-legend .cl-sw {
     width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0;
@@ -4220,7 +4455,7 @@ button.hero-action:hover { border-color: var(--accent); }
 .dbar { display: flex; flex-direction: column; gap: 5px; margin-bottom: var(--sp-1); }
 .dbar-head {
     display: flex; align-items: center; gap: var(--sp-1);
-    font-size: var(--fs-small); color: var(--text-secondary);
+    font-size: var(--fs-data); line-height: var(--lh-data); color: var(--text-secondary);
 }
 .dbar-head .db-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--lobe, var(--accent)); }
 .dbar-head .db-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4253,7 +4488,8 @@ button.hero-action:hover { border-color: var(--accent); }
     border-radius: var(--r-pill);
     border: 1px solid transparent;
     font-family: var(--mono);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-data-chip);
+    line-height: var(--lh-data-chip);
     letter-spacing: var(--ls-mono);
     white-space: nowrap;
     color: var(--cert-none-ink);
@@ -4284,7 +4520,8 @@ button.hero-action:hover { border-color: var(--accent); }
     padding: 1px var(--sp-1);
     border-radius: var(--r-pill);
     font-family: var(--mono);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-data-chip);
+    line-height: var(--lh-data-chip);
     letter-spacing: var(--ls-mono);
     white-space: nowrap;
     color: var(--muted);
@@ -4306,8 +4543,8 @@ button.hero-action:hover { border-color: var(--accent); }
 .dtl-month {
     display: flex; align-items: center; gap: var(--sp-1);
     font-family: var(--mono);
-    font-size: var(--fs-micro);
-    line-height: var(--lh-caption);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-chart-axis);
     text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
     font-weight: var(--fw-medium);
@@ -4361,14 +4598,14 @@ button.hero-action:hover { border-color: var(--accent); }
     min-width: 0;
 }
 .dtl-card .dtl-date {
-    font-family: var(--mono); font-size: var(--fs-caption);
+    font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data);
     letter-spacing: var(--ls-mono); color: var(--muted); flex-shrink: 0;
 }
 .dtl-card .dtl-text {
     font-size: var(--fs-body); color: var(--text); line-height: var(--lh-body);
 }
 .dtl-card .dtl-reason {
-    font-size: var(--fs-small); color: var(--muted); line-height: var(--lh-body);
+    font-size: var(--fs-data); color: var(--muted); line-height: var(--lh-data);
     white-space: pre-wrap;
 }
 .dtl-card .dtl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0); }
@@ -4403,7 +4640,7 @@ button.hero-action:hover { border-color: var(--accent); }
 .queue-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-0); }
 .queue-meta {
     display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0) var(--sp-1);
-    font-family: var(--mono); font-size: var(--fs-caption);
+    font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data);
     letter-spacing: var(--ls-mono); color: var(--muted);
 }
 .queue-text {
@@ -4445,7 +4682,7 @@ body[data-screen="graf"] #mind {
 .sync-msg { font-size: var(--fs-small); color: var(--muted); margin: 0; }
 .sync-stats {
     display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2);
-    font-family: var(--mono); font-size: var(--fs-small); color: var(--muted);
+    font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted);
 }
 .sync-stats strong { color: var(--text-secondary); }
 .sync-guard { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); }
@@ -5117,7 +5354,8 @@ button, input, select {
 
 .run-when, .run-model, .run-profile {
     color: var(--muted);
-    font-size: var(--fs-caption);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
 }
 
 .run-model { font-family: var(--mono); }
@@ -5144,8 +5382,8 @@ button, input, select {
     display: flex; flex-wrap: wrap; gap: var(--sp-3);
     margin-top: var(--sp-2);
     color: var(--muted);
-    font-size: var(--fs-small);
-    line-height: var(--lh-small);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
 }
 
 .run-metric b {
@@ -5233,8 +5471,8 @@ button, input, select {
     margin-top: var(--sp-1);
     color: var(--text-secondary);
     font-family: var(--mono);
-    font-size: var(--fs-small);
-    line-height: var(--lh-small);
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     overflow-wrap: anywhere;
 }
 

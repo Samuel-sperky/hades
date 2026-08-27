@@ -1,5 +1,5 @@
 import { showToast } from '../toasts.js';
-import { $, emptyCardHtml, esc, fmtNum, getJson, plainInline, renderEmpty, renderLoading, timeAgo } from '../util.js';
+import { $, deferSkeleton, esc, filterEmptyHtml, fmtNum, getJson, loadingHtml, plainInline, renderEmpty, renderError, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Runy (/api/runs) — čo konzola robila ----------
    Časová os behov zoskupená po dňoch (rovnaký idióm ako Rozhodnutia: .dtl*),
@@ -38,16 +38,19 @@ const STATUS_ORDER = ['running', 'waiting', 'failed', 'aborted', 'done'];
 export async function renderRuns() {
     const body = $('runy-body');
     if (!body) return;
-    renderLoading(body, 'Načítavam behy…');
+    // Skeleton v tvare obsahu (rad filtračných čipov + riadky časovej osi).
+    const cancelSkeleton = deferSkeleton(body, 'table');
     try {
         const d = await getJson('/api/runs' + query());
+        cancelSkeleton();
         runsState.items = d.items || [];
         runsState.counts = d.counts || {};
         runsState.models = d.models || [];
         pruneRunFilters();
         renderRunsView();
     } catch (e) {
-        renderEmpty(body, 'cloud_off', 'Nepodarilo sa načítať behy', 'Skús obnoviť stránku.');
+        cancelSkeleton();
+        renderError(body, 'behy', renderRuns);
     }
 }
 
@@ -72,12 +75,20 @@ function renderRunsView() {
     const body = $('runy-body');
     if (!body) return;
 
+    /* Prázdna obrazovka BEZ filtra: konštatovanie + čo bude ďalej, bez akcie —
+       beh sa nespúšťa odtiaľto, takže tlačidlo by nemalo kam viesť.
+
+       Text hovorí „beh", nie „ťah": obrazovka vypisuje záznamy z `runs`, teda
+       BEHY. Ťah je jedna výmena s modelom VNÚTRI behu a je vidieť až v detaile
+       (`.run-steps`). Pomenovania sú nezameniteľné — ťah, ktorý zaparkuje na
+       bráne, nikdy nepošle rámec `end`, takže cena jeho prvého segmentu sa
+       počíta inak než cena behu. */
     if (!runsState.items.length && !runsState.status && !runsState.model) {
         renderEmpty(
             body,
             'bolt',
             'Konzola ešte nič nebežala',
-            'Otvor Charóna a zadaj úlohu — každý ťah sa tu objaví so svojou cenou.',
+            'Otvor Charóna a zadaj úlohu — každý beh sa tu objaví so svojou cenou.',
         );
         return;
     }
@@ -110,6 +121,17 @@ function renderRunsView() {
     body.querySelectorAll('button[data-rerun]').forEach((b) => {
         b.onclick = () => rerun(b.dataset.rerun, b);
     });
+    /* Akcia prázdneho stavu z filtra. Tlačidlo tam je len vtedy, keď filter
+       naozaj skrýva dáta: `pruneRunFilters()` vyššie zhodil stav bez počtu aj
+       model, ktorý v ponuke nie je, takže čo prežilo, je platné. */
+    const clearFilter = body.querySelector('.empty-act[data-act="clear-filter"]');
+    if (clearFilter) {
+        clearFilter.onclick = () => {
+            runsState.status = null;
+            runsState.model = null;
+            renderRuns();
+        };
+    }
 
     // Prekreslenie zahodí celý `innerHTML`, teda aj prvok, na ktorom bol fokus —
     // ten by spadol na `<body>` a klávesnica by začínala od začiatku stránky.
@@ -173,8 +195,15 @@ function timelineHtml() {
     return out + '</div>';
 }
 
+/* Prázdno z filtra, nie tichý riadok v karte: „tvoj filter to skryl" je iná
+   správa než „nič tu nie je" a jej jediná akcia je zrušiť filter.
+
+   `filterEmptyHtml` (reťazec) a nie `renderFilterEmpty`: časová os sa skládá do
+   jedného `innerHTML` v `renderRunsView()`, takže listener sa pripája tam, spolu
+   s ostatnými — podľa `data-act="clear-filter"`. */
 function emptyFiltered() {
-    return emptyCardHtml('Tomuto filtru neodpovedá žiadny beh.');
+    return filterEmptyHtml('Tomuto filtru neodpovedá žiadny beh.',
+        'Zruš filter a uvidíš celý log behov.');
 }
 
 /** Popisok dňa je slovo, nie údaj — kľúč `day` prišiel zo servera. */
@@ -270,7 +299,11 @@ function dur(ms) {
 function detailHtml(r, detail, panelId) {
     const attrs = ' id="' + esc(panelId) + '" role="region" aria-label="Priebeh behu"';
 
-    if (!detail) return '<div class="run-detail"' + attrs + '>' + emptyCardHtml('Načítavam beh…') + '</div>';
+    /* Načítavanie sa dnes NEKRESLÍ ako prázdno. `emptyCardHtml` tu tvrdil, že
+       v detaile nič nie je, hoci sa práve dotahoval — a text bol navyše v prvej
+       osobe. Dýchajúci znak (nie skeleton): detail behu je rôzne dlhý zoznam
+       krokov, takže nemá tvar, ktorý sa dá predkresliť. */
+    if (!detail) return '<div class="run-detail"' + attrs + '>' + loadingHtml('Načítava sa beh…') + '</div>';
 
     let out = '<div class="run-detail"' + attrs + '>';
 

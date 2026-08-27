@@ -1,7 +1,7 @@
 import { mdToHtml } from '../md.js';
 import { setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyCardHtml, esc, getJson, plainText, renderEmpty, renderLoading } from '../util.js';
+import { $, busy, emptyCardHtml, esc, getJson, plainText, renderEmpty, renderError, renderLoading } from '../util.js';
 // Ozbrojené potvrdenie (prvý klik sa spýta, druhý do 3 s maže) je JEDEN vzor pre
 // celú appku, tak sa neduplikuje. Býva v rozhodnutiach len dočasne — patrí do
 // util.js, ktorý táto vlna nevlastní.
@@ -69,7 +69,9 @@ export function renderDirective(prefillTask) {
 
     const taskInput = $('dir-task');
     const buildBtn = $('dir-build');
-    if (buildBtn) buildBtn.onclick = () => busy(buildBtn, () => runDirectiveBuild(taskInput ? taskInput.value : ''), 'Skladám…');
+    // Popisok počas behu je NEOSOBNÝ (docs/BRAND-HADES.md §1), rovnako ako hlásenie
+    // pod ním („Skladá sa kontext…") — dve slovesá pre tú istú prácu, jeden hlas.
+    if (buildBtn) buildBtn.onclick = () => busy(buildBtn, () => runDirectiveBuild(taskInput ? taskInput.value : ''), 'Skladá sa…');
     if (taskInput) taskInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); runDirectiveBuild(taskInput.value); }
     });
@@ -143,7 +145,9 @@ export async function runDirectiveBuild(task) {
     task = (task || '').trim();
     const suggest = $('dir-suggest');
     if (task === '') { showToast('Napíš úlohu alebo vyber šablónu'); return; }
-    if (suggest) renderLoading(suggest, 'Skladám kontext…');
+    /* Dýchajúci znak ZOSTÁVA (nie skeleton): koľko sekcií a položiek návrh vydá,
+       sa dozvieme až z odpovede, takže tvar sa nedá predkresliť. Text je neosobný. */
+    if (suggest) renderLoading(suggest, 'Skladá sa kontext…');
     const seq = ++directiveBuildSeq;
     try {
         const res = await fetch('/api/directive/build', {
@@ -171,7 +175,10 @@ export async function runDirectiveBuild(task) {
         renderDirectiveSuggest();
         renderDirectivePreview();
     } catch (e) {
-        if (seq === directiveBuildSeq && suggest) renderEmpty(suggest, 'cloud_off', 'Nepodarilo sa poskladať smernicu', 'Skús to znova.');
+        /* Retry si drží ÚLOHU, nie pole: `task` je už normalizovaný reťazec z
+           tohto behu, takže „Skúsiť znova" zopakuje presne to zadanie, ktoré
+           padlo — aj keď človek medzitým do `#dir-task` napísal niečo iné. */
+        if (seq === directiveBuildSeq && suggest) renderError(suggest, 'smernicu', () => runDirectiveBuild(task));
     }
 }
 
@@ -319,7 +326,15 @@ export async function loadDirectiveSaved() {
         if (!directiveSaved.length) directiveManaging = false;
         syncDirManageBtn();
         renderDirectiveSaved();
-    } catch (e) { box.innerHTML = emptyCardHtml('Uložené smernice sa nepodarilo načítať.'); }
+    } catch (e) {
+        /* Chyba sa tu do 27. 8. 2026 kreslila ako PRÁZDNO (tichý riadok karty) —
+           nelhala, ale nepriznávala sa: „nič tu nie je" a „nepodarilo sa načítať"
+           vyzerali rovnako, hoci sú to dve rôzne správy.
+
+           `loadDirectiveSaved` je bezpečný retry: `#dir-saved` prežije (mení sa len
+           jeho `innerHTML`) a funkcia si ho nájde znova. */
+        renderError(box, 'uložené smernice', loadDirectiveSaved);
+    }
 }
 
 /* Prepínač režimu hovorí, v akom stave zoznam JE — preto sa mení aj popisok, aj

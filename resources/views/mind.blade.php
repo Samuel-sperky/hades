@@ -26,12 +26,28 @@
     <meta property="og:image" content="/brand/hades-og.png">
     {{-- Fonty sú self-hosted v public/fonts/ (@font-face na začiatku mind.css).
          Google Fonts CDN je zámerne PREČ: pri jeho nedostupnosti sa každá ikona
-         vykreslila ako svoj ligatúrový názov a chróm sa rozpadol. Preload len na
-         tri súbory, ktoré chróm potrebuje v prvom rámci — ikony railu a základnú
-         latinku vrátane slovenskej diakritiky. --}}
+         vykreslila ako svoj ligatúrový názov a chróm sa rozpadol.
+
+         Preload je ROZPOČET, nie zvyk (docs/BRAND-HADES.md §6). Šesť súborov,
+         178 108 → 260 780 B:
+           · material-symbols-rounded-subset  132 196 — ikony railu v prvom rámci
+           · geist-latin + geist-latin-ext     45 912 — chróm + slovenská diakritika
+           · geist-mono-latin                  23 128 — `/` má 86 deklarácií
+             var(--mono) (breadcrumb, metriky hlavičky, čísla kariet, časy, cesty)
+             a preloadovaný tu nebol, kým na /console a /chat áno
+           · playfair-display-latin + -ext     59 544 — serif nesie od vlny 1
+             titulok obrazovky (.screen-head h1), nie len .hero-val. OBE
+             podmnožiny: `Knižnica` má `ž` (U+017E), teda latin-ext, a preload len
+             jednej by nechal titulok skočiť z Georgie do Playfairu po dobehnutí
+             druhého súboru — presne ten blik, ktorý sa tu rieši.
+         Účet je VEDOME dočasný: keď Material Symbols odíde za vlastnou SVG sadou
+         (vlna 3), hlavička padne na 128 584 B, teda 50 kB POD dnešný stav. --}}
     <link rel="preload" href="/fonts/material-symbols-rounded-subset.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/playfair-display-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/playfair-display-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/css/mind.css">
     {{-- Charón — dok nad plátnom. Vlastný stylesheet (variant A): karty nástrojov
          a brány zápisov žijú raz, s vlastným .charon-* prefixom (mind.css má .tc-*

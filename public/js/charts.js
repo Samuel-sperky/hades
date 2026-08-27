@@ -477,12 +477,15 @@
             });
         }
 
-        // First / last period labels below the chart (muted mono).
+        /* First / last period labels below the chart.
+           Drawing lives in `.chart-axis` (mind.css), NOT in this file: the axis
+           used to set `style.cssText` with a hard-coded `font-size:10px`, and a
+           size written in JS is invisible to the CSSOM — no stylesheet assertion
+           could ever find it, so all three charts drifted apart unnoticed.
+           `el()` is this file's own local helper; charts.js is a classic script
+           (IIFE exposing `window.HadesCharts`), never an ES module. */
         if (labels.length) {
-            const axis = el('div');
-            axis.style.cssText = 'display:flex;justify-content:space-between;'
-                + 'font-family:var(--mono);font-size:10px;letter-spacing:var(--ls-mono);'
-                + 'color:var(--muted);margin-top:4px;';
+            const axis = el('div', 'chart-axis');
             const a = el('span'); a.textContent = labels[0] || '';
             const b = el('span'); b.textContent = labels[labels.length - 1] || '';
             axis.appendChild(a);
