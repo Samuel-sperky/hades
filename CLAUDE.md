@@ -248,6 +248,60 @@ s rovnakou špecificitou v tej skupine vráti závislosť na poradí; nerob to.
   `.cm-md` je jedna trieda — ten istý zápis je teda na jednej ploche dobrý a na
   druhej nie. **Spočítaj triedy v najsilnejšom argumente a zmeraj computed style.**
 
+**Hustota, stavy a pohyb (vlna 1 redizajnu, 27. 8. 2026).** Päť vecí, ktoré vyzerajú
+ako neporiadok a nie sú ním:
+
+- **`--fs-data` / `--fs-data-chip` / `--fs-chart-axis` NIE SÚ stupne škály**, ale rolové
+  tokeny hustoty. Sú zámerne **za** blokom škály, nie vnútri neho — komentár nad škálou
+  ju opisuje ako uzavretú a vloženie role medzi `--fs-base` a `--fs-title` by z toho
+  komentára urobilo lož. Nezlievaj ich so škálou. Pravidlo, ktoré za nimi stojí:
+  **dátový text sa zdvihol na 13 px, chróm (eyebrow, popisky, jednotky) zostal mikro** —
+  a kalibrácia zmeny je práve to, že chróm sa nepohol (`.rail-eyebrow` 10 px,
+  `.kpi-label` 11 px). Merač, ktorý zdvihne všetko, nemeria nič.
+- **Kostra je rodina `.skel*`, nie `.sk-*`** — `.sk-row` už žije v `console.css` a
+  `mind.css` sa načítava prvý na všetkých troch plochách, takže rovnaké meno by na
+  `/console` prehralo a na `/` vyhralo. **Rozmery drží CSS, nie volajúci**: rozmer
+  napísaný v JS je pre CSSOM neviditeľný a žiadna asercia ho nenájde — presne tak vznikol
+  inline `font-size: 10px` na osi grafu. Kontejner `.skel-list` **musí** nesť
+  `font-size: var(--fs-data)`, pretože `.skel-line` je vysoký `1em`; bez toho zdedí
+  14 px z `body` a skeleton zachová práve ten skok, ktorý má odstrániť.
+- **Kresba sa odkladá o 300 ms** (`deferSkeleton()` v `util.js`). Asercia, ktorá meria
+  „o rámec neskôr", preto hlási regresiu, ktorá nie je — čakaj ≥ 400 ms. A **kalibruj
+  opačným smerom**: pri rýchlej odpovedi sa kostra objaviť **nesmie** (zmerané: 0 ms →
+  obsah za 1 ms bez kostry, 120 ms → obsah za 132 ms bez kostry). Bez tej druhej strany
+  sa nedá odlíšiť „odloženie funguje" od „kostra sa nekreslí nikdy".
+- **Vzor tichej verzie pre `prefers-reduced-motion`:** plošná podlaha
+  `*, *::before, *::after { … !important }` **zostáva** a prebíja sa **triedou
+  + `!important` v tom istom bloku`** — `!important` deklarácie súťažia špecificitou,
+  takže `.skel::after` (0-1-0) vyhrá nad `*` (0-0-0). Tichá verzia je **zmysluplný
+  okamžitý ekvivalent**, nie „vypnuté": u kostry je to pokojná zdvihnutá plocha
+  (`display: none` na sweep), nie `animation: none`, ktoré by nechalo gradient zamrznutý
+  v polovici. Každé „upratanie" tej podlahy je horšie než nechať ju tak.
+- **Sklo je len na tmavej a už bez nepomenovanej výnimky:** štvrtý prepínateľný token
+  `--scrim-blur` (tmavá `blur(4px)`, svetlá `none`) nesie tri scrimy pod modálmi, ktoré
+  dovtedy čítali blur primitívu priamo a rozmazávali na oboch témach. Nový
+  `backdrop-filter` ber vždy z prepínateľného tokenu.
+
+**Serif má odteraz DVE role**, nie jednu: `.hero-val` a `.screen-head h1` (váha 600,
+`letter-spacing: 0`). Predchádzajúci sprint mal komentáre, prečo serif z titulkov
+odišiel — sú prepísané a hovoria, že ide o **zmenu rozhodnutia**, nie o opomenutie.
+Nevracaj titulky na Geist bez toho, aby si najprv prepísal manuál. V **chybe** je serif
+zakázaný (manuál §8): je to text, ktorý má človek použiť na opravu.
+
+**Ikon je 41, nie 37 ani 32.** Ligatúry vstupujú do DOM tromi cestami a štyri
+(`search_off`, `filter_alt_off`, `play_arrow`, `pause`) sú pre grep nad markupom
+neviditeľné. Subset (`mtime` 18. 8.) je starší než záznam o 32 ikonách.
+
+**Chyba má jeden komponent a vlastný predmet.** `.empty--error` + `.empty .title`
++ jedna `.empty-act` na desiatich call-site šiestich obrazoviek („Denník sa nepodarilo
+načítať", nie „Nastala chyba"). `.empty--filter` je **zámerne bez vlastnej kresby** —
+manuál §8 zakazuje prázdnemu stavu vymýšľať si novú farbu, takže sa líši textom a svojou
+jednou akciou. Asercia, ktorá hľadá pravidlo `.empty--filter`, nič nenájde a **je to
+správne**. Čo sa zámerne nezlialo: `.run-error` (obsah záznamu behu, nie stav plochy),
+`.toast.error` (prechodné oznámenie akcie) a `.card-empty` (iná rola).
+**Kontrola pri `soft` refreshi kostru NEKRESLÍ** — zmazala by presne to, na čo sa človek
+pozerá; hlási len `aria-busy`.
+
 **Keď meníš CSS, over, že zmena je inertná, výmenou stylesheetu nad TÝM ISTÝM DOM**
 (`w8/cssswap.js`) — nie dvoma načítaniami stránky, Hades je živý a medzi nimi sa
 naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva rámce
@@ -512,6 +566,18 @@ prečíta z `.env` **sám** a pridá ho ako hlavičku `X-Hades-Ui-Token`; potom 
 a `computer{action:"screenshot"}` padne na timeout. Dôkaz o UI je preto **zmeraný
 DOM a computed style**, nie obrázok. Nesnaž sa to obchádzať; zmerané číslo je aj
 tak silnejší dôkaz než snímka.
+
+**Dve pasce, na ktoré som naletel pri overovaní vlny 1** — obe dali falošný pád, teda
+by ma donútili „opravovať" funkčný kód:
+
+1. **Rast výšky kontejnera NIE JE layout shift.** Denník po dosadnutí 50 záznamov narastie
+   z 781 na 4571 px, čo je „82,9 % skok" — a je to bezcenné číslo: zoznam rastie **dolu
+   pod okraj**. Správna otázka je, či sa pohlo to, čo bolo **vidieť**: `top` titulku
+   a zoznamu (zmerané 0 px a 0 px) a či kostra vyplnila záhyb (98,3 %). A `window.innerHeight`
+   je v Browser pane **0**, kým nenastavíš viewport cez `resize_window` — bez toho je každé
+   „je to vidieť?" nezmysel.
+2. **Prehliadač normalizuje `*::before` na `::before`.** Regex, ktorý v `cssText` hľadá
+   `*, *::before`, podlahu reduced-motion nenájde a ohlási, že chýba. Bola tam celý čas.
 
 **Merač kontrastu má dve pasce a obe dávajú falošný PÁD** (teda by ťa donútili
 „opravovať" funkčný dizajn):
