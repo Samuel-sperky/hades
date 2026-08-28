@@ -211,6 +211,8 @@
             <button id="btn-help" class="dest" type="button" aria-label="Pomocník">
                 <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.75"/><path d="M 9.7 9.6 a 2.4 2.4 0 0 1 4.7 0.8 c -0.25 1.3 -2.4 1.6 -2.4 3.2"/><path d="M 12 17.3 h 0.01"/></svg><span class="lbl">Pomoc</span>
             </button>
+            {{-- Prepínač šírky railu. NIE `.dest` — nevedie nikam, tak nesmie mať váhu cieľa. Mechaniku nesie mind/rail.js. --}}
+            <button id="rail-collapse" type="button" aria-controls="rail" aria-expanded="true" title="Zbaliť navigáciu" aria-label="Zbaliť navigáciu"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg></button>
         </div>
     </nav>
 

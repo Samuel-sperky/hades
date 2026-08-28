@@ -8,7 +8,7 @@ import { setupCharon } from './charon.js';
 import { setupInput } from './interaction.js';
 import { setupPack } from './pack.js';
 import { buildLegend } from './panels.js';
-import { checkJournalUnread } from './rail.js';
+import { checkJournalUnread, initialRail, wireRailCollapse } from './rail.js';
 import { draw, fitView, frame, publishNavApi, requestDraw, resize, scheduleFrame, setupVisibilityRepaint } from './render.js';
 import { setScreen } from './screens.js';
 import { setupHints, setupShortcuts } from './shortcuts.js';
@@ -39,6 +39,9 @@ async function init() {
     // zamknutom okruhu), takže to treba stihnúť skôr, než čokoľvek fetchne.
     installFetchGuard();
     setTheme(initialTheme());
+    // Šírka railu sadá pred prvým rámcom z toho istého dôvodu ako téma.
+    initialRail();
+    wireRailCollapse();
     resize();
     window.addEventListener('resize', () => { resize(); requestDraw(); }); // rozmer sa zmenil → prekresli
 

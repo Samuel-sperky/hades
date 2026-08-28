@@ -1260,10 +1260,17 @@ button.close:active { background: var(--accent-soft); }
        prepočítaj to a zmeraj z oboch strán (prah − 1 musí padnúť). */
     display: flex; flex-direction: column; align-items: stretch;
     padding: var(--sp-0) var(--sp-1); gap: 0;
-    /* Prechod šírky: rail je jediný prvok, ktorý sa pri prepnutí naozaj hýbe, a jeho
-       pohyb nesie informáciu („toto sa práve zbalilo"). Tichú verziu nesie plošná
-       podlaha prefers-reduced-motion (a A3 ju pomenuje). */
-    transition: width var(--dur-base) var(--ease);
+    /* PRECHOD ŠÍRKY TU ZÁMERNE NIE JE, hoci pohyb railu by informáciu niesol.
+       Zmerané 28. 8. 2026: `transition: width` nad hodnotou, ktorá príde z custom
+       property, spôsobí, že sa šírka po prvom vykreslení UŽ NIKDY neprepočíta —
+       `--rail-w` sa na `:root` zmení (80 ↔ 208 px, overené v computed style)
+       a `--content-left` sa prepočíta, ale rail zostane na tej hodnote, akú mal
+       pri načítaní. Bez prechodu sa prepne správne. `@property` s typom `<length>`
+       to NEOPRAVÍ — skúšané, výsledok rovnaký.
+
+       Alternatíva by bola napísať 80 px a 208 px priamo do stavových pravidiel,
+       ale to je druhá kópia hodnoty, ktorú `layout.js` číta z tokenu — a rozišla by
+       sa pri prvej zmene. Rail teda sadne okamžite; nový tvar nesie informáciu sám. */
     /* VLNA W1: rail splýva s grafom — sklo (na svetlej plná plocha), hairline
        namiesto rámu, žiadne tienidlo. Aktívny stav nesie akcent, nie výplň. */
     background: var(--panel);
@@ -1627,8 +1634,12 @@ body[data-rail="slim"] #rail #rail-collapse { align-self: center; }
 #app-header {
     position: fixed;
     top: var(--edge); left: var(--content-left); right: var(--edge);
-    /* Sleduje šírku railu tým istým trvaním — inak by chróm skočil a rail sa plazil. */
-    transition: left var(--dur-base) var(--ease);
+    /* PRECHOD `left` TU ZÁMERNE NIE JE — z toho istého dôvodu ako pri `#rail`
+       (viď komentár pri `width: var(--rail-w)`): `transition` nad hodnotou, ktorá
+       príde z custom property, spôsobí, že sa vlastnosť po prvom vykreslení už
+       neprepočíta. Zmerané: pri zbalení railu ostal obsah na 268 px a uvoľnených
+       128 px nezabral, kým sa stránka nenačítala znova. Rail aj chróm teda sadajú
+       okamžite — je to jedno gesto a jeden okamžitý stav. */
     height: var(--header-h);
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
@@ -3685,8 +3696,12 @@ body:not([data-screen="graf"]) #local-chip { display: none !important; }
     left: var(--content-left); right: var(--edge);
     top: var(--content-top);
     bottom: var(--edge);
-    /* Rovnaké trvanie ako #rail width a #app-header left — jedno gesto, jeden pohyb. */
-    transition: left var(--dur-base) var(--ease);
+    /* PRECHOD `left` TU ZÁMERNE NIE JE — z toho istého dôvodu ako pri `#rail`
+       (viď komentár pri `width: var(--rail-w)`): `transition` nad hodnotou, ktorá
+       príde z custom property, spôsobí, že sa vlastnosť po prvom vykreslení už
+       neprepočíta. Zmerané: pri zbalení railu ostal obsah na 268 px a uvoľnených
+       128 px nezabral, kým sa stránka nenačítala znova. Rail aj chróm teda sadajú
+       okamžite — je to jedno gesto a jeden okamžitý stav. */
     overflow-y: auto;
     padding-inline: clamp(16px, 2vw, 48px);
     z-index: var(--z-panel);
