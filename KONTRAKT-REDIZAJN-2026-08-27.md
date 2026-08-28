@@ -224,13 +224,78 @@ všetkých 60 ikon na ploche; odstrániť ho pred výmenou by bola chyba.
    `overflow-y`") je pravdivý len spolovice — výška a `overflow` sedia, ale prah
    je 589 px (588 padne, 589 sadne, kalibrované z oboch strán).
 
-### Zostáva na vlnu 3
+### Vlna 3 — dokončené koordinátorom (28. 8. 2026)
 
-Pohyb v `mind.css` (A3), výmena 61 ikonových call-site (F1, F2), odchod
-Material Symbols (G), a **celé overenie** — zmeraný DOM naprieč oboma témami,
-kontrast nových povrchov a adversariálny review diffu. Plán a vlastníctvo súborov
-pre nich sú hotové v `docs/PLAN-VLNA2-3.md`, takže sa dá nadviazať bez nových sond.
+Sedem agentov padlo na session limit, zvyšok som dorobil sám podľa
+`docs/PLAN-VLNA2-3.md`, ktorý zostal platný — nové sondy neboli potrebné.
 
-**Oprava kontraktu:** rozhodnutie 19 hovorí „37 použitých ligatúr". Správne číslo je
-**41** (sonda A §4.1) — štyri vstupujú do DOM cestami, ktoré grep nad markupom nevidí
-(`search_off`, `filter_alt_off`, `play_arrow`, `pause`).
+| Vec | Stav |
+|---|---|
+| Vlastná SVG sada na všetkých call-site | hotové · `.ms` = **0** na `/`, `/chat`, `/console` aj v palete |
+| Odchod Material Symbols | hotové · font zmazaný, preloady 6→5 a 3→2, subset sa nesťahuje |
+| Prepínač šírky railu | hotové · 208↔80 px, `localStorage['hades.rail']`, pod 900 px vždy zbalený |
+| Toast pod `prefers-reduced-motion` | opravené · doba čítania sa už nenuluje |
+| Blikot nájdeného uzla | opravené · konštantná alfa, lineárne vyhasnutie ~830 ms |
+| Mŕtvy `S._morph` | zmazané · 0 zápisov, 0 čítaní |
+| `--ease-pulse` | doplnené do `:root` |
+| Testy | **596 passed · 0 failed · 45 skipped** po každom kroku |
+
+**Ikon je 60 v sade a vstupovali SEDMIMI cestami, nie šiestimi.** Statický sken
+nad `/chat` a `/console` našiel **nula** call-site, kým bežiaca stránka kreslila
+**192** a **97** ikon — všetky cez `el(tag, 'ms', meno)`. Preto sa počet trikrát
+menil (37 → 41 → 61): každé meranie videlo iný podmnožinu ciest.
+
+**Tri veci, ktoré si vyžiadali zmenu mechaniky, nie zámenu reťazca:**
+
+1. `textContent` na `<svg>` nezobrazí nič **a výnimku nevydá**, takže každé
+   armed-confirm tlačidlo ide cez `iconSwap()`. Priame priradenie by ich ticho
+   vyprázdnilo.
+2. Rozhodnutia si pamätali ikonu cez `btn.textContent` — po prechode prázdny
+   reťazec. Odkladá sa **uzol kresby**, takže sa vráti presne tá ikona, čo tam
+   bola, a netreba na to tabuľku mien.
+3. `iconMarkup()` neznáme meno **nezamlčí**: zapíše ho do `window.HADES._iconMiss`
+   a nakreslí `ring`. Chytilo to štyri moje vlastné preklepy (`article`,
+   `menu_book`, `description`, `account_tree`).
+
+**Nová pasca projektu, zaplatená hodinou hľadania:** `transition` nad vlastnosťou,
+ktorej hodnota príde z **custom property**, spôsobí, že sa tá vlastnosť po prvom
+vykreslení **už nikdy neprepočíta**. Token sa zmení (zmerané: `--rail-w` 80 ↔ 208
+na `:root`), ale prvok zostane na hodnote z načítania. `@property` so `syntax:
+'<length>'` to **neopraví** — skúšané. Držalo to `#rail { width }`,
+`#app-header { left }` aj `#screens { left }`, takže zbalenie railu uvoľnilo
+128 px, ktoré si obsah nevzal. Všetky tri prechody sú preč.
+
+**Dve moje vlastné chyby, obe zachytené meraním:**
+(a) „upratovanie" prázdnych `+ ''` po automatickej zámene bolo bezhlavý globálny
+replace a zobralo zátvorky ôsmim súborom vrátane kódu bez ikon (`esc(bits.join(' · '))`);
+vrátil som ich do commitu a zámenu zopakoval bez toho kroku.
+(b) `io.open(p, 'w')` súbor **skráti skôr**, než sa vyhodnotí zapisovaný obsah,
+takže výnimka v generátore nechala `gate.js` prázdny — obnovené z gitu, pomocník
+odvtedy najprv počíta a až potom otvára.
+
+### Zostáva
+
+Menšie a dobre ohraničené; plán aj vlastníctvo súborov pre ne žijú v
+`docs/PLAN-VLNA2-3.md`, takže sa dá nadviazať bez nových sond:
+
+- **Zvyšok tokenov pohybu (A3):** `--dur-chart-draw`, `--dur-chart-curve`,
+  `--dur-chart-reveal`; zmazať `--transition-base` a `--transition-slow`.
+- **Zjednotenie zlomov** na 1280 a 900 (dnes sú dva bloky `max-width: 1280px`
+  a tri `max-width: 900px`).
+- **`charts.js:74`** číta `prefers-reduced-motion` raz na module scope — má to byť
+  živý listener, ale cenu treba zmerať PRED zmenou (komentár tam obhajuje dopyt
+  pri 365 bunkách heatmapy).
+- **Prílet uzla cez WS:** zo siedmich súčasných pohybov nechať tri. Alphu
+  `kickSim()` nemeniť — to je zmena fyziky, nie prechodu, a rozhodnutie 7 ju
+  nekryje, takže potrebuje samostatné schválenie.
+- **Plynulé zanorenie** (`S._dimTween` v `render.js`) — `DIM_CTX` sa nemení.
+- **Overenie, ktoré nikto nespravil:** kontrast nových povrchov a ikon na OBOCH
+  témach (skladané pozadie, po prepnutí témy merať v ďalšom volaní, kalibrácia na
+  `body` ~16:1) a nezávislý adversariálny review celého diffu vĺn 2 a 3.
+- **`CLAUDE.md`** má dve zastarané čísla: 215 glyfov subsetu (subset je preč)
+  a počet ikon.
+
+**Limit harnessu, na ktorý sa dá naletieť:** `resize_window` v Browser pane mení
+`window.innerWidth` aj `matchMedia().matches`, ale do stránky **neposiela udalosť
+`resize`** — kód, ktorý na nej visí, sa preto pri meraní netvári, že beží. Overuje
+sa to ručne odoslaným `new Event('resize')`; vtedy rail prepne správne.
