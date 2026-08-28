@@ -5,6 +5,7 @@ import { openNodeDetail, openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast, showUndoToast } from '../toasts.js';
+import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, busy, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo, typeName } from '../util.js';
 
 /* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
@@ -28,16 +29,59 @@ const KONTROLA_PAGE = 100;
    ktoré nič nespraví, je horšie než žiadne. Poznámka to preto povie slovom. */
 const KONTROLA_MAX = 500;
 
+/* Boot z URL (slovník §6): `kot` typ · `koc` istota · `koa` oblasť · `kol` strop ·
+   `q` hľadanie. Číta sa pri načítaní modulu, teda pred prvým dopytom — odkaz tak
+   pošle na server rovno ten filter, ktorý v ňom stojí, a nie dvojicu dopytov.
+
+   `q` je spoločný kľúč a jeho význam určuje `s`, preto podmienka na obrazovku.
+   Hodnoty sa NEVALIDUJÚ proti zoznamu typov ani oblastí: to robí server svojou
+   odpoveďou a `pruneKontrolaFilters()` nad ňou. Druhá kópia zoznamu tu by sa raz
+   rozišla s tou serverovou a filter by sa zhodil za zlý dôvod. */
+const BOOT_MINE = readUrl().s === 'kontrola';
+const bootKey = (k) => (BOOT_MINE ? urlValue(k) : null) || '';
+
+/* Strop je jediná os s číselnou doménou, takže ju treba ohradiť tu: `kol` z cudzej
+   ruky môže byť `999999` a jediné, čo by sa stalo, je najväčšia stránka, akú
+   server dovolí. Násobky 100 od 100 do KONTROLA_MAX — presne to, čo vie vyrobiť
+   tlačidlo „Načítať ďalších". */
+function clampKontrolaLimit(value) {
+    const raw = parseInt(value == null ? '' : String(value), 10);
+    if (!Number.isFinite(raw)) return KONTROLA_PAGE;
+    const steps = Math.round(raw / KONTROLA_PAGE);
+    return Math.min(KONTROLA_MAX, Math.max(KONTROLA_PAGE, steps * KONTROLA_PAGE));
+}
+
 export const kontrolaState = {
     items: [], idx: 0, total: 0,
     /* `total` je celá fronta (nesie ho rail a je zámerne nefiltrovaný),
        `matching` je počet uzlov vyhovujúcich filtru, `shown` je to, čo naozaj
        prišlo v poslednej odpovedi. Bez všetkých troch sa nedá povedať ani
        „zobrazených 100 zo 140", ani či má zmysel ponúkať ďalšiu stránku. */
-    matching: 0, shown: 0, limit: KONTROLA_PAGE,
+    matching: 0, shown: 0, limit: clampKontrolaLimit(bootKey('kol')),
     counts: {}, areas: [],
-    f: { type: '', certainty: '', area: '', q: '' },
+    f: { type: bootKey('kot'), certainty: bootKey('koc'), area: bootKey('koa'), q: bootKey('q') },
 };
+
+/* Späť / Dopredu: adresa je vstup, fronta sa jej podriadi. Strop sa berie tou
+   istou ohradou ako pri boote — kľúč z histórie nemá väčšie práva než kľúč
+   z odkazu. Pole hľadania prekresľuje `ensureKontrolaShell()` z `f.q`, takže mu
+   stačí stav. */
+registerUrlApply('kontrola', (url) => {
+    if (url.s !== 'kontrola') return;
+    const f = kontrolaState.f;
+    const next = { type: url.kot || '', certainty: url.koc || '', area: url.koa || '', q: url.q || '' };
+    const nextLimit = clampKontrolaLimit(url.kol);
+    const same = next.type === f.type && next.certainty === f.certainty
+        && next.area === f.area && next.q === f.q && nextLimit === kontrolaState.limit;
+    if (same) return;
+    kontrolaState.f = next;
+    kontrolaState.limit = nextLimit;
+    /* Toolbar sa prestavuje len pri zmene OSÍ (inak by zmizlo pole, do ktorého sa
+       práve píše), takže po Späť v ňom zostane starý výraz — dosaď ho ručne. */
+    const qEl = $('kontrola-q');
+    if (qEl) qEl.value = next.q;
+    if (document.body.dataset.screen === 'kontrola') renderKontrola(true);
+});
 
 // Poradové číslo dotazu — hľadanie je debouncované, ale nie serializované, takže
 // pomalšia STARŠIA odpoveď dokáže prepísať novšiu (rovnaká pasca ako v Knižnici).
@@ -71,6 +115,22 @@ function kontrolaQuery() {
     if (f.q) p.set('q', f.q);
     p.set('limit', String(kontrolaState.limit));
     return '?' + p.toString();
+}
+
+/* Adresný riadok NIE JE dopyt na server a toto je to miesto, kde je vidieť, že sú
+   to dve veci: `kontrolaQuery()` vyššie skládá `?type=&certainty=&area=&q=&limit=`
+   pre `/api/review/queue` a nesie `limit` VŽDY, pretože endpoint ho potrebuje.
+   Tu ide do adresy `kot/koc/koa/kol/q` a `kol` sa pri predvolenej stránke
+   VYNECHÁVA. Ani jedno z toho nie je preklad druhého. */
+function syncKontrolaUrl() {
+    const f = kontrolaState.f;
+    writeUrl({
+        kot: f.type || null,
+        koc: f.certainty || null,
+        koa: f.area || null,
+        kol: kontrolaState.limit > KONTROLA_PAGE ? String(kontrolaState.limit) : null,
+        q: f.q || null,
+    }, 'replace');
 }
 
 /* `soft` = prekreslenie vyvolané filtrom alebo tlačidlom „Načítať ďalších".
@@ -110,6 +170,17 @@ export async function renderKontrola(soft) {
         if (d.limit) kontrolaState.limit = d.limit;
         // Zapnutý filter bez čipu je pasca — a pozná sa až z novej osi, teda tu.
         if (pruneKontrolaFilters()) { renderKontrola(true); return; }
+        /* Až tu je filter orezaný o osi, ktoré v odpovedi nemajú čip, takže do
+           adresy ide pravda, ktorou sa obrazovka naozaj riadi. Keby URL vynucovala
+           filter NAD prune logikou, `?kot=<neexistujuci-typ>` by nechal obrazovku
+           trvalo prázdnu bez čipu, ktorým sa to zruší — presne ten stav, proti
+           ktorému prune vznikol.
+
+           `f.q` sa nepruneuje vôbec (výraz bez zásahu je legitímny stav), takže
+           ide do adresy tak, ako ho človek napísal. Strop je zámerne v URL: bez
+           neho by odkaz na 300 položiek otvoril stovku a tlačidlo „Načítať
+           ďalších" by človek klikal odznova. */
+        syncKontrolaUrl();
         kontrolaState.idx = 0;
         // pri `soft` je fokus tam, kde ho človek nechal (čip alebo hľadanie) — nebrať ho
         rerenderKontrola(!soft && canTakeKontrolaFocus());

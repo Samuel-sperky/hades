@@ -20,7 +20,13 @@
     --bar-hover: rgba(14, 20, 19, .07);
     --accent: #6d3fb5;          /* amethyst (svetlá) */
     --accent-soft: rgba(109, 63, 181, .13);
-    --gold: #b88a3a;            /* jadro znaku (svetlá) */
+    /* Jadro znaku (svetlá). Hodnota je `--gold-text` z mind.css, nie `--gold`:
+       tá druhá je jadro v LEGENDE (veľká plocha), kým tu je znak 16 px vysoký.
+       Zmerané na #f4f2ee: #b88a3a dalo 2,79:1, #8a6417 dá 4,88:1 — a je to tá
+       istá hodnota, akú už používa electron/states/offline.html, takže dva
+       dokumenty toho istého shellu prestali hovoriť dvomi zlatými.
+       Rola zostáva ZNAČKOVÁ: zlatá tu nenesie žiadny interaktívny stav. */
+    --gold: #8a6417;
     --focus: #6d3fb5;
     --close-hover: #d64541;
     --close-ink: #ffffff;
@@ -153,10 +159,14 @@
 <body>
   <div class="bar">
     <div class="brand" title="Hades — Hierarchical Associative Data Embedding System">
+      <!-- ZNAK: generuje public/brand/build-mark.py zo hades-sigil-mini.svg.
+           Needituj ručne. Znak tu nesie rolu „desktop okno" (identita appky v ráme,
+           ktorý nie je prehliadač), preto sa NEANIMUJE — pulz behu patrí #brand-core. -->
       <svg class="sigil" viewBox="0 0 100 100" aria-hidden="true">
         <circle cx="50" cy="50" r="36" fill="none" stroke="var(--accent)" stroke-width="9"></circle>
         <circle cx="50" cy="50" r="15" fill="var(--gold)"></circle>
       </svg>
+      <!-- /ZNAK -->
       <span class="title" id="title">Hades</span>
     </div>
 

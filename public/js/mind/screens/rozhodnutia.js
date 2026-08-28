@@ -2,6 +2,7 @@ import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast } from '../toasts.js';
+import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, busy, deferSkeleton, emptyHtml, esc, getJson, plainBlock, plainInline, renderError, renderFilterEmpty } from '../util.js';
 
 /* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
@@ -27,12 +28,57 @@ import { $, busy, deferSkeleton, emptyHtml, esc, getJson, plainBlock, plainInlin
    nemení. Preto sa lišta prekresľuje len raz a pri filtrovaní sa mení iba zoznam
    (`#dec-list`): inak by pod prstami mizli práve tie čipy, ktorými sa filter ruší. */
 
+/* Boot z URL (slovník §6): `roy` rok · `roa` id oblasti · `q` hľadanie. Číta sa pri
+   načítaní modulu, teda pred prvým `decisionsQuery()`.
+
+   Tvary sa držia toho, čo už v stave žije: rok je REŤAZEC (porovnáva sa so
+   `String(y.year)`), oblasť ČÍSLO (porovnáva sa s `a.id`). Prepisovať to na jeden
+   typ by znamenalo prejsť aj `pruneDecisionFilters`, `syncDecChips` a čipy —
+   a to je refaktor, nie napojenie na URL. */
+const BOOT_MINE = readUrl().s === 'rozhodnutia';
+const bootRoa = BOOT_MINE ? parseInt(urlValue('roa') || '', 10) : NaN;
+
 export const decisionsState = {
     all: [], years: [], areas: [], counts: {},
-    year: null, areaId: null, q: '',
+    year: (BOOT_MINE ? urlValue('roy') : null) || null,
+    areaId: Number.isFinite(bootRoa) ? bootRoa : null,
+    q: (BOOT_MINE ? urlValue('q') : null) || '',
     adding: false, managing: false,
     seq: 0, qTimer: null,
 };
+
+/* Adresa sa píše z JEDNÉHO miesta, ale volá sa z dvoch: `renderDecisions()` (po
+   prune, teda orezaná pravda) a `refreshDecisionList()` (klik do čipu alebo
+   písanie do hľadania — tá cesta prune nerobí, lebo osi sú globálne a filter ich
+   nemení). Bez druhého volania by adresa po prekliku čipu zamrzla na predošlom
+   filtri. `replace` — filter do histórie nepatrí (rozhodnutie 10). */
+function syncDecisionsUrl() {
+    writeUrl({
+        roy: decisionsState.year || null,
+        roa: decisionsState.areaId != null ? String(decisionsState.areaId) : null,
+        q: decisionsState.q.trim() || null,
+    }, 'replace');
+}
+
+/* Späť / Dopredu: adresa je vstup. Ide to cez `renderDecisions()`, nie
+   `refreshDecisionList()` — prázdny filter môže odomknúť rady čipov, ktoré sa
+   vypisujú len keď je z čoho vyberať, takže lišta sa musí prestaviť. */
+registerUrlApply('rozhodnutia', (url) => {
+    if (url.s !== 'rozhodnutia') return;
+    const roa = parseInt(url.roa || '', 10);
+    const nextYear = url.roy || null;
+    const nextArea = Number.isFinite(roa) ? roa : null;
+    const nextQ = url.q || '';
+    if (nextYear === decisionsState.year && nextArea === decisionsState.areaId
+        && nextQ === decisionsState.q) return;
+    decisionsState.year = nextYear;
+    decisionsState.areaId = nextArea;
+    decisionsState.q = nextQ;
+    clearTimeout(decisionsState.qTimer);
+    const search = $('dec-search');
+    if (search) search.value = nextQ;
+    if (document.body.dataset.screen === 'rozhodnutia') renderDecisions();
+});
 
 /* Dopyt na server z aktuálneho filtra. Jediné miesto, kde sa filter prekladá na
    URL — dve kópie by znamenali, že prvé načítanie a filtrovanie hľadajú inak. */
@@ -66,6 +112,7 @@ export async function renderDecisions() {
         if (seq !== decisionsState.seq) return;
         applyDecisionsPayload(d);
         pruneDecisionFilters();
+        syncDecisionsUrl();
         renderDecisionsView();
     } catch (e) {
         cancelSkeleton();
@@ -86,6 +133,7 @@ export async function refreshDecisionList() {
         const d = await getJson(decisionsQuery());
         if (seq !== decisionsState.seq) return;
         applyDecisionsPayload(d);
+        syncDecisionsUrl();
         renderDecisionsList();
     } catch (e) {
         if (seq !== decisionsState.seq) return;

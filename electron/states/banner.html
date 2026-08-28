@@ -54,8 +54,16 @@
             background: var(--accent);
         }
 
+        /* Bodka je v základnom stave PLNÁ — tichá verzia je teda pokojný plný bod
+           vedľa textu stavu, nie zamrznutá poloprehľadná bodka. Tento dokument
+           nenačítava mind.css, takže plošná podlaha `prefers-reduced-motion` ho
+           nekryje a gate `no-preference` je jediný nositeľ tichej verzie. */
         @media (prefers-reduced-motion: no-preference) {
-            .dot { animation: blink 1.4s ease-in-out infinite; }
+            /* Slučková krivka, nie `ease-in-out` (manuál §3): príchodová krivka na
+               nekonečnej slučke kulhá — spomalí a skočí. Hodnota `--ease-pulse`
+               z mind.css, doslova, lebo tokeny sem nedosiahnu. Perióda 1,4 s je
+               `--dur-pulse` — perióda neurčitého čakania. */
+            .dot { animation: blink 1.4s cubic-bezier(.4, 0, .6, 1) infinite; }
         }
 
         @keyframes blink {

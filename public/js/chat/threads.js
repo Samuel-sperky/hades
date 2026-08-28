@@ -37,7 +37,12 @@
 
 import { el } from './render.js';
 import { loadThread, request } from './run.js';
-import { live, narrow, setPanel } from './main.js';
+import { live, narrow, setPanel, syncPanelsToUrl } from './main.js';
+/* Query string. `mind/urlstate.js` je JEDINÉ miesto v repe, ktoré ho číta aj
+   píše (rozhodnutie 31); je to čistý modul nad `URLSearchParams` bez importu
+   z `mind/`, takže `/chat` ním nestiahne graf. Debounce filtrov (220 ms) drží
+   on sám — odtiaľto sa nedebouncuje druhý raz. */
+import { urlValue, writeUrl } from '../mind/urlstate.js';
 
 /* ---------------------------------------------------------------------------
    STAV
@@ -90,11 +95,28 @@ const MIN_QUERY = 2;
 /** `ChatScreen::MAX_LIMIT`. Nad tento strop server dopyt aj tak zreže. */
 const MAX_LIMIT = 100;
 
-/** Prírastok tlačidla „Zobraziť viac". */
+/** Prírastok tlačidla „Zobraziť viac". Je to zároveň DEFAULT stropu, teda hodnota,
+    ktorá sa z adresy vynecháva (`hl`). */
 const LIMIT_STEP = 30;
+
+/* Role, ktoré hľadanie pozná. Zoznam je tu preto, aby `?hr=` z cudzieho odkazu
+   nemohlo nastaviť filter, ktorý server nepozná — orezaná pravda sa potom zapíše
+   späť do adresy (viď `bootSearchFromUrl`). */
+const ROLES = ['user', 'assistant'];
+
+/* Krátke kľúče hľadania zo kanonického slovníka (`docs/BRAND-HADES.md` §10).
+   `q` je zdieľaný kľúč voľného textu — na `/chat` znamená „hľadaj v histórii",
+   na obrazovkách grafu niečo iné, a rozhoduje o tom kľúč `s`, ktorý `/chat` nemá. */
+const URL_FILTER = { role: 'hr', from: 'ha', to: 'hb', thread: 'hn', project: 'hp' };
 
 /** Prebehla už inicializácia? `bootThreads()` je idempotentné. */
 let booted = false;
+
+/* Sú listenery pripojené? `wireThreadsPanel()` sa volá DVAKRÁT — raz z `boot()`
+   kostry, raz z `bootThreads()`. Obe cesty sú zámerné (poradie drôtovania nesmie
+   rozhodovať), ale bez tejto stráže má každý listener dvojníka a jedna udalosť
+   `chat:thread` znamená dve prekreslenia panela. */
+let wired = false;
 
 /** Časovač debounce hľadania. */
 let findTimer = 0;
@@ -315,6 +337,68 @@ export async function loadProjectThreads(uuid) {
    počty aj útržky skládá server; tu sa z nich robia vety.
    --------------------------------------------------------------------------- */
 
+/**
+ * Hľadanie do adresy — sedem kľúčov jedným zápisom.
+ *
+ * `replaceState`, nie `pushState`: hľadanie nie je navigácia (rozhodnutie 10).
+ * Keby každý znak v poli pridal záznam, `Naspäť` by sa prehrýzalo dopytom
+ * spätne namiesto toho, aby vrátilo vlákno, z ktorého človek prišiel.
+ *
+ * Kľúče popisujú BEŽIACE hľadanie, teda orezanú pravdu: čo `runSearch()` naozaj
+ * poslal na server. Default (`hl` = 30) sa vynecháva — zahodí ho `urlstate.js`,
+ * ale `null` sem píšem aj tak, aby zámer stál v tomto súbore.
+ */
+export function syncSearchUrl() {
+    const term = T.query.trim();
+
+    writeUrl({
+        q: term.length >= MIN_QUERY ? T.query : null,
+        [URL_FILTER.role]: T.filters.role || null,
+        [URL_FILTER.from]: T.filters.from || null,
+        [URL_FILTER.to]: T.filters.to || null,
+        [URL_FILTER.thread]: T.filters.thread || null,
+        [URL_FILTER.project]: T.filters.project || null,
+        hl: T.limit === LIMIT_STEP ? null : String(T.limit),
+    }, 'replace');
+}
+
+/**
+ * Stav hľadania z adresy — a späť do adresy orezaný.
+ *
+ * Poradie je záväzné: **URL → stav → orez → `replaceState` orezanej pravdy.**
+ * URL NESMIE vynucovať filter, ktorý plocha nepozná: `?hr=nieco` by inak zúžilo
+ * dopyt na rolu, ktorú server nemá, a hľadanie by vracalo prázdno bez čipu,
+ * ktorým sa to ruší. Neznáma hodnota sa preto zahodí a adresa sa skráti.
+ *
+ * Dopyt kratší než `MIN_QUERY` hľadanie NESPUSTÍ — je to ten istý strop ako na
+ * serveri a jednoznakový `?q=` by bol plný sken `console_messages`.
+ */
+export function bootSearchFromUrl() {
+    const role = urlValue(URL_FILTER.role);
+    const limit = parseInt(urlValue('hl'), 10);
+
+    T.query = urlValue('q') || '';
+    T.filters.role = ROLES.includes(role) ? role : '';
+    T.filters.from = isDay(urlValue(URL_FILTER.from));
+    T.filters.to = isDay(urlValue(URL_FILTER.to));
+    T.filters.thread = urlValue(URL_FILTER.thread) || '';
+    T.filters.project = urlValue(URL_FILTER.project) || '';
+    T.limit = Number.isFinite(limit)
+        ? Math.min(MAX_LIMIT, Math.max(LIMIT_STEP, limit))
+        : LIMIT_STEP;
+
+    const field = document.getElementById('chat-search');
+    if (field) field.value = T.query;
+
+    if (T.query.trim().length >= MIN_QUERY) runSearch();
+    else syncSearchUrl();
+}
+
+/** `YYYY-MM-DD`, alebo `''`. Iný text nie je dátum a do filtra sa nedostane. */
+function isDay(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? String(value) : '';
+}
+
 export function onQuery(text) {
     T.query = String(text ?? '');
     T.limit = LIMIT_STEP;
@@ -331,6 +415,12 @@ export function onQuery(text) {
         finding?.abort();
         finding = null;
         T.search = { state: 'idle', data: null, error: '' };
+        // Zrušené hľadanie zmizne aj z adresy — a s ním všetky jeho zúženia.
+        // Kľúče `q`/`hr`/`ha`/`hb`/`hn`/`hp`/`hl` popisujú BEŽIACE hľadanie;
+        // filter visiaci v adrese bez dopytu by po obnove nezúžil nič a človek by
+        // nemal čo odkliknúť. Je to to isté rozhodnutie, ktoré nižšie ruší
+        // `thread`/`project` pri každom novom dopyte.
+        syncSearchUrl();
         paint();
 
         return;
@@ -344,6 +434,11 @@ export function onQuery(text) {
 export async function runSearch() {
     const term = T.query.trim();
     if (term.length < MIN_QUERY) return;
+
+    /* JEDINÉ miesto zápisu hľadania do adresy. Filtre, skupiny aj „Zobraziť viac"
+       idú cez `runSearch()`, takže sa adresa nemôže rozísť s tým, čo išlo na
+       server — a nie je to päť volajúcich, ktorí by sa museli pamätať. */
+    syncSearchUrl();
 
     finding?.abort();
     finding = new AbortController();
@@ -432,6 +527,10 @@ export async function deleteThread(uuid) {
     if (T.current === uuid) {
         T.current = '';
         history.pushState({}, '', '/chat');
+        // Celá adresa sa prepísala, takže s vláknom odišel aj query string —
+        // vrátane `pt`/`pa`, ktoré o vlákne nie sú. Rozloženie sa preto dopíše
+        // späť (`replace`, teda bez druhého záznamu v histórii).
+        syncPanelsToUrl();
         window.dispatchEvent(new PopStateEvent('popstate'));
     }
 
@@ -1348,6 +1447,9 @@ function scheduleRefresh() {
 }
 
 export function wireThreadsPanel() {
+    if (wired) return;
+    wired = true;
+
     document.addEventListener('chat:search', (event) => { onQuery(event.detail?.query ?? ''); });
 
     document.addEventListener('chat:thread', (event) => {
@@ -1389,6 +1491,11 @@ export function bootThreads() {
 
     T.current = document.querySelector('meta[name="console-thread"]')?.content || '';
     paintExport();
+
+    /* Hľadanie z adresy PRED načítaním zoznamov: `paint()` kreslí sekciu
+       „Nájdené v histórii" zo stavu, takže keby sa dopyt čítal až po nich, panel
+       by raz blikol bez nej. */
+    bootSearchFromUrl();
 
     loadThreads();
     loadProjects();

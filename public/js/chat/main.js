@@ -42,6 +42,11 @@ import { bootBranches, wireBranches } from './branches.js';
 import { bootAttach, wireDrop, wirePaste } from './attach.js';
 import { bootVoice, wireVoice } from './voice.js';
 import { bootAgents, wireAgents } from './agents.js';
+/* Query string. `mind/urlstate.js` je JEDINÉ miesto v repe, ktoré ho číta aj
+   píše (rozhodnutie 31), a je to zámerne čistý modul nad `URLSearchParams` bez
+   jediného importu z `mind/` — inak by `/chat` jedným importom stiahol celý graf.
+   Debounce filtrov drží on sám; odtiaľto sa nedebouncuje. */
+import { bootValue, writeUrl } from '../mind/urlstate.js';
 
 /* Kľúče v localStorage. Prefix `hades.chat.` zámerne — `hades.theme` je
    zdieľaná s grafom a konzolou (jedna téma pre celú appku), všetko ostatné je
@@ -52,6 +57,41 @@ const KEY = {
     threadsW: 'hades.chat.threadsW',
     artifactW: 'hades.chat.artifactW',
 };
+
+/* Krátke URL kľúče panelov zo kanonického slovníka (`docs/BRAND-HADES.md` §10).
+   Defaulty sa v adrese VYNECHÁVAJÚ, takže slovník každého kľúča je jednohodnotový:
+   `pt=0` znamená „zoznam vlákien zatvorený" (default je otvorený) a `pa=1`
+   znamená „panel artefaktu otvorený" (default je zatvorený). Preto sa hodnota
+   `1` pre `pt` a `0` pre `pa` nikdy nezapíše — bola by to default hodnota.
+
+   ŠÍRKY PANELOV DO URL NEIDÚ. Šírka je vlastnosť monitora, nie obsahu: odkaz
+   poslaný na iný stroj by na ňom prepísal rozloženie, ktoré si tam človek vybral. */
+const URL_KEY = { threads: 'pt', artifact: 'pa' };
+
+/* ---------------------------------------------------------------------------
+   PREFERENCIE
+
+   `localStorage` v prehliadači vie hodiť aj pri čítaní (privátne okno so
+   zakázanými cookies, plná kvóta), a plocha, ktorá kvôli nedostupnej preferencii
+   nenaběhne vôbec, je horšia než plocha s defaultom. Preto tieto dve obálky.
+   --------------------------------------------------------------------------- */
+
+/** @returns {string|null} uložená preferencia, alebo `null` keď nie je čitateľná */
+export function readPref(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+export function writePref(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        /* Nedostupné úložisko nie je chyba plochy — stav zostane len v tejto karte. */
+    }
+}
 
 /* Rozsahy šírok. Dolná hranica je čitateľnosť (pod 200 px sa titulok vlákna
    zreže na nič), horná je to, aby panel nezjedol konverzáciu. Strop 40 % okna
@@ -79,7 +119,7 @@ let following = true;
 
 /** Tmavá je default, rovnako ako v grafe a konzole — tému nesie ten istý kľúč. */
 export function applyTheme() {
-    const name = localStorage.getItem('hades.theme') || 'dark';
+    const name = readPref('hades.theme') || 'dark';
     document.documentElement.dataset.theme = name === 'light' ? 'light' : 'dark';
 }
 
@@ -119,6 +159,15 @@ export function applyPanel(name, on) {
  *
  * Na úzkom okne je otvorený najviac JEDEN panel — dva prekryvy nad sebou by sa
  * delili o ten istý scrim a jeden by bol nedosiahnuteľný.
+ *
+ * NA ŠIROKOM OKNE SA STAV ZAPÍŠE OBOJE: preferencia do `localStorage` (platí pre
+ * ďalšie otvorenia plochy) a kľúč do adresy (platí pre TENTO odkaz). Sú to dve
+ * rôzne roly, nie duplikát — odkaz `?pt=0&pa=1` má u kolegu ukázať to isté
+ * rozloženie, aj keď má vlastnú preferenciu.
+ *
+ * Zápis do adresy je `replaceState`, pretože otvorenie panela NIE JE navigácia:
+ * `Naspäť` má vrátiť predchádzajúce vlákno alebo vetvu, nie zavrieť panel
+ * (rozhodnutie 10).
  */
 export function setPanel(name, on, { remember = true } = {}) {
     applyPanel(name, on);
@@ -126,7 +175,8 @@ export function setPanel(name, on, { remember = true } = {}) {
     if (narrow()) {
         if (on) applyPanel(name === 'threads' ? 'artifact' : 'threads', false);
     } else if (remember) {
-        localStorage.setItem(KEY[name], on ? 'on' : 'off');
+        writePref(KEY[name], on ? 'on' : 'off');
+        writeUrl({ [URL_KEY[name]]: panelUrlValue(name, on) }, 'replace');
     }
 
     live(`${name === 'threads' ? 'Zoznam vlákien' : 'Panel artefaktu'} ${on ? 'otvorený' : 'zatvorený'}.`);
@@ -137,6 +187,63 @@ export function setPanel(name, on, { remember = true } = {}) {
 
 export function togglePanel(name) {
     setPanel(name, !panelState(name));
+}
+
+/**
+ * Stav panela v jazyku adresy — alebo `null`, keď je to default a kľúč do adresy
+ * nepatrí. Jediné miesto, kde sa `on/off` prekládá na slovník §10; obe strany
+ * (zápis aj boot) idú cezeň, takže sa nemôžu rozísť.
+ *
+ * @returns {string|null}
+ */
+export function panelUrlValue(name, on) {
+    if (name === 'threads') return on ? null : '0';
+
+    return on ? '1' : null;
+}
+
+/**
+ * Aktuálne rozloženie panelov späť do adresy, bez záznamu v histórii.
+ *
+ * Existuje pre jediný prípad: navigácia, ktorá prepíše celú adresu a query
+ * string tým zahodí (`history.pushState({}, '', '/chat')` pri zmazaní otvoreného
+ * vlákna). Bez toho by adresa po takom skoku tvrdila default rozloženie, hoci
+ * panely na obrazovke zostali tak, ako si ich človek nechal — a absencia kľúča
+ * `pt` znamená „otvorený", teda by to bola lož, nie len chýbajúci údaj.
+ *
+ * Pod 900 px sa nezapisuje nič: tam je panel prekryv a jeho stav nie je
+ * nastavenie plochy.
+ */
+export function syncPanelsToUrl() {
+    if (narrow()) return;
+
+    writeUrl({
+        pt: panelUrlValue('threads', panelState('threads')),
+        pa: panelUrlValue('artifact', panelState('artifact')),
+    }, 'replace');
+}
+
+/**
+ * Počiatočný stav panela: **URL > preferencia > default**.
+ *
+ * Dvojvrstvový default je tu podstata, nie pohodlie. Keď kľúč v adrese CHÝBA,
+ * platí to, čo si človek na tomto stroji vybral. Keď kľúč v adrese JE, je to
+ * explicitný príkaz odkazu a preferenciu prebije — inak by odkaz na rozbalený
+ * artefakt u človeka s vlastným nastavením ukázal niečo iné, než čo mu poslali.
+ *
+ * Preferencia sa do `bootValue()` podáva preložená do jazyka adresy, aby
+ * porovnávalo jeden slovník a nie dva.
+ */
+export function bootPanel(name) {
+    const stored = readPref(KEY[name]);
+    const key = URL_KEY[name];
+    const value = bootValue(
+        key,
+        stored === null ? null : panelUrlValue(name, stored === 'on'),
+        null,
+    );
+
+    return name === 'threads' ? value !== '0' : value === '1';
 }
 
 /** Aktuálna šírka panela v px — číta sa z CSS premennej, nie z vlastnej kópie. */
@@ -161,7 +268,7 @@ export function setPanelWidth(name, px, { remember = true } = {}) {
     document.documentElement.style.setProperty(
         name === 'threads' ? '--chat-threads-w' : '--chat-artifact-w', `${w}px`,
     );
-    if (remember) localStorage.setItem(KEY[`${name}W`], String(w));
+    if (remember) writePref(KEY[`${name}W`], String(w));
 
     const grip = document.getElementById(name === 'threads' ? 'chat-threads-grip' : 'chat-artifact-grip');
     if (grip) {
@@ -344,7 +451,7 @@ export function clampWidth(name, px) {
 
 /** Uložená šírka, alebo default. Nečitateľná hodnota padá na default, nie na NaN. */
 export function storedWidth(name) {
-    return clampWidth(name, parseInt(localStorage.getItem(KEY[`${name}W`]) ?? '', 10));
+    return clampWidth(name, parseInt(readPref(KEY[`${name}W`]) ?? '', 10));
 }
 
 /** Gombík „na spodok" sa ukazuje LEN keď tok prestal sledovať konec. */
@@ -555,9 +662,13 @@ export function wireShortcuts() {
 /**
  * Počiatočný stav panelov.
  *
- * Na úzkom okne oba zatvorené, bez ohľadu na uložené — prekryv nad textom pri
- * otvorení stránky je horší než jeden klik. Na širokom to, čo si človek naposledy
- * vybral; default „zoznam áno, artefakt nie", pretože artefakt je zatiaľ prázdny
+ * Na úzkom okne oba zatvorené, bez ohľadu na uložené AJ na adresu — prekryv nad
+ * textom pri otvorení stránky je horší než jeden klik, a stav prekryvu nie je
+ * nastavenie plochy (viď `setPanel`). Preto sa pod 900 px `pt`/`pa` ani nečíta,
+ * ani nezapisuje: kľúč by tvrdil o rozložení niečo, čo na tej šírke neplatí.
+ *
+ * Na širokom okne rozhoduje `bootPanel()`: URL > preferencia > default. Default
+ * je „zoznam áno, artefakt nie", pretože artefakt je pri otvorení prázdny
  * a prázdny panel by ukradol tretinu šírky za nič.
  */
 export function applyStoredPanels() {
@@ -568,8 +679,8 @@ export function applyStoredPanels() {
         return;
     }
 
-    applyPanel('threads', localStorage.getItem(KEY.threads) !== 'off');
-    applyPanel('artifact', localStorage.getItem(KEY.artifact) === 'on');
+    applyPanel('threads', bootPanel('threads'));
+    applyPanel('artifact', bootPanel('artifact'));
 }
 
 export function boot() {

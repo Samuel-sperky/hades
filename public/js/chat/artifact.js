@@ -15,6 +15,18 @@
    SVG od modelu sa nevykresľuje vôbec — SVG smie v tejto appke zostaviť len náš
    vlastný kód (`sigilMark()`, značka v blade), nikdy nie parser cudzieho textu.
 
+   DO ADRESY IDE STAV PANELA, NIE ARTEFAKT — a je to rozhodnutie, nie opomenutie.
+   Kľúč `pa` (otvorený/zatvorený panel) píše `./main.js` cez `setPanel()`, takže ho
+   dostane aj artefakt otvorený behom — `openArtifact()` ide tou istou cestou.
+   Kľúč `ar` (zdroj artefaktu) je v kanonickom slovníku (§10) VYHRADENÝ a zámerne
+   sa NEZAVÁDZA: panel sa plní z argumentov ŽIVÉHO volania nástroja
+   (`artifactFromTool()` nižšie — `args.content`, `call.preview`), a to je jediné
+   miesto, kde ten obsah existuje. Volanie nesie `ConsoleToolCall`, ale panel z neho
+   dostane text, nie odkaz, po ktorý by sa dalo po obnove stránky vrátiť. Kľúč, ktorý
+   by po `F5` otvoril PRÁZDNY panel s menom súboru v adrese, je horší než žiadny:
+   tvrdil by, že sa artefakt obnovil. Preto sa po obnove otvorí panel a obsah v ňom
+   nie je — a to je pravda o tom, čo appka vie.
+
    MERMAID SA NEROBÍ. Dôvod, čísla a spúšťač na prehodnotenie sú v hlavičke
    `./highlight.js`, aby stáli tam, kde by grammar diagramu vznikla. Sem patrí
    len dôsledok: ```mermaid je obyčajný blok kódu s hlavičkou jazyka a Kopírovať.

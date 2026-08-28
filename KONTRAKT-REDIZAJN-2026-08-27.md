@@ -150,10 +150,24 @@ v Pythone) · rozbalenie railu 80 → ~208 px · `charon.css` na typografickú �
 chybový komponent na `/console`, `/chat` a v doku · audit 64 pohybov bez pomenovanej
 tichej verzie · zjednotenie breakpointov.
 
-**Otvorená otázka, ktorá patrí používateľovi:** kto serializuje filtre do URL — server
-(invariant dvojitej plochy hovorí „filtre sú dáta a patria na server") alebo klient
-(rozhodnutie 27 hovorí „jedno miesto serializuje aj deserializuje"). Tie dve vety si
-pri filtroch protirečia a vlna 2 na tom stojí.
+**Zavretá otázka (rozhodnutie 31, 27. 8. 2026, používateľ):** filtre a hľadanie do URL
+serializuje **klient**. Jeden modul v `public/js` (`mind/urlstate.js`) je jediné miesto,
+ktoré query string číta **aj** píše — krátke kľúče, defaulty sa vynechávajú. Server
+zostáva zdrojom pravdy pre počty, skupiny a krátenie textu.
+
+Dôvod, prečo tým invariant dvojitej plochy nepadá: **URL nie je obsah, je to poloha
+čitateľa.** Do adresného riadka ide *kľúč* filtra, nie jeho vyhodnotenie — dotaz na
+server sa nemení. Serverová serializácia by navyše znamenala request na každú zmenu
+filtra (dnes 3–4 s na `/api/journal`) a plocha AI by dostala kľúč, ktorý pre model
+neznamená nič.
+
+### Vlna 2 + 3 — beh z 27. 8. 2026 (20 agentov)
+
+Rozsah: všetko otvorené naraz. Štruktúra: 4 sondy → koordinačný plán a prepis manuálu →
+9 implementátorov (delenie **podľa súborov**; `mind.css` je sekvenčný reťazec A1→A2→A3,
+pretože rail, ikony aj pohyb naň siahajú) → 2 agenti výmeny ikonových call-site →
+1 agent odchodu Material Symbols → 3 overovatelia (testy, zmeraný DOM, adversariálny
+review). Výsledok sa dopíše po behu.
 
 **Oprava kontraktu:** rozhodnutie 19 hovorí „37 použitých ligatúr". Správne číslo je
 **41** (sonda A §4.1) — štyri vstupujú do DOM cestami, ktoré grep nad markupom nevidí

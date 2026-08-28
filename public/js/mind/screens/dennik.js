@@ -1,5 +1,6 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeDetail } from '../screens.js';
+import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, getJson, prettyLabel, renderEmpty, renderError, renderFilterEmpty } from '../util.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
@@ -12,7 +13,29 @@ export let journalRecords = [];
 // server — a AI, ktorá čítala serverové počty, tretie. Počítanie je údaj, nie kresba.
 export let journalGroups = [];
 export let journalTotal = 0;
-export let journalProject = null;
+/* Filter projektu žije v URL pod kľúčom `dep` (slovník §6). Číta sa TU, pri
+   načítaní modulu — teda ešte pred prvým renderom, aby odkaz otvoril Denník už
+   s nasadeným filtrom a nie až o jedno prekreslenie neskôr.
+
+   Podmienka `BOOT_MINE` nie je opatrnosť, ale konzistencia s tým, čo pri zmene
+   obrazovky robí `setScreen()`: kľúče filtrov cudzích obrazoviek maže. Keby sme
+   `dep` z odkazu na inú obrazovku prevzali, filter by ostal zapnutý napriek tomu,
+   že v adrese už nie je — a človek by hľadal čip, ktorý nikde nesvieti. */
+const BOOT_MINE = readUrl().s === 'dennik';
+export let journalProject = (BOOT_MINE ? urlValue('dep') : null) || null;
+
+/* Späť / Dopredu. Bez tohto by tlačidlo Naspäť zmenilo adresu a nechalo filter
+   stáť — teda by URL lhala, čo je presne to, proti čomu celá vlna vznikla.
+   Prekresľujeme len keď je Denník naozaj na obrazovke; inak stačí stav a kreslenie
+   si vyžiada `setScreen()`. Obrazovku čítame z `body[data-screen]`, nie z `S` —
+   nie je dôvod pre jeden atribút importovať celý stav grafu. */
+registerUrlApply('dennik', (url) => {
+    if (url.s !== 'dennik') return;
+    const next = url.dep || null;
+    if (next === journalProject) return;
+    journalProject = next;
+    if (document.body.dataset.screen === 'dennik') renderJournal();
+});
 // Projektov je bežne ~23 — všetky naraz sa lámu na dva riadky chipov nad obsahom.
 // Preto zbalený rad: najčastejšie projekty + „viac".
 export let journalChipsOpen = false;
@@ -57,6 +80,15 @@ export async function renderJournal() {
             journalProject = null;
             return renderJournal();
         }
+
+        /* Do adresy ide OREZANÁ pravda, nie to, čo si človek prial: filter, ktorý
+           v skupinách zo servera nie je, sme práve zhodili o pár riadkov vyššie,
+           takže až tu je `journalProject` platná skupina. Poradie je záväzné —
+           URL → stav → dopyt → prune → replaceState.
+
+           `replace`, nikdy `push` (rozhodnutie 10): tlačidlo Späť patrí
+           obrazovkám a vláknam, nie klikaniu do radu čipov. */
+        writeUrl({ dep: journalProject }, 'replace');
 
         renderJournalFilter();
         renderJournalList();
@@ -130,6 +162,16 @@ export function renderJournalFilter() {
  */
 export function setJournalProject(key) {
     journalProject = key || null;
+    /* Adresa sa mení HNEĎ, nie až po odpovedi servera. `/api/journal` beží 3–4 s
+       a zápis až v `renderJournal()` by znamenal, že odkaz skopírovaný v tej
+       medzere nesie predošlý filter. Druhý zápis po prune to potom už len
+       potvrdí, prípadne opraví na orezanú pravdu — oba sú `replace`, takže do
+       histórie nepribúda nič.
+
+       Kľúč skupiny môže byť `#bez-projektu`. Preto to stavia `urlstate.js`
+       výhradne cez `URLSearchParams`: konkatenácia by `#` nechala odseknúť
+       zvyšok adresy do fragmentu. */
+    writeUrl({ dep: journalProject }, 'replace');
     renderJournal();
 }
 

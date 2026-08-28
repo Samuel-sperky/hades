@@ -5,6 +5,7 @@ import {
 } from './layout.js';
 import { draw, fitBBox, fitCam, graphActive, requestDraw } from './render.js';
 import { REDUCED_MOTION, S } from './state.js';
+import { registerUrlApply, writeUrl } from './urlstate.js';
 import { renderBreadcrumb } from './util.js';
 
 /* ---------- VLNA „GRAF A": FYZIKA + FILTER ZANORENIA ----------
@@ -89,6 +90,20 @@ export function clampNav(t) {
 }
 
 function navKey(n) { return n.level + ':' + n.area + ':' + n.dept + ':' + n.node; }
+
+/* ---------- zanorenie do adresy ----------
+
+   JEDEN zápis pre celé zanorenie, a to `replace`: rozhodnutie 10 menuje „pohyb
+   v grafe" výslovne ako `replace`, takže Späť opustí graf, nezačne prelistúvať
+   dvadsať zanorení. `level` sa NEPÍŠE — implikuje ho najhlbší prítomný kľúč
+   a `clampNav()` dopĺňa kontext nahor sám, takže druhý zápis by bol druhá pravda.
+   Kamera do adresy neide vôbec: force layout je živý a tá istá kamera nad inak
+   usadenou scénou rámuje iné miesto siete.
+
+   `null` znamená „zmaž kľúč" — mapa je teda adresa bez a/d/n, nie `a=0`. */
+function writeNavUrl(nav) {
+    writeUrl({ a: nav.area, d: nav.dept, n: nav.node }, 'replace');
+}
 
 // S.focus je zrkadlo filtra pre breadcrumb a strom štruktúry — stmievanie si
 // render/edges počítajú z layoutu (ent.dim), nie z focusPass.
@@ -350,7 +365,11 @@ export function buildSim() {
     S._nbFor = null; S._nbSet = null;
 
     const next = clampNav(S.nav);
-    if (navKey(next) !== navKey(S.nav)) { S.nav = next; syncFocus(next); renderBreadcrumb(); }
+    // Cieľ z odkazu môže medzitým zmiznúť (uzol zmazaný). `clampNav()` spadne
+    // o úroveň vyššie a adresa sa musí opraviť SPOLU s tým — inak by `F5` viedol
+    // do iného stavu než odkaz. Hlási to breadcrumb, nie toast (pri obnove stránky
+    // sa neplatný stav plávajúcou bublinou nehlási).
+    if (navKey(next) !== navKey(S.nav)) { S.nav = next; syncFocus(next); renderBreadcrumb(); writeNavUrl(next); }
 
     const warm = S._simTicks > 0 && S.nodes.some((n) => Number.isFinite(n.x));
     if (S.sim) S.sim.stop();
@@ -466,8 +485,13 @@ function focusBBox(L) {
     return { minX, minY, maxX, maxY };
 }
 
-function aimCamera(L, animate) {
+function aimCamera(L, animate, level) {
     const to = fitCam(focusBBox(L));
+    /* PODLAHA ZOOMU JE V CIELI TWEENU, nie pred ním. Zanorenie na uzol malo
+       podlahu (`S.cam.k = max(S.cam.k, 1.1)`) priradenú volajúcim PRED tweenom,
+       takže kamera najprv skočila a až potom sa plynulo doletela — dva pohyby na
+       jedno gesto. V cieli je to jeden pohyb a tween drží celú cestu. */
+    if (level === 'node') to.k = Math.max(to.k, 1.1);
     if (!animate) {
         S.cam.x = to.x; S.cam.y = to.y; S.cam.k = to.k;
         S._camTween = null;
@@ -486,14 +510,25 @@ export function go(target = {}) {
 
     S.nav = next;
     try { localStorage.setItem('hades.nav', JSON.stringify(next)); } catch (e) { /* full storage — nič */ }
+    // Poloha čitateľa do adresy. `localStorage` zostáva pamäťou zariadenia (druhý
+    // tab si ju prepíše), adresa je to, čo sa dá poslať.
+    writeNavUrl(next);
     syncFocus(next);
     S.view = 'graph';
 
     const L = computeLayout(true);
     renderBreadcrumb();
+    /* PRECHOD STMIEVANIA (zamrznuté rozhranie §2.3): `go()` je filter, nie výmena
+       scény — pozície sa nemenia a mení sa len `ent.dim`. Tween nesie ČAS, cieľ
+       nesie `computeLayout()`; interpoláciu robí `render.js` a nikto iný toto pole
+       nečíta ani nepíše. `null` = sadni v jednom rámci: pri tichej verzii
+       (`prefers-reduced-motion`) aj pri vypnutých animáciách má byť zmena okamžitá,
+       nie zamrznutá v polovici. */
+    const animate = !first && !reduceMotion && animLevel() > 0;
+    S._dimTween = animate ? { t0: S._clock, dur: 0.18 } : null;
     // Používateľ zamieril sám → usadzovanie mu už kameru nemá preberať.
     if (!first) S._fitOnSettle = false;
-    aimCamera(L, !first && !reduceMotion && animLevel() > 0);
+    aimCamera(L, animate, next.level);
     S._morph = null;
     if (graphActive()) draw();   // nech cieľ nezabliká pred prvým rAF framom
     requestDraw();
@@ -573,6 +608,11 @@ export function setView(view) {
         const changed = S.gview !== view;
         S.gview = view;
         try { localStorage.setItem('hades.gview', view); } catch (e) { /* full storage — nič */ }
+        // Pohľad je JEDINÁ menovaná výnimka z pravidla „do adresy ide členstvo, nie
+        // vzhľad": mení rozloženie, nie to, ktoré uzly sú videné — ale je to
+        // pomenovaný pohľad s vlastnými tlačidlami a klávesou V, nie kozmetický
+        // slider. Preto `push`: čitateľ zmenil, NA ČO sa pozerá.
+        if (changed) writeUrl({ gv: view }, 'push');
         syncViewButtons();
         if (changed) {
             S._anchors = null;
@@ -588,13 +628,42 @@ export function setView(view) {
     // main.js posiela S.view ('graph') = „postav fyziku a obnov uložený filter".
     // Kamera sa dorovná až po usadení (finishSettle → fokusová skupina).
     syncViewButtons();
+    /* Tu sa orezáva zanorenie z odkazu prvý raz nad načítanými uzlami, takže tu sa
+       musí opraviť aj adresa. Zmerané: `?n=99999999` (zmazaný uzol) spadlo na úroveň
+       `dept` správne, ale `n` zostalo v adrese — `buildSim()` už rozdiel nevidel,
+       pretože `clampNav()` prebehol o riadok vyššie. Adresa po načítaní musí opisovať
+       to, čo je na obrazovke; inak `F5` vedie do iného stavu než odkaz. */
     const nav = clampNav(S.nav);
+    const corrected = navKey(nav) !== navKey(S.nav);
     S.nav = nav;
     syncFocus(nav);
+    if (corrected) writeNavUrl(nav);
     buildSim();
     renderBreadcrumb();
     return currentPath();
 }
+
+/* ---------- Späť / Dopredu: adresa je vstup ----------
+
+   Bez tohto by tlačidlo Naspäť zmenilo adresu a nechalo scénu stáť, teda by adresa
+   lhala. Aplikátor je registrovaný pod menom `graph`, pretože vlastní práve tie
+   kľúče, ktoré tento modul píše (a/d/n a `gv`) — obrazovku a filtre obrazoviek
+   aplikujú ich vlastníci. `urlstate.js` počas aplikovania zápisy zahadzuje, takže
+   Späť nepridá nový záznam do histórie.
+
+   `rAF` sa tu nezapína: `go()` aj `buildSim()` idú cez `requestDraw()` / pumpu,
+   ktoré mimo obrazovky Graf na `requestAnimationFrame` nesiahajú vôbec. */
+registerUrlApply('graph', (url) => {
+    const wantView = url.gv === 'layers' ? 'layers' : 'net';
+    if (wantView !== S.gview) { setView(wantView); return; }   // setView() si nav dorovná sám
+    const a = url.a ? +url.a : null;
+    const d = url.d ? +url.d : null;
+    const n = url.n ? +url.n : null;
+    const level = n ? 'node' : (d ? 'dept' : (a ? 'area' : 'map'));
+    // Celý cieľ naraz (nie tri `go()`), inak by clampNav() dopĺňal kontext z toho,
+    // čo práve zostalo v S.nav, a mezikroky by zamerali kameru na cudzie miesto.
+    go({ level, area: a, dept: d, node: n });
+});
 
 // Zmena S.focus zvonku (strom štruktúry, breadcrumb v util.js) → dorovnaj filter.
 // Volá to render.frame(), takže externý setFocus() naďalej funguje.

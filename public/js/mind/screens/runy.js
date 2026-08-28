@@ -1,4 +1,5 @@
 import { showToast } from '../toasts.js';
+import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, filterEmptyHtml, fmtNum, getJson, loadingHtml, plainInline, renderEmpty, renderError, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Runy (/api/runs) — čo konzola robila ----------
@@ -16,8 +17,21 @@ import { $, deferSkeleton, esc, filterEmptyHtml, fmtNum, getJson, loadingHtml, p
    Čo TU zostáva vizuálne, a je to tak správne: popisok hlavičky dňa
    (dnes/včera/dátum), formát trvania a `timeAgo`. To sú slová, nie údaje. */
 
+/* Boot z URL (slovník §6): `rus` stav · `rum` model · `ruo` rozbalený beh.
+   Číta sa pri načítaní modulu, teda pred prvým `query()` — odkaz tak pošle na
+   server rovno svoj filter.
+
+   `ruo` je jediný kľúč obrazovky, ktorý nie je filter: je to poloha čitateľa
+   v zozname. Preto ide do URL — odkaz na konkrétny beh je presne to, čo si človek
+   posiela sám sebe. Detail sa doťahuje z `/api/runs/{uuid}` až po odpovedi
+   zoznamu (nižšie), nie tu: bez zoznamu sa nedá povedať, či ten beh vôbec
+   filtru vyhovuje. */
+const BOOT_MINE = readUrl().s === 'runy';
+const bootKey = (k) => (BOOT_MINE ? urlValue(k) : null) || null;
+
 export const runsState = {
-    items: [], counts: {}, models: [], status: null, model: null, open: null,
+    items: [], counts: {}, models: [],
+    status: bootKey('rus'), model: bootKey('rum'), open: bootKey('ruo'),
     details: new Map(),
     /** uuid behu, na ktorého prepínač sa má po prekreslení vrátiť fokus */
     focus: null,
@@ -47,7 +61,14 @@ export async function renderRuns() {
         runsState.counts = d.counts || {};
         runsState.models = d.models || [];
         pruneRunFilters();
+        /* Až tu je stav orezaný o to, čo v odpovedi neexistuje, takže do adresy ide
+           pravda, ktorou sa obrazovka riadi — nie prianie z odkazu. `replace`:
+           filter ani rozbalenie behu do histórie nepatria (rozhodnutie 10). */
+        syncRunsUrl();
         renderRunsView();
+        // Rozbalený beh z odkazu ešte nemá detail — dotiahni ho, akoby naň klikol
+        // človek. Až PO `renderRunsView()`, aby zoznam nečakal na druhý request.
+        if (runsState.open) loadRunDetail(runsState.open);
     } catch (e) {
         cancelSkeleton();
         renderError(body, 'behy', renderRuns);
@@ -69,7 +90,44 @@ function query() {
 export function pruneRunFilters() {
     if (runsState.status && !(runsState.counts[runsState.status] > 0)) runsState.status = null;
     if (runsState.model && !runsState.models.includes(runsState.model)) runsState.model = null;
+    /* Rozbalený beh, ktorý v odpovedi nie je, je tá istá pasca o jednu úroveň
+       nižšie: `ruo` z odkazu môže mieriť na beh, ktorý filtru nevyhovuje alebo
+       už neexistuje, a `runItemHtml()` by ho nikde nevykreslil — stav by teda
+       ostal zapnutý a neviditeľný. Zhodíme ho, a adresa sa tým skrátí. */
+    if (runsState.open && !runsState.items.some((r) => r.uuid === runsState.open)) {
+        runsState.open = null;
+    }
 }
+
+/* Adresný riadok nie je dopyt: `query()` vyššie skládá `?status=&model=` pre
+   `/api/runs` a `ruo` doň nepatrí (rozbalenie je poloha čitateľa, server o ňom
+   nevie). Tu je to naopak — všetky tri kľúče a žiadny preklad. */
+function syncRunsUrl() {
+    writeUrl({
+        rus: runsState.status || null,
+        rum: runsState.model || null,
+        ruo: runsState.open || null,
+    }, 'replace');
+}
+
+/* Späť / Dopredu: adresa je vstup. Keď sa zmenil len `ruo`, netreba nový dopyt na
+   zoznam — rozbalenie je poloha čitateľa, nie filter, a `renderRuns()` by kvôli
+   nemu zbytočne znova volal `/api/runs`. */
+registerUrlApply('runy', (url) => {
+    if (url.s !== 'runy') return;
+    const nextStatus = url.rus || null;
+    const nextModel = url.rum || null;
+    const nextOpen = url.ruo || null;
+    const filterChanged = nextStatus !== runsState.status || nextModel !== runsState.model;
+    if (!filterChanged && nextOpen === runsState.open) return;
+    runsState.status = nextStatus;
+    runsState.model = nextModel;
+    runsState.open = nextOpen;
+    if (document.body.dataset.screen !== 'runy') return;
+    if (filterChanged) { renderRuns(); return; }
+    renderRunsView();
+    if (nextOpen) loadRunDetail(nextOpen);
+});
 
 function renderRunsView() {
     const body = $('runy-body');
@@ -367,13 +425,22 @@ async function toggleRun(uuid) {
 
     if (runsState.open === uuid) {
         runsState.open = null;
+        syncRunsUrl();
         renderRunsView();
         return;
     }
 
     runsState.open = uuid;
+    syncRunsUrl();
     renderRunsView();
+    loadRunDetail(uuid);
+}
 
+/* Dotiahnutie detailu je oddelené od `toggleRun()`, pretože rozbalenie má odteraz
+   DVE spúšťače: klik a `ruo` z odkazu. Kópia tela fetchu v druhej ceste by
+   znamenala dve miesta, kde sa cache `details` plní — a jedno z nich by sa raz
+   prestalo držať strážcu `runsState.open`. */
+async function loadRunDetail(uuid) {
     if (runsState.details.has(uuid)) return;
 
     try {

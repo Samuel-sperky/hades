@@ -1,8 +1,31 @@
 import { fitView } from './render.js';
 import { S } from './state.js';
+import { writeUrl } from './urlstate.js';
+
+/* ---------- filtre grafu do URL ----------
+
+   `persistFilter()` a `persistRelFilter()` sú JEDINÉ dve miesta, cez ktoré prechádza
+   každá zmena filtra siete — volá ich panel nastavení (`controls.js`), legenda
+   oblastí (`panels.js`) aj rad značiek (`tagfilter.js`). Preto zápis do adresy
+   patrí sem a nie k trom volajúcim: tri kópie by znamenali tri príležitosti, ako
+   na jednu zabudnúť.
+
+   Množiny idú do URL ako OPAKOVANÝ kľúč (nikdy separátor: značka môže obsahovať
+   čiarku aj medzeru — „0,5 g" je jedna značka, nie dve) a hodnoty sa RADIA, aby
+   ten istý filter dal vždy tú istú adresu. Radenie je tu, nie v `urlstate.js`,
+   len defenzívne — dvojité zoradenie nikoho nebolí, chýbajúce áno.
+
+   `ft`/`fs`/`fa`/`fr` nesú SKRYTÉ hodnoty (tak ako `S.filter`), `fg` VYBRANÉ. Je to
+   asymetria stavu, nie kľúčov, a slovník §6 ju priznáva pri každom riadku. */
+function sortedList(set, numeric) {
+    const out = [...set].map(String);
+    out.sort(numeric ? ((a, b) => (+a) - (+b)) : undefined);
+    return out;
+}
 
 export function persistRelFilter() {
     localStorage.setItem('hades.relfilter', JSON.stringify([...S.filter.relations]));
+    writeUrl({ fr: sortedList(S.filter.relations) }, 'replace');
 }
 /* ---------- lokálny graf (Obsidian local graph) ---------- */
 
@@ -35,6 +58,11 @@ export function setLocal(rootId, depth) {
     if (!S.byId.has(rootId)) return;
     S.local = { rootId, depth: Math.min(3, Math.max(1, depth || 1)) };
     S._localFor = null;
+    /* Lokálny graf je JEDEN kľúč pre dve hodnoty (`<rootId>.<depth>`), pretože bez
+       koreňa hĺbka nič neznamená a naopak — dva kľúče by dovolili polovičný stav,
+       ktorý sa nedá vykresliť. Bodka ako oddeľovač je bezpečná: obe hodnoty sú
+       celé čísla. Strop 1–3 drží riadok vyššie, nie čitateľ adresy. */
+    writeUrl({ loc: S.local.rootId + '.' + S.local.depth }, 'replace');
     updateLocalChip();
     fitView();
 }
@@ -44,6 +72,7 @@ export function clearLocal() {
     S.local = null;
     S._localFor = null;
     S._localSet = null;
+    writeUrl({ loc: null }, 'replace');
     updateLocalChip();
     fitView();
 }
@@ -114,4 +143,10 @@ export function persistFilter() {
         areas: [...S.filter.areas],
         tags: [...S.filter.tags],
     }));
+    writeUrl({
+        ft: sortedList(S.filter.types),
+        fs: sortedList(S.filter.sources),
+        fa: sortedList(S.filter.areas, true),
+        fg: sortedList(S.filter.tags),
+    }, 'replace');
 }

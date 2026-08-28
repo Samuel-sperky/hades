@@ -21,8 +21,23 @@ so značkou a s číslom, nie zamlčané:
 | **[cieľ V2]** / **[cieľ V3]** | vlna 2 / vlna 3 |
 
 Manuál, ktorý tvrdí o kóde niečo, čo v ňom nie je, je horší než manuál, ktorý
-nemá sekciu. Merania pochádzajú zo sond A a B z 27. 8. 2026 a každé číslo tu má
-zdroj — nie dojem.
+nemá sekciu. Každé číslo tu má zdroj — nie dojem.
+
+**Druhý prepis (27. 8. 2026, beh vlny 2 + 3)** opravil päť tvrdení, ktoré manuál
+podával ako namerané a neplatili. Sú vymenované nahlas, pretože podľa nich už raz
+niekto pracoval:
+
+| Kde | Tvrdilo | Namerané |
+|---|---|---|
+| §2 | geometria znaku je zapísaná **8×** | **16×** v repe + 2 binárky |
+| §3 | plošná podlaha je na `mind.css:2728–2736` | **`:2852–2861`**; na 2728 stojí `min-height` prázdnych stavov |
+| §3 | `ease-in-out` sa objavuje **5×** | **4×** + jedno `ease` (`charon.css:257`) |
+| §7 | ligatúr je **41** (subset 215 glyfov) | **61** ligatúr, **254** glyfov |
+| §9 | pri 594 px výšky rail nemá overflow | `overflow-y: visible` áno, ale **obsah 712 px proti 560 px** a dve destinácie sú nedosiahnuteľné |
+
+Merania pochádzajú zo štyroch sond z 27. 8. 2026 (A: URL a `localStorage`,
+B: ikony a subset, C: pohyb a tiché verzie, D: rail, zlomy, typografia a chyba),
+všetky nad živou appkou cez proxy `127.0.0.1:8091` s overenou identitou servera.
 
 ---
 
@@ -119,48 +134,92 @@ neposúvať ho „aby to bolo vyvážené"; symetrický znak stráca vetu.
 
 ### Jeden zdroj geometrie
 
-**Geometria znaku je dnes zapísaná OSEMKRÁT** a to je porucha, nie stav:
+**Geometria znaku je dnes zapísaná 16× v repe** (a 2× v binárke bez generátora).
+Manuál tu do 27. 8. 2026 tvrdil „osemkrát" — bolo to podhlásené, pretože počítalo
+len web a Python a nevidelo Electron chrome, offline stav a **CSS prekresbu**
+načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora znaku:
 
-| # | Miesto | Zápis |
+| # | Miesto | Tvar zápisu |
 |---|---|---|
-| 1 | `public/brand/hades-sigil-mini.svg` | asset (r 36 / hrúbka 9 / jadro 15) |
-| 2–4 | `mind.blade.php:16`, `chat.blade.php:44`, `console.blade.php:20` | inline data-URI faviconu (bit-identické, md5 `c0ebff62…` × 3) |
-| 5 | `mind.blade.php:114–115` | `r 8.64` / `stroke 2.16` / `r 3.6`, `fill="currentColor"` |
-| 6 | `console.blade.php:55–56` | tie isté čísla, `fill="var(--brand-gold)"` |
-| 7 | `chat.blade.php:86–87` **a** `:182–183` | tie isté čísla, **bez tried** (teda bez animácie) |
-| 8 | `public/js/console/render.js:36–46` | tie isté čísla, skladané v JS |
-| + | `electron/assets/build-icon.py:13–40` | **znovu implementované v Pythone** s hardcoded RGB tuplami |
-| + | `public/css/mind.css:1194` | `stroke-dasharray: 54.29` = 2π × 8,64 — **derivát polomeru zapísaný ako konštanta** |
+| 1 | `public/brand/hades-sigil-mini.svg:7–8` | **kánon mini**: viewBox 100, prstenec r 36 / hrúbka 9, jadro r 15; farby z `prefers-color-scheme` |
+| 2 | `public/brand/hades-sigil.svg:12+` | **kánon master**: A 46 / stupnica 42–46 / B 34 / C 22 / hrana / satelit 5 / obežnica 15 / jadro 8,5 |
+| 3 | `public/brand/hades-sigil-mono.svg` | master znovu, jednofarebne (`currentColor`) |
+| 4 | `resources/views/mind.blade.php:16` | data-URI faviconu: disk r 50 `#0e1413`, prstenec r 36/9 `#c4a2f5`, jadro r 15 `#d8b878` |
+| 5 | `resources/views/console.blade.php:20` | to isté, **bajt na bajt** (md5 `c0ebff62…`) |
+| 6 | `resources/views/chat.blade.php:44` | to isté, **bajt na bajt** |
+| 7 | `resources/views/mind.blade.php:130–131` | viewBox 24: `r 8.64` / `stroke 2.16` / jadro `r 3.6`; `fill="currentColor"`; triedy `bc-ring` / `bc-core` |
+| 8 | `resources/views/console.blade.php:55–56` | tie isté tri čísla; `fill="var(--brand-gold)"`; triedy **sú** |
+| 9 | `resources/views/chat.blade.php:86–87` | tie isté tri čísla; `stroke="var(--accent)"`; **triedy nie sú** → bez animácie |
+| 10 | `resources/views/chat.blade.php:182–183` | tie isté tri čísla, v `.ce-mark`; **triedy nie sú** |
+| 11 | `public/js/console/render.js:41–46` | tie isté tri čísla, skladané `setAttribute`om v JS |
+| 12 | `public/css/mind.css:1233–1234` a `:1246` | `stroke-dasharray: 54.29` = 2π × 8,64 — **derivát polomeru zapísaný ako konštanta**, na troch riadkoch |
+| 13 | `public/css/mind.css:2637–2652` | `.empty-loading .load-mark` — znak **prekreslený CSS boxmi**, a v **iných proporciách**: 26 px box, `border: 2px` (obrys 0,077 boxu, kánon 0,09), jadro 8 px (0,154 boxu, kánon 0,15), stredný polomer prstenca 0,46 boxu proti kánonickým 0,36 |
+| 14 | `electron/assets/build-icon.py:16–40` | **znovu implementované v Pythone**: hardcoded RGB tuply, prstenec ako anulus r 40,5 mínus r 31,5 |
+| 15 | `electron/chrome/topbar.html:156–159` | viewBox 100, r 36/9 + r 15, `var(--accent)` / `var(--gold)` |
+| 16 | `electron/states/offline.html:64–75` + `:174–177` | viewBox 100, `r 36` v markupe, `stroke-width: 9` a jadro `r 15` v `<style>`; navyše **vlastná kópia `core-pulse 4s ease-in-out`** |
+| — | `public/favicon.ico` (40 717 B) | binárka, **generátor v repe NIE JE** |
+| — | `electron/assets/hades.ico` | binárka z #14 |
 
-**[cieľ V2] Jeden generátor, štyri výstupy.** Zdroj je `hades-sigil-mini.svg`;
-generátor musí vydať SVG asset, data-URI do Blade, `.ico` **aj** hodnotu CSS
-`stroke-dasharray`. Keď niektorý z tých štyroch vypadne, deviaty zápis pribudne
-znova — už sa to stalo osemkrát.
+Tri veci, ktoré z tabuľky treba vedieť predtým, než sa to začne zlievať:
 
-Vlastníctvo súborov ikony: **`public/favicon.ico` je koreň pre web,
-`electron/assets/hades.ico` pre desktop**, a oba vydáva ten istý generátor. Dnes
-`build-icon.py` stavia len ten druhý a generátor `favicon.ico` v repe **nie je**.
+- **`.load-mark` (#13) nie je znak, je to jeho nepresná citácia.** Proporcia
+  prstenca je 0,46 boxu namiesto 0,36, čo je o 28 % viac — teda načítavanie kreslí
+  iný znak než favicon vedľa neho. Nie je to preklep: 26 px box s 2 px obrysom je
+  hodnota vybraná pre kontrast (komentár nad pravidlom to vysvetľuje a je pravdivý),
+  takže **generátor musí vydať aj tieto tri čísla**, nie ich len prepísať.
+- **`fill="currentColor"` (#7) a `fill="var(--brand-gold)"` (#8, #9) dnes vychádzajú
+  rovnako**, lebo `#brand-core { color: var(--brand-gold) }` — ale sú to dva
+  mechanizmy a jeden z nich zanikne pri prvej zmene farby. Kánon je
+  `var(--brand-gold)`; `currentColor` sa opúšťa.
+- **`electron/states/offline.html` má vlastnú kópiu `core-pulse`** s krivkou
+  `ease-in-out`, ktorú §3 v appke zakazuje. Je to samostatný dokument bez
+  `mind.css`, takže **plošná podlaha `prefers-reduced-motion` ho nekryje** — tichú
+  verziu si musí napísať sám.
 
-`fill="currentColor"` (#5) a `fill="var(--brand-gold)"` (#6, #7) dnes vychádzajú
-rovnako, lebo `#brand-core { color: var(--brand-gold) }` — ale sú to **dva
-mechanizmy** a jeden z nich zanikne pri prvej zmene farby.
+**[cieľ V2] Jeden generátor, šesť výstupov.** Zdroj je `hades-sigil-mini.svg`
+(mini) a `hades-sigil.svg` (master). Generátor musí vydať:
+
+1. SVG assety v `public/brand/`,
+2. data-URI faviconu pre všetky tri `<head>`,
+3. inline `<svg>` znaku pre Blade (viewBox 24, s triedami `bc-ring` / `bc-core`),
+4. `public/favicon.ico` **a** `electron/assets/hades.ico`,
+5. hodnotu CSS `stroke-dasharray` (dnes `54.29`) a tri čísla `.load-mark`,
+6. znak pre Electron chrome a offline stav.
+
+Keď niektorý z tých šiestich vypadne, sedemnásty zápis pribudne znova — už sa to
+stalo šesťnásťkrát. **Vlastníctvo:** `public/favicon.ico` je koreň pre web,
+`electron/assets/hades.ico` pre desktop, a oba vydáva ten istý generátor.
 
 ### Kde znak je a kde má byť
 
-Rozhodnutie 4–5: znak viac prítomný, ale **striedmo — len tam, kde niečo nesie**
-(načítavanie, prázdny stav, desktop okno, pulz behu).
+Rozhodnutie 4–5: znak **viac prítomný, ale striedmo — len tam, kde niečo nesie.**
+„Nesie" je v tomto manuáli uzavretý zoznam štyroch rolí a nič sa doň nepridáva bez
+prepisu tejto vety:
 
-| Výskyt | Znak | Animuje sa |
-|---|---|---|
-| rail `/` (`mind.blade.php:114`) | ✅ | ✅ |
-| hlavička `/console` (`console.blade.php:55`) | ✅ | ✅ |
-| prázdny stav `/console` (`console/render.js:40`) | ✅ | ✅ |
-| načítavanie (`.empty-loading .load-mark`) | ✅ | ✅ (dýchanie) |
-| hlavička `/chat` (`chat.blade.php:86`) | ✅ | ❌ **chýbajú triedy `bc-ring`/`bc-core`** |
-| prázdny stav `/chat` (`chat.blade.php:182`) | ✅ | ❌ to isté |
-| prázdny dok nad grafom (`charon.js:694`) | ❌ **znak vôbec nie je** | — |
+| Rola | Čo znak hlási |
+|---|---|
+| **načítavanie** | pracuje sa — dýchanie mierkou (`load-breathe`) |
+| **prázdny stav** | toto je Hades a je prázdny, nie rozbitý |
+| **desktop okno** | identita appky v ráme, ktorý nie je prehliadač |
+| **pulz behu** | vedomie bdie / spí (`core-pulse` na `#brand-core`) |
 
-**[cieľ V2]** všetkých sedem výskytov má znak a animáciu.
+Mimo týchto štyroch rolí je znak **dekorácia** a nepridáva sa — ani do hlavičky
+karty, ani do toastu, ani k nadpisu sekcie.
+
+| Výskyt | Rola | Znak | Animuje sa |
+|---|---|---|---|
+| rail `/` (`mind.blade.php:130`) | pulz behu | ✅ | ✅ `bc-draw` + `core-pulse` |
+| hlavička `/console` (`console.blade.php:55`) | pulz behu | ✅ | ✅ |
+| prázdny stav `/console` (`console/render.js:41`) | prázdny stav | ✅ | ✅ |
+| načítavanie (`.empty-loading .load-mark`) | načítavanie | ✅ | ✅ dýchanie |
+| Electron topbar (`electron/chrome/topbar.html:156`) | desktop okno | ✅ | ❌ |
+| Electron offline (`electron/states/offline.html:174`) | desktop okno | ✅ | ✅ vlastná kópia |
+| hlavička `/chat` (`chat.blade.php:86`) | pulz behu | ✅ | ❌ **chýbajú triedy `bc-ring`/`bc-core`** |
+| prázdny stav `/chat` (`chat.blade.php:182`) | prázdny stav | ✅ | ❌ to isté |
+| prázdny dok nad grafom (`charon.js:678`) | prázdny stav | ❌ **znak vôbec nie je** | — |
+
+**[cieľ V2]** všetkých deväť výskytov má znak a animáciu z jedného generátora,
+a `.avatar` zostáva desiatym pomenovaným výskytom (§9) — nič nad tento zoznam.
 
 ### Wordmark
 
@@ -222,7 +281,25 @@ odďaľuje ďalšiu akciu, je chyba.
 Ak po odstránení animácie človek nestratí informáciu ani kontext, pohyb je
 voliteľný — a v tomto projekte to znamená, že sa nepridáva.
 
+### Pohyb nesmie zhasnúť informáciu
+
+Toto je druhé pravidlo a je záväznejšie než prvé, pretože jeho porušenie sa nedá
+vidieť. **Tichý režim smie odobrať pohyb, nikdy nie obsah, čas na prečítanie ani
+spätnú väzbu.**
+
+Nameraná porucha, ktorá to pravidlo vynútila (sonda C, `toasts.js:22–24`, `:38`,
+`:67`, `:68`): pod `prefers-reduced-motion` sa v šiestich call-site prepisuje
+**doba zobrazenia** toastu — 5 200 ms, 6 000 ms a 2 500 ms na **0 ms**. Toast sa
+teda pridá do DOM a v tom istom rámci sa začne odstraňovať, takže človek
+s preferenciou **nikdy neprečíta „Naučil som sa: …"** ani ponuku „Vrátiť". Skrátiť
+sa smie výhradne 200 ms odchodový prechod.
+
+Bez pohybu má človek **menej** signálu, že sa niečo objavilo, nie viac — takže
+doba zobrazenia má byť v tichom režime rovnaká alebo **dlhšia**, nikdy kratšia.
+
 ### Trvania sú tokeny, nie čísla v komponente
+
+**Rebrík rozhrania** — deväť tokenov a nič medzi nimi:
 
 | Token | Hodnota | Rola |
 |---|---|---|
@@ -234,18 +311,42 @@ voliteľný — a v tomto projekte to znamená, že sa nepridáva.
 | `--dur-pulse` | **1,4 s** | perióda **neurčitého čakania** |
 | `--ease` | `cubic-bezier(.22,.61,.36,1)` | príchod a transformácia |
 | `--ease-in` | `cubic-bezier(.4,0,1,1)` | odchod |
+| `--ease-pulse` **[cieľ V2]** | `cubic-bezier(.4,0,.6,1)` | **slučka** — pulz, dýchanie, blikanie |
 
-**„Neurčité čakanie" má JEDNU periódu a to je `--dur-pulse`.** Dnes ich má tri:
-1,4 s (`sk-pulse`, `sync-pulse`, `load-breathe`), **1,2 s** (`think-blink`,
-`charon-blink`) a **1,1 s** (`tool-pulse`). Rovnako `ease-in-out` sa objavuje **5×**
-tam, kde má appka `--ease`, a `charon.css:257` má vlastnú krivku
-(`transform .15s ease` — teda iná krivka, nie len iný zápis). **[cieľ V3]** jedna
-perióda, jedna krivka.
+**`--ease-pulse` je nový token a nie je to kozmetika.** `--ease` je príchodová
+krivka: spomaľuje na konci. Na nekonečnej slučke to znamená, že animácia dobehne
+pomaly a potom **skočí** na začiatok — kulhá. Slučka potrebuje symetrickú krivku.
+Zavedením tohto tokenu zmizne aj **všetkých päť cudzích kriviek** v repe: 4× ryzé
+`ease-in-out` (`console.css:349`, `:574`, `:798`, `charon.css:208`) a jedno `ease`
+(`charon.css:257`, kde je navyše natvrdo `.15s` — presne hodnota `--dur-fast`).
+Manuál tu do 27. 8. 2026 tvrdil „`ease-in-out` sa objavuje 5×"; nameraných je **4**
+a piata cudzia krivka je to `ease`.
 
-Grafové trvania sú **zámerne pomenované číslom** a majú komentár: `760 ms`
-(obtiahnutie prstenca a segmentov donutu), `900 ms` (krivka rastu), `720 ms`
-(odkrytie heatmapy), `90 ms` (stupňovanie segmentov). Sú to jednorazové dramaturgie,
-nie stupne rebríka.
+**„Neurčité čakanie" má JEDNU periódu a to je `--dur-pulse`.** Dnes ich má štyri:
+1,4 s cez token (`hades-shimmer`, `load-breathe`, `sync-pulse`), **1,4 s napísané
+rukou** (`sk-pulse`, `console.css:349` — tá istá hodnota, iný zápis), **1,2 s**
+(`think-blink` `console.css:574`, `charon-blink` `charon.css:208`) a **1,1 s**
+(`tool-pulse` `console.css:798`). **[cieľ V2]** jedna perióda, jedna krivka.
+
+**Grafové trvania sa povyšujú na tokeny [cieľ V2]** — nie preto, aby sa schovali,
+ale preto, že jedno z nich už dnes žije na **dvoch** miestach a raz sa rozíde:
+
+| Token | Hodnota | Kde |
+|---|---|---|
+| `--dur-chart-draw` | 760 ms | `bc-draw` (`mind.css:1238`) **a** `.seg-draw` donutu (`:2669`) — **tá istá hodnota, dva zápisy** |
+| `--dur-chart-curve` | 900 ms | `.line-draw` (`mind.css:2672`) |
+| `--dur-chart-reveal` | 720 ms | `.heat-grid.heat-reveal` (`mind.css:2687`) |
+
+Zostávajú **číslom v komponente** a majú pri sebe komentár: `520 ms + 240 ms`
+oneskorenie (`.chart-fade`), `760 ms` oneskorenie (`.chart-fade-late`),
+`460 ms + 620 ms` (`bc-core-in`), `90 ms` stupňovanie segmentov a `4 s` dýchanie
+jadra. Sú to jednorazové dramaturgie, nie stupne rebríka.
+
+**Kompozitné tokeny `--transition-base` a `--transition-slow` sa mažú [cieľ V2]** —
+majú **nula** používateľov (zmerané). `--transition-fast` má štyri
+(`mind.css:5209`, `console.css:1089`, `chat.css:170`, `:403`) a prepisujú sa na
+párový zápis `var(--dur-fast) var(--ease)`, ktorý má v repe prevahu 82 : 4. Dôvod
+nie je počet, ale to, že kompozit **skrýva, ktorú krivku si dostal**.
 
 ### Katalóg pohybu
 
@@ -264,6 +365,21 @@ nie stupne rebríka.
 | Beh je živý (`sync-pulse`) | pulz bodky stavu | `--dur-pulse` | **informáciu** |
 | Správa v Charónovi | `msg-in` — len pri živom pribudnutí | `--dur-base` | **informáciu** |
 
+**Jeden `@keyframes` nesie šesť významov a je to opak pravidla „jeden kanál, jeden
+význam":** `rise-fade` (`mind.css:2004`) používajú `.toast`, `#help-card`,
+`#md-card`, `#hint`, `.screen.active` a `#cmdk-card`, všetkých šesť s
+`var(--dur-base) var(--ease)` a **ani jeden** nemá pomenovanú tichú verziu.
+Nerozdeľuje sa to na šesť animácií — rozdeľuje sa to tak, že sa dva výskyty
+**škrtnú** (viď nižšie).
+
+**Kandidáti na škrt (rozhodnutie 6 — dekorácia, nie informácia):**
+
+- **fade-in scrimu** pod `#help-overlay` (`mind.css:2146`) a `#md-overlay` (`:2194`)
+  — karta nad ním už robí `rise-fade`. Jedna udalosť, dva pohyby.
+- **`.screen.active { animation: rise-fade }`** (`mind.css:3415`) — prekresľuje
+  **celý** obsah obrazovky pri každom prepnutí, hoci zmenu už hlási aktívny stav
+  v raile aj nový `<h1>`. Je to jediný pohyb v appke nad celým obsahom obrazovky.
+
 Tri pasce, na ktorých to inak vyzerá zle:
 
 - **Obnova histórie nie je zrod.** Charón pri otvorení vlákna pridá desiatky blokov
@@ -274,29 +390,104 @@ Tri pasce, na ktorých to inak vyzerá zle:
 - **Zastavená animácia nie je tichá animácia.** Zastavený shimmer nechá sweep
   zamrznutý v polovici plochy, teda skeleton vyzerá ako rozbitý gradient. Viď nižšie.
 
+### Štyri pohyby, ktoré vlna 2 mení
+
+Rozhodnutie 7: plátno zostáva, dolaďujú sa **prechody**. Sú to presne štyri
+a každý má svoju tichú verziu **hneď tu**, nie ako doplnok.
+
+**1 · Zanorenie (`go()`) — jedna udalosť, jedna rýchlosť.**
+Dnes beží na dvoch rýchlostiach naraz: kamera plachtí 550 ms s `easeInOut`
+(`sim.js:476`), ale pretmavenie kontextu je **skok o jeden rámec** — `ent.dim`
+dostane v `computeLayout()` diskrétnu hodnotu `DIM_CTX = 0,34` (`layout.js:112`,
+`:819`) a nikde sa neinterpoluje. Cieľ: `ent.dim` sa interpoluje tým istým
+časovačom, `--dur-base` (180 ms) — **kratšie než kamera zámerne**, fokus má byť
+čitateľný skôr, než kamera dosadne.
+*Tichá verzia:* `dim` aj kamera sadnú v jednom rámci (teda dnešný stav)
+**a fokusová skupina dostane trvalý obrys**, ktorý nezhasne. Ukazuje sa výsledok
+filtra, nie cesta k nemu. Nie `animation: none` — bez obrysu by človek nevedel,
+čo je fokus a čo kontext.
+
+**2 · Hľadanie uzla — jedno plachtenie namiesto skoku a plachtenia.**
+Dnes `screens.js:235` priradí `S.cam.k = Math.max(S.cam.k, 1.1)` **pred** tweenom,
+takže tween začína z už preskočenej hodnoty; a nájdený uzol nedostane **žiadny**
+vlastný znak. Cieľ: podlaha zoomu ide do **cieľa** tweenu, nie pred neho, a nájdený
+uzol dostane prstenec s **konštantnou** alfou, ktorý lineárne vyhasne za
+2 × `--dur-ambient` (800 ms). Nie dnešný `sin()` blikot.
+*Tichá verzia:* kamera skočí na finálny záber a prstenec sa nakreslí a **drží** ~2 s
+bez oscilácie, potom zmizne skokom. Prstenec je tu **náhradou** za pohyb, takže
+v tichom režime musí byť výraznejší, nie slabší.
+
+**3 · Prílet uzla cez WS — hýbe sa nový uzol, nie sieť.**
+Dnes `ws.js:57–77` na jeden nový uzol zavolá `buildSim()` + `kickSim()`, čo zdvihne
+alphu simulácie na 0,35 nad **2 765 uzlami a 8 703 hranami** (usadená hodnota pred
+tým bola 0,004), a k tomu spustí `birthScale`, expandujúci prstenec, `spawnPulse`
+od jadra, `emitFlows`, `blip()` a toast — **sedem súčasných pohybov na jednu
+udalosť**. Cieľ: nechať tri, ktoré nesú informáciu (`birthScale`, prstenec zrodu,
+toast). `spawnPulse` a `emitFlows` hovoria to isté, čo už povedal prstenec.
+*Tichá verzia:* uzol sa nakreslí rovno v plnom polomere na finálnej pozícii,
+dostane trvalý prstenec na ~2 s a toast, ktorý **zostane celý svoj čas** (viď
+pravidlo hore). Žiadny prílet, žiadne toky — ale ani žiadne ticho.
+**Pozor na hranicu rozhodnutia 7:** znížiť alphu `kickSim()` je zmena **fyziky**,
+nie prechodu. Patrí to pod samostatné schválenie, nie do vlny prechodov.
+
+**4 · Toast — oprava, nie nový pohyb.** Viď „Pohyb nesmie zhasnúť informáciu".
+*Tichá verzia:* toast sa objaví okamžite (bez `rise-fade`), stojí **rovnako dlho**
+ako inak, zmizne okamžite (bez slide-out). To je presná definícia „zmysluplného
+okamžitého ekvivalentu" z rozhodnutia 8.
+
+### Mŕtvy pohyb sa maže, nie komentuje
+
+`S._morph` (morph pozícií medzi úrovňami) je **mŕtvy kód**: nikde sa nenastavuje na
+nenull hodnotu (`render.js:59`, `:84`, `:1723` a `sim.js:497` ho len nulujú), takže
+blok `render.js:1712–1727` sa **nikdy nevykoná**. Napriek tomu ho `anim.js:114`
+a `state.js:100` opisujú ako živý — komentár, ktorý lže, je horší než chýbajúci.
+**[cieľ V2]** blok aj oba komentáre von.
+
 ### Tichá verzia je záväzná — a nie je to „vypnuté"
 
 Rozhodnutie 8: **každá animácia má tichú verziu pre `prefers-reduced-motion`, a nie
 „vypnuté", ale zmysluplný okamžitý ekvivalent.** Reduced motion nie je „nič sa
 nestane" — stav sa zachová textom, ikonou, obrysom, fokusom alebo oznámením.
 
-Merané 27. 8. 2026 (sonda A §3.1–3.3):
+Merané 27. 8. 2026 (sonda C, nezávisle potvrdzuje číslo 64):
 
 | | Počet |
 |---|---|
-| `@keyframes` v štyroch stylesheetoch | **16** |
+| deklarácií `transition` / `animation` v štyroch stylesheetoch | **104** |
+| `@keyframes` (všetkých 16 má volajúceho) | **16** |
 | živých animácií | **22** |
 | živých prechodov | **57** |
 | **živých pohybov celkom** | **79** |
 | pohybov s **pomenovanou** tichou verziou v CSS | 11 |
-| pohybov s tichou verziou v **JS** (`charts.js`, `anim.js`, `toasts.js`) | 4 |
+| pohybov s tichou verziou v **JS** (`charts.js`) | 4 |
 | **pohybov, ktorých jedinou tichou verziou je plošné pravidlo** | **64** |
+
+Odpočet od 104 na 79, aby sa dal zopakovať: −14 deklarácií je vnútri
+`@media prefers-reduced-motion`, −10 sú modifikátory (`transition-duration`,
+`transition-delay`, `animation-play-state`, 7× `animation-delay` na `nth-child`),
+−1 je `transition: none`.
+
+Pomenované tiché verzie, ktoré **existujú** (úplný zoznam, aby sa nehľadali znova):
+`mind.css:1257` (kryje `bc-draw` aj `bc-core-in`), `:2705` (`load-breathe`),
+`:4128` (`hades-shimmer` — `display: none` na sweepe, teda pokojná plocha),
+`:4786` (`sync-pulse`); `console.css:506` (`msg-in`), `:592` (`think-blink`),
+`:593` (`sk-pulse`), `:594` (`.tr-acts`), `:595` (`tool-pulse`);
+`charon.css:220` (`charon-blink`). V JS: `charts.js:257` (`heat-reveal`),
+`:370` (`seg-draw`), `:465` (`line-draw` + `chart-fade` + `chart-fade-late`).
+
+**`charon.css:220` je pritom presne zakázaný vzor:** `.charon-dot { animation: none }`
+nechá tri bodky na `opacity: .4`, takže indikátor „model píše" stratí rozdiel medzi
+pokojom a behom. **[cieľ V2]** bodky v plnej farbe + text stavu.
 
 #### Plošné pravidlo je PODLAHA, nie strop
 
-`public/css/mind.css:2728–2736` je `*, *::before, *::after { animation-duration:
+`public/css/mind.css:2852–2861` je `*, *::before, *::after { animation-duration:
 .01ms !important; … }`. `mind.css` sa načítava prvý na všetkých troch plochách,
 takže pokrýva aj `console.css`, `chat.css` a `charon.css`.
+
+> Manuál tu do 27. 8. 2026 ukazoval na `mind.css:2728–2736`. Na tých riadkoch dnes
+> stojí pravidlo o `min-height` prázdnych stavov. Kto opravoval podľa manuálu,
+> otvoril nesprávne miesto — preto je tu číslo overené v CSSOM, nie odhad.
 
 **To pravidlo zostáva a `!important` sa z neho neodstraňuje.** Jeho odstránenie by
 zhodilo pravidlo na špecificitu 0-0-0 bez `!important`, teda by prehralo
@@ -307,6 +498,10 @@ zapnutú.
 Zápis `.01ms` (nie `0s`) je zámerný: prvok tak **dobehne** do koncového stavu
 a `transitionend` / `animationend` sa vydá, takže JS, ktorý na koniec prechodu
 čaká, sa nezasekne.
+
+**Podlaha nekryje samostatné dokumenty.** `electron/states/offline.html`
+a `electron/chrome/topbar.html` `mind.css` nenačítavajú, takže si tichú verziu
+musia napísať samy (§2, zápis #16).
 
 #### Ako sa podlaha legálne prebije
 
@@ -326,28 +521,55 @@ Príklady zmysluplných okamžitých ekvivalentov:
 | dýchanie znaku načítania | znak v spodnej fáze | znak na **plnej** mierke, statický |
 | zrod znaku | neviditeľný znak | znak **rovno hotový** |
 | pulz behu | zastavená bodka | bodka v plnej farbe + text stavu |
-| prílet uzla na plátne | uzol chýba | uzol rovno na mieste, krátke zvýraznenie obrysu |
+| „model píše" | bodky na `opacity .4` | bodky v **plnej** farbe + text stavu |
+| prílet uzla na plátne | uzol chýba | uzol rovno na mieste, prstenec drží 2 s |
 | kamera / fit | animovaný prelet | okamžitý presun |
+| zanorenie | len skok pretmavenia | skok + **trvalý obrys** fokusovej skupiny |
+| nájdený uzol | žiadny znak | prstenec s konštantnou alfou, drží 2 s |
+| toast | **doba zobrazenia 0 ms** | plná doba zobrazenia, bez príchodu a odchodu |
+
+#### Tri pasce, ktoré dávajú falošný nález
+
+1. **Prehliadač normalizuje selektor podlahy na `*, ::before, ::after`.** Regex,
+   ktorý v `cssText` hľadá `*, *::before`, ju nenájde a ohlási, že chýba. Je tam.
+2. **Parser nad textom CSS treba kalibrovať proti CSSOM v oboch smeroch.** Sonda C
+   mala regex, ktorý nepustil dvojsegmentový longhand (`animation-play-state`),
+   a ticho stratila 2 deklarácie. A naopak: Chrome zahodí
+   `input[type="range"]::-moz-range-thumb` (`mind.css:1631`), takže parser bude mať
+   **vždy o 1 prechodové pravidlo viac** než CSSOM — a je to správne.
+3. **Tweeny na plátne sa v tomto prostredí po rámcoch merať NEDAJÚ.** Skrytá
+   Browser pane netiká `rAF` (zmerané: 0 rámcov za 500 ms) a škrtí `setTimeout` na
+   ~1 Hz. Merať sa dajú **stavové hodnoty** (`S._camTween.dur`, `S._simAlpha`,
+   `S._drawMs`) a kód, nie priebeh. A meraj na `graphScope: all` (2 765 uzlov), nie
+   na defaultnom `live` (~1 095) — inak zmeriaš polovicu záťaže.
 
 #### Kde je manuál a kód dnes rozdielny
 
-Do 27. 8. 2026 tu stálo, že `prefers-reduced-motion` vypína **obe** animácie znaku.
-Pravda je presnejšia a treba ju vedieť: pomenovaný blok (`mind.css:1215`) vypína
-**len zrod** (`bc-draw`, `bc-core-in`); **dýchanie (`core-pulse`) zastavuje až
-plošné pravidlo.** Plošné pravidlo je teda pre dýchanie znaku **nosné**, nie
-kozmetické — keby padlo, znak by dýchal aj v tichom režime.
+Pomenovaný blok (`mind.css:1255–1258`) vypína **len zrod** (`bc-draw`,
+`bc-core-in`); **dýchanie (`core-pulse`) zastavuje až plošné pravidlo.** Plošné
+pravidlo je teda pre dýchanie znaku **nosné**, nie kozmetické — keby padlo, znak by
+dýchal aj v tichom režime.
 
-**[cieľ V1]** vzor zavedený a aplikovaný na `.skel::after` a `.load-mark`.
-**[cieľ V3]** audit všetkých 64 pohybov, jeden celok so zoznamom.
+`render.js:891–900` kreslí `glowA` s `Math.sin(S._clock * 6 + n.id)` **bez** stráže
+na reduced motion, a komentár na `:892` to priznáva. Tichý variant pulzu teda dnes
+nie je statický: prstenec ~0,83 s osciluje na ~0,955 Hz, hoci `anim.js:13` sľubuje
+„statické zvýraznenie". Susedný riadok `:872` stráž **má**. **[cieľ V2]** konštantná
+alfa (viď pohyb 2 vyššie).
 
-Poznámka k JS strane, ktorú CSS nevidí: `charts.js:75` (`REDUCED`),
-`anim.js:12/43/53/158`, `toasts.js:24/26/38/67/68` a `sim.js` (`pump()`) riešia
-tichý režim **tak, že triedu vôbec nepridajú**, nie tak, že by ju CSS prebíjalo.
-To je správne poradie a nemení sa. `pump()` naviac mimo obrazovky Graf **netiká na
-rAF, ale dosadá ticho** cez `setTimeout` — bez toho by alpha nikdy neklesla.
+Poznámka k JS strane, ktorú CSS nevidí: `charts.js:74`, `anim.js`, `toasts.js`
+a `sim.js` (`pump()`) riešia tichý režim **tak, že triedu vôbec nepridajú**, nie
+tak, že by ju CSS prebíjalo. To je správne poradie a nemení sa. Dve výnimky, ktoré
+sú „vypnuté" bez náhrady: `emitFlows()` (`anim.js:136`) len `return` — recall
+nedá žiadnu statickú spätnú väzbu, že zasiahol susedov; `maybeSynapse()`
+(`anim.js:119`) tiež — tam je ticho správne, je to ambient.
 
 Preferenciu treba čítať **aj po zmene nastavenia** (`MediaQueryList` event
-`change`), nie iba pri štarte. **[cieľ V3]**
+`change`). `sim.js:225–235` to robí a exportuje `reducedMotionActive()`;
+`charts.js:74` a `state.js:118` (`REDUCED_MOTION`) čítajú **raz pri načítaní**,
+takže preferencia prepnutá za behu utíši plátno, ale nie grafy a nie toasty.
+**[cieľ V2]** — s tým, že u `charts.js` sa zaplatí dopyt na `matchMedia` pri každom
+vykreslení (komentár na `:74` ten kompromis obhajuje pri 365 bunkách heatmapy):
+**merať pred, nie po.**
 
 ---
 
@@ -651,48 +873,88 @@ načítaný na všetkých troch plochách.
 
 ## 7. Ikony
 
-### Dnešný stav a prečo sa mení
+### Material Symbols ide von — a je to jedna zmena, nie postupná
 
-**Material Symbols Rounded**, subset (215 glyfov, 132 196 B). Žiadne emoji, nikde.
+Rozhodnutie 19+21: **vlastná sada inline SVG, celá naraz.** Subset
+(`material-symbols-rounded-subset.woff2`) sa maže, `@font-face` v `mind.css:80–86`
+aj tri `<link rel="preload">` idú s ním.
 
-Rozhodnutie 19: **vlastná sada inline SVG, celá naraz. Material Symbols subset ide
-von.** **[cieľ V3]**
+Nemôže sa to robiť po častiach a je to zmerané: kým je v hre font, každá
+neprekreslená ikona sa vykreslí ako **svoj ligatúrový názov** (`terminal` 144 px
+namiesto 18 px). Zmiešaná sada by teda nebola „polovica hotová", ale plocha, na
+ktorej sa striedajú kresby s textom.
 
-Dôvody sú tri a všetky sú zmerané:
+**Ligatúr je 61, nie 41 ani 37.** Kontrakt aj CLAUDE.md majú nižšie číslo, pretože
+im chýbala celá cesta `el(tag, 'ms', name)` a mapovacie stoly. Sonda B ich namerala
+dvoma nezávislými skenermi a **krížovo skontrolovala nad živým DOM** na troch
+plochách: 33 z 61 je vidieť bez interakcie a **ani jedna ligatúra v DOM nie je mimo
+statického zoznamu** — merač je teda kalibrovaný z oboch strán.
 
-1. **Ligatúr je 41, nie 37.** Vstupujú do DOM **tromi cestami** a grep na markup
-   podhlási: inline `<span class="ms">` (37), **argument helpera** `emptyHtml(icon,…)`
-   (`search_off` v `cmdk.js:258` a `smernica.js:186`, `filter_alt_off`
-   v `dennik.js:134`) a **`.textContent =`** (`play_arrow`, `pause` v `timeline.js`).
-   Sada postavená zo 37 by mala **štyri diery**, ktoré by sa vykreslili ako surový
-   ligatúrový názov.
-2. **Subset je starší než ikony.** `material-symbols-rounded-subset.woff2` má mtime
-   **18. 8. 2026 13:38**, kým záznam o „32 ikonách" je z 20. 8. — a dnes ich je 41.
-   Pribudlo najmenej 9 a subset sa neprestavil.
-3. **`.ms` v `mind.css:887` nemá `sans-serif` fallback ani `liga`**, kým
-   `console.css:1277` a `chat.css:98` ich majú a ich komentáre doslova priznávajú
-   „mind.css fallback nemá". Keď subset zhavaruje, práve na `/` — teda na ploche
-   s 8 destináciami v raile — sa každá ikona vykreslí ako ligatúrový názov
-   v pätkovom fallbacku. **[cieľ V1]** fallback doplnený ako poistka do vlny 3.
+**Ligatúra vstupuje do DOM SIEDMIMI cestami.** Toto je zoznam, ktorý musí prejsť
+každý budúci audit ikon; grep nad markupom vidí len prvú:
 
-**Kým je subset v hre, platí:** nová ikona → **regeneruj**
-(`pyftsubset --no-layout-closure`; bez toho flagu ligatúrová uzávera vtiahne všetky
-4 271 glyfov späť). Overuje sa **meraním šírky vykresleného glyfu** (glyf ≈ 1 em
-≈ 18 px, nevykreslená ligatúra padne na fallback a je násobne širšia — `terminal`
-144 px, `arrow_downward` 252 px). **GSUB tabuľky nečítať** — prvý pokus o audit tou
-cestou hlásil 32 chýbajúcich ikon, ktoré v subsete boli. Kalibruj na známom kladnom
-(`hub` = 18 px) aj zápornom prípade.
+| # | Cesta | Ligatúr | Prečo ju grep nad markupom nevidí |
+|---|---|---|---|
+| 1 | statický markup v Blade | 26 | vidí ju |
+| 2 | template string v JS s literálnou ligatúrou | 14 | vidí ju len grep nad JS |
+| 3 | **ternár vnútri template stringu** | 11 miest | grep vidí `+ (x ? 'a' : 'b') +`, nie ligatúru |
+| 4 | **mapovací stôl typ → ikona** (5 tabuliek) | — | ligatúra je **hodnota** v objekte |
+| 5 | **`el(tag, 'ms', name)`** v `chat` / `console` / `charon` | 17 miest | **nie je tam znak `<`** |
+| 6 | **`.textContent = 'lig'`** (armed-confirm, prehrávanie) | 7 miest | trieda `.ms` sa pridáva `classList`om inde |
+| 7 | prvý argument `emptyHtml()` / `renderEmpty()` | 10 call-site | ligatúra je argument funkcie |
+
+Päť mapovacích stolov z cesty 4, aby sa nehľadali: `CMDK_TYPE_ICO` (`cmdk.js:190`),
+`CERT_META` (`certainty.js:14`), `DIR_SECTIONS` (`smernica.js:33–39`), `ICONS`
+(`shared/gate.js:32–64`, **zdieľaný modul troch plôch**) a varianty toastu
+(`toasts.js:16`).
+
+**CSS `content:` cestou nie je** — všetkých 15 výskytov v štyroch stylesheetoch je
+`content: ''`. Overené.
+
+**Číslo „215 glyfov" v subsete je nesprávne — je ich 254** (`maxp.numGlyphs`, cmap
+354). Stojí na troch miestach naraz: `public/css/mind.css:23`, `CLAUDE.md:148`
+a v tomto manuáli. Keď subset odíde, tie tri riadky sa **mažú**, neopravujú.
+
+**Kým je subset v hre** (teda kým agent G neskončí), platí: nová ikona →
+regeneruj `pyftsubset --no-layout-closure`; bez toho flagu ligatúrová uzávera
+vtiahne všetkých 4 271 glyfov späť. Overuje sa **meraním šírky vykresleného glyfu**
+(glyf ≈ 1 em ≈ 18 px; nevykreslená ligatúra padne na fallback a je násobne širšia).
+GSUB tabuľky **nečítať** — prvý pokus o audit tou cestou hlásil 32 chýbajúcich ikon,
+ktoré v subsete boli. Kalibruj na známom kladnom (`hub` = 18 px) aj zápornom
+(`terminal` = 144 px, `arrow_downward` = 252 px, vymyslený názov = 342 px).
+
+### Štyri mechaniky, ktoré pri prechode na SVG spadnú TICHO
+
+Toto je najdôležitejšia časť sekcie: ani jedna z týchto štyroch nevydá výnimku.
+
+1. **`.textContent = 'ligatura'`** — 7 miest (`timeline.js:23`, `:36`, `:47`,
+   `console/main.js:176`, `controls.js:460`, `kontrola.js:559`,
+   `rozhodnutia.js:367`). Na `<svg>` prvku `textContent` nezobrazí **nič**.
+   Prepisuje sa na výmenu `<use href>`, nie na `textContent`.
+2. **`classList.add('ms')` / `remove('ms')`** pri armed-confirm — 4 miesta
+   (`console/main.js:194`, `rozhodnutia.js:354`, `kontrola.js:572`,
+   `controls.js:467`). Dnes trieda `.ms` prepína ten istý prvok medzi **ikonovým
+   a textovým** režimom. So SVG trieda o fonte nerozhoduje, takže výmena
+   ikona ↔ text potrebuje inú mechaniku.
+3. **Tri toggle tlačidlá vymieňajú dve rôzne kresby na jednom prvku** cez
+   `innerHTML` s ternárom: `add` ↔ `close` (`rozhodnutia.js:140`), `edit` ↔ `check`
+   (`rozhodnutia.js:148`, `smernica.js:349`).
+4. **`.ms.flip`** (`chat.css:107`, `console.css:1208`) existuje **výhradne** preto,
+   že `arrow_downward` nie je v subsete. So vlastnou sadou ten dôvod zmizne —
+   pravidlo a obe blade použitia sa **mažú** a nastupuje kresba `arrow-down`.
+   Nechať flip bez príčiny znamená nechať v kóde obchádzku, ktorej komentár lže.
 
 ### Kresba vlastnej sady
 
 | Vlastnosť | Hodnota |
 |---|---|
 | viewBox | `0 0 24 24` |
-| hrúbka obrysu | 1,75 px na 24-mriežke |
+| mriežka | 24 × 24, kresba v poli **20 × 20** (2 px vzduch po okrajoch) |
+| hrúbka obrysu | **1,75 px** na 24-mriežke |
 | konce a spoje | `round` |
-| výplň | **`none`** |
+| výplň | **`none`** — jediná výnimka je jadro (viď nižšie) |
 | farba | `currentColor` |
-| optické veľkosti | existujúce stupne `--icon-2xs` … `--icon-lg` (14–22 px) |
+| optické veľkosti | `--icon-2xs` 14 · `--icon-xs` 16 · `--icon-sm` 18 · `--icon-md` 20 · `--icon-lg` 22 |
 
 **Sada je výhradne obrysová a v celom systéme je jediný plný prvok: jadro.**
 Toto pravidlo viaže ikony na znak a na plátno: uzly na plátne sú priehľadné
@@ -700,69 +962,178 @@ prstence, nie plné disky (priehľadnosť nesie *diera*, nie nízka alfa), a jad
 vedomia je jediný sýty plný prvok. Legenda v `panels.js` musí hovoriť ten istý
 jazyk — plné disky tam učili zle.
 
+**Namerané veľkosti, ktoré sada musí uniesť:** na `/` sa dnes kreslia štyri —
+16 px (5 prvkov), 18 px (10), 20 px (13), 22 px (11). K tomu tri **nemenované
+výnimky bez tokenu**, ktoré sa pri prechode zarovnajú na stupeň:
+`charon.css:565` 15 px (`#charon-pack`), `mind.css:2782` 48 px
+(`.empty.empty-network`), `console.css:535` 14 px (`.msg .who`).
+
+**Kompozícia namiesto nových kresieb.** Zo 60 symbolov je čistá geometria ~44;
+zvyšok sú kompozície nad bázou a to je záväzné, nie odporúčanie — inak sada
+prestane vyzerať ako sada:
+
+- **prečiarknutie nad bázou:** `magnifier` → `magnifier-off`, `eye` → `eye-off`,
+  `filter` → `filter-off`
+- **check nad kontejnerom:** `check` → `check-circle`, `check-double`, `shield-check`
+- **výkričník nad kontejnerom:** `alert-circle`, `alert-triangle`
+- **plus badge nad bázou:** `plus`, `link-plus`, `library-plus`
+- **dvojstav = jedno telo, jeden modifikátor:** `lock` / `lock-open`
+
+### Definitívny zoznam — 60 symbolov
+
+Formát: **`ligatúra` → `id-symbolu`** | rola. Zoznam je úplný a je to jediný zdroj;
+implementátor nesmie pridať 61. symbol bez prepisu tejto sekcie.
+
+**A · Navigácia a chróm (11)**
+
+| Ligatúra | Symbol | Rola |
+|---|---|---|
+| `wb_sunny` | `sun` | destinácia Dnes |
+| `hub` | `hub` | destinácia Graf (3 veľkosti: 18 / 20 / 22) |
+| `receipt_long` | `receipt` | destinácia Denník |
+| `gavel` | `gavel` | destinácia Rozhodnutia |
+| `bolt` | `bolt` | destinácia Runy, typ skill, origin session, fallback nástroja |
+| `menu_book` | `book` | destinácia Knižnica, origin playbook |
+| `fact_check` | `check-list` | destinácia Kontrola |
+| `assignment` | `clipboard` | destinácia Smernica |
+| `send` | `send` | odoslať (rail + dok) |
+| `help` | `question` | Pomoc |
+| `tune` | `sliders` | Nastavenia |
+
+**B · Graf a plátno (7)**
+
+| Ligatúra | Symbol | Rola |
+|---|---|---|
+| `account_tree` | `tree` | Štruktúra, koreň stromu podagentov |
+| `category` | `shapes` | úroveň oblasti v breadcrumbe, legenda |
+| `layers` | `layers` | pohľad Vrstvy |
+| `center_focus_strong` | `focus` | vycentrovať / fit |
+| `add` | `plus` | priblížiť, nový projekt, nové vlákno, `/new` |
+| `remove` | `minus` | oddialiť (`plus` bez svislice) |
+| `more_horiz` | `ellipsis` | ďalšie oddelenia |
+
+**C · Akcie nad obsahom (12)**
+
+| Ligatúra | Symbol | Rola |
+|---|---|---|
+| `search` | `magnifier` | hľadať, tool grep/glob |
+| `search_off` | `magnifier-off` | nič sa nenašlo |
+| `filter_alt_off` | `filter-off` | prázdno z filtra — **kresli `filter` ako bázu**, aby budúci „filter on" nebol nová geometria |
+| `close` | `x` | zavrieť, zrušiť, `/clear` (6 veľkostí) |
+| `edit` | `pencil` | upraviť, tool write/edit, režim správy |
+| `check` | `check` | hotovo, uložiť premenovanie — **báza pre tri ďalšie** |
+| `save` | `save` | uložiť ako `.md` |
+| `content_copy` | `copy` | kopírovať smernicu |
+| `delete` | `trash` | zmazať natrvalo, tool `mind_delete` |
+| `link` | `link` | prepojiť uzly — báza |
+| `add_link` | `link-plus` | návrh nového spojenia |
+| `library_add` | `library-plus` | priložiť do rozhovoru — **12 instancií na jednom zobrazení, najhustejšia ikona appky** |
+
+**D · Stav a výsledok (10)**
+
+| Ligatúra | Symbol | Rola |
+|---|---|---|
+| `check_circle` | `check-circle` | úspech, prázdna fronta = dobrý stav |
+| `done_all` | `check-double` | vyriešené, žiadne duplicity |
+| `verified` | `shield-check` | istota „overené", akcia Overiť |
+| `science` | `flask` | istota „hypotéza" |
+| `warning` | `alert-triangle` | pasca, warn toast, sekcia Pasce |
+| `error` | `alert-circle` | chybový rámec behu |
+| `cloud_off` | `cloud-off` | jeden chybový komponent `.empty--error` (10 call-site) |
+| `pending` | `clock` | čaká na overenie, príloha sa číta |
+| `radio_button_unchecked` | `ring` | bez istoty |
+| `redo` | `skip` | preskočiť vo fronte Kontroly |
+
+**E · Dáta a typy uzlov (8)**
+
+| Ligatúra | Symbol | Rola |
+|---|---|---|
+| `article` | `doc` | záznam Denníka, riadok Dnes |
+| `calendar_month` | `calendar` | denný digest |
+| `description` | `file-text` | tool read/cat, export vlákna, príloha (6 call-site) |
+| `list` | `list` | tool ls/tree, zoznam vlákien |
+| `memory` | `chip` | tool `mind_recall` / `mind_read`, `/recall`, `/cost` |
+| `psychology` | `head-gear` | tool `mind_learn` / `mind_decision`, sekcia Fakty, typ uzla memory |
+| `inventory_2` | `box` | typ uzla project, sekcia Projekty, zložka na `/chat` |
+| `commit` | `commit` | commit poznámka v paneli uzla |
+| `brightness_7` | **`core`** | typ uzla **jadro** — viď rozhodnutie nižšie |
+
+**F · Dvojstavy (6 kresieb v 3 pároch) — musia mať dva stavy**
+
+| Ligatúra | Symbol | Stav |
+|---|---|---|
+| `visibility` | `eye` | oblasť je viditeľná |
+| `visibility_off` | `eye-off` | oblasť je skrytá (`eye` + prečiarknutie) |
+| `lock` | `lock` | zápis do playbookov **vypnutý** |
+| `lock_open` | `lock-open` | zápis do playbookov **zapnutý** (rovnaké telo, otvorená spona) |
+| `play_arrow` | `play` | prehrať časovú os |
+| `pause` | `pause` | pozastaviť — dve geometrie, **jeden slot v DOM** |
+
+**G · Smerové a ostatné (5)**
+
+| Ligatúra | Symbol | Rola |
+|---|---|---|
+| `arrow_upward` | `arrow-up` | odoslať (send button konzoly a chatu), skrolovanie |
+| — **nová** | `arrow-down` | nahrádza `.ms.flip`; dôvod flipu bol len chýbajúci glyf |
+| `stop` | `stop` | zastaviť beh |
+| `sync` | `refresh` | synchronizovať |
+| `menu` | `dots-menu` | prepínač akcií riadka na `/chat` |
+
+**H · Nekresliť (2)** — v kóde sú, dnes nedosiahnuteľné:
+
+| Ligatúra | Namiesto kresby |
+|---|---|
+| `circle` | fallback `CMDK_TYPE_ICO` pre neznámy typ; štyri typy stôl pokrýva → zmeň fallback v `cmdk.js:244` na `hub` |
+| `code` | `gate.js` ICONS pre `bash`/`shell`/`php`/`artisan`; taký tool **zámerne neexistuje** (appka je tunelovaná cez ngrok) → zmaž tie štyri kľúče z `gate.js:56–59` |
+
+### Dve slnká sa zlievajú na znak jadra
+
+`wb_sunny` (obrazovka Dnes) a `brightness_7` (typ uzla `core` v palete) sú dnes
+**dve rôzne kresby slnka** a bolo by chybou preniesť tú kolíziu do sady, ktorá má
+žiť roky. **Rozhodnutie:** `brightness_7` sa nekreslí ako slnko. Symbol `core` je
+**prstenec s plným stredom** — presne tá istá geometria, akú jadro má na plátne
+a v znaku, a jediné miesto v sade s výplňou. UI tak začne o jadre hovoriť rovnako
+ako graf.
+
+Je to zmena **významu**, nie kresby, preto je zapísaná ako rozhodnutie manuálu
+a nie ako detail implementácie.
+
 ### Semantická mapa — jeden význam, jedna ikona
 
-Toto je nová sekcia. Existuje preto, že dnes je **10 kolízií**, kde tá istá vec má
-dve kresby alebo jedna kresba nesie štyri veci.
+Sada opravuje 10 kolízií. Toto je stav po oprave, teda to, čo sa má nakresliť:
 
-**A · Destinácia** — 8, každá unikátna, žiadna kolízia ✅
-
-| Význam | Dnes |
-|---|---|
-| Dnes | `wb_sunny` |
-| Graf | `hub` |
-| Denník | `receipt_long` |
-| Rozhodnutia | `gavel` |
-| Runy | `bolt` |
-| Knižnica | `menu_book` |
-| Kontrola | `fact_check` |
-| Smernica | `assignment` |
-
-**B · Typ objektu** — dokument `.md` (`description`) · model / pamäť (`memory`) ·
-štruktúra (`account_tree`) · pohľad Vrstvy (`layers`)
-
-**C · Akcia** — kanonická mapa po vyriešení kolízií:
-
-| Význam | Ikona | Dnes |
+| Význam | Symbol | Dnes bolo |
 |---|---|---|
 | odoslať správu | `send` | **dva tvary** — `arrow_upward` na `/chat` a `/console`, `send` v doku |
-| skočiť na spodok | šípka **dolu** | `arrow_upward` prevrátený v CSS (`.ms.flip`, deklarované **2×** v `chat.css:107` a `console.css:1208`, a **nie je** v `mind.css`) |
-| o úroveň von v grafe | šípka **von** (nie hore) | `arrow_upward` |
-| rozbaliť / zbaliť | chevron | `arrow_upward` |
-| nové vlákno | `add` | `add` |
-| priblížiť / oddialiť | **`zoom-in` / `zoom-out`** | `add` / `remove` — zoom nie je „nové" |
-| zavrieť plochu | `close` | `close` (6×) |
-| odobrať zo zoznamu | **`remove-item`** | `close` (2×) — zatvorenie je nedeštruktívne, odobranie nie |
-| zrušiť spojenie | **`link-off`** | `close` |
-| prepojiť s uzlom | `link` | **dva tvary** — `link` a `add_link` |
-| zmazať natrvalo | `delete` | `delete` |
-| upraviť / uložiť / kopírovať | `edit` / `save` / `content_copy` | rovnako |
-| zastaviť beh | `stop` | `stop` |
-| hľadať | `search` | `search` |
-| synchronizovať | `sync` | `sync` |
-| nastavenia / pomoc / vycentrovať / legenda | `tune` / `help` / `center_focus_strong` / `category` | rovnako |
-| prehrať / pozastaviť replay | `play_arrow` / `pause` | rovnako |
-| overiť poznatok | `verified` | `verified` |
-| vyriešiť položku fronty | **`check`** | `done_all` — stojí **vedľa** `verified` v jednom riadku fronty |
-| preskočiť | **`skip`** | `redo` — „zopakovať" hovorí niečo iné než jej vlastný `aria-label` |
+| skočiť na spodok | `arrow-down` | `arrow_upward` prevrátený v CSS (`.ms.flip`, **2×**) |
+| o úroveň von v grafe | `arrow-up` | `arrow_upward` (zostáva, je to smer von) |
+| priblížiť / oddialiť | `plus` / `minus` | `add` / `remove` — a `add` nesie aj „nové" |
+| zavrieť plochu | `x` | `close` (6×) |
+| prepojiť s uzlom | `link` / `link-plus` | **dva tvary** — `link` a `add_link` |
+| vyriešiť položku fronty | `check-double` | `done_all` — stojí **vedľa** `verified` v jednom riadku |
+| preskočiť | `skip` | `redo` — „zopakovať" hovorí niečo iné než jej `aria-label` |
+| typ uzla jadro | `core` | `brightness_7` — druhé slnko |
 
-**D · Stav / výsledok**
+**Identita: 0 ikon, 1 znak.** Vľavo hore je **znak, nie `hub`**. Dodržané
+v hlavičke `/console`; `#charon-toggle` nad grafom je dnes `hub`
+(`mind.blade.php:94`). **[cieľ V2]** `hub` nesie po oprave **jednu** vec:
+destináciu Graf.
 
-| Význam | Ikona |
-|---|---|
-| úspech | `check_circle` |
-| pád fetchu | `cloud_off` (**9× — najčastejšia ikona v appke**) |
-| nič sa nenašlo | `search_off` |
-| filter nič nedal | `filter_alt_off` |
-| commit v zázname | `commit` |
-| prázdna fronta = dobrý stav | `check_circle` (nie `done_all`) |
+### Ako sa sada dodáva
 
-**E · Identita** — **0 ikon, 1 znak.** Vľavo hore je **znak, nie ikona `hub`**.
-Dodržané v hlavičke `/console`; `#charon-toggle` nad grafom je dnes `hub`
-(`mind.blade.php:94`). **[cieľ V2]**
+Sada je **jeden modul** `public/js/shared/icons.js` (hoistované `export function`,
+žiadny bundler, žiadna CDN). Vydáva:
 
-`hub` dnes nesie **štyri** veci: pohľad Sieť, destinácia Graf, otvoriť Charóna
-a priložiť uzol do rozhovoru. Po vyriešení nesie **jednu**: destinácia Graf.
+1. `iconSvg(name, opts)` → `<svg>` element pre cestu 5 (`el`-builder),
+2. `iconMarkup(name, opts)` → string pre cesty 2, 3 a 7 (template stringy),
+3. `iconSwap(el, name)` → výmena kresby na existujúcom prvku pre cesty 6 a 3
+   (toggle) — **toto je funkcia, ktorá zabraňuje tichému pádu**,
+4. `ICON_NAMES` → zoznam na overenie, že sa nepoužil názov, ktorý sada nemá.
+
+**Neznámy názov nie je ticho prázdny prvok.** `iconSvg('nieco')` vráti kresbu
+`ring` (neutrálny prstenec) **a zapíše meno do `window.HADES._iconMiss`**, aby ho
+merací harness našiel. Ticho vynechaná ikona je presne ten defekt, ktorý má sada
+odstrániť — nesmie ho zaviesť späť v inej podobe.
 
 ---
 
@@ -830,8 +1201,54 @@ Pravidlá:
 
 **Namerané pred vlnou 1: deväť kresieb chyby v štyroch stylesheetoch.** Tokenovo sú
 takmer konzistentné — **všetok text komponentov 5–9 ide cez `--danger-ink`** — takže
-zjednotenie je práca s markupom a triedami, nie s farbou. **[cieľ V1]** šesť
-obrazoviek dát; **[cieľ V3]** `/console`, `/chat`, dok.
+zjednotenie je práca s markupom a triedami, nie s farbou. Vlna 1 zaviedla
+`.empty--error` na desiatich call-site šiestich obrazoviek dát.
+
+#### Na `/chat` sa chyba nekreslí VÔBEC — a to je funkčná chyba, nie dlh
+
+Sonda D zmerala, že **štyri triedy, ktoré `/chat` emituje, nemajú v žiadnom zo
+štyroch stylesheetov ani jedno pravidlo**:
+
+| Trieda | Kde ju emituje JS | Ako to vyzerá |
+|---|---|---|
+| `.cm-error` | `chat/render.js:237–246` (`pushError`) | chybová správa má **identický computed style** ako bežná odpoveď — `bubbleBg rgba(0,0,0,0)`, `border 0px`, `color = --text`; odlišuje ju len slovo „Chyba" |
+| `.ct-err` + `.ct-note` | `chat/threads.js:1121` | `color` rovnaký ako holá `.ct-note` |
+| `.ct-retry` | `chat/threads.js:1121` | kresbu berie len z bare `button` v `mind.css` |
+| `.is-err` | `chat/branches.js:430`, `:436`, `:444` | nič |
+
+**Kalibrácia z druhej strany** (aby sa nedalo povedať, že merač nič nevidí): na
+`/console` má `.msg.error` `bubbleBg rgb(253,232,232)`, `border rgba(214,69,69,.34)`
+a `whoColor rgb(165,42,42)` proti `.msg.system` — teda tam sa chyba **kreslí**
+a merač to hlási.
+
+Preto to nie je „prefarbenie": sú to **štyri nové pravidlá**, nie štyri úpravy.
+
+#### Čo sa zlieva a čo zámerne nie
+
+| Rola | Komponent | Členovia |
+|---|---|---|
+| **plocha sa nenačítala + jedna akcia** | `.empty--error` | `console.css:317–334` (`.rail-error` / `.rail-retry`) a `chat` `.ct-err` / `.ct-retry` sú **tá istá rola** a idú pod jeden komponent |
+| **chybová bublina v toku** | jedna kresba | `console.css:610` (`.msg.error`), `chat` `.cm-error`, `charon.css:156` (`.charon-msg--error`) |
+
+**Pri bubline platí verzia konzoly:** telo `--text`, `--danger-ink` len na menovke.
+`charon.css:156–159` dáva `color: var(--danger-ink)` celej bubline, čo ide proti
+pravidlu zapísanému v `mind.css:2607–2612`.
+
+**Zámerne sa NEZLIEVA:** `.agent-error` / `.charon-agent-err` / `.run-error` (obsah
+záznamu behu, nie stav plochy), `.is-failed` (značka stavu), `.toast.error`
+(prechodné oznámenie akcie), `.card-empty` (iná rola).
+
+**Duplicita bajt na bajt:** `charon.css:353` `.charon-agent.is-failed` je znak po
+znaku to isté pravidlo ako `console.css:887` `.agent-run.is-failed`. Patrí do
+jedného stylesheetu. A `charon.css:387–392` píše `font-size: 12px` raw, kým
+`console.css:945–949` tú istú rolu píše `var(--fs-small)`.
+
+#### Poradie prác
+
+**Ikony najprv, chybový komponent na `/chat` až potom.** `chat/render.js:239`
+odôvodňuje absenciu ikony chyby tým, že Material Symbols je subset a nevykreslená
+ligatúra sa ukáže ako svoje meno. Rozhodnutie 19 ten dôvod ruší — **ale až keď sa
+font naozaj odstráni.** Opačné poradie tú istú obavu privedie späť.
 
 ### Načítavanie — skeleton alebo dýchajúci znak
 
@@ -915,28 +1332,88 @@ cez WebSocket. `rAF` sa mimo obrazovky Graf **musí zastaviť**.
 
 ### Rail
 
-Nová sekcia — manuál doteraz nemal šírku ani stav.
+Rail má dva stavy a stav je **persistovaný**.
 
 | | Zbalený | Rozbalený **[cieľ V2]** |
 |---|---|---|
-| šírka | `--rail-w: 80px` | ~208 px |
-| labely | 10 px pod ikonou | vedľa ikony |
-| stav | — | **persistovaný** |
+| `--rail-w` | **80 px** | **208 px** |
+| label destinácie | 10 px **pod** ikonou | vedľa ikony, riadok |
+| výška `.dest` | 52 px | **40 px** |
+| eyebrow skupín (`Teraz`, `Záznamy`, `Znalosti`) | `--fs-micro`, skrytý pod 860 px výšky | `--fs-micro` |
+| stav | — | `localStorage['hades.rail']`, hodnoty `wide` / `slim` |
 
-- rail sa dá **zbaliť aj rozbaliť** a stav prežije obnovu stránky,
-- labely v raile sú **Geist**, nie wordmark, a zostávajú **chróm** (nezdvíhajú sa
-  s dátovým textom),
-- eyebrow skupín (`Teraz`, `Záznamy`, `Znalosti`) je `--fs-micro` a zostáva.
+Rozbalený je **default**; `slim` je voľba človeka. Labely v raile sú **Geist**, nie
+wordmark, a zostávajú **chróm** (nezdvíhajú sa s dátovým textom).
 
-Zmerané: **pri 594 px výšky okna má rail 562 px a žiadny `overflow-y`**, takže
-rozbalenie nemá dôvod pridať vnútorný scroll.
+#### Oprava nameraného údaju z kontraktu
 
-**Pasca, ktorá k tomu patrí:** rail je vstupom do derivovaného tokenu
-`--content-left` a **komentár pri ňom tvrdí nepravdu** — `mind.css:267` hovorí
-`/* 104px */`, ale `--edge: 16px` + `--rail-w: 80px` + `--edge` = **112 px**.
-Rozbalenie railu to číslo mení znova, takže sa opravuje spolu s ním.
-Okraje plátna čítajú CSS tokeny (`--rail-w`, `--header-h`, `--panel-w`, `--edge`) —
-**nezadrôtuj ich znova do JS**.
+Kontrakt (rozhodnutie 17) tvrdí: *„pri 594 px výšky má rail 562 px a žiadny
+`overflow-y`"*. Tá veta je pravdivá o computed style a **nepravdivá o obsahu**.
+Namerané (sonda D, 1280 × 594):
+
+| Veličina | Hodnota |
+|---|---|
+| `rail.getBoundingClientRect().height` | 562 px |
+| `clientHeight` | 560 px |
+| **`scrollHeight`** | **712 px** — deficit **152 px** |
+| `overflow-y` | `visible` |
+| „Nastavenia" | `top 617` – `bottom 669` |
+| „Pomoc" | `top 677` – `bottom 729` |
+| dolná hrana railu / okna | 578 / 594 |
+
+**Dve destinácie sa teda kreslia pod dolnou hranou railu aj pod okrajom okna a sú
+nedosiahnuteľné.** `#rail` je `position: fixed`, takže ich žiadny scroll
+nezachráni, a eyebrow labely sú pri tej výške už skryté — zmierňovací mechanizmus
+je vyčerpaný.
+
+**Prahy zmestenia (kalibrované z oboch strán, 1280 px šírky):**
+
+| Stav | Obsah | Prah výšky okna | Kalibrácia |
+|---|---|---|---|
+| dnešný 80px rail, bez eyebrow | 712 px | **746 px** | 745 padne, 746 sadne |
+| dnešný 80px rail, s eyebrow | 787 px | **821 px** | jeden eyebrow = 25 px |
+| **rozbalený 208px rail** | **580 px** | **614 px** | 613 padne, 614 sadne |
+
+Komentár nad `@media (max-height: 860px)` (`mind.css:1305–1311`) počíta zle: hlási
+obsah 796 px a prah ~844 px. Opravuje sa spolu s railom.
+
+#### Rozbalenie rieši výšku a platí šírkou
+
+**Zisk je 132 px potrebnej výšky** (11 destinácií × 12 px, `.dest` 52 → 40 px),
+takže prah klesne zo 746 na 614 px a výšková hranica `max-height: 860px` stratí
+volajúceho. **Cena je presne 128 px šírky obsahu na každom viewporte:**
+
+| Šírka okna | `#screens` 80px → 208px | `.dash-grid` |
+|---|---|---|
+| 1920 | 1792 → 1664 | 6 stĺpcov → 6 (249,5 px, len 9,5 px nad podlahou `minmax(240px)`) |
+| 1280 | 1152 → 1024 | **4 → 3** |
+| 900 | 772 → 644 | 2 → 2 |
+| 768 | 640 → 512 | **2 → 1** |
+
+**Nič sa neprekrýva a nič sa neoreže ani na jednej zo štyroch šírok** (zmerané
+detektorom `scrollWidth > clientWidth`, kalibrovaným pozitívne pri `--rail-w: 900px`,
+kde vyhodil 6 orezaných `.today-item`). Plávajúce panely grafu si pri 768 px nechajú
+196 px pásu plátna namiesto dnešných 324 px.
+
+#### Rozbalenie NIE JE výmena tokenu
+
+Vnútro railu má šírku **zadrôtovanú na 68 px v troch pravidlách** a `#rail` má
+`align-items: center`, takže samotná zmena `--rail-w` na 208 px vyrobí 70 px
+mŕtveho priestoru po oboch stranách a destinácie zostanú 68 px široké stĺpce
+(zmerané: odsadenie `.dest` 6 px → 70 px, šírka `.dest` 68 px v oboch prípadoch).
+
+Otvoriť treba **tri miesta**: `mind.css:1186` (`#brand-core`), `:1279`
+(`.rail-eyebrow`), `:1373` (`.dest`) — a `.dest` prepnúť zo stĺpca na riadok.
+
+**Pasce, ktoré k railu patria:**
+
+- `mind.css:267` derivuje `--content-left` a komentár pri ňom tvrdí `/* 104px */`,
+  ale `--edge` 16 + `--rail-w` 80 + `--edge` = **112 px**. Rozbalenie to číslo mení
+  znova, takže sa opravuje spolu s ním.
+- `layout.js:129` má fallback `cssPx('--rail-w', 72)` — reálna hodnota je 80.
+  Fallback je inertný (preferuje sa `scs.left`), ale **klame**.
+- Okraje plátna čítajú CSS tokeny (`--rail-w`, `--header-h`, `--panel-w`, `--edge`)
+  — **nezadrôtuj ich znova do JS**.
 
 ### Grafy — jeden jazyk
 
@@ -957,18 +1434,64 @@ Animácie grafov (760 / 900 / 720 / 90 ms) sú v §3 a ich tichá verzia je v JS
 
 ### Responzivita
 
-Nová sekcia — manuál doteraz nemal ani jednu šírku.
-
 Rozhodnutie 18: **desktop prvý (1280–1920).** Na **768–900 px nesmie nič
 prekrývať**. Telefón sa nerieši.
 
-Existujúce zlomy v kóde: **1280 px** a **900 px** (`mind.css:3725`, `:3730`),
-**860 px** (`console.css:1295`, `chat.css:750`, `:796`). Tri zlomy, tri súbory —
-zjednotiť na 1280 / 900. **[cieľ V3]**
+#### Nameraný inventár zlomov (sonda D)
+
+Manuál tu do 27. 8. 2026 uvádzal `mind.css:3725`, `:3730`, `console.css:1295`,
+`chat.css:750`, `:796` — **ani jedno z tých čísel dnes neplatí.** Skutočný stav sú
+**štyri čísla v desiatich blokoch**:
+
+| Zlom | Miesto | Čo robí |
+|---|---|---|
+| `max-width: 1280px` | `mind.css:3831` | skryje `#scope-label` |
+| `max-width: 1280px` | `mind.css:3884` | zúži `--panel-w`, skryje `#header-metrics` |
+| `min-width: 901px` | `mind.css:3507` | mriežka `#library-search` |
+| `max-width: 900px` | `mind.css:3889` | `--panel-w`, `--dock-at-left`, panely doprava |
+| `max-width: 900px` | `mind.css:4919` | `.dash-card.span-2` |
+| `max-width: 900px` | `charon.css:634` | dok |
+| `max-width: 900px` | `chat.css:746` | panely `/chat` |
+| `max-width: 860px` | `mind.css:4035` | `.dir-cols` na `1fr` |
+| `max-width: 860px` | `console.css:1290` | rail konzoly ako prekryv |
+| `max-height: 860px` | `mind.css:1312` | skryje `.rail-eyebrow` |
+| `hover: none` | `mind.css:3863` | `.pack-btn` |
+
+JS zrkadlí 900 px na troch miestach: `mind/dock.js:11`, `mind/panels.js:18`,
+`chat/main.js:68`.
+
+#### Zjednotená sada: dve šírkové hranice, žiadna výšková
+
+| Hranica | Význam |
+|---|---|
+| **1280 px** | chróm hlavičky sa orezáva, `--panel-w` sa zužuje |
+| **900 px** | „úzko" — plávajúce panely k pravej hrane, druhý stĺpec padá, raily sa menia na prekryv |
+
+- **Dva bloky `max-width: 1280px` v `mind.css` sa zlievajú do jedného.** Sú od seba
+  53 riadkov a robia to isté.
+- **Obe použitia `860 px` idú na `900 px`** (`mind.css:4035`, `console.css:1290`).
+  V pásme 861–900 px má appka dnes **dve rôzne definície úzkeho okna naraz**:
+  `mind.css` už presunul panely, `console.css` ešte drží dva stĺpce. Posun o 40 px
+  je hlboko v pásme 768–900 z rozhodnutia 18, takže sa nič nestráca.
+- **`min-width: 901px` zostáva** — je to korektný komplement k `max-width: 900px`,
+  nie duplicita.
+- **`max-height: 860px` sa ruší** — po rozbalení railu klesne prah s eyebrow na
+  ~689 px, teda pravidlo stratí volajúceho. Tým zmizne aj mätúce dvojité použitie
+  čísla 860 na dvoch osiach.
+
+**Pasca pri presune 860 → 900:** vnútri `console.css:1290` leží
+`.auto-accept .lbl { display: none }` s komentárom o tom, že brána zápisov tam raz
+spadla na cieľ 13 × 13 px. Blok sa **nesmie presúvať mechanicky** — po zmene
+hranice treba prepočítať šírku toho tlačidla, tak ako to komentár žiada.
 
 Pravidlo pre panely: **na úzkom okne (< 900 px) sa stav prekryvu nepamätá.**
 Odkaz otvorený na úzkom okne nesmie pripichnúť prekryv, ktorý si človek nikdy
 nevybral — a to platí pre `localStorage` **aj pre URL**.
+
+> **Merací harness:** `window.innerHeight` je v Browser pane **0**, kým sa
+> nenastaví viewport cez `resize_window`. Bez toho je každé „je to vidieť?"
+> nezmysel. A panely `/chat` sa pri úzkom okne **zámerne** neukladajú — kto meria
+> bez `resize_window`, namerá „panely sa nepamätajú" a bude opravovať funkčný kód.
 
 ### Charón
 
@@ -981,6 +1504,23 @@ technická konzola; **beh je jeden** pre všetky tri vstupy vrátane doku nad gr
 - v hlavičke vlákna je `Charón`, nie „Konzola vedomia",
 - autor odpovedí je **Charón** (Hades je vedomie; Charón je ten, kto hovorí),
 - vľavo hore je **znak**, nie ikona `hub` — a klik vedie do grafu.
+
+**`charon.css` nehovorí typografickou škálou vôbec** (sonda D): má **22 deklarácií
+`font-size` a ani jedna nejde cez token**. Dvadsať je čistá výmena za existujúci
+stupeň (11 → `--fs-caption`, 12 → `--fs-small` / `--fs-data-chip`, 13 →
+`--fs-body` / `--fs-data`, 14 → `--fs-base` resp. `--icon-2xs`, 16 → `--icon-xs`,
+20 → `--icon-md`). **Dve hodnoty 15 px v škále neexistujú** a rozhoduje sa o nich
+tu, nie potichu v implementácii:
+
+| Miesto | 15 px | Rozhodnutie |
+|---|---|---|
+| `charon.css:112` `.charon-empty-title` | text | → **`--fs-title` (16 px)** — je to nadpis prázdneho stavu a §8 mu dáva vlastný predmet; 14 px by ho zrovnalo s telom správy |
+| `charon.css:565` `#charon-pack .ms` | ikona | → **`--icon-xs` (16 px)** — je to akčná ikona vedľa 14 px textu, nie chróm |
+
+`charon.css` **nemá raw hex ani rgba** (0 zásahov) — rozchádza sa len typografia.
+Pri tom istom prechode sa opravuje `console.css:1336` (`#composer-hint` 10 px →
+`var(--fs-micro)`), aby dve sesterské plochy nepísali tú istú rolu dvoma spôsobmi
+(`chat.css:796` ju už píše tokenom).
 
 **Brána zápisov je bezpečnostná mechanika, nie dizajn.** Vzhľad karty povolenia sa
 môže zmeniť; mechanika a jej texty nie. Zápis zaparkuje, ťah skončí **bez rámca
@@ -998,53 +1538,100 @@ na prehodnotenie je **5 % odpovedí**. Náhľad HTML je `<iframe sandbox>`, nikd
 
 Mini sigil na tmavom disku: `#0e1413` podklad, prstenec `#c4a2f5` (r 36, hrúbka 9),
 jadro `#d8b878` (r 15). Inline SVG v `<link rel="icon">`, **rovnaký na všetkých
-stránkach** — dnes bit-identický (md5 `c0ebff62…` × 3) ✅, ale zapísaný trikrát;
-jeden zdroj je **[cieľ V2]** (§2).
+stránkach** — dnes bit-identický (md5 `c0ebff62…` × 3) ✅, ale zapísaný trikrát.
+
+**Jeden zdroj pre favicon aj Electron `.ico` je [cieľ V2]** a je to §2: generátor
+číta `hades-sigil-mini.svg` a vydáva `public/favicon.ico`,
+`electron/assets/hades.ico` **aj** tri data-URI do Blade. Dnes `build-icon.py`
+stavia len desktopový `.ico` a generátor `favicon.ico` v repe **nie je** — tá
+binárka je 40 717 B bez zdroja.
 
 ---
 
 ## 10. URL a zdieľateľnosť
 
-Nová sekcia. Manuál doteraz nemal o URL ani vetu, a kód to odzrkadľoval: **8
-obrazoviek, 0 zápisov do URL.**
+Manuál doteraz nemal o URL ani vetu, a kód to odzrkadľoval: **8 obrazoviek,
+0 zápisov do URL.**
+
+### Kto serializuje — ZAVRETÉ
+
+**Serializuje KLIENT.** Rozhodnutie 31 používateľa (27. 8. 2026) zaviera otázku,
+ktorá tu bola otvorená.
+
+Jeden modul **`public/js/mind/urlstate.js`** je jediné miesto v celom repe, ktoré
+query string **číta aj píše**. Server zostáva zdrojom pravdy pre **počty, skupiny
+a krátenie textu**.
+
+**Prečo tým invariant dvojitej plochy nepadá:** *URL nie je obsah, je to poloha
+čitateľa.* Do adresného riadka ide **kľúč** filtra, nie jeho vyhodnotenie — dotaz
+na server sa nemení. Serverová serializácia by navyše znamenala request na každú
+zmenu filtra (dnes 3–4 s na `/api/journal`) a plocha AI by dostala kľúč, ktorý pre
+model neznamená nič.
+
+**Modul nesmie byť druhým prekladom filtra na serverový dopyt.** Päť obrazoviek ten
+preklad už má — `decisionsQuery()` (`rozhodnutia.js:40`), `kontrolaQuery()`
+(`kontrola.js:66`), `query()` (`runy.js:58`), `renderLibrary()` (`kniznica.js:99`),
+`renderJournal()` (`dennik.js:45`) — a komentár v `rozhodnutia.js:38` to hovorí
+priamo: *„dve kópie by znamenali, že prvé načítanie a filtrovanie hľadajú inak."*
+To je presne ten rozchod, ktorý našiel audit 19. 8. **Nepíš šiesty preklad.**
+
+**Umiestnenie modulu:** kľúče potrebuje `/`, `/chat` aj `/console`, takže logickejšie
+by bolo `public/js/shared/`. Zostáva v `mind/`, pretože tak ho menuje kontrakt
+a podľa toho je rozdané vlastníctvo súborov. Cena je jedno pravidlo, ktoré to drží
+čisté: **`urlstate.js` nesmie importovať z `mind/state.js` ani z ničoho v `mind/`** —
+inak by `/chat` pri jednom importe stiahol celý graf.
 
 ### Nameraný stav pred vlnou 2
 
 | Čo | Koľko |
 |---|---|
-| `history.pushState` v `public/js` | **6** (`chat` 3, `console` 3, `mind` **0**) |
+| `history.pushState` v `public/js` | **5 call-site** (`chat/run.js:486`, `:530`, `chat/threads.js:434`, `console/main.js:233`, `:418`, `:471`) — mení **výhradne pathname**, query string ani jedno |
 | `history.replaceState` | **0** |
-| `popstate` listenerov | **4** (`chat` 3, `console` 1, `mind` **0**) |
+| `popstate` listenerov | **4** (`chat/run.js:428`, `chat/threads.js:1373`, `chat/branches.js:514`, `console/main.js:550`) |
+| zápisov do histórie na ploche `/` | **0** (obal nad `history` kalibrovaný z oboch strán: vlastný `replaceState` zachytil 1, štyri prepnutia obrazovky + zanorenie + prepnutie pohľadu zachytili 0) |
 | miest, kde sa v JS číta URL | **1** (`mind/state.js:87` — `?screen=`) |
-| `localStorage` kľúčov | **21** |
+| `localStorage` kľúčov spolu | **21** (15 na `/`, 4 `hades.chat.*`, 2 `hades.charon*`) |
+| obnoviteľných osí filtra zo **šiestich obrazoviek dát** | **0** |
 
 Dôsledok, ktorý sa dá napísať ako veta: **po `F5` na obrazovke Kontrola
-s nastaveným filtrom typ + istota + oblasť + text a `limit=300` je človek spät na
+s nastaveným filtrom typ + istota + oblasť + text a `limit=300` je človek späť na
 prvej stránke celej fronty bez filtra.** To isté na Rozhodnutiach a Runách.
 A zanorenie grafu prežije, ale **len v `localStorage`** — teda nezdieľateľne, a
 v druhom tabe toho istého prehliadača sa ticho prepíše.
 
+**Predvolené hodnoty musia byť v KÓDE, nie v úložisku.** Na čerstvom profile appka
+pri boote zapíše len **2 z 15** kľúčov (`hades.screen`, `hades.theme`); ostatných 13
+vzniká až prvým dotykom ovládača (kalibrované z oboch strán: 2 pred exercisom, 15
+po prekliknutí reálnych ovládačov).
+
+**URL už dnes lže:** `?screen=bogus` zostane v adrese a appka ukáže Dnes
+(`state.js` hodnotu nevaliduje, validuje ju až `setScreen()`). Bez zápisu orezanej
+pravdy späť sa ten defekt zmnoží na 37 kľúčov namiesto jedného.
+
 ### Čo do URL patrí a čo nie
 
-Rozhodnutie 9. Delenie je Linearovo a je to jazyk, ktorý toto rozhodnutie
-potrebuje: **do URL ide to, čo definuje MNOŽINU; nie to, čo definuje ZOBRAZENIE.**
+Rozhodnutie 9. Delenie: **do URL ide to, čo definuje MNOŽINU; nie to, čo definuje
+ZOBRAZENIE.** Na grafe sa to dá povedať ešte ostrejšie a je to deliaca čiara, podľa
+ktorej sa roztriedi všetkých 21 uložených kľúčov: **čo mení, KTORÉ uzly a hrany na
+obrazovke sú, ide do URL; čo mení, AKO vyzerajú, zostáva lokálne.**
 
-**Do URL patrí:**
-obrazovka · zanorenie grafu (oblasť / oddelenie / uzol) · pohľad Sieť / Vrstvy ·
-rozsah live / all · filtre grafu vrátane min. váhy a kostry · filtre a hľadanie
-šiestich obrazoviek dát · vetva konverzácie · stav panelov a otvorený artefakt.
+`mw` (min. váha) a `sk` (kostra) skrývajú hrany → URL. `certRings` je kódovanie
+prstenca → lokálne. **Jediná menovaná výnimka je `gv`** (pohľad Sieť / Vrstvy): mení
+rozloženie, nie členstvo — ale je to pomenovaný pohľad s vlastnými tlačidlami
+v hlavičke a klávesou `V`, nie kozmetický slider.
 
 **Do URL nepatrí — a každý dôvod je vlastný, nie „je toho veľa":**
 
 | Stav | Prečo nie |
 |---|---|
 | téma | vlastnosť oka a monitora; zdieľaný odkaz by vnucoval prijímateľovi cudziu tému |
-| hustota, zvuk, `S.opts` (9 hodnôt) | ergonómia a vzhľad; 9 čísel je najdlhší možný príspevok za najmenšiu zdieľateľnú hodnotu |
+| hustota, zvuk, `S.opts` (9 hodnôt), `certRings`, `hints2`, `journal.lastSeen` | ergonómia a vzhľad; 9 čísel je najdlhší možný príspevok za najmenšiu zdieľateľnú hodnotu |
 | **kamera** (`x`, `y`, `k`) | force layout je **živý**, takže tá istá kamera nad inak usadenou scénou zaberá iný výrez. Zapisovať ju by bola **lož** |
-| šírky panelov | ergonómia monitora; a ťahanie gripu by znamenalo zápis na každý `pointermove` |
+| šírky panelov (`threadsW`, `artifactW`) | šírka je vlastnosť monitora, nie obsahu; a ťahanie gripu by znamenalo zápis na každý `pointermove` |
 | **kontext uzlov v doku** (`hades.charonCtx`) | je to až 8 `node_id`, ktoré idú na server ako `context_node_ids` a stanú sa **vstupom do behu modelu**. Adresa, ktorá predplní kontext modelu, je injekčná plocha na ceste verejne tunelovanej cez ngrok — a nič sa tým nezíska, lebo mŕtve id sa aj tak prunujú |
+| vlákno doku (`hades.charonThread`) | per-prehliadač zo svojej podstaty; dok nemá obnovu histórie zo servera |
 | prehrávanie času (replay) | je to prehrávanie, nie stav; zápis na každý frame by bol najhorší možný |
-| vlákno doku, badge „nové od poslednej návštevy", odklikaná onboarding karta | per-prehliadač zo svojej podstaty |
+| `#dir-task` (zadanie v Smernici) | je to **formulárové pole**, nie filter — a bola by to cesta, ako podstrčiť text zadania odkazom |
 
 ### Tvar adresy
 
@@ -1055,31 +1642,168 @@ bez query stringu.
 2. **poradie kľúčov je pevné** (poradie riadkov v tabuľke schémy), nie poradie
    zmien — inak by ten istý stav dal dve rôzne URL a `replaceState` by „menil"
    adresu bez zmeny stavu,
-3. **množiny sa serializujú opakovaným kľúčom** (`ty=memory&ty=project`), nie
-   oddeľovačom. Dôvod je meraný: `S.filter.tags` obsahuje značky z DB, teda voľný
-   text, ktorý môže obsahovať čiarku aj bodkočiarku, a `URLSearchParams` by čiarku
-   zakódovala na `%2C`,
+3. **množiny sa serializujú OPAKOVANÝM KĽÚČOM** (`ft=memory&ft=project`), nikdy
+   oddeľovačom. Dôvod je meraný: **6 z 3 712 reálnych značiek obsahuje čiarku**
+   (`0,5 g`, `2,49 g`, `kadmium 0,01%`, `olovo 0,05%`, `0,2 µg/cm2`,
+   `CMR 8,33 SDR/kg`) — slovenská desatinná čiarka. `fg=0,5 g` by sa rozpadlo na
+   `0` a `5 g` a filter by sa po zdieľaní obnovil ako **iný filter**, ticho.
+   Čítanie ide cez `getAll()`.
 4. **hodnoty množín sa radia** — ten istý stav, tá istá URL,
 5. prepínače sú `1` / `0` a serializujú sa len v nedefaultnej hodnote,
-6. **žiadny base64 JSON balík.** Zabalený stav v query stringu je presne to, čo
-   robí odkaz nezdieľateľným a nedebugovateľným. Ak je kľúč príliš dlhý, správna
-   reakcia je **strop na počet hodnôt s priznaným skrátením**, nie balík.
+6. **stavaj VÝHRADNE cez `URLSearchParams`, nikdy konkatenáciou.** Kľúč skupiny
+   Denníka je `#bez-projektu` (`dennik.js:73`) — ručne skladaný query string sa na
+   `#` odsekne a celý zvyšok URL padne do fragmentu. Hodnoty nesú aj diakritiku
+   (`zákon 108/2024`, `kultúra`, `údržba`).
+7. **žiadny base64 JSON balík.** Zabalený stav v query stringu je presne to, čo
+   robí odkaz nezdieľateľným a nedebugovateľným.
+8. **strop 24 opakovaní na jeden kľúč.** 40 vybraných značiek dá ~900 znakov query;
+   nad stropom sa kľúč z URL **vynechá** a stav zostane lokálny. Nie balík.
 
-**Krátke kľúče sú bez tabuľky chyba.** Preto je tabuľka schémy (kľúč → čo nesie →
-default) súčasťou manuálu **a** jediným miestom v kóde, ktoré kľúč serializuje aj
-deserializuje.
+### Kanonický slovník kľúčov — 37, úplný
+
+**Toto je jediný zdroj a je to zároveň jediné miesto v kóde, ktoré kľúč
+serializuje aj deserializuje.** Krátke kľúče sú bez tabuľky chyba.
+
+**Vylúčenie kolízií je štrukturálne, nie disciplínou:** 6 jednoznakových kľúčov je
+vyhradených pre chrbticu, dvojznakové nesú rodiny (`g*` pohľad, `f*` filtre grafu,
+`p*` panely, `h*` hľadanie v histórii, plus `mw`, `sk`, `ar`), trojznakové sú
+obrazovkové (prefix = 2 znaky slugu obrazovky + os) plus `sel` a `loc`. Všetkých 37
+je odlišný presný reťazec a ani jeden sa nerovná `token`, `k` ani `screen`.
+
+#### A · Spoločná chrbtica (2)
+
+| Kľúč | Význam | Hodnoty | Default (vynecháva sa) | História |
+|---|---|---|---|---|
+| `s` | aktívna obrazovka | `dnes` `graf` `dennik` `rozhodnutia` `runy` `kniznica` `kontrola` `smernica` | `dnes` | **push** |
+| `q` | voľný text hľadania, význam určuje `s` | text | `''` | replace |
+
+`q` je **zámerne spoločné** a je to jediná menovaná výnimka z prefixov: na
+obrazovke je najviac jedno voľné hľadanie a čitateľ je vždy na jednej obrazovke,
+takže `knq` / `koq` / `roq` by z najčastejšieho odkazu spravili najdlhší. Väzby:
+Knižnica `#library-search`, Kontrola `kontrolaState.f.q`, Rozhodnutia
+`decisionsState.q`, `/chat` `T.query`.
+
+#### B · Zanorenie grafu (4)
+
+| Kľúč | Význam | Hodnoty | Default | História |
+|---|---|---|---|---|
+| `a` | id oblasti | int | neprítomné = mapa | replace |
+| `d` | id oddelenia | int | neprítomné | replace |
+| `n` | id uzla zanorenia | int | neprítomné | replace |
+| `sel` | id uzla s otvoreným panelom detailu | int | neprítomné | replace |
+
+**`level` NIE JE kľúč** — implikuje ho najhlbší prítomný z `a` / `d` / `n`, pretože
+`clampNav()` dopĺňa kontext nahor sám. Namerané, nie odvodené:
+`go({level:'dept', dept:1})` uložilo `area:2`, hoci `area` sa neposielalo. Žiadny
+z troch = úroveň `map`.
+
+`sel` je iná vec než `n`: **`n` filtruje scénu, `sel` otvára panel.** Uzol je dnes
+najodkazovateľnejší objekt appky a **nemá adresu** — `S.selected` sa nepersistuje
+nikde, ani v `localStorage`.
+
+**Kamera do URL neide** (viď vyššie).
+
+#### C · Pohľad na graf (2)
+
+| Kľúč | Význam | Hodnoty | Default | História |
+|---|---|---|---|---|
+| `gv` | pohľad | `layers` | `net` | replace |
+| `gs` | rozsah grafu | `all` | `live` | replace |
+
+#### D · Filtre grafu (8, všetky opakovateľné)
+
+| Kľúč | Význam | Hodnoty | Default | Väzba |
+|---|---|---|---|---|
+| `ft` | **SKRYTÉ** typy uzlov | `memory` `skill` `project` | žiadne | `S.filter.types` |
+| `fs` | **SKRYTÉ** zdroje | `session` `skill` `digest` `manual` | žiadne | `S.filter.sources` |
+| `fa` | **SKRYTÉ** id oblastí | int | žiadne | `S.filter.areas` |
+| `fg` | **VYBRANÉ** značky (pozitívny filter!) | text | žiadne | `S.filter.tags` |
+| `fr` | **SKRYTÉ** kategórie vzťahov | `part_of` `uses` `similarity` `co_activation` | žiadne | `S.filter.relations` |
+| `mw` | min. váha hrany | 0–5 | **0** | `S.minWeight` |
+| `sk` | len kostra | `1` | vypnuté | `S.skeleton` |
+| `loc` | lokálny graf | `<rootId>.<depth>`, depth 1–3 | neprítomné | `S.local` |
+
+**`fg` je jediný POZITÍVNY filter v rodine** — kto to zamení, obráti význam odkazu.
+`ft` a `fs` môžu obe niesť hodnotu `skill`; sú to rôzne kľúče, nie kolízia.
+
+#### E · Obrazovky dát (11) — prefix = 2 znaky slugu + os
+
+| Kľúč | Obrazovka · os | Hodnoty | Default | Väzba |
+|---|---|---|---|---|
+| `dep` | Denník · projekt | text, môže začínať `#` | všetky | `journalProject` |
+| `kna` | Knižnica · slug oblasti | `dizajn-kreativa` … | neprítomné | `libraryState.areaSlug` — **filtruje KLIENT** |
+| `kot` | Kontrola · typ | `core` `skill` `project` `memory` | `''` | `kontrolaState.f.type` |
+| `koc` | Kontrola · istota | `overene` `hypoteza` `pasca` | `''` | `kontrolaState.f.certainty` |
+| `koa` | Kontrola · slug oblasti | slug | `''` | `kontrolaState.f.area` |
+| `kol` | Kontrola · strop | násobky 100, max 500 | **100** | `kontrolaState.limit` |
+| `roy` | Rozhodnutia · rok | `YYYY` | neprítomné | `decisionsState.year` |
+| `roa` | Rozhodnutia · id oblasti | int | neprítomné | `decisionsState.areaId` |
+| `rus` | Runy · stav | `running` `waiting` `failed` `aborted` `done` | neprítomné | `runsState.status` |
+| `rum` | Runy · model | text | neprítomné | `runsState.model` |
+| `ruo` | Runy · rozbalený beh | uuid | neprítomné | `runsState.open` |
+
+**Knižnica má zámernú asymetriu:** `q` filtruje server (SK-aware stemming), oblasť
+filtruje prehliadač (server posiela `limit=null`, všetky karty ležia na klientovi).
+**`kna` sa nesmie premietnuť do dopytu na server.**
+
+**Dnes a Smernica nemajú ani jeden kľúč.** Obrazovka Dnes má krížový skok, ktorý je
+prirodzene prvým hlbokým odkazom appky: čip projektu prepne obrazovku na Denník
+**a** nasadí filter projektu (`dnes.js:140–144`) — teda `?s=dennik&dep=AI-mind`
+a musí to byť **jeden** `pushState`.
+
+#### F · `/chat` (10) — vlákno nesie pathname `/chat/<uuid>`
+
+| Kľúč | Význam | Hodnoty | Default | História |
+|---|---|---|---|---|
+| `b` | vetva konverzácie | uuid | `active_branch_id` vlákna | **push** |
+| `pt` | panel vlákien | `0` | otvorený | replace |
+| `pa` | panel artefaktu | `1` | zatvorený | replace |
+| `ar` | zdroj artefaktu | id `ConsoleToolCall` | neprítomné | replace |
+| `hr` | hľadanie · rola | `user` `assistant` | neprítomné | replace |
+| `ha` | hľadanie · od | `YYYY-MM-DD` | neprítomné | replace |
+| `hb` | hľadanie · do | `YYYY-MM-DD` | neprítomné | replace |
+| `hn` | hľadanie · vlákno | uuid | neprítomné | replace |
+| `hp` | hľadanie · projekt | uuid | neprítomné | replace |
+| `hl` | hľadanie · strop | int | **30** | replace |
+
+`pt` / `pa` sú **dva nezávislé kľúče, nie jedna množina** — inak by sa „oba
+zatvorené" dalo vyjadriť len prázdnou hodnotou.
+
+**`ar` je vyhradené, ale dnes NEIMPLEMENTOVATEĽNÉ.** Panel artefaktu sa plní priamo
+z argumentov živého volania nástroja (`artifact.js`) a nič nenesie id. Kľúč
+v slovníku miesto má, aby si ho nikto nezabral; implementácia čaká na id
+`ConsoleToolCall`. **Nezavádzaj `ar`, ktoré po obnove stránky ukáže prázdny panel.**
+
+**`b` je ČÍTACIE a je to jediné miesto, kde si rozhodnutie 9 a serverový model
+protirečia.** Aktívna vetva je stav **servera** (`console_threads.active_branch_id`),
+nie čitateľa; jediná klientská cesta k vetve je dnes
+`POST /api/console/branches/{uuid}/activate` (`branches.js:257`), teda **mutácia**.
+`b=` v URL, ktoré by pri načítaní zavolalo `/activate`, by zmenilo vlákno **aj
+tomu, kto odkaz poslal**. Kým neexistuje serverová čítacia cesta „zobraz vetvu X
+bez prepnutia", `b` sa **len číta do UI** a neaktivuje. Rozšíriť to je rozhodnutie
+používateľa, nie implementátora.
+
+#### G · `/console` (0)
+
+Bez query kľúčov. Vlákno nesie pathname `/console/<uuid>`, profil nástrojov sa číta
+z `console_threads.tool_profile` a **z klienta ho prijať NESMIE**.
 
 ### Rezervované názvy
 
-| Názov | Kto ho používa | Prečo je rezervovaný |
+| Názov | Kto ho používa | Pravidlo |
 |---|---|---|
-| `token` | `AuthenticateUi::tokenFromRequest()` | jednorazové odomknutie; middleware ho po odomknutí sám odstrihne redirectom a ostatné parametre zachová |
-| `k` | `bin/hades-app.mjs` | jednorazový kľúč lokálneho proxy; **v adresnom riadku zostane** |
-| `screen` | legacy `mind/state.js:87` | prijímať na čítanie ako alias `s`, **nikdy nezapisovať** |
+| `token` | `AuthenticateUi.php:102` | **nikdy neemitovať, nikdy nezahadzovať** — middleware ho po odomknutí sám odstrihne redirectom (`urlWithoutToken()`, `:105`) a ostatné parametre zachová |
+| `k` | `bin/hades-app.mjs:109`, `:119` | to isté; proxy si ho zmaže sám |
+| `screen` | legacy `mind/state.js:87` | prijímať na čítanie ako alias `s`; **prvý zápis ho normalizuje na `s=` a `screen` odstráni** |
 
-**`token` a `k` sa pri prvom `replaceState` zahodia** (obe sú tajomstvá v adrese
-a obe už majú druhú cestu — session cookie). **Každý iný neznámy kľúč sa prenesie
-nedotknutý** — tak sa cudzí parameter nestratí a tajomstvo v adrese neprežije.
+Manuál tu do 27. 8. 2026 tvrdil, že `token` a `k` sa pri prvom `replaceState`
+zahodia. **Je to opravené:** obe cesty si ich mažú samy a modul, ktorý by do nich
+zasiahol, by len rozbil redirect. **Každý iný neznámy kľúč sa prenesie nedotknutý.**
+
+**`?screen=` je vonkajší kontrakt dvoch nasadených spúšťačov** (`electron/main.js:96`,
+`:147`, `bin/hades-app.mjs:202`) — tichým prechodom na `s=` sa skratka na Graf
+zlomí. A pozor: dnes `?screen=` **natrvalo prepíše uloženú voľbu** (namerané:
+`dennik` → `graf`), takže kto raz otvorí Electron skratku, má Graf aj v prehliadači.
 
 ### História — jedna veta a jedna tabuľka
 
@@ -1088,25 +1812,44 @@ ako sa na to pozerám.**
 
 | `pushState` | `replaceState` | nič |
 |---|---|---|
-| prepnutie obrazovky | filtre a hľadanie (debounce **220 ms**) | ťahanie uzla, pan, zoom, pinch |
-| zanorenie / `goUp()` / `Esc` | min. váha (debounce **200 ms** — `oninput` na slideri strieľa desiatky ráz za sekundu) | prehrávanie času |
-| prepnutie pohľadu Sieť / Vrstvy | otvorenie a zavretie panela detailu | téma, hustota, zvuk |
-| prepnutie rozsahu live / all **človekom** | automatické rozšírenie rozsahu **dôsledkom** | otvorenie doku |
-| skok na uzol z hľadania — **jeden** záznam, nie štyri | lokálny graf, kostra, predvolby | šírky panelov |
-| otvorenie vlákna, nové vlákno, zatvorenie vlákna | „Načítať ďalších", rozbalenie behu | rozbalenie projektu / stromu podagentov |
-| **prepnutie vetvy** konverzácie | stav panelov, otvorený artefakt | hľadanie v histórii vlákien |
+| prepnutie obrazovky (`s`) | filtre a hľadanie (debounce **220 ms**) | ťahanie uzla, pan, zoom, pinch |
+| zanorenie / `goUp()` / `Esc` (`a` `d` `n`) | `mw` (debounce **200 ms** — `oninput` na slideri strieľa desiatky ráz za sekundu) | prehrávanie času |
+| prepnutie pohľadu `gv` | otvorenie a zavretie panela detailu (`sel`) | téma, hustota, zvuk |
+| prepnutie rozsahu `gs` **človekom** | automatické rozšírenie rozsahu **dôsledkom** | otvorenie doku |
+| skok na uzol z hľadania — **jeden** záznam, nie štyri | `loc`, `sk`, predvoľby | šírky panelov |
+| otvorenie vlákna, nové vlákno, zatvorenie vlákna | „Načítať ďalších" (`kol`), rozbalenie behu (`ruo`) | rozbalenie projektu / stromu podagentov |
+| **prepnutie vetvy** (`b`) | stav panelov (`pt` `pa`), artefakt (`ar`) | hľadanie v histórii vlákien |
 
-Dve pravidlá, ktoré z tabuľky nie sú vidieť a bez ktorých sa história zaplní:
+Rozhodnutie 10 menuje „pohyb v grafe" výslovne ako `replace`. **Panely tiež:**
+Späť má opustiť vlákno, nie vrátiť prepnutý panel.
+
+Tri pravidlá, ktoré z tabuľky nie sú vidieť a bez ktorých sa história zaplní:
 
 - **Jedno gesto = jeden záznam.** Skok na uzol z palety mení obrazovku **aj**
   zanorenie **aj** vybraný uzol **aj** možno rozsah. Musí to byť **jeden**
   `pushState`, nie štyri.
 - **Zmenu, ktorú nevyvolal človek, robí `replace`.** Automatické rozšírenie rozsahu
-  na `all` je dôsledok, nie gesto — ako `push` by bol záznamom v histórii, ktorý
-  nikto neurobil. To isté platí, keď `go()` vyvolá **model** cez `graph_focus`:
-  model nenavigoval, len zameril.
-- **Prepnutie obrazovky maže kľúče filtrov atomicky.** Bez toho `?s=runy&y=2026`
+  na `all` je dôsledok, nie gesto. To isté platí, keď `go()` vyvolá **model** cez
+  `graph_focus`: model nenavigoval, len zameril.
+- **Prepnutie obrazovky maže kľúče filtrov atomicky.** Bez toho `?s=runy&roy=2026`
   prenesie rok z Rozhodnutí na Runy.
+
+### Poradie pri boote a pri každom filtri
+
+**Boot:** `URL > localStorage > default v kóde.` `localStorage` sa pýtame **iba
+keď kľúč v URL nie je**.
+
+**Filter:** `URL → stav → dopyt → prune → replaceState orezanej pravdy.`
+
+To druhé poradie je záväzné, lebo tri obrazovky už majú `prune`, ktorý zapnutý
+filter bez čipu zhodí: `pruneKontrolaFilters()` (`kontrola.js:322`),
+`pruneRunFilters()` (`runy.js:64`), `pruneDecisionFilters`, `pruneLibraryArea()`
+(`kniznica.js:108`), a `renderJournal()` (`dennik.js:57`) zhodí `journalProject`,
+ktorý už nie je v `project_groups`. **URL nesmie vynucovať filter nad prune
+logikou** — inak obrazovka zostane trvalo prázdna bez čipu, ktorým sa filter ruší.
+
+`localStorage` môže hodiť (plné úložisko, privátne okno). `sim.js:488` a `:575` to
+už majú v `try/catch`; nový modul musí to isté, inak zápis polohy zhodí navigáciu.
 
 ### Neplatný stav v adrese — jedno pravidlo pre všetko
 
@@ -1133,30 +1876,35 @@ Pri stave panelov je default **dvojvrstvový** a je to nutné:
 Bez tej dvojvrstvy by každý odkaz vnucoval prijímateľovi cudzie rozloženie, alebo
 by sa naopak nikdy nedalo poslať „pozri sa na tento artefakt s otvoreným panelom".
 Preto: **čistá URL tu znamená „moje rozloženie", nie „predvolené".**
+Pod 900 px sa `pt` / `pa` **nezapisujú do `localStorage`** (§9).
 
 ### Adresa nikdy nespúšťa akciu
 
 Odkaz je **žiadosť o pohľad**. Adresa, ktorá vykoná akciu, by v Hadesovi bola cesta
 okolo dvojfázovej brány — zakázané, aj v čítacej podobe.
 
-Z toho vyplývajú dve konkrétne veci:
-
-- **beh číta aktívnu vetvu vždy zo servera, nikdy z URL.** `console_threads` je
-  jediný zdroj toho, ktorá vetva je aktívna; kľúč v adrese vetvu **aktivuje**
-  existujúcou cestou, nie je to druhý kanál do modelu.
+- **beh číta aktívnu vetvu vždy zo servera, nikdy z URL** (viď `b` vyššie),
 - **identita v adrese je uuid, nikdy poradové číslo.** „Vetva 2" je slovo plochy
   nad `ORDER BY id`, takže zmazaním jednej vetvy by sa všetky uložené odkazy ticho
-  presunuli na inú.
+  presunuli na inú,
 - **zdieľanie odkazu neudeľuje prístup.** Filter v adrese neobchádza `auth.ui`.
 
-### Jedna otvorená otázka
+### Ako sa modul overuje
 
-**Kto serializuje filtre — server alebo prehliadač?** Invariant dvojitej plochy
-hovorí „počty, skupiny, filtre a krátenie textu sú **dáta** a patria na server",
-ale adresu vlastní klient. Sonda B navrhuje **nezlučovať** serverový dopyt
-(`URLSearchParams` v `rozhodnutia.js:38`, `runy.js:56`, `kontrola.js:52`) s adresou
-prehliadača — sú to dve rôzne veci a zlúčenie by z „jedného miesta" spravilo jedno
-miesto pre dve pravdy. **Nerozhodnuté; nerobiť pred odpoveďou používateľa.**
+1. **Identita servera pred každým meraním:**
+   `curl -s http://127.0.0.1:8091/ | grep -o 'src="/js/[^"]*"'` musí dať
+   `/js/mind/main.js`.
+2. **Obal nad `history` kalibruj z oboch strán:** najprv vlastný `replaceState`
+   (musí zachytiť 1), až potom tvrď, čo appka zapísala.
+3. **Test kruhu:** pre každý kľúč `serializuj → deserializuj → serializuj` a druhý
+   výstup musí byť **znakovo totožný**.
+4. **Záporná kalibrácia defaultov:** URL s kľúčom nastaveným na default sa **musí**
+   po prvom zápise skrátiť; URL bez kľúča sa nesmie predĺžiť. Bez tejto strany sa
+   nedá odlíšiť „default sa vynecháva" od „kľúč sa nezapisuje nikdy".
+5. **Nepíš merací skript ako kópiu formuly z modulu** — nechaj modul vystaviť
+   výsledok (`window.HADES._urlKeys`) a čítaj ten. Inak po zmene kódu meria svoju
+   starú kópiu.
+6. Panely `/chat` meraj **iba po `resize_window` na ≥ 901 px**.
 
 ---
 
@@ -1208,8 +1956,11 @@ zapuzdrujú pod `.sig` (robí to `build-brand.py`).
 
 **Znak a ikony**
 - [ ] znak: master nad 32 px, mini pod 24 px, nikdy naopak
-- [ ] geometria znaku pochádza z jedného generátora
+- [ ] geometria znaku pochádza z jedného generátora (§2: šesť výstupov)
 - [ ] jeden význam = jedna ikona; sada je obrysová a jediný plný prvok je jadro
+- [ ] názov ikony je zo `ICON_NAMES`; `window.HADES._iconMiss` je prázdne
+- [ ] žiadne `.textContent = '<ligatúra>'` a žiadne `classList.add('ms')` — výmena
+      kresby ide cez `iconSwap()`
 - [ ] nová ikona → regenerovaný subset (kým je subset v hre), overený **šírkou glyfu**
 
 **Stavy**
@@ -1224,10 +1975,21 @@ zapuzdrujú pod `.sig` (robí to `build-brand.py`).
 - [ ] každá nová animácia má **tichú verziu** = zmysluplný okamžitý ekvivalent,
       nie „vypnuté"
 - [ ] trvanie a krivka sú tokeny; „neurčité čakanie" má **jednu** periódu
+      a slučka má `--ease-pulse`, nie `--ease`
+- [ ] tichý režim neskracuje **dobu zobrazenia** ani neodoberá obsah
 - [ ] `rAF` sa mimo obrazovky Graf zastaví
+
+**Rozloženie**
+- [ ] šírkové zlomy sú len **1280** a **900**; žiadne 860, žiadna výšková hranica
+- [ ] rail sa zmestí do okna vysokého **614 px** (rozbalený) — merané `scrollHeight`,
+      nie `overflow-y`
+- [ ] pod 900 px nič neprekrýva a stav prekryvu sa nepamätá (ani v URL)
 
 **URL**
 - [ ] čistý stav = adresa bez query stringu; default sa vynecháva
+- [ ] kľúč je v kanonickom slovníku (§10); žiadny 38. kľúč bez prepisu manuálu
+- [ ] množina = **opakovaný kľúč**, adresa stavaná `URLSearchParams`om
+- [ ] test kruhu prejde znakovo; `token`, `k` a cudzie kľúče prežijú nedotknuté
 - [ ] jedno gesto = jeden záznam v histórii
 - [ ] neplatná hodnota sa opraví `replaceState`om, nie toastom
 - [ ] adresa nespúšťa akciu a nenesie tajomstvo
@@ -1250,7 +2012,15 @@ Assety stavia `build-brand.py` (scratchpad): číta `hades-sigil.svg`, vyťahuje
 glyfy z Cinzelu cez `fontTools` a skladá wordmark aj lockupy. Keď sa zmení znak,
 prestavajú sa aj lockupy — ručne sa neupravujú.
 
-Merania v tomto manuáli pochádzajú z `docs/redesign-2026-08-27/SONDA-A-INVENTAR.md`
-(inventár a rozpor proti manuálu) a `SONDA-B-URL-STAV.md` (stav v URL
-a `localStorage`), oba z 27. 8. 2026. Skripty merania sú v scratchpade sond;
-ich mená sú uvedené v sondách, aby sa dali zopakovať a **prekalibrovať**.
+`public/fonts/cinzel-wordmark.woff2` (1 256 B) je **build-time vstup pre
+`docs/build-brand.py`**, nie webový asset: nič ho nenačítava (0 `@font-face`,
+0 preloadov, 0 referencií v CSS/JS/Blade), a pritom je verejne servovaný.
+Do `public/` nepatrí. Zmerané sondou B.
+
+Merania prvého prepisu (19.–27. 8. 2026) pochádzajú z
+`docs/redesign-2026-08-27/SONDA-A-INVENTAR.md` a `SONDA-B-URL-STAV.md`.
+Merania druhého prepisu pochádzajú zo štyroch sond behu vlny 2 + 3 (27. 8. 2026);
+ich výstupy a plán, ktorý z nich vznikol, sú v `docs/PLAN-VLNA2-3.md`. Skripty
+merania sú v scratchpade sond, aby sa dali zopakovať a **prekalibrovať** — a to je
+podmienka, nie zdvorilosť: tri z piatich opravených tvrdení vznikli tým, že prvý
+harness meral svoju vlastnú kópiu formuly alebo nekalibrovanú stranu.

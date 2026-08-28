@@ -136,7 +136,13 @@ export async function renderToday() {
     });
     /* Čip projektu = preklik do Denníka s nasadeným filtrom. Poradie je dôležité:
        najprv prepnúť obrazovku, potom filter — setJournalProject() rovno prekresľuje
-       a na skrytej obrazovke by sa kreslilo do prázdna. */
+       a na skrytej obrazovke by sa kreslilo do prázdna.
+
+       To isté poradie platí aj pre adresu, a je to JEDNO gesto = JEDEN záznam
+       v histórii: `setScreen()` robí `pushState` (a zmetie kľúče filtrov cudzích
+       obrazoviek), `setJournalProject()` hneď za ním dopíše `dep` cez `replace`.
+       Výsledok je jediný nový záznam s `?s=dennik&dep=…`. Obrátené poradie by
+       `dep` stratilo práve v tom zmetení. */
     body.querySelectorAll('.today-chip[data-project]').forEach((chip) => {
         chip.onclick = () => {
             setScreen('dennik');

@@ -249,7 +249,8 @@
        pod rail/hlavičku/panel. Deklarácie #rail/#app-header/#dock/#node-panel
        ich používajú, takže hodnota tokenu = skutočný rozmer, nie odhad.
        Aritmetika okrajov scény:
-         left   = --edge + --rail-w + --edge      (16 + 72 + 16 = 104 → dnes 112)
+         left   = --edge + --rail-w + --edge      (wide: 16 + 208 + 16 = 240,
+                                                   slim: 16 +  80 + 16 = 112)
          top    = --edge + --header-h + --sp-1    (16 + 44 +  8 =  68)
          right  = --edge                          (+ --panel-w + --edge, keď je
                   otvorený #node-panel → 16 + 300 + 16 = 332)
@@ -258,11 +259,26 @@
        POZOR na stranu: #dock stojí VĽAVO (left: --content-left), #node-panel aj
        #pack-drawer vpravo. camInsets() v layout.js pripisuje rezervu podľa toho,
        preto má zásuvka balíka vlastný token — jej šírka nie je --panel-w. */
-    /* 72 → 80: pri 72 px sa najdlhší názov destinácie („Rozhodnutia") nezmestil a
-       primárna navigácia mala v sebe výpustku („Rozhodnu…"). Slovo je jedno, takže
-       zalomiť sa nedá — jediná čestná oprava je pár pixelov šírky. Layout grafu si
-       hodnotu číta z tokenu, takže sa okraje scény dorovnajú samé. */
-    --rail-w: 80px;
+    /* RAIL MÁ DVA STAVY (rozhodnutie 17) a `wide` je DEFAULT — preto tu stojí 208px
+       a nie 80px. Keď rail.js atribút `body[data-rail]` nenastaví (vypnuté JS,
+       výnimka pred prvým rámcom, `localStorage` neprístupný), musí appka vyzerať
+       ako v defaulte; hodnota v :root je teda `wide`, nie „bezpečný" zbalený stav.
+       Zbalený prepis je hneď za týmto blokom.
+
+       Historicky tu bolo 72 → 80: pri 72 px sa najdlhší názov destinácie
+       („Rozhodnutia") nezmestil a primárna navigácia mala v sebe výpustku. Tá
+       hodnota žije ďalej ako šírka zbaleného stavu.
+
+       Layout grafu si hodnotu číta z tohto tokenu (`layout.js` → `cssPx('--rail-w')`
+       na `document.documentElement`), takže sa okraje scény dorovnajú samé — a je to
+       zároveň dôvod, prečo prepínač NESMIE sedieť na <body>, viď komentár nižšie. */
+    --rail-w: 208px;
+    /* Šírka VNÚTRA zbaleného railu. Do 27. 8. 2026 bola zadrôtovaná ako 68px v troch
+       pravidlách (#brand-core, .rail-eyebrow, .dest) a práve preto nebolo rozbalenie
+       railu výmenou tokenu: samotná zmena --rail-w by nechala destinácie 68px široké
+       a po stranách 70px mŕtveho priestoru (zmerané). V rozbalenom stave sa vnútro
+       naťahuje na 100 %, takže token má volajúcich len v `slim`. */
+    --rail-item-w: 68px;
     --header-h: 44px;
     --panel-w: 300px;
     --drawer-w: 320px;
@@ -271,7 +287,10 @@
        si mediálnu podmienku nekopírovala do JS a nerozišla sa s CSS. */
     --dock-at-left: 1;
     /* Derivované — ľavý/horný okraj obsahovej plochy (hlavička, #screens, panely) */
-    --content-left: calc(var(--edge) + var(--rail-w) + var(--edge));   /* 104px */
+    /* wide 240px · slim 112px. Do 27. 8. 2026 tu stálo „104px", čo neplatilo ani raz
+       odkedy má rail 80px — komentár počítal so 72px. Číslo je odteraz dvojica,
+       pretože --rail-w je dvojica. */
+    --content-left: calc(var(--edge) + var(--rail-w) + var(--edge));
     --content-top: calc(var(--edge) + var(--header-h) + var(--sp-1));  /* 68px */
 
     /* ---- type scale ----
@@ -338,13 +357,28 @@
     /* ---- icon size tiers ----
        VLNA CHRÓM: pod --icon-sm existovali ešte 14px, 15px a 16px ikony písané
        ručne na 12 miestach — teda tri neevidované stupne. Sú z nich dva tokeny;
-       15px sa dorovnalo na 16. Dekoratívne ilustrácie prázdnych stavov (28px, 48px)
-       zostávajú jednorazové zámerne — nie sú to stupne škály, ale kresba. */
+       15px sa dorovnalo na 16.
+
+       VLNA 2: päť stupňov ostáva, čo sa MENÍ je nositeľ. Sada je vlastné inline
+       SVG (`.ic`), ktorého `width`/`height` je `1em`, takže veľkosť ikony nesie
+       `font-size` presne tak ako dnes u fontovej `.ms` — a všetkých 26
+       per-komponentných prepisov prežije bez prepisu hodnoty. Manuál §7 pinuje
+       práve tieto päť čísel ako optické veľkosti sady. */
     --icon-2xs: 14px;
     --icon-xs: 16px;
     --icon-sm: 18px;
     --icon-md: 20px;
     --icon-lg: 22px;
+    /* Ilustračné stupne stavov — NIE sú to stupne ikonovej škály (14–22 px), ale
+       kresba: `--icon-empty` je ikona prázdneho/chybového stavu v karte
+       obrazovky, `--icon-hero` je ikona hero pádu štartu (`.empty-network`), ktorá
+       stojí nad vlastným titulkom a nesie kontrast sama. Do vlny 2 boli obe
+       napísané ako raw px v pravidle s komentárom „zámerne bez tokenu"; to je
+       udržateľné len kým je kresba jedna. Sada `.ic` škáluje `width: 1em` podľa
+       `font-size`, takže surové číslo v pravidle by sa nedalo prepnúť ani zmerať
+       nad CSSOM — a kritérium vlny 2 je 0 raw px na ikonových selektoroch. */
+    --icon-empty: 28px;
+    --icon-hero: 48px;
 
     /* ---- fonts ---- */
     --font: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -506,8 +540,11 @@
          nie na škálu, a token by ju rozpojil.
        - `padding-inline: clamp(16px, 2vw, 48px)` na `#screens` — vzorec, ktorého
          horná hranica je mimo škály; pomenovať polovicu vzorca nič nevysvetlí.
-       - `--chart-gap: 3px`, `--fs-h1: 28px`, `.empty .ms` 28/48 px — každé z nich
-         má vlastný komentár, ktorý hovorí, prečo stupňom škály nie je. */
+       - `--chart-gap: 3px`, `--fs-h1: 28px` — každé z nich má vlastný komentár,
+         ktorý hovorí, prečo stupňom škály nie je. (28/48 px ikony prázdneho stavu
+         tu stáli do vlny 2; dnes sú to `--icon-empty` a `--icon-hero`, pretože
+         nositeľom veľkosti je inline SVG a raw px v pravidle sa nad CSSOM
+         neprepne ani nezmeria.) */
     --gutter: 20px;                       /* dashboard grid gutter — HUSTOTA ho mení */
 
     /* ======================================================================
@@ -648,6 +685,27 @@
     --transition-slow: var(--dur-slow) var(--ease);
     --page-h1: var(--fs-h1);
     --kpi-value: var(--fs-kpi);
+}
+
+/* ---------------------------------------------------------------------------
+   ZBALENÝ RAIL — jediný prepis šírky (rozhodnutie 17)
+   ---------------------------------------------------------------------------
+   PREČO :root A NIE body, keď atribút drží <body>: substitúcia custom property
+   sa deje na elemente, kde je property DEKLAROVANÁ, nie kde sa použije.
+   --content-left (a pod 900px aj --panel-w) sa derivuje v :root, takže prepis
+   --rail-w na <body> by ich nezmenil vôbec — rail by sa zúžil a obsahová plocha
+   by mu nechala 240px dieru. Druhý dôvod: layout.js číta --rail-w
+   z getComputedStyle(document.documentElement).
+
+   Atribút zostáva na <body> (tak to žiada plán §2.4 a tak ho stavia rail.js),
+   preto :has(). Špecificita 0-1-1 prebije :root (0-1-0), a stav BEZ atribútu
+   spadne na `wide` — teda default je default aj bez JS. `> body` a nie ` body`,
+   aby sa selektor nemusel prehľadávať do hĺbky.
+
+   `body[data-rail="wide"]` sa tu zámerne NEKRESLÍ: bola by to druhá deklarácia
+   tej istej hodnoty a jedna z nich by pri ďalšej zmene zastarala. */
+:root:has(> body[data-rail="slim"]) {
+    --rail-w: 80px;
 }
 
 /* ===========================================================================
@@ -939,6 +997,54 @@ kbd {
     -webkit-font-smoothing: antialiased;
 }
 
+/* ---------------------------------------------------------------------------
+   `.ic` — KRESBA VLASTNEJ SADY INLINE SVG (rozhodnutie 19+21, manuál §7)
+   ---------------------------------------------------------------------------
+   Toto je nástupca `.ms` a obe triedy tu ZÁMERNE žijú súčasne. Výmenu call-site
+   robia agenti F1/F2/C2/C3 a `.ms` odstraňuje až posledný agent reťazca; keby
+   fontová polovica zmizla teraz, appka by medzi vlnami nemala ikony vôbec.
+   Per-komponentné prepisy veľkosti sú preto písané ako `:is(.ms, .ic)` — obe
+   triedy sú (0-1-0), takže únia NIČ neoslabuje ani nezosilňuje (to je jediný
+   prípad, kde je `:is()` správne a `:where()` by bolo chybou: nechceme oslabiť,
+   chceme dve rovnocenné mená pre jeden prvok).
+
+   PREČO `1em` a nie px: veľkosť ikony nesie `font-size` z komponentu — presne
+   tak ako u fontovej ligatúry. Vďaka tomu prežilo všetkých 26 existujúcich
+   prepisov veľkosti bez prepočtu a `--icon-*` tokeny zostali jediným zdrojom
+   pravdy. Fixné px by sa museli napísať 26× znova a rozišli by sa.
+
+   PREČO `stroke`/`fill` v CSS, keď to markup nesie ako atribút: prezentačné
+   atribúty prehrajú KAŽDÉMU pravidlu v stylesheete, teda aj takému, ktoré ikonu
+   nemyslelo (`svg { fill: … }` kdekoľvek nižšie). Hodnota je tá istá, čo emituje
+   `iconMarkup()`; tu má špecificitu 0-1-0, takže kresba drží z konštrukcie.
+   Hrúbku ťahu (1,75 na 24-mriežke) drží markup a NIE je tu prepísaná — je to
+   vlastnosť kresby symbolu, nie jeho použitia.
+
+   Jediný plný prvok v celej sade je jadro (symbol `core`) a `fill` si nesie sám
+   na svojom `<path>`, kde prezentačný atribút dediť z `.ic` nemusí. */
+.ic {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    /* Ikona nikdy nesmie byť tá vec, ktorá sa vo flexovom riadku stlačí — v raile,
+       v čipe istoty aj v toaste stojí vedľa textu, ktorý sa smie krátiť. */
+    flex: none;
+    font-size: var(--icon-md);
+    line-height: 1;
+    /* Optické zarovnanie na text: kresba je vertikálne centrovaná v 24-mriežke,
+       takže na účtovnej základni sedí vizuálne vysoko. −0.125em ju posadí na
+       optický stred riadka pre 1em box — to isté, čo fontová ligatúra dosahovala
+       svojou metrikou. Väzba je na `font-size` (em), nie na px, aby držala na
+       všetkých piatich stupňoch. */
+    vertical-align: -0.125em;
+    fill: none;
+    stroke: currentColor;
+    /* `pointer-events: none` tu ZÁMERNE NIE JE, hoci sa pri ikone ponúka: kresba
+       je na jednom mieste sama nositeľom hoveru (`.dir-actions :is(.ms, .ic):hover`
+       nižšie je klikacia ikona bez obalového tlačidla). Vypnutie ukazovateľa by ten
+       stav ticho zabilo — a ticho je presne to, čo tento prechod má odstrániť. */
+}
+
 /* Veľké čísla: oddeľovač tisícov je NEZLOMITEĽNÁ medzera (fmtNum v util.js ju
    normalizuje, aby sa „2 658" nelámalo na dva riadky) — ale v Geist Mono zaberá
    celú znakovú bunku, teda presne toľko ako číslica. Na 44 px hero sa preto „2 658"
@@ -1156,8 +1262,31 @@ button.close:active { background: var(--accent-soft); }
     position: fixed;
     top: var(--edge); left: var(--edge); bottom: var(--edge);
     width: var(--rail-w);
-    display: flex; flex-direction: column; align-items: center;
-    padding: var(--sp-1) 0; gap: var(--sp-1);
+    /* ZÁKLAD JE ROZBALENÝ STAV. `stretch` a nie `center`: v rozbalenom raile sú
+       destinácie riadky na celú šírku, takže sa vnútro naťahuje a šírka `.dest`
+       nie je nikde zapísaná číslom. Zbalený stav si `center` a 68px vracia nižšie.
+
+       gap 0 a padding-block 6px NIE SÚ estetika, ale rozpočet výšky (rozhodnutie 17
+       sľubuje, že rail sa zmestí do okna vysokého 594 px). Rozpočet:
+         11 destinácií × 40px (min-height `.dest`)      = 440
+         #rail-collapse                                 =  28
+         3 eyebrow labely × 13px riadok                 =  39
+         #brand-core (24 svg + 2×4 padding)             =  32
+         .rail-group.bottom padding-top                 =   8
+         padding-block railu (2 × 4)                    =   8
+                                              scrollHeight = 555 (ZMERANÉ)
+       Dostupné = 100vh − 2×--edge (32) − 2×1px rám = 100vh − 34, teda prah je
+       589px výšky okna (588 padne, 589 sadne — kalibrované z oboch strán).
+       Každých 8px medzery navyše (5 medzier railu + 9 vnútri skupín = 14 medzier)
+       stojí 112px potrebnej výšky, teda celý zisk rozbalenia. Vzduch nesú eyebrow
+       labely a hairline nad spodnou skupinou, nie medzery. Keď pridáš destináciu,
+       prepočítaj to a zmeraj z oboch strán (prah − 1 musí padnúť). */
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: var(--sp-0) var(--sp-1); gap: 0;
+    /* Prechod šírky: rail je jediný prvok, ktorý sa pri prepnutí naozaj hýbe, a jeho
+       pohyb nesie informáciu („toto sa práve zbalilo"). Tichú verziu nesie plošná
+       podlaha prefers-reduced-motion (a A3 ju pomenuje). */
+    transition: width var(--dur-base) var(--ease);
     /* VLNA W1: rail splýva s grafom — sklo (na svetlej plná plocha), hairline
        namiesto rámu, žiadne tienidlo. Aktívny stav nesie akcent, nie výplň. */
     background: var(--panel);
@@ -1180,18 +1309,22 @@ button.close:active { background: var(--accent-soft); }
    #brand-core:focus-visible s --focus-ring nižšie. Rovnako .asleep: stmavená zlatá
    hlási „vedomie spí", teda stav ZNAČKY, nie stav ovládania. Keby sa naopak fokusový
    ring urobil zlatým „aby ladil so znakom", kánon padne — amethyst musí vyhrať aj tu. */
+/* ROZBALENÝ STAV: lockup je RIADOK (znak vľavo, slovo vedľa). Nie je to len úspora
+   21px výšky v tesnom rozpočte railu — v 208px raile je zvislý lockup nad riadkovými
+   destináciami cudzí prvok, jediný stĺpec v zozname riadkov. Zbalený stav si stĺpec
+   vracia nižšie, tam je správny. */
 #brand-core {
     position: relative;
     color: var(--brand-gold);
-    width: 68px; height: auto;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 2px;
+    width: 100%; height: auto;
+    display: flex; flex-direction: row; align-items: center; justify-content: flex-start;
+    gap: var(--sp-1);
     background: none; border: none;
     filter: drop-shadow(var(--core-shadow));
     animation: core-pulse 4s var(--ease) infinite;
     transition: filter var(--dur-ambient) var(--ease), opacity var(--dur-ambient) var(--ease);
-    padding: var(--sp-0) 2px var(--sp-1);
-    margin-bottom: var(--sp-0);
+    padding: var(--sp-0) var(--sp-1);
+    margin-bottom: 0;
 }
 #brand-core .bc-word {
     font-family: var(--font);
@@ -1263,21 +1396,28 @@ button.close:active { background: var(--accent-soft); }
     50%      { filter: drop-shadow(var(--core-glow-max)); }
 }
 
-.rail-group { display: flex; flex-direction: column; gap: var(--sp-1); }
+/* gap 0 v rozbalenom stave: destinácie sú riadky jedného zoznamu, nie samostatné
+   karty — medzera medzi nimi by bola 14 × 8px = 112px potrebnej výšky, teda celý
+   zisk rozbalenia (viď rozpočet nad #rail). Skupiny oddeľuje eyebrow, spodnú
+   skupinu hairline. */
+.rail-group { display: flex; flex-direction: column; gap: 0; }
 
 /* NÁZOV SKUPINY RAILU (nález A12). Blade eyebrow zaviedol, CSS preň nemalo ani
    jedno pravidlo — v 80px raile to bol neošetrený odsek v --fs-base, ktorý skupinu
    rozšíril nad šírku railu. Jazyk je ten istý, akým hovoria ostatné eyebrow labely
    v projekte (.cmdk-group, .kpi-label): mono, verzálka z CSS a nie z textu, --muted.
 
-   `width: 68px` a nie `auto`: #rail má `align-items: center`, takže .rail-group je
-   široká podľa svojho najširšieho dieťaťa — bez pevnej šírky by dlhší názov skupinu
-   roztiahol a v 80px raile by pretiekol. 68px je presne šírka `.dest`, takže eyebrow
-   a destinácie stoja v jednej osi. Najdlhší názov („ZÁZNAMY", 8 znakov) meria pri
-   10px mono s --ls-mono-caps ~53px, teda sa vojde; ellipsis je poistka pre preklad. */
+   ROZBALENÝ STAV: šírka je 100 % (rail sa naťahuje, viď #rail align-items) a text
+   stojí VĽAVO, zarovnaný s ikonami destinácií (padding-inline = padding `.dest`).
+   V zbalenom stave sa vracia na 68px a do stredu — tam je 100 % rovných 68px aj tak,
+   ale token drží aj rozmer `.dest`, takže sa nemôžu rozísť.
+   `margin-top: 0`: eyebrow bol jediný nositeľ zvislej medzery navyše a rozpočet
+   výšky (viď #rail) ju nemá; vzduch nad labelom nesie vnútorný padding riadku
+   nad ním (ikona 22px v 40px riadku = 9px vzduchu). */
 .rail-eyebrow {
-    width: 68px;
-    margin-top: var(--sp-0);
+    width: 100%;
+    margin-top: 0;
+    padding-inline: var(--sp-1);
     font-family: var(--mono);
     font-size: var(--fs-micro);
     line-height: var(--lh-micro);
@@ -1285,33 +1425,33 @@ button.close:active { background: var(--accent-soft); }
     text-transform: uppercase;
     letter-spacing: var(--ls-mono-caps);
     color: var(--muted);
-    text-align: center;
+    text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* NÍZKE OKNO: eyebrow labely idú preč PRVÉ. Rail nemá `overflow`, takže keď sa
-   obsah nezmestí, destinácie vytečú pod dolnú hranu a stanú sa nedosiahnuteľnými —
-   label je z toho obsahu jediná časť, ktorú si možno dovoliť neukázať, pretože
-   názov skupiny nesie `aria-label` na `role="group"` a vizuálny eyebrow je
-   `aria-hidden`. Skrytím sa teda nestráca ani informácia pre čítačku, ani cieľ.
+/* EYEBROW LABELY SÚ AFORDANCIA ROZBALENÉHO STAVU, nie výšková poistka.
+   ---------------------------------------------------------------------------
+   Do 27. 8. 2026 tu stálo `@media (max-height: 860px) { .rail-eyebrow { display:
+   none } }` — jediná výšková hranica súboru a druhé, mätúce použitie čísla 860.
+   Zjednotenie zlomov ju ruší (plán §8), ale jej PRÁCU zrušiť nemožno: bez nej
+   zbalený rail pretečie pod dolnú hranu okna a dve destinácie sa stanú
+   nedosiahnuteľnými (`#rail` je `position: fixed`, žiadny scroll ich nezachráni).
 
-   Odkiaľ 860px (počítané z pevných hodnôt tohto súboru, nie odhad):
-     11 destinácií × 52px (min-height `.dest`)          = 572
-     medzery vo skupinách (2+3+3+0+1) × --sp-1 8px      =  72
-     medzery railu medzi 6 deťmi (5 × 8px)              =  40
-     #brand-core (4 + 24 svg + 2 + 11 slovo + 8 + 4)    =  53
-     .rail-group.bottom padding-top                     =   8
-                                                  bez eyebrow = 745px
-     3 eyebrow labely × (13px riadok + 4px margin)      =  51  → s eyebrow = 796px
-   Dostupná výška obsahu railu = 100vh − 2×--edge (32) − 2×--sp-1 (16) = 100vh − 48.
-   S eyebrow to teda sedí od ~844px výšky okna, bez nich od ~793px. Prah 860px má
-   nad 844 rezervu na zaokrúhlenie a je to zároveň jediná výšková hranica súboru;
-   keď sa mení počet destinácií, prepočítaj ju. */
-@media (max-height: 860px) {
-    .rail-eyebrow { display: none; }
-}
+   Zmerané, prečo je náhrada stavová a nie výšková: pridanie #rail-collapse stojí
+   zbalený rail ~36px výšky, teda presne to, čo v jeho rozpočte nie je. Rozbalenie
+   zaplatí za seba samo (`.dest` 52 → 40px = −132px), zbalený stav nie. Eyebrow je
+   z obsahu railu jediná časť, ktorú si možno dovoliť neukázať — názov skupiny nesie
+   `aria-label` na `role="group"` a vizuálny eyebrow je `aria-hidden`, takže sa
+   skrytím nestráca ani informácia pre čítačku, ani cieľ. A slovo v 68px stĺpci pod
+   mikroskopickými labelmi destinácií bolo aj tak najslabší text railu.
+
+   ODCHÝLKA OD MANUÁLU §Rail: jeho tabuľka dáva zbalenému stavu eyebrow v --fs-micro
+   „skrytý pod 860 px výšky". Táto verzia ho v zbalenom stave nekreslí nikdy —
+   inak by sa buď musela vrátiť výšková hranica, alebo by zbalený rail prišiel
+   o dosiahnuteľnosť destinácií pod 782px výšky okna. Nahlásené v reporte. */
+body[data-rail="slim"] .rail-eyebrow { display: none; }
 
 .rail-group.bottom {
     margin-top: auto;
@@ -1369,34 +1509,139 @@ button.close:active { background: var(--accent-soft); }
    nenastylovaný — tá istá chyba, akú urobil `.ghost` pri „Otvoriť vlákno" (svietil
    UA modrou na 1,87:1). `:is()` má špecificitu svojho najsilnejšieho argumentu,
    teda elementu, takže sa tu nič neprebíja inak než predtým. */
+/* ROZBALENÝ STAV JE ZÁKLAD: destinácia je RIADOK — ikona a label vedľa seba,
+   min-height 40px, šírka 100 %. Žiadne číslo šírky: `.dest` sa naťahuje podľa railu,
+   takže odsadenie od ľavej hrany railu je jeho padding (8px + 1px rám = 9px).
+   Pasca, ktorú to zaviera: samotná zmena --rail-w na 208px pri zadrôtovaných 68px
+   dala odsadenie 70px a šírku 68px — teda mŕtvy priestor po oboch stranách. */
 #rail .rail-group :is(button, a).dest {
-    width: 68px; height: auto; min-height: 52px;
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-    padding: var(--sp-1) 2px;
+    width: 100%; height: auto; min-height: 40px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--sp-1);
+    padding: 0 var(--sp-1);
+    text-align: left;
     border-radius: var(--r-md);
 }
-#rail .rail-group :is(button, a).dest .ms { font-size: var(--icon-lg); line-height: 1; }
+#rail .rail-group :is(button, a).dest :is(.ms, .ic) { font-size: var(--icon-lg); line-height: 1; }
+/* Label je CHRÓM (rozhodnutie 13): --fs-caption 11px, nezdvíha sa s dátovým textom.
+   V riadku dostane zvyšok šírky, takže výpustka je poistka pre preklad, nie plán. */
 #rail .rail-group :is(button, a).dest .lbl {
-    font-size: var(--fs-micro);
+    font-size: var(--fs-caption);
     font-weight: var(--fw-medium);
     letter-spacing: 0.01em;
     line-height: 1.1;
-    text-align: center;
+    text-align: left;
+    flex: 1 1 auto;
+    min-width: 0;
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-/* denník unread dot — small amethyst marker on the destination */
+/* denník unread dot — small amethyst marker on the destination.
+   V riadku sedí na osi textu (v stĺpci nad ním, viď zbalený stav nižšie). */
 #rail .rail-group :is(button, a).dest .dot {
     position: absolute;
-    top: 6px; right: 10px;
+    top: 50%; right: 10px;
+    transform: translateY(-50%);
     width: 6px; height: 6px;
     border-radius: 50%;
     background: var(--accent);
 }
+
+/* ---------------------------------------------------------------------------
+   PREPÍNAČ ŠÍRKY RAILU (#rail-collapse)
+   ---------------------------------------------------------------------------
+   Markup a mechaniku (localStorage['hades.rail'], atribút pred prvým rámcom) pridáva
+   F1 v mind.blade.php a mind/rail.js; tu je len kresba. Patrí do `.rail-group.bottom`,
+   pod hairline, ako posledné dieťa — je to nastavenie tvaru navigácie, nie destinácia.
+
+   PREČO NIE `.dest`: nevedie nikam. Keby zdedil kresbu destinácie, dostal by aktívny
+   pill a rovnakú váhu ako Dnes alebo Graf, teda by súťažil s cieľmi. Preto je tichší
+   (menší, --muted, bez pilulky) a nemá label — meno nesie `aria-label` z markupu.
+   Ikona sa nerotuje: sada B má `arrow-up` / `arrow-down` a F1 ich vymieňa
+   `iconSwap()`om, takže smer nesie KRESBA, nie transformácia (rotácia by pri tichej
+   verzii prefers-reduced-motion zamrzla v polovici).
+
+   V rozbalenom stave stojí vpravo — ukazuje na hranu, ktorá sa hýbe.
+
+   `#rail #rail-collapse` a nie len `#rail-collapse`: keď tlačidlo sedí v skupine,
+   platí naň `#rail .rail-group :is(button, a)` (1-2-1) so `height: 40px`, čo by
+   samotné id (1-0-0) neprebilo — zmerané, dostal 40px namiesto 28px a rozpočet
+   výšky railu tým prekročil prah o 12px. Dve id sú (2-0-0), teda vyhrá bez ohľadu
+   na to, kam ho F1 v markupe nakoniec zavesí. */
+#rail #rail-collapse {
+    align-self: flex-end;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+    width: 28px; height: 28px; min-height: 28px;
+    padding: 0;
+    background: none; border: none;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: var(--icon-sm);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+/* Dve id aj tu — z toho istého dôvodu ako pri základnom pravidle: `#rail .rail-group
+   :is(button, a):hover` je (1-3-1) a jedno id by mu neuhralo. */
+#rail #rail-collapse:hover { background: var(--hover-fill); color: var(--text); }
+#rail #rail-collapse:active { background: var(--accent-soft); }
+
+/* ---------------------------------------------------------------------------
+   ZBALENÝ RAIL (body[data-rail="slim"]) — dnešný 80px stĺpec
+   ---------------------------------------------------------------------------
+   Všetko, čo je vyššie, je rozbalený stav (default). Tu sa vracia stĺpcová kresba:
+   znak nad slovom, ikona nad labelom, 68px vnútro v strede 80px railu.
+   Selektory sú prefixnuté `body[data-rail="slim"]`, takže sú o jeden element+atribút
+   silnejšie než ich základ a poradie v zdroji nerozhoduje.
+
+   Rozpočet výšky zbaleného stavu (prah 100vh − 34, zmerané z oboch strán):
+     11 destinácií × 52px = 572 · #rail-collapse 28 · #brand-core 49
+     medzery railu (5 × 8px) = 40 · padding-block railu 16
+     eyebrow sa nekreslí (viď komentár pri .rail-eyebrow)
+                                              scrollHeight = 692 (ZMERANÉ)
+   Prah je 726px výšky okna (725 padne, 726 sadne). Pred touto vlnou bol 746 —
+   PRAVIDLO, KTORÉ ZA TÝM STOJÍ: destinácie v jednej skupine nemajú medzeru, skupiny
+   áno. Platí v oboch stavoch (`.rail-group { gap: 0 }` je základ, zbalený stav ho
+   NEPREPISUJE) a je to práve to, čo zaplatí #rail-collapse: 7 medzier × 8px = 56px,
+   z toho tlačidlo stojí 32. Bez toho by zbalený stav prah zhoršil na 754. */
+body[data-rail="slim"] #rail {
+    align-items: center;
+    padding: var(--sp-1) 0;
+    gap: var(--sp-1);
+}
+body[data-rail="slim"] #brand-core {
+    width: var(--rail-item-w);
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: var(--sp-0) 2px var(--sp-1);
+    margin-bottom: var(--sp-0);
+}
+body[data-rail="slim"] #rail .rail-group :is(button, a).dest {
+    width: var(--rail-item-w);
+    min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: var(--sp-1) 2px;
+    text-align: center;
+}
+body[data-rail="slim"] #rail .rail-group :is(button, a).dest .lbl {
+    font-size: var(--fs-micro);
+    text-align: center;
+    flex: none;
+}
+body[data-rail="slim"] #rail .rail-group :is(button, a).dest .dot {
+    top: 6px;
+    transform: none;
+}
+body[data-rail="slim"] #rail .rail-group :is(button, a).dest .count {
+    top: 4px;
+    transform: none;
+}
+body[data-rail="slim"] #rail #rail-collapse { align-self: center; }
 
 /* ---------------------------------------------------------------------------
    APP HEADER (#app-header) — fixed top bar past the rail; hosts brand,
@@ -1405,6 +1650,8 @@ button.close:active { background: var(--accent-soft); }
 #app-header {
     position: fixed;
     top: var(--edge); left: var(--content-left); right: var(--edge);
+    /* Sleduje šírku railu tým istým trvaním — inak by chróm skočil a rail sa plazil. */
+    transition: left var(--dur-base) var(--ease);
     height: var(--header-h);
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 0 var(--edge);
@@ -1821,7 +2068,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     transition: background var(--dur-fast) var(--ease);
 }
 .pb-item:hover { background: var(--hover-fill); }
-.pb-item .ms { font-size: var(--icon-sm); color: var(--muted); flex-shrink: 0; margin-top: 1px; }
+.pb-item :is(.ms, .ic) { font-size: var(--icon-sm); color: var(--muted); flex-shrink: 0; margin-top: 1px; }
 .pb-item .pb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pb-item .pb-title {
     font-size: var(--fs-body);
@@ -2098,7 +2345,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     border-radius: 2px;
     background: var(--accent);
 }
-.toast .ms { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
+.toast :is(.ms, .ic) { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
 .toast strong { color: var(--text); font-weight: var(--fw-semibold); }
 .toast:hover { border-color: var(--border-accent); background: var(--panel-solid); }
 .toast.leaving {
@@ -2559,11 +2806,12 @@ pre.code code {
     padding: var(--sp-4) var(--sp-2);
     color: var(--muted);
 }
-.empty .ms {
-    /* 28px a 48px nižšie sú ZÁMERNE bez tokenu — viď komentár v bloku --icon-* :
-       nie sú to stupne ikonovej škály (14–22px), ale kresba prázdneho stavu. Ďalšia
-       session to už nemusí riešiť. */
-    font-size: 28px;
+.empty :is(.ms, .ic) {
+    /* `--icon-empty` (28px) NIE JE stupeň ikonovej škály (14–22px), ale kresba
+       prázdneho stavu — preto stojí za škálou, nie v nej. Token má preto, že
+       veľkosť inline SVG nesie `font-size` (`width: 1em`) a raw číslo v pravidle
+       sa nedá ani prepnúť, ani nájsť nad CSSOM. Manuál §8 pinuje 28 px + .5. */
+    font-size: var(--icon-empty);
     opacity: .5;
     font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
@@ -2604,13 +2852,13 @@ pre.code code {
 }
 
 /* Ikona chyby je GRAFIKA s prahom 3:1, nie text — preto plná základná hodnota
-   `--danger` a `opacity: 1` (základ `.empty .ms` stmieva na polovicu).
+   `--danger` a `opacity: 1` (základ `.empty :is(.ms, .ic)` stmieva na polovicu).
    Namerané tokenovo (kompozícia nie je potrebná, obe pozadia sú nepriehľadné):
    svetlá 4,02:1 na papieri a 4,38:1 na paneli, tmavá 6,65:1 a 6,26:1.
-   Presne ten istý precedens ako `.empty.empty-network .ms` nižšie.
+   Presne ten istý precedens ako `.empty.empty-network :is(.ms, .ic)` nižšie.
    TEXT chyby ide vždy cez --text / --muted, NIKDY cez --danger: pre text má
    appka --danger-ink a základná hodnota by v texte spadla pod prah. */
-.empty--error .ms { color: var(--danger); opacity: 1; }
+.empty--error :is(.ms, .ic) { color: var(--danger); opacity: 1; }
 
 /* `.empty--filter` (prázdno spôsobené filtrom, nie neexistenciou dát) tu VLASTNÚ
    KRESBU nemá a je to rozhodnutie, nie diera: manuál §8 zakazuje prázdnemu stavu
@@ -2624,6 +2872,61 @@ pre.code code {
    (0-1-0) stačí a per-komponentné pravidlo sa pridáva len vtedy, keď nesie
    niečo iné než prsteň. */
 .empty .empty-act { margin-top: var(--sp-1); }
+
+/* ---------------------------------------------------------------------------
+   `.msg-error` — CHYBOVÁ BUBLINA V TOKU, PLOCHA-AGNOSTICKÝ KOMPONENT
+   ---------------------------------------------------------------------------
+   Rozhodnutie 16 („jeden chybový komponent") má dve roly, nie jednu, a je dôležité
+   ich nezliať:
+
+     `.empty--error`  = PLOCHA sa nenačítala. Stav celej obrazovky alebo karty,
+                        má predmet, druhý riadok a jednu akciu (vyššie v tomto bloku).
+     `.msg-error`     = jedna SPRÁVA v prebiehajúcej konverzácii padla. Tok
+                        pokračuje, ostatné správy stoja vedľa nej nedotknuté.
+
+   PREČO TU: kresba je jedna pre tri plochy a `mind.css` je jediný stylesheet,
+   ktorý sa načítava na `/`, `/console` aj `/chat`. Do vlny 2 mala každá plocha
+   svoju verziu (`console.css` `.msg.error`, `charon.css` `.charon-msg--error`)
+   a `/chat` NEMALA ŽIADNU — `.cm-error` neexistovala v žiadnom zo štyroch
+   stylesheetov, takže chybová správa mala znak po znaku ten istý computed style
+   ako bežná odpoveď a odlišovalo ju len slovo „Chyba". Preto tu.
+
+   Komponent je SEBESTAČNÝ (papier, rám, rádius, odsadenie), pretože na `/chat` ho
+   nemá čo doplniť. Na `/console` už bublina svoju geometriu má a per-plochové
+   pravidlo je špecifickejšie, takže sa nič nepretlačí; zjednotenie tých pravidiel
+   na tento komponent robí agent E vo svojich troch súboroch.
+
+   KÁNON JE VERZIA KONZOLY a je to farebné rozhodnutie, nie kozmetika: telo ide
+   cez `--text`, `--danger-ink` nesie LEN menovka. Základná hodnota `--danger` je
+   ladená ako výplň a akcent — v texte by spadla pod prah, presne o tom je pravidlo
+   nad `.empty--error` vyššie. `charon.css` dnes farbí `--danger-ink` celú bublinu,
+   čo ide proti tomu; opravuje to E.
+
+   Odsadenie 10/14 px a `--r-md` sú ODČÍTANÉ z konzoly, aby zjednotenie nebolo
+   zároveň zmenou vzhľadu tam, kde chyba dnes funguje. Mimo škály `--sp-*` sú
+   zámerne — viď zoznam „zámerne surové" v tokenoch. */
+.msg-error {
+    padding: 10px 14px;
+    border: 1px solid var(--danger-border);
+    border-radius: var(--r-md);
+    background: var(--danger-soft);
+    color: var(--text);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+}
+/* Menovka správy („Chyba"). Je to JEDINÉ miesto komponentu s `--danger-ink`
+   a nesie celý rozdiel voči systémovej správe: to, čo v bubline farbí, je
+   pomenovanie, nie obsah.
+   Deklarácia je ZÁMERNE jediná — `font-weight` tu skúšalo stáť (500) a je zmazané:
+   konzola, ktorá je kánonom, menovku nezvýrazňuje váhou (namerané 400), takže
+   pridaná váha by nebola zjednotenie, ale tretia verzia toho istého. */
+.msg-error-who { color: var(--danger-ink); }
+/* Ikona vnútri bubliny je GRAFIKA s prahom 3:1, teda plná základná hodnota —
+   ten istý precedens ako `.empty--error :is(.ms, .ic)` vyššie. Do vlny 2 tu ikona
+   nebola vôbec a `chat/render.js` to odôvodňoval tým, že nevykreslená ligatúra
+   subsetu sa ukáže ako svoje meno; po odchode Material Symbols ten dôvod
+   neexistuje a kresba `.ic` nemá ako padnúť na text. */
+.msg-error :is(.ms, .ic) { color: var(--danger); flex: none; }
 
 /* Načítavanie — súosé kruhy značky (amethystový prstenec + zlaté jadro), ktoré dýchajú.
    Ten istý motív nesie favicon aj #brand-core, takže čakanie vyzerá ako Hades,
@@ -2760,9 +3063,9 @@ pre.code code {
     color: inherit;
 }
 /* Ikony v hero ploche sú čitateľné značky bodov zoznamu, nie stlmená kresba
-   prázdna — .empty .ms ich stmieva na polovicu, čo tu je regresia kontrastu.
-   Veľkosť a farbu si drží volajúci (.empty-can .ms), preto tu len opacita. */
-.empty--hero .ms { opacity: 1; }
+   prázdna — .empty :is(.ms, .ic) ich stmieva na polovicu, čo tu je regresia kontrastu.
+   Veľkosť a farbu si drží volajúci (.empty-can :is(.ms, .ic)), preto tu len opacita. */
+.empty--hero :is(.ms, .ic) { opacity: 1; }
 
 /* Hero nad plátnom (prázdna sieť / chyba štartu) */
 .empty.empty-network {
@@ -2775,11 +3078,11 @@ pre.code code {
 /* KÁNON AKCENTU: „Vedomie sa nepodarilo prebudiť" je CHYBA, nie značka. Zlatá tu
    tvrdila „toto je Hades", pričom správa je „appka nenabehla" — a v tom istom bloku
    už stojí pravidlo, že prázdny stav si nevymýšľa novú farbu. --danger ten význam
-   v appke už nesie (.toast.error .ms) a je to naviac jediná voľba, ktorá TU prejde
+   v appke už nesie (.toast.error :is(.ms, .ic)) a je to naviac jediná voľba, ktorá TU prejde
    WCAG 1.4.11: na svetlom papieri dávala --gold 2,86:1 a --warn 2,92:1 (obe POD 3:1),
    --danger dáva 4,02:1. Na tmavej 6,65:1 (predtým 5,97:1). Ikona je 48 px a stojí
    nad vlastným titulkom, takže farbu netreba stlmovať do dekorácie. */
-.empty.empty-network .ms { font-size: 48px; color: var(--danger); opacity: 1; }
+.empty.empty-network :is(.ms, .ic) { font-size: var(--icon-hero); color: var(--danger); opacity: 1; }
 .empty.empty-network .title {
     /* Kánon nadpisov: Geist 660 / −.025em — to isté, čo .screen-head h1. Serif tu
        bol do 20. 8. 2026; manuál (§4) ho vyhradzuje hero metrikám, a toto je titulok,
@@ -3059,7 +3362,7 @@ body.ambient #toasts {
     line-height: var(--lh-data);
     color: var(--text-secondary);
 }
-.rec-commit .ms { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
+.rec-commit :is(.ms, .ic) { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
 .rec-commit span:last-child {
     min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -3405,6 +3708,8 @@ body:not([data-screen="graf"]) #local-chip { display: none !important; }
     left: var(--content-left); right: var(--edge);
     top: var(--content-top);
     bottom: var(--edge);
+    /* Rovnaké trvanie ako #rail width a #app-header left — jedno gesto, jeden pohyb. */
+    transition: left var(--dur-base) var(--ease);
     overflow-y: auto;
     padding-inline: clamp(16px, 2vw, 48px);
     z-index: var(--z-panel);
@@ -3576,7 +3881,7 @@ body[data-screen="graf"] #screens { display: none; }
                 border-color var(--dur-fast) var(--ease);
 }
 #cmdk-trigger:hover { border-color: var(--border-accent); color: var(--text); background: var(--accent-softer); }
-#cmdk-trigger .ms { font-size: var(--icon-sm); }
+#cmdk-trigger :is(.ms, .ic) { font-size: var(--icon-sm); }
 /* Kresba je v bare `kbd`; tu sa mení len papier — trigger sedí na hlavičke,
    nie na paneli, takže klávesa v ňom potrebuje nepriehľadné pozadie panelu. */
 #cmdk-trigger kbd { background: var(--panel-solid); }
@@ -3611,7 +3916,7 @@ body[data-screen="graf"] #screens { display: none; }
     padding: var(--sp-2);
     border-bottom: 1px solid var(--line-soft);
 }
-.cmdk-input-row .ms { color: var(--muted); }
+.cmdk-input-row :is(.ms, .ic) { color: var(--muted); }
 #cmdk-input {
     flex: 1;
     background: none; border: none;
@@ -3640,7 +3945,7 @@ body[data-screen="graf"] #screens { display: none; }
     text-align: left; color: var(--text);
 }
 .cmdk-item:hover, .cmdk-item:focus-visible { background: var(--accent-softer); outline: none; }
-.cmdk-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.cmdk-item :is(.ms, .ic) { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .cmdk-text { display: flex; flex-direction: column; min-width: 0; }
 .cmdk-title { font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmdk-sub { font-size: var(--fs-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3826,11 +4131,9 @@ body[data-screen="graf"] #screens { display: none; }
     font-size: var(--fs-micro); color: var(--muted);
     letter-spacing: var(--ls-mono); text-transform: uppercase;
 }
-/* Pod 1280 px ostane len samotný prepínač — jeho stav nesie aria-checked
-   a popis drží aria-labelledby, takže sa nestráca pre čítačku, len pre oko. */
-@media (max-width: 1280px) {
-    .h-scope #scope-label { display: none; }
-}
+/* Skrytie #scope-label pod 1280px sa presunulo do jediného bloku max-width: 1280px
+   nižšie (sekcia RESPONSIVE) — dva bloky s tou istou podmienkou 53 riadkov od seba
+   boli len pozvánka, aby sa hranica raz zmenila v jednom a nie v druhom. */
 
 /* ---- Riadok zoznamu s pack tlačidlom (Dnes / Denník / Knižnica) ---- */
 .li-wrap { display: flex; align-items: stretch; gap: 2px; }
@@ -3881,9 +4184,14 @@ body[data-screen="graf"] #screens { display: none; }
    --------------------------------------------------------------------------- */
 /* --panel-w sa prepisuje na :root, nie na paneloch — tak ho vidí aj grafový
    layout (viewInsets) a nemôže sa rozísť so skutočnou šírkou panelu. */
+/* JEDINÝ blok max-width: 1280px v tomto súbore (plán §8). Chróm hlavičky sa
+   orezáva a panel sa zužuje — obe veci robia to isté rozhodnutie, tak stoja spolu.
+   #scope-label sa sem presunul zhora: jeho stav nesie aria-checked a popis drží
+   aria-labelledby, takže sa skrytím nestráca pre čítačku, len pre oko. */
 @media (max-width: 1280px) {
     :root { --panel-w: min(300px, 26vw); }
     #header-metrics { display: none; }
+    .h-scope #scope-label { display: none; }
 }
 
 @media (max-width: 900px) {
@@ -3918,7 +4226,7 @@ body[data-screen="graf"] #screens { display: none; }
     border-color: var(--border-accent); background: var(--accent-soft); color: var(--text);
 }
 /* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
-.dir-tpl .ms { font-size: var(--icon-sm); color: var(--accent); }
+.dir-tpl :is(.ms, .ic) { font-size: var(--icon-sm); color: var(--accent); }
 
 /* Vstup úlohy + tlačidlo Poskladať */
 .dir-input-row { display: flex; gap: var(--sp-1); margin-bottom: var(--sp-3); }
@@ -3952,7 +4260,7 @@ body[data-screen="graf"] #screens { display: none; }
     font-size: var(--fs-body); font-weight: var(--fw-medium);
     color: var(--text); margin-bottom: var(--sp-1);
 }
-.dir-group-head .ms { font-size: var(--icon-sm); color: var(--accent); }
+.dir-group-head :is(.ms, .ic) { font-size: var(--icon-sm); color: var(--accent); }
 .dir-group-n { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); font-weight: 400; }
 
 /* Položka návrhu — reuse label.check (18px amethyst box), vlastný text layout */
@@ -4001,12 +4309,12 @@ label.check.dir-check.off { opacity: .5; }
 }
 .dir-preview-head h2 { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); }
 .dir-actions { display: flex; gap: var(--sp-0); }
-.dir-actions .ms {
+.dir-actions :is(.ms, .ic) {
     width: 32px; height: 32px; min-height: 32px;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: var(--icon-sm); border-radius: var(--r-sm);
 }
-.dir-actions .ms:hover { background: var(--accent-softer); color: var(--accent); }
+.dir-actions :is(.ms, .ic):hover { background: var(--accent-softer); color: var(--accent); }
 .dir-preview.md-body {
     flex: none; padding: var(--sp-2) var(--sp-3);
     max-height: 60vh; overflow-y: auto;
@@ -4027,12 +4335,17 @@ label.check.dir-check.off { opacity: .5; }
     border-color: var(--border-accent); background: var(--accent-softer);
 }
 /* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
-.dir-saved-item .ms { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.dir-saved-item :is(.ms, .ic) { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .dsi-text { display: flex; flex-direction: column; min-width: 0; }
 .dsi-title { font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dsi-path { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-@media (max-width: 860px) {
+/* 860 → 900 (plán §8): 860 a 900 boli od seba 40px a obe znamenali „úzko", takže
+   v pásme 861–900px mala appka dve rôzne definície úzkeho okna naraz — panely už
+   boli presunuté, druhý stĺpec Smernice ešte držal. Posun je hlboko v pásme
+   768–900 z rozhodnutia 18, teda bez straty. Po tejto zmene nemá súbor jediný
+   výskyt čísla 860 v mediálnej podmienke. */
+@media (max-width: 900px) {
     .dir-cols { grid-template-columns: 1fr; }
     .dir-preview-wrap { position: static; }
 }
@@ -4048,11 +4361,11 @@ label.check.dir-check.off { opacity: .5; }
    TOAST VARIANTS (E7) — recolor the inset bar + icon; base .toast unchanged
    --------------------------------------------------------------------------- */
 .toast.success::before { background: var(--success); }
-.toast.success .ms { color: var(--success); }
+.toast.success :is(.ms, .ic) { color: var(--success); }
 .toast.warn::before { background: var(--warn); }
-.toast.warn .ms { color: var(--warn); }
+.toast.warn :is(.ms, .ic) { color: var(--warn); }
 .toast.error::before { background: var(--danger); }
-.toast.error .ms { color: var(--danger); }
+.toast.error :is(.ms, .ic) { color: var(--danger); }
 .toast.error { border-color: var(--danger-border); }
 /* Undo affordance inside a toast (F3 delete/skip) */
 .toast .toast-undo {
@@ -4231,7 +4544,7 @@ select {
     text-align: left;
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.hero-action .ms { font-size: var(--icon-sm); flex-shrink: 0; }
+.hero-action :is(.ms, .ic) { font-size: var(--icon-sm); flex-shrink: 0; }
 .hero-action .ha-val {
     font-family: var(--mono); font-weight: var(--fw-semibold);
     font-variant-numeric: tabular-nums;
@@ -4495,7 +4808,7 @@ button.hero-action:hover { border-color: var(--accent); }
     color: var(--cert-none-ink);
     background: var(--cert-none-soft);
 }
-.cert .ms { font-size: var(--icon-2xs); line-height: 1; }
+.cert :is(.ms, .ic) { font-size: var(--icon-2xs); line-height: 1; }
 /* R4: TEXT na tinte badge ide cez -ink, VÝPLŇ zostáva *-soft zo základu.
    Základné hodnoty dávali nad zloženým pozadím 4,17–4,51:1 na paperi. */
 .cert[data-cert="overene"] { color: var(--cert-overene-ink); background: var(--cert-overene-soft); }
@@ -4509,7 +4822,7 @@ button.hero-action:hover { border-color: var(--accent); }
     padding: 0; gap: 0;
     background: none; border: none;
 }
-.cert.cert--icon .ms { font-size: var(--icon-sm); }
+.cert.cert--icon :is(.ms, .ic) { font-size: var(--icon-sm); }
 
 /* ---------------------------------------------------------------------------
    ORIGIN BADGE (.origin) — brain (.md) vs session (DB) provenance, monochrome.
@@ -4528,7 +4841,7 @@ button.hero-action:hover { border-color: var(--accent); }
     background: var(--surface-2);
     border: 1px solid var(--border);
 }
-.origin .ms { font-size: var(--icon-2xs); line-height: 1; }
+.origin :is(.ms, .ic) { font-size: var(--icon-2xs); line-height: 1; }
 /* brain reads a touch stronger (indexed source of truth) */
 .origin[data-origin="brain"] {
     color: var(--text-secondary);
@@ -4686,7 +4999,7 @@ body[data-screen="graf"] #mind {
 }
 .sync-stats strong { color: var(--text-secondary); }
 .sync-guard { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); }
-.sync-guard .ms { font-size: var(--icon-sm); }
+.sync-guard :is(.ms, .ic) { font-size: var(--icon-sm); }
 .sync-guard strong { color: var(--text-secondary); }
 .sync-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--sp-0h); }
 
@@ -4749,9 +5062,13 @@ button.danger.armed {
 /* ---------------------------------------------------------------------------
    RAIL BADGE COUNT — #dest-kontrola .count (review-queue size on the nav dest)
    --------------------------------------------------------------------------- */
+/* Odznak sedí na osi textu, tak ako `.dot` — v rozbalenom raile je destinácia riadok
+   a číslo prilepené k hornej hrane by viselo nad labelom. Zbalený stav (stĺpec) si
+   hornú polohu vracia nižšie, tam patrí nad ikonu. */
 #rail .rail-group :is(button, a).dest .count {
     position: absolute;
-    top: 4px; right: 8px;
+    top: 50%; right: 8px;
+    transform: translateY(-50%);
     min-width: 16px; height: 16px;
     padding: 0 var(--sp-0);
     display: inline-flex; align-items: center; justify-content: center;
@@ -5348,8 +5665,8 @@ button, input, select {
     cursor: pointer;
 }
 
-.run-toggle .ms { font-size: var(--icon-xs); transform: rotate(180deg); }
-.run-toggle[aria-expanded="true"] .ms { transform: none; }
+.run-toggle :is(.ms, .ic) { font-size: var(--icon-xs); transform: rotate(180deg); }
+.run-toggle[aria-expanded="true"] :is(.ms, .ic) { transform: none; }
 .run-toggle:hover { background: var(--accent-softer); color: var(--text); }
 
 .run-when, .run-model, .run-profile {

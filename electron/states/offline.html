@@ -68,11 +68,26 @@
             display: block;
         }
 
+        /* ZNAK-STYLE: generuje public/brand/build-mark.py zo hades-sigil-mini.svg.
+           Needituj ručne — pri najbližšom behu generátora sa zmena stratí.
+           Dôvod, prečo je geometria aj tu: tento dokument sa zobrazuje, KEĎ SERVER
+           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/. */
         .sigil .ring { fill: none; stroke: var(--accent); stroke-width: 9; }
         .sigil .core { fill: var(--gold); transform-origin: 50px 50px; }
+        /* /ZNAK-STYLE */
+
+        /* Základný stav jadra je PLNÁ mierka a plná farba, takže tichá verzia
+           (`prefers-reduced-motion: reduce`) nie je „vypnuté", ale hotový znak —
+           nikdy nezamrzne v spodnej fáze dýchania. Plošná podlaha z mind.css tento
+           dokument nekryje (nenačítava ho), preto je gate `no-preference` jediný
+           nositeľ tichej verzie a musí zostať. */
+        .sigil .core { transform: scale(1); opacity: 1; }
 
         @media (prefers-reduced-motion: no-preference) {
-            .sigil .core { animation: core-pulse 4s ease-in-out infinite; }
+            /* Slučková krivka, nie `ease-in-out`: príchodová krivka na nekonečnej
+               slučke kulhá — spomalí a skočí. Rovnaká hodnota ako `--ease-pulse`
+               v mind.css; tu je napísaná doslova, lebo tokeny sem nedosiahnu. */
+            .sigil .core { animation: core-pulse 4s cubic-bezier(.4, 0, .6, 1) infinite; }
         }
 
         @keyframes core-pulse {
@@ -171,10 +186,12 @@
 </head>
 <body>
     <main class="card">
+        <!-- ZNAK: generuje public/brand/build-mark.py — needituj ručne -->
         <svg class="sigil" viewBox="0 0 100 100" aria-hidden="true">
             <circle class="ring" cx="50" cy="50" r="36"></circle>
             <circle class="core" cx="50" cy="50" r="15"></circle>
         </svg>
+        <!-- /ZNAK -->
 
         <h1 id="head">Vedomie sa nepodarilo prebudiť</h1>
         <p class="lede" id="lede">Server neodpovedá — skontroluj, či Hades beží.</p>

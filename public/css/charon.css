@@ -58,13 +58,13 @@
 
 #charon-title {
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--fs-base);
     letter-spacing: .01em;
 }
 
 #charon-status {
     margin-left: auto;
-    font: 400 12px / 1.2 var(--mono);
+    font: 400 var(--fs-small) / 1.2 var(--mono);
     color: var(--muted);
     white-space: nowrap;
 }
@@ -103,13 +103,16 @@
     margin: auto 0;
     text-align: center;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--fs-body);
     line-height: 1.5;
 }
 
+/* 15 px v škále neexistuje a manuál §9 rozhodol NAHOR: titulok prázdneho stavu
+   je titulok, nie zdôraznená veta, takže berie stupeň --fs-title. Nadol by splynul
+   s telom (--fs-body 13 px) a stav by prestal učiť, čo to je. */
 .charon-empty-title {
     font-weight: 600;
-    font-size: 15px;
+    font-size: var(--fs-title);
     color: var(--text-secondary);
     margin-bottom: var(--sp-0);
 }
@@ -124,21 +127,21 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 11px;
+    font-size: var(--fs-caption);
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: .04em;
 }
 
-.charon-who .ms {
-    font-size: 14px;
+.charon-who .ic {
+    font-size: var(--icon-2xs);
 }
 
 .charon-bubble {
     padding: var(--sp-1) var(--sp-2);
     border-radius: var(--r-md);
     background: var(--surface-2);
-    font-size: 14px;
+    font-size: var(--fs-base);
     line-height: 1.55;
     color: var(--text);
     overflow-wrap: anywhere;
@@ -153,8 +156,19 @@
     color: var(--accent-ink);
 }
 
+/* JEDEN JAZYK CHYBY (rozhodnutie 16). Kánon je verzia konzoly (`.msg.error`):
+   telo bubliny je `--text`, `--danger-ink` nesie LEN menovka, farba chyby je
+   v ráme a v tinte. Do 27. 8. 2026 tu mala `--danger-ink` celá bublina, čo išlo
+   proti pravidlu zapísanému v mind.css pri sekcii STAVY („text chyby ide vždy
+   cez --text / --muted, NIKDY cez --danger") — chybová veta je text, ktorý má
+   človek použiť na opravu, takže musí prejsť prahom kontrastu ako každý iný. */
 .charon-msg--error .charon-bubble {
+    border: 1px solid var(--danger-border);
     background: var(--danger-soft);
+    color: var(--text);
+}
+
+.charon-msg--error .charon-who {
     color: var(--danger-ink);
 }
 
@@ -190,7 +204,7 @@
 }
 
 .charon-note {
-    font-size: 13px;
+    font-size: var(--fs-body);
     color: var(--muted);
 }
 
@@ -205,7 +219,16 @@
     border-radius: 50%;
     background: var(--accent);
     opacity: .4;
-    animation: charon-blink 1.2s infinite ease-in-out;
+    /* Dlhé zápisy, nie shorthand, a je to podmienka: `--ease-pulse` zavádza do
+       `:root` agent A3 (mind.css) a kým tam nie je, `animation: nazov var(--dur-pulse)
+       infinite var(--ease-pulse)` je CELÝ neplatný pri výpočte hodnoty — zmerané:
+       `animation-name` spadlo na `none`, teda indikátor prestal existovať, nie len
+       zmenil krivku. Rozpísané na longhandy zlyhá LEN krivka (padne na `ease`)
+       a slučka beží ďalej. */
+    animation-name: charon-blink;
+    animation-duration: var(--dur-pulse);
+    animation-iteration-count: infinite;
+    animation-timing-function: var(--ease-pulse);
 }
 
 .charon-dot:nth-child(2) { animation-delay: .2s; }
@@ -217,7 +240,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .charon-dot { animation: none; }
+    /* Tichá verzia NIE JE „vypnuté". Samotné `animation: none` nechá bodky na
+       `opacity: .4`, teda indikátor „model píše" stratí rozdiel medzi pokojom
+       a behom — a to je jediná vec, ktorú tá kresba nesie. Okamžitý ekvivalent
+       je plná farba; vetu o stave hovorí `.charon-note` vedľa bodiek. */
+    .charon-dot { animation: none; opacity: 1; }
 }
 
 /* ---------- karta nástroja ---------- */
@@ -244,7 +271,7 @@
     cursor: pointer;
     text-align: left;
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--fs-body);
 }
 
 .charon-tc-caret {
@@ -254,27 +281,27 @@
     border-left: 5px solid var(--muted);
     border-top: 4px solid transparent;
     border-bottom: 4px solid transparent;
-    transition: transform .15s ease;
+    transition: transform var(--dur-fast) var(--ease);
 }
 
 .charon-tc-head[aria-expanded="true"] .charon-tc-caret {
     transform: rotate(90deg);
 }
 
-.charon-tc-head .ms {
-    font-size: 16px;
+.charon-tc-head .ic {
+    font-size: var(--icon-xs);
     color: var(--muted-strong);
 }
 
 .charon-tc-name {
-    font: 400 12.5px / 1.2 var(--mono);
+    font: 400 var(--fs-small) / 1.2 var(--mono);
     color: var(--text-secondary);
 }
 
 .charon-tc-args {
     flex: 1 1 auto;
     min-width: 0;
-    font: 400 12px / 1.2 var(--mono);
+    font: 400 var(--fs-small) / 1.2 var(--mono);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -283,7 +310,7 @@
 
 .charon-tc-state {
     flex: 0 0 auto;
-    font-size: 11px;
+    font-size: var(--fs-caption);
     color: var(--muted);
     white-space: nowrap;
 }
@@ -302,7 +329,7 @@
     padding: var(--sp-1);
     background: var(--surface-subtle);
     border-radius: var(--r-sm);
-    font: 400 12px / 1.5 var(--mono);
+    font: 400 var(--fs-data) / var(--lh-data) var(--mono);
     color: var(--text-secondary);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -321,7 +348,7 @@
     border: none;
     background: transparent;
     color: var(--accent-ink);
-    font-size: 12px;
+    font-size: var(--fs-small);
     cursor: pointer;
     padding: 2px 0;
 }
@@ -350,12 +377,18 @@
 /* Zaparkované dieťa je jediný stav, v ktorom pás niečo ŽIADA — nesie ho tá istá
    akcentová rola ako karta brány, aby oko našlo miesto rozhodnutia. */
 .charon-agent.is-waiting .charon-agent-box { background: var(--accent-softer); }
+/* Tento riadok je znak po znaku `.agent-run.is-failed` v console.css a ZOSTÁVA
+   dvakrát: `charon.css` sa načítava na `/`, `console.css` na `/console` a nikdy
+   spolu, takže zlúčenie do jedného zoznamu selektorov by muselo bývať v mind.css
+   (jediný stylesheet troch plôch) — a ten súbor vlastní reťazec A1–A3. Je to teda
+   jedno pravidlo zapísané dvakrát, nie dve pravdy; ten istý precedens ako
+   `--stream-w` a `.diff` v console.css a chat.css. */
 .charon-agent.is-failed .charon-agent-box { border-left-color: var(--danger-border); }
 .charon-agent.is-closed .charon-agent-box { border-left-color: var(--border); }
 
 .charon-agent-meta {
     margin: 0;
-    font: 400 12px / 1.4 var(--mono);
+    font: 400 var(--fs-small) / 1.4 var(--mono);
     color: var(--muted);
 }
 
@@ -364,8 +397,8 @@
    podbeh je — celé zadanie je v konzole, kam pás odkazuje. */
 .charon-agent-task {
     margin: var(--sp-0) 0 0;
-    font-size: 13px;
-    line-height: 1.45;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--text-secondary);
     overflow-wrap: anywhere;
     display: -webkit-box;
@@ -377,7 +410,7 @@
 .charon-agent-note,
 .charon-agent-foot {
     margin: var(--sp-0) 0 0;
-    font-size: 12px;
+    font-size: var(--fs-small);
     line-height: 1.45;
     color: var(--muted);
 }
@@ -386,7 +419,7 @@
 
 .charon-agent-err {
     margin: var(--sp-0) 0 0;
-    font-size: 12px;
+    font-size: var(--fs-small);
     line-height: 1.45;
     color: var(--danger-ink);
 }
@@ -416,13 +449,13 @@
     margin-bottom: var(--sp-0);
 }
 
-.charon-perm-head .ms { font-size: 16px; color: var(--accent-ink); }
-.charon-perm-name { font: 600 13px / 1.2 var(--mono); color: var(--text); }
+.charon-perm-head .ic { font-size: var(--icon-xs); color: var(--accent-ink); }
+.charon-perm-name { font: 600 var(--fs-body) / 1.2 var(--mono); color: var(--text); }
 
 .charon-perm-args {
     flex: 1 1 auto;
     min-width: 0;
-    font: 400 12px / 1.2 var(--mono);
+    font: 400 var(--fs-small) / 1.2 var(--mono);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -431,7 +464,7 @@
 
 .charon-perm-ask {
     margin: 0 0 var(--sp-1);
-    font-size: 13px;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text-secondary);
 }
@@ -444,7 +477,7 @@
     background: var(--panel-solid);
     border: 1px solid var(--line-soft);
     border-radius: var(--r-sm);
-    font: 400 12px / 1.5 var(--mono);
+    font: 400 var(--fs-data) / var(--lh-data) var(--mono);
     color: var(--text-secondary);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -465,7 +498,7 @@
     border: 1px solid var(--border);
     background: var(--surface-2);
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--fs-body);
     cursor: pointer;
 }
 
@@ -486,7 +519,7 @@
 .charon-perm-btn.danger:hover { background: var(--danger-soft); }
 
 .charon-perm-btn kbd {
-    font: 400 11px / 1 var(--mono);
+    font: 400 var(--fs-caption) / 1 var(--mono);
     padding: 2px 4px;
     border-radius: 4px;
     border: 1px solid var(--border-strong);
@@ -502,7 +535,7 @@
 
 .charon-perm-done {
     margin: 0;
-    font-size: 13px;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text-secondary);
 }
@@ -557,12 +590,14 @@
     border-radius: var(--r-pill);
     background: var(--surface-2);
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--fs-data-chip);
     cursor: pointer;
 }
 
 #charon-pack:hover { background: var(--surface-subtle); border-color: var(--border-accent); }
-#charon-pack .ms { font-size: 15px; }
+/* 15 px v ikonovej škále NIE JE; manuál §9 rozhodol na --icon-xs (16 px) —
+   čip Balíka nesie tú istú veľkosť ako ikona v hlavičke karty nástroja. */
+#charon-pack .ic { font-size: var(--icon-xs); }
 
 #charon-form {
     display: flex;
@@ -581,7 +616,7 @@
     background: var(--field-bg);
     color: var(--text);
     font-family: inherit;
-    font-size: 14px;
+    font-size: var(--fs-base);
     line-height: 1.4;
 }
 
@@ -598,7 +633,7 @@
     border: none;
     border-radius: var(--r-md);
     cursor: pointer;
-    font-size: 20px;
+    font-size: var(--icon-md);
 }
 
 #charon-send {

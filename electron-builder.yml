@@ -34,7 +34,9 @@ asarUnpack:
 files:
   - package.json
   - electron/**/*
-  - "!electron/assets/build-icon.py"   # generátor ikony, čisto build-time — nepatrí do balíka
+  # Zástupca generátora ikony (samotný generátor je public/brand/build-mark.py,
+  # a public/ sa nebalí vôbec). Čisto build-time — nepatrí do balíka.
+  - "!electron/assets/build-icon.py"
 
 win:
   icon: electron/assets/hades.ico

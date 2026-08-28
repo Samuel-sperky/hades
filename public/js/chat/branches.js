@@ -31,6 +31,9 @@ import { el } from './render.js';
 import { announce, live, streamHost } from './main.js';
 import { loadThread } from './run.js';
 import { api, errorLine, plural, whenLabel } from './threads.js';
+/* Query string. `mind/urlstate.js` je jediné miesto v repe, ktoré ho číta aj
+   píše (rozhodnutie 31), a je to čistý modul nad `URLSearchParams`. */
+import { urlValue, writeUrl } from '../mind/urlstate.js';
 
 /* ---------------------------------------------------------------------------
    STAV
@@ -50,6 +53,14 @@ const B = {
 
 /** Prebehla inicializácia? `bootBranches()` je idempotentné. */
 let booted = false;
+
+/* Sú listenery pripojené? `wireBranches()` sa volá DVAKRÁT: raz z `boot()`
+   kostry a raz z `bootBranches()` (obe cesty existujú zámerne, poradie
+   drôtovania nesmie rozhodovať). Bez tejto stráže mal každý listener dvojníka —
+   zmerané: jedno `Naspäť` poslalo `POST /activate` DVA razy a každé načítanie
+   vlákna dva razy `GET /branches`. Pri mutácii to nie je len zbytočný request:
+   je to dvojitý zápis do `console_threads.active_branch_id`. */
+let wired = false;
 
 /** Debounce obnovy pásu — počty správ vo vetve sa hýbu po každom ťahu. */
 let refreshTimer = 0;
@@ -253,7 +264,28 @@ function dropButton(branch) {
    PREPNUTIE
    --------------------------------------------------------------------------- */
 
-export async function activate(uuid) {
+/**
+ * Prepnutie vetvy.
+ *
+ * AKTÍVNA VETVA JE STAV SERVERA (`console_threads.active_branch_id`), nie stav
+ * adresy. Kľúč `b` je preto ČÍTACÍ: hovorí, na ktorej vetve čitateľ stojí, ale
+ * sám nič neprepína. Jediná klientská cesta k prepnutiu je tento `POST`, teda
+ * mutácia — a mutácia sa nesmie stať tým, že si niekto otvorí odkaz.
+ *
+ * Zápis do adresy je až PO potvrdení serverom a je to `pushState`: prepnutie
+ * vetvy JE navigácia (rozhodnutie 10), takže `Naspäť` má vrátiť predchádzajúcu
+ * vetvu. Preto tiež až po odpovedi — adresa nikdy nesmie tvrdiť vetvu, ktorú
+ * server odmietol (409, kým vo vlákne beží ťah alebo čaká zápis).
+ *
+ * `record: false` je cesta z `popstate`: tam sa adresa už zmenila prehliadačom
+ * a druhý záznam by z jedného `Naspäť` urobil dva.
+ *
+ * Rozsahy `from_message_id`–`to_message_id` v `runs` tým nie sú ohrozené: vetva
+ * sa neprepisuje ani nevkládá do stredu, mení sa len to, KTORÉ správy sú
+ * história — a to číta `AgentRunner::history()` cez `branchMessages()` zo DB.
+ * Adresa o výbere správ nerozhoduje, len o polohe čitateľa.
+ */
+export async function activate(uuid, { record = true } = {}) {
     const res = await api(`/api/console/branches/${uuid}/activate`, { method: 'POST' });
 
     if (!res.ok) {
@@ -263,6 +295,7 @@ export async function activate(uuid) {
     }
 
     say('');
+    if (record) writeUrl({ b: uuid }, 'push');
 
     // Prepnutie vetvy nemení správy, mení to, ktoré z nich sú história — takže
     // sa vlákno načíta znova a tok sa poskládá zo serveru.
@@ -308,6 +341,56 @@ export async function loadBranches(uuid) {
 
     B.data = res.data;
     paintBar();
+    reconcileBranchUrl();
+}
+
+/**
+ * Adresa proti serveru — a pravdu má server.
+ *
+ * `b` je čítací kľúč, takže pri načítaní stránky sa NEAKTIVUJE nič (nula
+ * requestov na `/activate`). Keď adresa menuje inú vetvu, než ktorú má vlákno
+ * aktívnu, adresa lže a **skráti sa**; neznáme uuid sa zahodí bez slova, existujúcu
+ * vetvu človek dostane vysvetlenú, pretože si ju z odkazu zjavne vybral.
+ *
+ * Rozšíriť `b` na čítaciu serverovú cestu (zobraziť vetvu bez toho, aby sa stala
+ * aktívnou) je rozhodnutie používateľa — dnes taká route neexistuje a jediná
+ * cesta je mutácia.
+ */
+export function reconcileBranchUrl() {
+    // `urlValue()` vracia `null`, keď kľúč v adrese nie je alebo je neplatný —
+    // pre túto plochu je to to isté ako „nič": `''`.
+    const wanted = urlValue('b') || '';
+    const active = B.data?.active || '';
+
+    if (wanted === '' || wanted === active) return;
+
+    const known = (Array.isArray(B.data?.branches) ? B.data.branches : [])
+        .some((branch) => branch.uuid === wanted);
+
+    if (known) say('Odkaz ukazoval na inú vetvu. Zobrazená je tá, ktorá je vo vlákne aktívna.');
+
+    writeUrl({ b: active || null }, 'replace');
+}
+
+/**
+ * `Naspäť` / `Dopredu` medzi vetvami.
+ *
+ * `popstate` NIE JE načítanie stránky — je to navigačné gesto človeka, tej istej
+ * triedy ako klik na pilulku. Preto sa tu prepnutie vykoná (a `record: false`,
+ * lebo adresu už zmenil prehliadač). Bez toho by `Naspäť` po prepnutí vetvy
+ * nevrátilo nič a záznam v histórii by bol dekorácia.
+ *
+ * Pri načítaní stránky sa táto cesta nezavolá: `popstate` vtedy nepríde.
+ */
+export function branchFromHistory() {
+    const wanted = urlValue('b') || '';
+    if (wanted === '' || B.thread === '' || !B.data) return;
+    if (wanted === (B.data.active || '')) return;
+
+    const known = (Array.isArray(B.data.branches) ? B.data.branches : [])
+        .some((branch) => branch.uuid === wanted);
+
+    if (known) activate(wanted, { record: false });
 }
 
 function scheduleRefresh() {
@@ -496,6 +579,9 @@ async function fork(mid, text) {
    --------------------------------------------------------------------------- */
 
 export function wireBranches() {
+    if (wired) return;
+    wired = true;
+
     // `chat:thread` prichádza po tom, čo `render.js` poskládal tok — takže
     // bubliny, ku ktorým sa tlačidlo pripája, už v DOM sú.
     document.addEventListener('chat:thread', (event) => {
@@ -512,7 +598,13 @@ export function wireBranches() {
     // Adresa bez uuid = žiadne vlákno na obrazovke. Bez tohto by pás visel nad
     // prázdnym stavom a nabízel prepínanie vetiev vlákna, ktoré nie je otvorené.
     window.addEventListener('popstate', () => {
-        if (/^\/chat\/?$/.test(location.pathname)) loadBranches('');
+        if (/^\/chat\/?$/.test(location.pathname)) {
+            loadBranches('');
+
+            return;
+        }
+
+        branchFromHistory();
     });
 }
 

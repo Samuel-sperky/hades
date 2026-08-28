@@ -3,6 +3,7 @@ import { openMdOverlay } from '../md.js';
 import { bindPackButtons, packBtn } from '../pack.js';
 import { originBadge } from './dnes.js';
 import { mutedColor } from '../theme.js';
+import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo } from '../util.js';
 
 /* ---------- obrazovka Knižnica (/api/library) ----------
@@ -18,7 +19,38 @@ import { $, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, re
    lebo odpoveď má strop 500 a klientský filter by hľadal len v prvej stránke.
    Tu strop nie je, takže klientský filter vidí presne to isté, čo server. */
 
-export const libraryState = { areas: [], total: 0, areaSlug: null, q: '' };
+/* Boot z URL (slovník §6): `kna` = slug oblasti, `q` = hľadanie. `q` je SPOLOČNÝ
+   kľúč šiestich obrazoviek a jeho význam určuje `s`, takže si ho vezmeme len
+   vtedy, keď odkaz mieril naozaj sem — inak by výraz z Kontroly zúžil Knižnicu.
+
+   Asymetria zostáva zámerná (viď blok vyššie): `q` ide na server, `kna` nie.
+   Do URL idú OBA, pretože URL nesie polohu čitateľa, nie dopyt. */
+const BOOT_MINE = readUrl().s === 'kniznica';
+export const libraryState = {
+    areas: [], total: 0,
+    areaSlug: (BOOT_MINE ? urlValue('kna') : null) || null,
+    q: '',
+};
+
+/* Hľadaný výraz nedržíme v stave, ale v `#library-search` — `renderLibrary()` si
+   ho odtiaľ číta sám a podstrkovať mu inú hodnotu by bol druhý zdroj pravdy.
+   Z URL sa preto do poľa dosadí RAZ, pri prvom renderi (pole v DOM pri načítaní
+   modulu ešte nemusí existovať). */
+let libraryBootQ = BOOT_MINE ? (urlValue('q') || null) : null;
+
+/* Späť / Dopredu: adresa je vstup, obrazovka sa jej podriadi. Výraz ide do poľa
+   (jeden zdroj pravdy) a `renderLibrary()` si ho odtiaľ prečíta sám. */
+registerUrlApply('kniznica', (url) => {
+    if (url.s !== 'kniznica') return;
+    const nextArea = url.kna || null;
+    const nextQ = url.q || '';
+    const inp = $('library-search');
+    const curQ = inp ? ((inp.value || '').trim()) : libraryState.q;
+    if (nextArea === libraryState.areaSlug && nextQ === curQ) return;
+    libraryState.areaSlug = nextArea;
+    if (inp) inp.value = nextQ; else libraryBootQ = nextQ;
+    if (document.body.dataset.screen === 'kniznica') renderLibrary();
+});
 
 // F4: meta riadok skillu v Knižnici — origin + cert (icon) + vek + značky (chipy).
 //
@@ -82,7 +114,10 @@ export async function renderLibrary() {
     const body = $('library-body');
     if (!body) return;
     const seq = ++librarySeq;
-    const q = ($('library-search').value || '').trim();
+    const inp = $('library-search');
+    // Jednorazové dosadenie výrazu z odkazu; ďalej je zdrojom pravdy pole samo.
+    if (libraryBootQ !== null && inp) { inp.value = libraryBootQ; libraryBootQ = null; }
+    const q = ((inp && inp.value) || '').trim();
     // Načítavaciu značku ukazujeme LEN keď nie je čo zachovať. Pri filtrovaní
     // zoznam necháme stáť a iba ho ztlmíme — inak obrazovka pri každom stlačení
     // klávesy zablikala naprázdno (a s výraznejšou značkou to bije ešte viac).
@@ -139,6 +174,11 @@ export function renderLibraryView() {
     if (!body) return;
     const areas = libraryState.areas;
     const q = libraryState.q;
+    /* Adresa sa píše TU, nie v `renderLibrary()`: sem vedú obe cesty — nová
+       odpoveď servera (po `pruneLibraryArea()`, teda orezaná pravda) aj klik do
+       radu čipov, ktorý server neobťažuje vôbec. Jedno miesto, jeden zápis.
+       `replace` — filter do histórie nepatrí (rozhodnutie 10). */
+    writeUrl({ kna: libraryState.areaSlug, q: q || null }, 'replace');
     if (!areas.length) {
         // Niet ani osi, z ktorej by sa dal poskladať filter — prázdno berie celé telo.
         libraryAxisSig = null;

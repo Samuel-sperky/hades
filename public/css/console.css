@@ -177,7 +177,7 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     color: var(--muted);
 }
 
-.rail-find .ms { font-size: 16px; }
+.rail-find .ic { font-size: var(--icon-xs); }
 
 #thread-find {
     flex: 1;
@@ -346,7 +346,16 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     height: 30px;
     border-radius: var(--r-sm);
     background: var(--surface-2);
-    animation: sk-pulse 1.4s ease-in-out infinite;
+    /* Dlhé zápisy, nie shorthand, a je to podmienka: `--ease-pulse` zavádza do
+       `:root` agent A3 (mind.css) a kým tam nie je, `animation: nazov var(--dur-pulse)
+       infinite var(--ease-pulse)` je CELÝ neplatný pri výpočte hodnoty — zmerané:
+       `animation-name` spadlo na `none`, teda indikátor prestal existovať, nie len
+       zmenil krivku. Rozpísané na longhandy zlyhá LEN krivka (padne na `ease`)
+       a slučka beží ďalej. */
+    animation-name: sk-pulse;
+    animation-duration: var(--dur-pulse);
+    animation-iteration-count: infinite;
+    animation-timing-function: var(--ease-pulse);
 }
 
 .sk-row:nth-child(2) { animation-delay: .12s; }
@@ -434,8 +443,9 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 
 /* ZÁSAHOVÝ CIEĽ BRÁNY ZÁPISOV (nález P11). Týmto prepínačom sa vypína
    potvrdzovanie zápisov do pamäte a do súborov — je to najzávažnejší prepínač
-   v appke a do 21. 8. 2026 bol jej NAJMENŠÍ cieľ: 128×18 px, a pod 860 px, kde
-   sa skryje `.lbl`, spadol na samotné 13×13 px políčko prehliadača.
+   v appke a do 21. 8. 2026 bol jej NAJMENŠÍ cieľ: 128×18 px, a pod hranicou, kde
+   sa skryje `.lbl` (860 px vtedy, od 27. 8. 2026 zjednotene 900 px), spadol na
+   samotné 13×13 px políčko prehliadača.
 
    Výšku drží `--control-h` (32 px na všetkých škálach hustoty — kompaktné
    zobrazenie zhusťuje priestor medzi prvkami, nie klikaciu plochu), šírku aj
@@ -532,7 +542,7 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     color: var(--muted);
 }
 
-.msg .who .ms { font-size: 14px; }
+.msg .who .ic { font-size: var(--icon-2xs); }
 
 .who-model {
     text-transform: none;
@@ -571,7 +581,10 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     border-radius: var(--r-pill);
     background: var(--accent);
     opacity: .3;
-    animation: think-blink 1.2s ease-in-out infinite;
+    animation-name: think-blink;
+    animation-duration: var(--dur-pulse);
+    animation-iteration-count: infinite;
+    animation-timing-function: var(--ease-pulse);
 }
 
 .think-dot:nth-child(2) { animation-delay: .16s; }
@@ -589,7 +602,10 @@ button:where(.tr-open, .tool-head, #send, #stop) {
    si pohyb výslovne vypol. Stav „beží" nesie text `.tool-state`, nie jeho blikanie,
    takže jeho farba (`--accent-ink`) zostáva. */
 @media (prefers-reduced-motion: reduce) {
-    .think-dot { animation: none; opacity: .65; }
+    /* Bodky v PLNEJ farbe, nie na .65: bez pohybu je jediný nositeľ „model
+       píše" ich prítomnosť, takže útlm by hovoril „vypnuté". Vetu o stave nesie
+       `.think-note` vedľa nich. Rovnaké rozhodnutie ako `.charon-dot` v doku. */
+    .think-dot { animation: none; opacity: 1; }
     .sk-row { animation: none; opacity: .7; }
     .tr-acts { transition: none; }
     .tool-call.running .tool-state { animation: none; }
@@ -703,7 +719,7 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     color: var(--muted);
 }
 
-.empty-can .ms { font-size: 18px; color: var(--accent-ink); }
+.empty-can .ic { font-size: var(--icon-sm); color: var(--accent-ink); }
 
 /* ---------- karta nástroja ---------- */
 
@@ -758,11 +774,12 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 }
 
 .tool-head:hover { background: var(--hover-fill); }
-.tool-head .ms { font-size: 16px; color: var(--muted); }
+.tool-head .ic { font-size: var(--icon-xs); color: var(--muted); }
 
-/* Šípka rozbalenia je kreslená CSS-om a nie ikonou zámerne: `expand_more`,
-   `chevron_right` ani `unfold_more` v subsete Material Symbols NIE SÚ (overené
-   scratchpad/iconcheck.js) a vykreslili by sa ako svoje meno. */
+/* Šípka rozbalenia je kreslená CSS-om a nie ikonou zámerne. Dôvod sa 27. 8. 2026
+   zmenil, výsledok nie: v subsete Material Symbols `expand_more`/`chevron_right`
+   neboli, a vlastná sada 60 symbolov chevron zámerne nemá — rozbalenie je stav
+   prvku, nie vec, takže ho nesie natočený tvar, nie samostatný symbol. */
 .tool-caret {
     width: 6px;
     height: 6px;
@@ -795,7 +812,13 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     font-family: var(--mono);
 }
 
-.tool-call.running .tool-state { color: var(--accent-ink); animation: tool-pulse 1.1s ease-in-out infinite; }
+.tool-call.running .tool-state {
+    color: var(--accent-ink);
+    animation-name: tool-pulse;
+    animation-duration: var(--dur-pulse);
+    animation-iteration-count: infinite;
+    animation-timing-function: var(--ease-pulse);
+}
 .tool-call.waiting .tool-state { color: var(--warn-ink); }   /* --warn dal na svetlej 3,00:1 */
 .tool-call.error .tool-state { color: var(--danger-ink); }   /* --danger dal na svetlej 4,12:1 */
 .tool-call.denied .tool-state { color: var(--muted); }
@@ -804,13 +827,17 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 
 .tool-body { padding: 0 12px 10px; border-top: 1px solid var(--line-soft); }
 
+/* Výsledok nástroja je DÁTOVÝ text — to, čo človek na karte naozaj čita —
+   preto rolový token hustoty (13 px), nie stupeň škály. Chróm karty (stav, args,
+   meno nástroja) zostáva na svojom mikro stupni; merač, ktorý zdvihne aj jeho,
+   nemeria nič. `charon.css` má tú istú rolu na tom istom tokene. */
 .tool-result {
     margin: 10px 0 0;
     padding: 0;
     max-height: none;
     font-family: var(--mono);
-    font-size: var(--fs-small);
-    line-height: 1.5;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--text-secondary);
     white-space: pre-wrap;
     overflow-x: auto;
@@ -894,7 +921,7 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     min-width: 0;
 }
 
-.agent-head .ms { font-size: 16px; color: var(--accent-ink); }
+.agent-head .ic { font-size: var(--icon-xs); color: var(--accent-ink); }
 .agent-title { font-size: var(--fs-body); font-weight: 500; }
 
 .agent-meta {
@@ -913,8 +940,8 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 .agent-task {
     margin: var(--sp-0) 0 0;
     color: var(--text-secondary);
-    font-size: var(--fs-body);
-    line-height: 1.5;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     overflow-wrap: anywhere;
 }
 
@@ -993,7 +1020,7 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     min-width: 0;
 }
 
-.pc-head .ms { font-size: 18px; color: var(--accent-ink); }
+.pc-head .ic { font-size: var(--icon-sm); color: var(--accent-ink); }
 .pc-name { font-family: var(--mono); font-size: var(--fs-body); }
 
 .pc-args {
@@ -1009,6 +1036,8 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 
 .pc-ask { margin: 8px 0 10px; font-size: var(--fs-body); color: var(--text-secondary); }
 
+/* Náhľad zápisu je jediná vec, podľa ktorej sa pri bráne rozhoduje — dátový
+   text, rovnako ako výsledok nástroja. */
 .pc-preview {
     margin: 0 0 12px;
     padding: 8px 0;
@@ -1017,8 +1046,8 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     border-radius: var(--r-md);
     background: var(--surface-2);
     font-family: var(--mono);
-    font-size: var(--fs-small);
-    line-height: 1.5;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
     color: var(--text-secondary);
     overflow: auto;
     white-space: pre-wrap;
@@ -1086,7 +1115,7 @@ button:where(.tr-open, .tool-head, #send, #stop) {
        cesta a odsúvala by celý riadok o pixel. Nulová šírka tu je preto, aby
        prechod mal odkiaľ vyrásť a prsteň nepreblikol naraz. */
     box-shadow: 0 0 0 0 transparent;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
 /* Fokus nesie RIADOK, nie textarea vnútri — dva indikátory naraz (prsteň na
@@ -1187,7 +1216,9 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 }
 
 /* Späť na spodok — plávajúce nad composerom, ukáže sa len keď tok prestane
-   sledovať spodok. `arrow_downward` v subsete nie je, preto prevrátená šípka. */
+   sledovať spodok. Do 27. 8. 2026 tu bola prevrátená `arrow_upward`, pretože
+   `arrow_downward` v subsete Material Symbols nebola; vlastná sada má symbol
+   `arrow-down`, takže `.ms.flip` zmizlo aj s dôvodom svojej existencie. */
 #to-bottom {
     position: absolute;
     top: -18px;
@@ -1205,7 +1236,6 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 }
 
 #to-bottom:hover { border-color: var(--border-accent); color: var(--accent-ink); }
-.ms.flip { transform: rotate(180deg); }
 
 /* ---------- paleta príkazov ---------- */
 
@@ -1242,8 +1272,8 @@ button:where(.tr-open, .tool-head, #send, #stop) {
    `role="option"` povinný, kým `.on` bola len farba. Špecificita je rovnaká
    (0-2-0 pre pozadie, 0-2-1 pre ikonu), takže vypočítaný štýl sa nemení. */
 .sp-item[aria-selected="true"] { background: var(--accent-soft); }
-.sp-item .ms { font-size: 16px; color: var(--muted); }
-.sp-item[aria-selected="true"] .ms { color: var(--accent-ink); }
+.sp-item .ic { font-size: var(--icon-xs); color: var(--muted); }
+.sp-item[aria-selected="true"] .ic { color: var(--accent-ink); }
 .sp-cmd { font-family: var(--mono); font-size: var(--fs-small); }
 .sp-arg { font-family: var(--mono); font-size: var(--fs-small); color: var(--muted); }
 
@@ -1261,36 +1291,40 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 /* `.hidden` tu BOLO a bolo to bajt za bajt to isté, čo `.hidden` v mind.css.
    Oba stylesheety sa načítavajú spolu, takže druhý zápis nikdy nič nezmenil. */
 
-/* Ikony sedia na tom istom subsete ako rail grafu; keď pridáš NOVÚ ikonu,
-   subset ju nemá a vykreslí sa ako text — treba regenerovať font.
+/* Ikona je od 27. 8. 2026 inline SVG z `public/js/shared/icons.js`, nie ligatúra
+   ikonového fontu. Kresbu triedy `.ic` (`display`, 1em × 1em, `flex: none`,
+   zvislé zarovnanie, základ `--icon-md`) nesie mind.css, ktorý sa načítava PRED
+   týmto súborom na tej istej špecificite 0-0-1.
 
-   Celý zvyšok bloku (line-height, font-weight/style, letter-spacing,
-   text-transform, white-space, display, direction, font-variation-settings,
-   font-smoothing) dáva `.ms` v mind.css, ktorý sa načítava PRED týmto súborom
-   na tej istej špecificite 0-0-1. Ostávajú len tri veci, ktorými sa konzola
-   naozaj líši:
-     · `sans-serif` fallback — keď subset zhavaruje, ligatúrový názov sa aspoň
-       vykreslí bezpätkovo a nerozhodí rail (mind.css fallback nemá);
-     · `--icon-sm` (18 px) namiesto `--icon-md` (20 px) z mind.css — konzola má
-       drobnejšie ikony; token je zámerne `-sm`, `-md` by bolo +2 px všade;
-     · `liga` naprieč prefixmi — mind.css ho nedeklaruje. */
-.ms {
-    font-family: 'Material Symbols Rounded', sans-serif;
+   Ostáva JEDINÁ odchýlka konzoly, a je tá istá, aká tu bola predtým: `--icon-sm`
+   (18 px) namiesto `--icon-md` (20 px) — konzola má drobnejšie ikony. Token je
+   zámerne `-sm`; `-md` by bolo +2 px všade.
+
+   Čo odišlo a prečo: `sans-serif` fallback a `liga` boli obrany proti neúplnému
+   subsetu Material Symbols (nevykreslená ligatúra sa ukázala ako svoje meno).
+   SVG symbol nemá čo nevykresliť — neznámy názov kreslí `ring` a zapíše sa do
+   `window.HADES._iconMiss`, takže porucha je meraná, nie vizuálna.
+
+   Veľkosť nesie `font-size`, pretože symbol má `width/height: 1em`: všetkých
+   sedem prepisov veľkosti nižšie tým prežilo výmenu bez zmeny hodnoty. */
+.ic {
     font-size: var(--icon-sm);
-    -webkit-font-feature-settings: 'liga';
-    font-feature-settings: 'liga';
 }
 
-/* DVE ÚROVNE ZALOMENIA, obe zámerné a obe použité v mind.css aj tu:
-     900 px — plávajúce panely (dock, detail uzla) a karty dashboardu,
-     860 px — plochy, ktoré strácajú druhý stĺpec (Smernica, rail Charóna).
-   Nedajú sa vytiahnuť do tokenu: CSS premenné v `@media` nefungujú. Keď niektorú
-   z hraníc meníš, prehľadaj OBA stylesheety — inak sa appka zlomí na dvoch
-   rôznych šírkach a bude to vyzerať ako chyba layoutu. */
-@media (max-width: 860px) {
+/* JEDNA ÚROVEŇ ZALOMENIA PRE „ÚZKO": 900 px.
+   Do 27. 8. 2026 ich appka mala dve — 900 px (plávajúce panely) a 860 px (plochy,
+   ktoré strácajú druhý stĺpec) — takže v pásme 861–900 px platili DVE rôzne
+   definície úzkeho okna naraz: `mind.css` už odsunul panely, kým `console.css`
+   ešte držal dva stĺpce. Posun o 40 px leží hlboko v pásme 768–900 z rozhodnutia
+   18, teda bez straty. Zjednotená sada je 1280 / 901 / 900; `860` už nie je
+   šírkový zlom nikde.
+   Premenné v `@media` nefungujú, takže hranica je literál — keď ju meníš,
+   prehľadaj VŠETKY TRI stylesheety (mind, console, chat) aj `charon.css`, inak sa
+   appka zlomí na dvoch rôznych šírkach a bude to vyzerať ako chyba layoutu. */
+@media (max-width: 900px) {
     #console-app { grid-template-columns: 1fr; }
 
-    /* Panel sa pod 860 px nezruší, len sa odsune — inak by na úzkom okne nebolo
+    /* Panel sa pod 900 px nezruší, len sa odsune — inak by na úzkom okne nebolo
        ako otvoriť staré vlákno. Prepínač #rail-toggle ho vysunie ako prekryv. */
     #thread-rail {
         position: fixed;
@@ -1311,6 +1345,10 @@ button:where(.tr-open, .tool-head, #send, #stop) {
         position: fixed;
         inset: 0;
         background: var(--scrim);
+        /* Sklo je LEN na tmavej téme (rozhodnutia 22+25) a nesie to PREPÍNATEĽNÝ
+           token: `--scrim-blur` je na svetlej `none`, na tmavej `blur(4px)`. Blur
+           primitív priamo tu byť nesmie — rozmazával by na oboch témach. */
+        backdrop-filter: var(--scrim-blur);
         z-index: 10;
     }
 
@@ -1320,18 +1358,22 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     #rail-toggle { display: inline-flex; }
     #console-header { flex-wrap: wrap; padding: 6px var(--sp-2); }
     .ch-right { gap: 10px; }
-    /* Text zmizne, cieľ nie: `.auto-accept` má `min-height: var(--control-h)`
-       a vodorovný padding, takže aj tu zostáva nad 24×24 (32 × ~29 px). Tento
-       riadok bol do 21. 8. 2026 presne to miesto, kde brána zápisov spadla na
-       13×13 px — keď mu meníš okolie, prepočítaj šírku znova. */
+    /* Text zmizne, cieľ nie. Tento riadok bol do 21. 8. 2026 presne to miesto,
+       kde brána zápisov spadla na 13×13 px, a komentár preto žiada prepočet pri
+       každej zmene okolia. Hranica sa 27. 8. 2026 posunula 860 → 900, teda `.lbl`
+       zmizne o 40 px skôr — ZMERANÉ pri tejto zmene, z oboch strán hranice:
+       pri šírke okna 880 px (kde predtým label ešte bol) má tlačidlo
+       `.auto-accept` 29 × 32 px, teda nad 24×24; pri 901 px 144,2 × 32 px
+       s labelom. Číslo drží `min-height: var(--control-h)` a 2 × `--sp-1`
+       vodorovný padding okolo 13 px políčka prehliadača. */
     .auto-accept .lbl { display: none; }
     #model-select { max-width: 130px; }
     #stream { padding: var(--sp-2) 12px var(--sp-1); }
     #composer { padding: 10px 12px 8px; }
-    /* Nápoveda sa pod 860 px NEskrýva, len sa zúži. `display: none` tu bol do
+    /* Nápoveda sa pod 900 px NEskrýva, len sa zúži. `display: none` tu bol do
        20. 8. 2026 a s ním zmizla jediná stopa po slash príkazoch a skratkách —
        na úzkom okne zostal len zrezaný placeholder. Teraz sa schovajú len
        klávesové kombinácie (na dotyku aj tak nemajú význam) a veta o `/` ostane. */
     #composer-hint .hint-keys { display: none; }
-    #composer-hint { font-size: 10px; margin-top: 6px; }
+    #composer-hint { font-size: var(--fs-micro); margin-top: 6px; }
 }

@@ -76,35 +76,33 @@
    vlastnom pravidle nižšie a v resete nie je. */
 :is(a, button):where(
     .cp-top a, .cp-top button, #chat-threads-toggle, #chat-artifact-toggle,
-    #chat-artifact-close, #chat-send, #chat-stop, #chat-to-bottom
+    #chat-artifact-close, #chat-send, #chat-stop, #chat-to-bottom, .ct-retry
 ) {
     font: inherit;
 }
 
-/* Ikony sedia na tom istom subsete ako rail grafu a konzola. Keď pridáš NOVÚ
-   ikonu, subset ju nemá a vykreslí sa ako svoj ligatúrový názov — treba
-   regenerovať font (`pyftsubset --no-layout-closure`) a overiť MERANÍM šírky
-   glyfu (glyf ≈ 1 em = 18 px; nevykreslená ligatúra padne na fallback a je
-   násobne širšia).
+/* Ikona je od 27. 8. 2026 inline SVG z `public/js/shared/icons.js`, nie ligatúra
+   ikonového fontu. Kresbu triedy `.ic` (1em × 1em, `flex: none`, zvislé
+   zarovnanie, základ `--icon-md`) nesie mind.css na tej istej špecificite 0-0-1
+   a načítava sa PRED týmto súborom.
 
-   Zvyšok kresby (line-height, weight, style, letter-spacing, text-transform,
-   white-space, display, direction, font-variation-settings, smoothing) dáva
-   `.ms` v mind.css na tej istej špecificite 0-0-1. Ostávajú tri odchýlky, tie
-   isté ako na konzole:
-     · `sans-serif` fallback — keď subset zhavaruje, ligatúrový názov sa aspoň
-       vykreslí bezpätkovo a nerozhodí layout;
-     · `--icon-sm` (18 px) namiesto `--icon-md` (20 px) — chat má drobnejšie ikony;
-     · `liga` naprieč prefixmi, mind.css ho nedeklaruje. */
-.ms {
-    font-family: 'Material Symbols Rounded', sans-serif;
+   Ostáva JEDINÁ odchýlka chatu, tá istá ako na konzole: `--icon-sm` (18 px)
+   namiesto `--icon-md` (20 px) — chat má drobnejšie ikony.
+
+   `sans-serif` fallback a `liga` odišli s Material Symbols: boli to obrany proti
+   neúplnému subsetu (nevykreslená ligatúra sa ukázala ako svoje meno). SVG symbol
+   nemá čo nevykresliť — neznámy názov kreslí `ring` a zapíše sa do
+   `window.HADES._iconMiss`, takže porucha je meraná, nie vizuálna.
+
+   Veľkosť nesie `font-size`, pretože symbol má `width/height: 1em` — prepisy
+   veľkosti nižšie preto výmenu prežili bez zmeny hodnoty.
+
+   `.ms.flip` tu BOLA a zmizla s dôvodom svojej existencie: prevracala
+   `arrow_upward`, pretože `arrow_downward` v subsete nebola (zmerané 252 px
+   namiesto 18 px). Vlastná sada má symbol `arrow-down`. */
+.ic {
     font-size: var(--icon-sm);
-    -webkit-font-feature-settings: 'liga';
-    font-feature-settings: 'liga';
 }
-
-/* `arrow_downward` v subsete NIE JE (zmerané 252 px namiesto 18 px, teda by sa
-   vykreslila ako text), preto sa prevracia `arrow_upward`. */
-.ms.flip { transform: rotate(180deg); }
 
 /* ---------------------------------------------------------------------------
    TRI OBLASTI
@@ -167,7 +165,7 @@ body[data-artifact="off"] #chat-app { --chat-artifact-w: 0px; }
     z-index: 2;
     cursor: col-resize;
     background: transparent;
-    transition: background var(--transition-fast);
+    transition: background var(--dur-fast) var(--ease);
 }
 
 #chat-threads-grip { left: calc(var(--chat-threads-w) - 2px); }
@@ -236,7 +234,7 @@ body.cp-dragging {
     color: var(--muted);
 }
 
-.cp-find .ms { font-size: var(--icon-xs); }
+.cp-find .ic { font-size: var(--icon-xs); }
 
 /* Pole hľadania je bez vlastnej kresby — rám a pozadie z mind.css by v riadku
    s ikonou vyrobili políčko v políčku. `outline: none` sa tu ZÁMERNE nepíše
@@ -400,7 +398,7 @@ body.cp-dragging {
     border-radius: var(--r-lg);
     background: var(--field-bg);
     box-shadow: 0 0 0 0 transparent;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
 .cc-row:focus-within {
@@ -565,6 +563,84 @@ body.cp-dragging {
     color: var(--text-secondary);
     font-weight: var(--fw-medium);
 }
+
+/* ---------------------------------------------------------------------------
+   JEDEN JAZYK CHYBY (rozhodnutie 16)
+
+   Tri z týchto štyroch tried emitoval JS už predtým a **nemali ani jedno
+   pravidlo v žiadnom stylesheete** — chybová správa na `/chat` teda vyzerala
+   presne ako bežná odpoveď a neúspešná obnova panela ako obyčajná veta. Sú to
+   preto nové pravidlá, nie úpravy.
+
+   Kánon je verzia konzoly, ktorá je zmeraná: rám a tinta nesú farbu chyby, TELO
+   je `--text` a `--danger-ink` má LEN menovka. Základná hodnota `--danger` v
+   texte spadne pod prah kontrastu (mind.css, sekcia STAVY) a chybová veta je
+   text, ktorý má človek použiť na opravu.
+   --------------------------------------------------------------------------- */
+
+/* Bublina chyby v toku. Štruktúru skladá `chat/render.js` (`pushError`):
+   `.cm.cm-error` > `.cm-who` + `.cm-bubble`.
+
+   KÁNON JE `.msg-error` / `.msg-error-who` v mind.css (plocha-agnostický komponent,
+   jediný stylesheet troch plôch) a hodnoty nižšie sú z neho ODČÍTANÉ deklaráciu za
+   deklaráciou, aby sa nič nepohlo, keď platia obe. Prečo tu vôbec sú: triedu
+   `.msg-error` musí do markupu pridať `chat/render.js`, ktorý vlastní iný agent,
+   a bez týchto riadkov by chybová správa na `/chat` mala do tej chvíle znak po znaku
+   ten istý computed style ako bežná odpoveď (zmerané pred zmenou: pozadie
+   `rgba(0,0,0,0)`, rám 0, menovka `--text` — rovnako ako `.cm-system`).
+
+   KEĎ MARKUP PONESIE `.msg-error`, TENTO BLOK SA MÁ ZMAZAŤ — je to jediná vec,
+   ktorú tu nechávam ako dočasnú. `.cm-error .cm-bubble` je 0-2-0, teda silnejšie
+   než komponent, takže dokým tu je, rozhoduje ono; hodnoty sú však totožné, takže
+   zmazanie nič nezmení a dá sa overiť porovnaním computed style pred a po. */
+.cm-error .cm-bubble {
+    padding: 10px 14px;
+    border: 1px solid var(--danger-border);
+    border-radius: var(--r-md);
+    background: var(--danger-soft);
+    color: var(--text);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    overflow-wrap: anywhere;
+}
+
+.cm-error .cm-who { color: var(--danger-ink); }
+
+/* Chyba v paneli vlákien (`threads.js`, `errorNote()`). Riadky, ktoré v zozname
+   už sú, sa nezahadzujú — hlásenie stojí VEDĽA zoznamu, takže je to ohraničený
+   blok, nie prázdna plocha: kánon je `.rail-error` na konzole, ten istý stav tej
+   istej plochy. `.empty--error` z mind.css sa tu nepoužije práve preto, že to nie
+   je prázdny stav obrazovky. */
+.ct-err {
+    margin-bottom: var(--sp-1);
+    padding: var(--sp-1) 10px;
+    border: 1px solid var(--danger-border);
+    border-radius: var(--r-sm);
+    background: var(--danger-soft);
+    color: var(--text);
+}
+
+/* Jedna akcia stavu. Tichá, textová — je to slovo vnútri vety, nie tlačidlo na
+   papieri: bez týchto riadkov jej bare `button` z mind.css dá panelové pozadie
+   a rám (zmerané: biela výplň a 1 px rám uprostred odstavca). Vlastný fokusový
+   prsteň tu nie je, nesie ho globálne `:focus-visible`. */
+.ct-retry {
+    min-height: 0;
+    padding: var(--sp-0) 8px;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--accent-ink);
+    font-size: var(--fs-caption);
+}
+
+.ct-retry:hover { border-color: var(--border-accent); background: var(--accent-softer); }
+
+/* Chybový stav jednoriadkového hlásenia (formulár vetvy, `branches.js`). Nesie
+   ho FARBA TEXTU a nič viac: je to jedna veta pod polom, tinta ani rám by z nej
+   spravili druhú kartu vnútri karty. `--danger-ink` je tu správne — ten istý
+   prípad ako `.agent-error` na konzole, teda samostatná veta, nie telo bubliny. */
+.is-err { color: var(--danger-ink); }
 
 /* ---------- diff ----------
 
@@ -734,11 +810,13 @@ body.cp-dragging {
 /* ---------------------------------------------------------------------------
    ZALOMENIE — 900 px
 
-   `mind.css` a `console.css` majú dve úrovne (900 px pre plávajúce panely,
-   860 px pre plochy, ktoré strácajú druhý stĺpec). Chat stráca ROVNO DVA stĺpce,
-   takže patrí k 900. Premenné v `@media` nefungujú, takže hranica je literál —
-   keď ju meníš, prehľadaj všetky tri stylesheety, inak sa appka zlomí na dvoch
-   rôznych šírkach a bude to vyzerať ako chyba layoutu.
+   Do 27. 8. 2026 mala appka pre „úzko" DVE hranice (900 px plávajúce panely,
+   860 px plochy, ktoré strácajú druhý stĺpec), takže v pásme 861–900 px platili
+   dve definície úzkeho okna naraz. Zjednotená sada je 1280 / 901 / 900 a chat pri
+   900 zostáva — stráca rovno dva stĺpce. Premenné v `@media` nefungujú, takže
+   hranica je literál — keď ju meníš, prehľadaj všetky tri stylesheety aj
+   `charon.css`, inak sa appka zlomí na dvoch rôznych šírkach a bude to vyzerať
+   ako chyba layoutu.
 
    Panely sa pod 900 px nezrušia, len sa zmenia na prekryv: `position: fixed` ich
    vyberie z mřížky, takže jednostĺpcová mřížka nižšie nemá čo riešiť.
@@ -780,6 +858,12 @@ body.cp-dragging {
         inset: 0;
         z-index: var(--z-chrome);
         background: var(--scrim);
+        /* Sklo je LEN na tmavej téme (rozhodnutia 22+25) a nesie to PREPÍNATEĽNÝ
+           token: `--scrim-blur` je na svetlej `none`, na tmavej `blur(4px)`.
+           Blur primitív priamo tu byť nesmie — rozmazával by na oboch témach a na
+           svetlej sa pod poloprehľadnou plochou stráca kontrast textu podľa toho,
+           čo je pod ňou. */
+        backdrop-filter: var(--scrim-blur);
     }
 
     #chat-header { padding: 6px var(--sp-2); }
