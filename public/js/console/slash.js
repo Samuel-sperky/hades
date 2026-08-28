@@ -16,6 +16,7 @@ import { $, el, num } from './dom.js';
 import { clearView, pushSystem } from './render.js';
 import { newThread } from './main.js';
 import { setModel } from './models.js';
+import { iconSvg } from '../shared/icons.js';
 
 /* Čo tu SMIE byť: príkaz, ktorý naozaj niečo urobí. Príkaz, ktorý sa len tvári,
    je horší než chýbajúci — presne to bol `/model` bez argumentu, ktorý argument
@@ -28,14 +29,14 @@ const CMDS = [
     {
         cmd: '/recall',
         arg: '<dopyt>',
-        icon: 'memory',
+        icon: 'chip',
         help: 'Prehľadaj pamäť Hadesa',
         expand: (arg) => `Prehľadaj pamäť a zhrň, čo o tejto téme vieš: ${arg}`,
     },
     {
         cmd: '/read',
         arg: '<id alebo názov>',
-        icon: 'description',
+        icon: 'file-text',
         help: 'Prečítaj jeden uzol celý',
         expand: (arg) => `Prečítaj uzol ${arg} z pamäte a vypíš jeho popis, tagy a spojenia.`,
     },
@@ -43,15 +44,15 @@ const CMDS = [
         cmd: '/model',
         arg: '<model>',
         argOptional: true,
-        icon: 'memory',
+        icon: 'chip',
         help: 'Prepni model vlákna',
         local: switchModel,
     },
     { cmd: '/tools', arg: '', icon: 'bolt', help: 'Čo beh naozaj vie zavolať', local: showTools },
-    { cmd: '/cost', arg: '', icon: 'memory', help: 'Spotreba tohto vlákna', local: showCost },
-    { cmd: '/clear', arg: '', icon: 'close', help: 'Vyčisti zobrazenie (história zostáva)', local: clearView },
-    { cmd: '/new', arg: '', icon: 'add', help: 'Nové vlákno', local: () => { newThread(); } },
-    { cmd: '/help', arg: '', icon: 'help', help: 'Čo konzola vie', local: showHelp },
+    { cmd: '/cost', arg: '', icon: 'chip', help: 'Spotreba tohto vlákna', local: showCost },
+    { cmd: '/clear', arg: '', icon: 'x', help: 'Vyčisti zobrazenie (história zostáva)', local: clearView },
+    { cmd: '/new', arg: '', icon: 'plus', help: 'Nové vlákno', local: () => { newThread(); } },
+    { cmd: '/help', arg: '', icon: 'question', help: 'Čo konzola vie', local: showHelp },
 ];
 
 let cursor = 0;
@@ -165,7 +166,7 @@ function openPalette(matches) {
         // prepínal `aria-selected`, ale čítačka nemala ako vedieť, na čom stojí.
         item.id = `sp-${entry.cmd.replace(/[^\w-]/g, '')}`;
 
-        const mark = el('span', 'ms', entry.icon);
+        const mark = iconSvg(entry.icon);
         mark.setAttribute('aria-hidden', 'true');
 
         item.append(mark);

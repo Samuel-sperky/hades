@@ -30,7 +30,6 @@
 
          Preload je ROZPOČET, nie zvyk (docs/BRAND-HADES.md §6). Šesť súborov,
          178 108 → 260 780 B:
-           · material-symbols-rounded-subset  132 196 — ikony railu v prvom rámci
            · geist-latin + geist-latin-ext     45 912 — chróm + slovenská diakritika
            · geist-mono-latin                  23 128 — `/` má 86 deklarácií
              var(--mono) (breadcrumb, metriky hlavičky, čísla kariet, časy, cesty)
@@ -40,9 +39,8 @@
              podmnožiny: `Knižnica` má `ž` (U+017E), teda latin-ext, a preload len
              jednej by nechal titulok skočiť z Georgie do Playfairu po dobehnutí
              druhého súboru — presne ten blik, ktorý sa tu rieši.
-         Účet je VEDOME dočasný: keď Material Symbols odíde za vlastnou SVG sadou
-         (vlna 3), hlavička padne na 128 584 B, teda 50 kB POD dnešný stav. --}}
-    <link rel="preload" href="/fonts/material-symbols-rounded-subset.woff2" as="font" type="font/woff2" crossorigin>
+         Material Symbols (132 196 B) odišiel 28. 8. 2026 za vlastnou SVG sadou,
+         takže preloadov je päť, nie šesť, a hlavička je o ten subset ľahšia. --}}
     <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -71,7 +69,7 @@
                  Podtitul „Šperky Aura · živé vedomie" bol pri 9 px na hranici
                  čitateľnosti — žije v tooltipe značky a v <title> dokumentu. --}}
             <button id="btn-up" class="hidden" type="button" title="O úroveň von (Esc)" aria-label="O úroveň von">
-                <span class="ms" aria-hidden="true">arrow_upward</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg>
             </button>
             <nav id="breadcrumb" aria-label="Aktuálny kontext"></nav>
             <span id="status-chip" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="txt">spí</span></span>
@@ -79,9 +77,9 @@
         <div class="h-center">
             <div id="graph-tools" role="group" aria-label="Nástroje grafu">
                 <!-- VLNA GRAF A: prepínač pohľadu — organická Sieť / neurónové Vrstvy (V) -->
-                <button id="btn-view-net" class="ms" title="Sieť (V)" aria-label="Pohľad Sieť" aria-pressed="true">hub</button>
-                <button id="btn-view-layers" class="ms" title="Vrstvy (V)" aria-label="Pohľad Vrstvy" aria-pressed="false">layers</button>
-                <button id="btn-structure" class="ms" title="Štruktúra (R)" aria-label="Štruktúra">account_tree</button>
+                <button id="btn-view-net" title="Sieť (V)" aria-label="Pohľad Sieť" aria-pressed="true"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="4.6" r="2.1"/><circle cx="5.2" cy="17" r="2.1"/><circle cx="18.8" cy="17" r="2.1"/><path d="M 12 9.4 V 6.7 M 10.1 13.7 L 6.9 15.8 M 13.9 13.7 L 17.1 15.8"/></svg></button>
+                <button id="btn-view-layers" title="Vrstvy (V)" aria-label="Pohľad Vrstvy" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 3.4 L 20.6 8 L 12 12.6 L 3.4 8 Z"/><path d="M 3.4 12 L 12 16.6 L 20.6 12"/><path d="M 3.4 16 L 12 20.6 L 20.6 16"/></svg></button>
+                <button id="btn-structure" title="Štruktúra (R)" aria-label="Štruktúra"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 9 3.5 h 6 v 4.5 H 9 Z"/><path d="M 3.4 16 h 6 v 4.5 H 3.4 Z"/><path d="M 14.6 16 h 6 v 4.5 H 14.6 Z"/><path d="M 12 8 V 12.2"/><path d="M 6.4 16 V 12.2 H 17.6 V 16"/></svg></button>
                 {{-- A10: „Prehľad" bol sekcia doku, ktorá čítala /api/dashboard — teda
                      to isté, čo obrazovka Dnes, len v paneli širokom 248 px a len na
                      Grafe. Tlačidlo preto neotvára druhý panel s tými istými číslami,
@@ -89,8 +87,8 @@
                      akou je Dnes v raile — cieľ sa má dať prečítať z ikony (`monitoring`
                      sľuboval panel). Rail zostáva primárnou cestou; toto je len skratka
                      z hlavičky Grafu, ktorá je mimo Grafu skrytá spolu s #graph-tools. --}}
-                <button id="btn-today" class="ms" title="Dnes (S)" aria-label="Otvoriť obrazovku Dnes">wb_sunny</button>
-                <button id="btn-legend" class="ms" title="Legenda (L)" aria-label="Legenda">category</button>
+                <button id="btn-today" title="Dnes (S)" aria-label="Otvoriť obrazovku Dnes"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2"/><path d="M 12 3.7 v 2.1 M 12 18.2 v 2.1 M 3.7 12 h 2.1 M 18.2 12 h 2.1 M 6.13 6.13 L 7.97 7.97 M 17.87 6.13 L 16.03 7.97 M 6.13 17.87 L 7.97 16.03 M 17.87 17.87 L 16.03 16.03"/></svg></button>
+                <button id="btn-legend" title="Legenda (L)" aria-label="Legenda"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 3.4 L 15.6 9.4 H 8.4 Z"/><circle cx="7" cy="16.4" r="3.4"/><path d="M 14 13.4 h 6.6 v 6.6 H 14 Z"/></svg></button>
             </div>
             <div id="header-metrics" aria-live="polite"></div>
             {{-- Rozsah grafu patrí k POČTU uzlov, nie do zbalených Pokročilých nastavení.
@@ -106,10 +104,10 @@
         <div class="h-right">
             {{-- Charón — dok nad plátnom. Otvára sa týmto tlačidlom a (fáza 2)
                  klávesou C; žiadny prepínač v Nastaveniach (R-2). --}}
-            <button id="charon-toggle" type="button" class="ms" title="Charón nad grafom (C)"
-                    aria-label="Charón — rozhovor nad grafom" aria-expanded="false" aria-controls="charon">hub</button>
+            <button id="charon-toggle" type="button" title="Charón nad grafom (C)"
+          aria-label="Charón — rozhovor nad grafom" aria-expanded="false" aria-controls="charon"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="4.6" r="2.1"/><circle cx="5.2" cy="17" r="2.1"/><circle cx="18.8" cy="17" r="2.1"/><path d="M 12 9.4 V 6.7 M 10.1 13.7 L 6.9 15.8 M 13.9 13.7 L 17.1 15.8"/></svg></button>
             <button id="cmdk-trigger" type="button" aria-label="Hľadať (Ctrl+K)">
-                <span class="ms" aria-hidden="true">search</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.4" cy="10.4" r="6.2"/><path d="M 14.9 14.9 L 20.3 20.3"/></svg>
                 <span class="cmdk-hint">Hľadať</span>
                 <kbd>Ctrl K</kbd>
             </button>
@@ -155,36 +153,36 @@
         <div class="rail-group" role="group" aria-label="Teraz">
             <span class="rail-eyebrow" aria-hidden="true">Teraz</span>
             <button class="dest" data-screen="dnes" type="button" aria-label="Dnes">
-                <span class="ms" aria-hidden="true">wb_sunny</span><span class="lbl">Dnes</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2"/><path d="M 12 3.7 v 2.1 M 12 18.2 v 2.1 M 3.7 12 h 2.1 M 18.2 12 h 2.1 M 6.13 6.13 L 7.97 7.97 M 17.87 6.13 L 16.03 7.97 M 6.13 17.87 L 7.97 16.03 M 17.87 17.87 L 16.03 16.03"/></svg><span class="lbl">Dnes</span>
             </button>
             <button class="dest" data-screen="graf" type="button" aria-label="Graf">
-                <span class="ms" aria-hidden="true">hub</span><span class="lbl">Graf</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="4.6" r="2.1"/><circle cx="5.2" cy="17" r="2.1"/><circle cx="18.8" cy="17" r="2.1"/><path d="M 12 9.4 V 6.7 M 10.1 13.7 L 6.9 15.8 M 13.9 13.7 L 17.1 15.8"/></svg><span class="lbl">Graf</span>
             </button>
         </div>
 
         <div class="rail-group" role="group" aria-label="Záznamy">
             <span class="rail-eyebrow" aria-hidden="true">Záznamy</span>
             <button class="dest" data-screen="dennik" type="button" aria-label="Denník">
-                <span class="ms" aria-hidden="true">receipt_long</span><span class="lbl">Denník</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6.4 3.4 h 11.2 v 17.2 l -2.8 -1.8 -2.8 1.8 -2.8 -1.8 -2.8 1.8 Z"/><path d="M 9.4 8 h 5.2 M 9.4 11.6 h 5.2"/></svg><span class="lbl">Denník</span>
             </button>
             <button class="dest" data-screen="rozhodnutia" type="button" aria-label="Rozhodnutia">
-                <span class="ms" aria-hidden="true">gavel</span><span class="lbl">Rozhodnutia</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12.9 4.8 L 19.2 11.1 L 16.6 13.7 L 10.3 7.4 Z"/><path d="M 12.1 9.2 L 6.4 14.9"/><path d="M 3.4 20.4 h 9.2"/></svg><span class="lbl">Rozhodnutia</span>
             </button>
             <button class="dest" data-screen="runy" type="button" aria-label="Runy">
-                <span class="ms" aria-hidden="true">bolt</span><span class="lbl">Runy</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 13.6 3 L 6.9 13.3 H 11.2 L 10.1 21 L 17.1 10.4 H 12.7 Z"/></svg><span class="lbl">Runy</span>
             </button>
         </div>
 
         <div class="rail-group" role="group" aria-label="Znalosti">
             <span class="rail-eyebrow" aria-hidden="true">Znalosti</span>
             <button class="dest" data-screen="kniznica" type="button" aria-label="Knižnica">
-                <span class="ms" aria-hidden="true">menu_book</span><span class="lbl">Knižnica</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 6.6 v 13"/><path d="M 4 5.4 c 2.7 -0.6 5.4 -0.2 8 1.2 2.6 -1.4 5.3 -1.8 8 -1.2 v 12 c -2.7 -0.6 -5.4 -0.2 -8 1.2 -2.6 -1.4 -5.3 -1.8 -8 -1.2 Z"/></svg><span class="lbl">Knižnica</span>
             </button>
             <button id="dest-kontrola" class="dest" data-screen="kontrola" type="button" aria-label="Kontrola">
-                <span class="ms" aria-hidden="true">fact_check</span><span class="lbl">Kontrola</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 5.5 4.5 h 13 a 1.5 1.5 0 0 1 1.5 1.5 v 13 a 1.5 1.5 0 0 1 -1.5 1.5 h -13 A 1.5 1.5 0 0 1 4 19 V 6 a 1.5 1.5 0 0 1 1.5 -1.5 Z"/><path d="M 7.8 9.6 h 8.4"/><path d="M 7.8 14.6 l 2.2 2.2 4.2 -4.6"/></svg><span class="lbl">Kontrola</span>
             </button>
             <button class="dest" data-screen="smernica" type="button" aria-label="Smernica">
-                <span class="ms" aria-hidden="true">assignment</span><span class="lbl">Smernica</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 9.4 4.6 H 7.6 A 1.6 1.6 0 0 0 6 6.2 V 18.9 A 1.6 1.6 0 0 0 7.6 20.5 h 8.8 a 1.6 1.6 0 0 0 1.6 -1.6 V 6.2 a 1.6 1.6 0 0 0 -1.6 -1.6 h -1.8"/><path d="M 9.9 3.1 h 4.2 a 0.9 0.9 0 0 1 0.9 0.9 v 1.8 a 0.9 0.9 0 0 1 -0.9 0.9 H 9.9 a 0.9 0.9 0 0 1 -0.9 -0.9 V 4 a 0.9 0.9 0 0 1 0.9 -0.9 Z"/><path d="M 9 11.2 h 6 M 9 15 h 4"/></svg><span class="lbl">Smernica</span>
             </button>
         </div>
 
@@ -202,16 +200,16 @@
              docs/BRAND-HADES.md §5. Význam nesie label, ikona je druhá. --}}
         <div class="rail-group" role="group" aria-label="Charón">
             <a href="/console" class="dest" aria-label="Charón — chat s vedomím">
-                <span class="ms" aria-hidden="true">send</span><span class="lbl">Charón</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 20.6 3.4 L 3.4 10.2 L 10.9 13.1 L 13.8 20.6 Z"/><path d="M 20.6 3.4 L 10.9 13.1"/></svg><span class="lbl">Charón</span>
             </a>
         </div>
 
         <div class="rail-group bottom" role="group" aria-label="Systém">
             <button id="btn-settings" class="dest" type="button" aria-label="Nastavenia">
-                <span class="ms" aria-hidden="true">tune</span><span class="lbl">Nastavenia</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 4 8 h 4.4 M 12.6 8 h 7.4"/><circle cx="10.5" cy="8" r="2.1"/><path d="M 4 16 h 7.4 M 15.6 16 h 4.4"/><circle cx="13.5" cy="16" r="2.1"/></svg><span class="lbl">Nastavenia</span>
             </button>
             <button id="btn-help" class="dest" type="button" aria-label="Pomocník">
-                <span class="ms" aria-hidden="true">help</span><span class="lbl">Pomoc</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.75"/><path d="M 9.7 9.6 a 2.4 2.4 0 0 1 4.7 0.8 c -0.25 1.3 -2.4 1.6 -2.4 3.2"/><path d="M 12 17.3 h 0.01"/></svg><span class="lbl">Pomoc</span>
             </button>
         </div>
     </nav>
@@ -279,7 +277,7 @@
     <aside id="dock" class="hidden" aria-label="Bočný panel">
         <div class="dock-head">
             <h2 id="dock-title"></h2>
-            <button class="close ms" id="dock-close" aria-label="Zavrieť panel">close</button>
+            <button class="close" id="dock-close" aria-label="Zavrieť panel"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6 6 L 18 18 M 18 6 L 6 18"/></svg></button>
         </div>
 
         <section id="sec-structure" class="hidden">
@@ -432,7 +430,7 @@
     <aside id="node-panel" class="hidden" aria-label="Detail uzla">
         <div class="dock-head">
             <h2 id="node-label"></h2>
-            <button class="close ms" id="node-close" aria-label="Zavrieť">close</button>
+            <button class="close" id="node-close" aria-label="Zavrieť"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6 6 L 18 18 M 18 6 L 6 18"/></svg></button>
         </div>
         <div id="node-view">
             <span id="node-type" class="badge"><span id="node-swatch" class="swatch" aria-hidden="true"></span><span id="node-type-label"></span></span>
@@ -451,10 +449,10 @@
                 <button id="node-edit" class="primary">Upraviť</button>
                 {{-- A8: #node-pack („Do balíka") zaniklo — kontext doku je jediný
                      mechanizmus a #node-charon plní ten istý kontext. --}}
-                <button id="node-charon" class="ghost ms" title="Priložiť do rozhovoru" aria-label="Priložiť do rozhovoru" aria-pressed="false">hub</button>
-                <button id="node-md" class="ghost ms hidden" title="Zobraziť dokument" aria-label="Zobraziť dokument">description</button>
-                <button id="node-connect" class="ghost ms" title="Prepojiť s uzlom" aria-label="Prepojiť s uzlom">link</button>
-                <button id="node-delete" class="danger ms" aria-label="Zmazať">delete</button>
+                <button id="node-charon" class="ghost" title="Priložiť do rozhovoru" aria-label="Priložiť do rozhovoru" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="4.6" r="2.1"/><circle cx="5.2" cy="17" r="2.1"/><circle cx="18.8" cy="17" r="2.1"/><path d="M 12 9.4 V 6.7 M 10.1 13.7 L 6.9 15.8 M 13.9 13.7 L 17.1 15.8"/></svg></button>
+                <button id="node-md" class="ghost hidden" title="Zobraziť dokument" aria-label="Zobraziť dokument"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 14 3.6 H 7 a 1.5 1.5 0 0 0 -1.5 1.5 v 13.8 A 1.5 1.5 0 0 0 7 20.4 h 10 a 1.5 1.5 0 0 0 1.5 -1.5 V 8.1 Z"/><path d="M 14 3.6 V 8.1 h 4.5"/><path d="M 8.6 12.6 h 6.8 M 8.6 16 h 4.4"/></svg></button>
+                <button id="node-connect" class="ghost" title="Prepojiť s uzlom" aria-label="Prepojiť s uzlom"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 13.6 10.4 a 4 4 0 0 1 0 5.7 l -2 2 a 4 4 0 0 1 -5.7 -5.7 l 1.4 -1.4"/><path d="M 10.4 13.6 a 4 4 0 0 1 0 -5.7 l 2 -2 a 4 4 0 0 1 5.7 5.7 l -1.4 1.4"/></svg></button>
+                <button id="node-delete" class="danger" aria-label="Zmazať"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 4.6 7 h 14.8"/><path d="M 9.6 7 V 5 c 0 -0.6 0.4 -1 1 -1 h 2.8 c 0.6 0 1 0.4 1 1 v 2"/><path d="M 6.4 7 l 0.9 12.2 c 0.1 0.9 0.8 1.6 1.7 1.6 h 6 c 0.9 0 1.6 -0.7 1.7 -1.6 L 17.6 7"/></svg></button>
             </div>
         </div>
         <div id="node-form" class="hidden">
@@ -479,9 +477,9 @@
          s Charónom nad tým istým kontextom — jeden mechanizmus namiesto troch. --}}
 
     <div id="zoomctl" role="group" aria-label="Ovládanie kamery">
-        <button id="zoom-in" class="ms" title="Priblížiť (+)" aria-label="Priblížiť">add</button>
-        <button id="zoom-out" class="ms" title="Oddialiť (−)" aria-label="Oddialiť">remove</button>
-        <button id="zoom-reset" class="ms" title="Vycentrovať (0)" aria-label="Vycentrovať">center_focus_strong</button>
+        <button id="zoom-in" title="Priblížiť (+)" aria-label="Priblížiť"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 4.6 v 14.8 M 4.6 12 h 14.8"/></svg></button>
+        <button id="zoom-out" title="Oddialiť (−)" aria-label="Oddialiť"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 4.6 12 h 14.8"/></svg></button>
+        <button id="zoom-reset" title="Vycentrovať (0)" aria-label="Vycentrovať"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 4 9 V 6 A 2 2 0 0 1 6 4 H 9"/><path d="M 15 4 H 18 A 2 2 0 0 1 20 6 V 9"/><path d="M 20 15 V 18 A 2 2 0 0 1 18 20 H 15"/><path d="M 9 20 H 6 A 2 2 0 0 1 4 18 V 15"/><circle cx="12" cy="12" r="2.6"/></svg></button>
     </div>
 
     {{-- A9: mŕtvy chat nad grafom (#prompt / #chat-context / #chat-log / #prompt-form)
@@ -497,7 +495,7 @@
         <div id="charon-head">
             <span id="charon-title">Charón</span>
             <span id="charon-status" aria-hidden="true"></span>
-            <button id="charon-close" class="ms" type="button" aria-label="Zavrieť dok">close</button>
+            <button id="charon-close" type="button" aria-label="Zavrieť dok"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6 6 L 18 18 M 18 6 L 6 18"/></svg></button>
         </div>
         <div id="charon-stream" role="log" aria-live="polite" aria-label="Priebeh rozhovoru"></div>
         <div id="charon-ctx" class="hidden" aria-label="Kontext z grafu"></div>
@@ -507,8 +505,8 @@
             <form id="charon-form">
                 <textarea id="charon-input" rows="1" autocomplete="off"
                           placeholder="Opýtaj sa Hadesa nad grafom…" aria-label="Správa pre Charóna"></textarea>
-                <button id="charon-send" class="ms" type="submit" aria-label="Odoslať">send</button>
-                <button id="charon-stop" class="ms hidden" type="button" aria-label="Zastaviť beh">stop</button>
+                <button id="charon-send" type="submit" aria-label="Odoslať"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 20.6 3.4 L 3.4 10.2 L 10.9 13.1 L 13.8 20.6 Z"/><path d="M 20.6 3.4 L 10.9 13.1"/></svg></button>
+                <button id="charon-stop" class="hidden" type="button" aria-label="Zastaviť beh"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6.7 6.7 h 10.6 v 10.6 H 6.7 Z"/></svg></button>
             </form>
         </div>
         <div id="charon-announce" class="sr-only" aria-live="polite"></div>
@@ -520,7 +518,7 @@
     <div id="cmdk" class="hidden" role="dialog" aria-modal="true" aria-label="Hľadať">
         <div id="cmdk-card">
             <div class="cmdk-input-row">
-                <span class="ms" aria-hidden="true">search</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.4" cy="10.4" r="6.2"/><path d="M 14.9 14.9 L 20.3 20.3"/></svg>
                 <input id="cmdk-input" placeholder="Hľadať uzly, playbooky, obrazovky…" autocomplete="off" aria-label="Hľadať">
                 <kbd>esc</kbd>
             </div>
@@ -532,7 +530,7 @@
         <div id="help-card">
             <div class="dock-head">
                 <h2>Klávesové skratky</h2>
-                <button class="close ms" id="help-close" aria-label="Zavrieť">close</button>
+                <button class="close" id="help-close" aria-label="Zavrieť"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6 6 L 18 18 M 18 6 L 6 18"/></svg></button>
             </div>
             <div id="help-body"></div>
         </div>
@@ -542,7 +540,7 @@
         <div id="md-card">
             <div class="dock-head">
                 <h2 id="md-title"></h2>
-                <button class="close ms" id="md-close" aria-label="Zavrieť">close</button>
+                <button class="close" id="md-close" aria-label="Zavrieť"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6 6 L 18 18 M 18 6 L 6 18"/></svg></button>
             </div>
             <div id="md-body" class="md-body"></div>
             <div id="md-foot">

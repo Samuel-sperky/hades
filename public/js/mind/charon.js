@@ -25,6 +25,7 @@
 
 import { S } from './state.js';
 import { go } from './sim.js';
+import { iconSvg } from '../shared/icons.js';
 import { createRunClient } from '../shared/runclient.js';
 import {
     argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeAsk, writeTarget,
@@ -598,7 +599,7 @@ function renderContextChips() {
 
         return '<span class="ctx-chip" data-id="' + id + '">'
             + '<span class="ctx-label">' + escapeAttr(n.label) + '</span>'
-            + '<button type="button" class="ctx-x ms" title="Odobrať z kontextu" aria-label="Odobrať z kontextu">close</button>'
+            + '<button type="button" class="ctx-x" title="Odobrať z kontextu" aria-label="Odobrať z kontextu">' + iconMarkup('x') + '</button>'
             + '</span>';
     }).join('')
         + '<button type="button" class="ctx-clear" title="Vyčistiť kontext">Vyčistiť</button>';
@@ -675,7 +676,7 @@ function pushNotice(text) {
 function pushError(text) {
     const box = el('div', 'charon-msg charon-msg--error');
     const who = el('span', 'charon-who');
-    const mark = el('span', 'ms', 'error');
+    const mark = iconSvg('alert-circle');
     mark.setAttribute('aria-hidden', 'true');
     who.append(mark, el('span', null, 'Chyba'));
     box.append(who);
@@ -806,7 +807,7 @@ function toolCard(frame) {
     head.type = 'button';
     head.setAttribute('aria-expanded', 'false');
 
-    const mark = el('span', 'ms', iconFor(frame.name));
+    const mark = iconSvg(iconFor(frame.name));
     mark.setAttribute('aria-hidden', 'true');
 
     head.append(el('span', 'charon-tc-caret', ''));
@@ -1000,7 +1001,7 @@ function openAgentStrip(frame) {
     // Material Symbols overený meraním šírky glyfu (CLAUDE.md, sekcia Ikony),
     // `account_tree` overený nie je — a ikona, ktorá v subsete nie je, sa vykreslí
     // ako vlastné ligatúrové meno.
-    const mark = el('span', 'ms', 'hub');
+    const mark = iconSvg('hub');
 
     mark.setAttribute('aria-hidden', 'true');
     who.append(mark, el('span', null, 'Podagent'));
@@ -1186,7 +1187,7 @@ function permissionCard(frame, agent = null) {
     card.setAttribute('aria-label', `${writeTarget(frame.name, frame.arguments, frame.preview)} — čaká na povolenie`);
 
     const head = el('div', 'charon-perm-head');
-    const mark = el('span', 'ms', iconFor(frame.name));
+    const mark = iconSvg(iconFor(frame.name));
     mark.setAttribute('aria-hidden', 'true');
     head.append(mark);
     head.append(el('strong', 'charon-perm-name', frame.name || 'nástroj'));

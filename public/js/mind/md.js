@@ -115,7 +115,7 @@ export async function openMdOverlay(node) {
         if (mdNodeId !== node.id) return; // medzitým otvorený iný dokument
         $('md-body').innerHTML = mdToHtml(data.markdown || '');
     } catch (e) {
-        if (mdNodeId === node.id) $('md-body').innerHTML = emptyHtml('cloud_off', 'Dokument sa nepodarilo načítať');
+        if (mdNodeId === node.id) $('md-body').innerHTML = emptyHtml('cloud-off', 'Dokument sa nepodarilo načítať');
     }
 }
 

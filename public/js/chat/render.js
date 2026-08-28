@@ -47,6 +47,7 @@ import {
     argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeAsk, writeTarget,
 } from '../shared/gate.js';
 import { costLabel, runNote, stopNote } from '../shared/runstate.js';
+import { iconSvg } from '../shared/icons.js';
 import {
     announce, clearEmpty, isFollowing, live, scrollToBottom, streamHost, toolList,
 } from './main.js';
@@ -431,7 +432,7 @@ export function toolCard(frame) {
     head.type = 'button';
     head.setAttribute('aria-expanded', 'false');
 
-    const mark = el('span', 'ms ct-icon', iconFor(frame.name));
+    const mark = iconSvg(iconFor(frame.name), { cls: 'ct-icon' });
     mark.setAttribute('aria-hidden', 'true');
 
     head.append(el('span', 'ct-caret'));
@@ -658,7 +659,7 @@ export function permissionCard(frame, thread) {
     card.setAttribute('aria-label', `${writeTarget(frame.name, frame.arguments, frame.preview)} — čaká na povolenie`);
 
     const head = el('div', 'cg-head');
-    const mark = el('span', 'ms cg-icon', iconFor(frame.name));
+    const mark = iconSvg(iconFor(frame.name), { cls: 'cg-icon' });
     mark.setAttribute('aria-hidden', 'true');
     head.append(mark);
     head.append(el('strong', 'cg-name', frame.name || 'nástroj'));
@@ -848,7 +849,7 @@ export function openAgent(frame) {
     box.dataset.run = frame.run || '';
 
     const head = el('div', 'cn-head');
-    const mark = el('span', 'ms cn-icon', 'hub');
+    const mark = iconSvg('hub', { cls: 'cn-icon' });
     mark.setAttribute('aria-hidden', 'true');
     head.append(mark);
     head.append(el('strong', 'cn-title', 'Podagent'));

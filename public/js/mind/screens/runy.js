@@ -1,6 +1,7 @@
 import { showToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, filterEmptyHtml, fmtNum, getJson, loadingHtml, plainInline, renderEmpty, renderError, timeAgo } from '../util.js';
+import { iconMarkup } from '../../shared/icons.js';
 
 /* ---------- obrazovka Runy (/api/runs) — čo konzola robila ----------
    Časová os behov zoskupená po dňoch (rovnaký idióm ako Rozhodnutia: .dtl*),
@@ -303,7 +304,7 @@ function runItemHtml(r) {
         + '<button type="button" class="run-toggle" data-toggle="' + esc(r.uuid) + '"'
         + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + esc(panelId) + '"'
         + ' aria-label="' + esc((open ? 'Zavrieť beh: ' : 'Otvoriť beh: ') + clipLabel(prompt)) + '">'
-        + '<span class="ms" aria-hidden="true">arrow_upward</span>'
+        + iconMarkup('arrow-up') + ''
         + '</button>'
         + '</div>'
         + '<p class="run-prompt">' + esc(prompt) + '</p>'

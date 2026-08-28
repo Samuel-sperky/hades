@@ -191,7 +191,7 @@ export function renderLibraryView() {
         if (q) {
             renderFilterEmpty(body, 'Nič sa nenašlo', 'Skús kratší výraz.', clearLibrarySearch, 'Zruš hľadanie');
         } else {
-            renderEmpty(body, 'menu_book', 'Knižnica je prázdna',
+            renderEmpty(body, 'book', 'Knižnica je prázdna',
                 'Playbooky sa tu objavia, keď ich Hades dostane.');
         }
         return;

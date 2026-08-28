@@ -18,6 +18,7 @@ import { initialTheme, setTheme } from './theme.js';
 import { computeReplayBounds } from './timeline.js';
 import { applyOpts, isAwake, markAwake, renderBreadcrumb, setFocus, updateHeaderMetrics, updateStateUi } from './util.js';
 import { connectWs } from './ws.js';
+import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- štart ---------- */
 
@@ -25,7 +26,7 @@ import { connectWs } from './ws.js';
 function renderInitError() {
     const el = document.createElement('div');
     el.className = 'empty empty-network';
-    el.innerHTML = '<span class="ms" aria-hidden="true">cloud_off</span>'
+    el.innerHTML = iconMarkup('cloud-off')
         + '<h4 class="title">Vedomie sa nepodarilo prebudiť</h4>'
         + '<p class="hint">Server neodpovedá — skontroluj, či Hades beží.</p>'
         + '<button type="button" class="primary" id="retry-init">Skúsiť znova</button>';

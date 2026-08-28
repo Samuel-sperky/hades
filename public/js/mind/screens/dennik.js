@@ -190,7 +190,7 @@ export function renderJournalList() {
             renderFilterEmpty(list, 'Žiadne záznamy pre tento projekt',
                 'Zruš filter a uvidíš celý denník.', () => setJournalProject(null));
         } else {
-            renderEmpty(list, 'receipt_long', 'Zatiaľ žiadne záznamy',
+            renderEmpty(list, 'receipt', 'Zatiaľ žiadne záznamy',
                 'Pribudnú, keď si Hades zapamätá prvý poznatok.');
         }
         return;
@@ -240,7 +240,7 @@ export function renderJournalList() {
         // využije šírku: názov vľavo, značky + čas vpravo, namiesto prázdneho stredu.
         html += '<div class="li-wrap rec-wrap">'
             + '<button type="button" class="record" data-id="' + r.id + '" data-label="' + esc(r.label) + '">'
-            + '<div class="record-head"><span class="ms rec-ico" aria-hidden="true">' + (isDigest ? 'calendar_month' : 'article') + '</span>'
+            + '<div class="record-head">' + iconMarkup(isDigest ? 'calendar' : 'doc', { cls: 'rec-ico' })
             + '<span class="record-title">' + esc(prettyLabel(r.label, r.project)) + '</span>'
             + (badges.length ? '<span class="record-tags">' + badges.join('') + '</span>' : '')
             + '<span class="record-time">' + timeHM(r.created_at) + '</span></div>'

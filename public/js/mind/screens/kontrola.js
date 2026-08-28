@@ -7,6 +7,8 @@ import { S } from '../state.js';
 import { showToast, showUndoToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, busy, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo, typeName } from '../util.js';
+import { iconMarkup } from '../../shared/icons.js';
+import { iconSwap } from '../../shared/icons.js';
 
 /* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
    Fronta needs_review uzlov (.queue*), klávesnica j/k/Enter/v/r/Delete (len na
@@ -242,7 +244,7 @@ export function rerenderKontrola(moveFocus) {
             renderFilterEmpty(list, 'Filtru nevyhovuje ani jeden uzol',
                 'Zruš filter a uvidíš celú frontu.', clearKontrolaFilters);
         } else {
-            renderEmpty(list, 'fact_check', 'Fronta na overenie je prázdna',
+            renderEmpty(list, 'check-list', 'Fronta na overenie je prázdna',
                 'Nové poznatky sem prídu po ďalšej session.');
         }
         return;
@@ -466,9 +468,9 @@ export function queueItemHtml(n, i) {
         + (desc ? ' — ' + esc(desc) : '') + '</div>'
         + '</div>'
         + '<div class="queue-actions">'
-        + '<button type="button" class="act-verify ms" data-act="verify" title="Overiť (v)" aria-label="Overiť">verified</button>'
-        + '<button type="button" class="act-resolve ms" data-act="resolve" title="Vyriešiť (r)" aria-label="Vyriešiť">done_all</button>'
-        + '<button type="button" class="act-skip ms" data-act="skip" title="Preskočiť" aria-label="Preskočiť">redo</button>'
+        + '<button type="button" class="act-verify" data-act="verify" title="Overiť (v)" aria-label="Overiť">' + iconMarkup('shield-check') + '</button>'
+        + '<button type="button" class="act-resolve" data-act="resolve" title="Vyriešiť (r)" aria-label="Vyriešiť">' + iconMarkup('check-double') + '</button>'
+        + '<button type="button" class="act-skip" data-act="skip" title="Preskočiť" aria-label="Preskočiť">' + iconMarkup('skip') + '</button>'
         + '</div></div>';
 }
 
@@ -626,8 +628,9 @@ export async function kontrolaResolve(id) {
 export function disarmKontrolaBtn(btn) {
     clearTimeout(btn._disarm);
     btn.classList.remove('armed');
-    btn.classList.add('ms');
-    btn.textContent = 'redo';
+    // `iconSwap` zahodi textove uzly a vlozi kresbu; `textContent` by na <svg>
+    // nezobrazilo nic a vynimku by nevydalo.
+    iconSwap(btn, 'skip');
     delete btn.dataset.armKind;
 }
 
@@ -640,7 +643,9 @@ export function armKontrolaAction(btn, id, kind) {
     }
     document.querySelectorAll('#kontrola-body .act-skip.armed').forEach(disarmKontrolaBtn);
     btn.classList.add('armed');
-    btn.classList.remove('ms');
+    // Ozbrojeny stav nesie otazku textom, nie kresbu.
+    const ic = btn.querySelector('svg.ic');
+    if (ic) ic.remove();
     btn.dataset.armKind = kind;
     btn.textContent = kind === 'delete' ? 'Zmazať uzol?' : 'Preskočiť?';
     btn._disarm = setTimeout(() => { if (btn.isConnected) disarmKontrolaBtn(btn); }, 3000);

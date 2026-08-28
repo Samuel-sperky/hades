@@ -41,6 +41,7 @@ import { markResult, permissionCard, pendingCard, decidePending, toolCard } from
 import { writeAsk } from '../shared/gate.js';
 import { cleanStop, costLabel, stopNote } from '../shared/runstate.js';
 import { createRunClient } from '../shared/runclient.js';
+import { iconSvg } from '../shared/icons.js';
 import {
     agentErrorText, agentFootText, agentMetaText, agentStartAnnounce, agentWaitAnnounce, agentWaitCard,
 } from '../shared/agents.js';
@@ -211,7 +212,7 @@ function openAgent(frame) {
     if (key !== '') box.dataset.run = key;
 
     const head = el('div', 'agent-head');
-    const mark = el('span', 'ms', 'hub');
+    const mark = iconSvg('hub');
 
     // `hub` a nie `account_tree` (ktorým strom kreslí `/chat`): `hub` je v subsete
     // Material Symbols overený meraním šírky glyfu (CLAUDE.md, sekcia Ikony),

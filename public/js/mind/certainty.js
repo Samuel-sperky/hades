@@ -1,5 +1,6 @@
 import { originBadge } from './screens/dnes.js';
 import { $, esc } from './util.js';
+import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- certainty badge (.cert) — zdieľaný helper (F3; F4 ho reuse-uje) ----
    §4.5/§4.8: data-cert="overene|hypoteza|pasca|bez|pending"; ikony
@@ -11,11 +12,11 @@ import { $, esc } from './util.js';
    Kontroly, texty toastov). Kľúč zostáva, je to CSS hook (data-cert="pending");
    mení sa iba to, čo číta človek v tooltipe. */
 export const CERT_META = {
-    overene: ['verified', 'Overené'],
-    hypoteza: ['science', 'Hypotéza'],
-    pasca: ['warning', 'Pasca'],
-    pending: ['pending', 'Čaká na overenie'],
-    bez: ['radio_button_unchecked', 'Bez istoty'],
+    overene: ['shield-check', 'Overené'],
+    hypoteza: ['flask', 'Hypotéza'],
+    pasca: ['alert-triangle', 'Pasca'],
+    pending: ['clock', 'Čaká na overenie'],
+    bez: ['ring', 'Bez istoty'],
 };
 
 export function certBadge(cert, iconOnly) {
@@ -23,7 +24,7 @@ export function certBadge(cert, iconOnly) {
     const meta = CERT_META[key];
     return '<span class="cert' + (iconOnly ? ' cert--icon' : '') + '" data-cert="' + key + '"'
         + (iconOnly ? ' title="' + esc(meta[1]) + '"' : '') + '>'
-        + '<span class="ms" aria-hidden="true">' + meta[0] + '</span>'
+        + iconMarkup(meta[0])
         + (iconOnly ? '' : esc(meta[1])) + '</span>';
 }
 

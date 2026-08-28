@@ -18,6 +18,7 @@ import { writeAsk } from '../shared/gate.js';
 import { equipCopy as sharedEquipCopy } from '../shared/copy.js';
 import { costLabel, runNote } from '../shared/runstate.js';
 import { historyCard, permissionCard } from './tools.js';
+import { iconSvg } from '../shared/icons.js';
 
 /* Koľko pixelov nad spodkom sa ešte považuje za „stojím na spodku". Menej než
    riadok textu by follow vypínalo pri doskrolovaní o pol riadka. */
@@ -67,13 +68,13 @@ export function renderEmpty() {
     const list = el('ul', 'empty-can');
 
     [
-        ['memory', 'Hľadá v pamäti — uzly, hrany, oblasti, rozhodnutia.'],
-        ['search', 'Prehľadáva projekt cez ripgrep a číta súbory.'],
-        ['edit', 'Zápisy do súborov aj do pamäte najprv ukáže ako diff a čaká na Povoliť.'],
+        ['chip', 'Hľadá v pamäti — uzly, hrany, oblasti, rozhodnutia.'],
+        ['magnifier', 'Prehľadáva projekt cez ripgrep a číta súbory.'],
+        ['pencil', 'Zápisy do súborov aj do pamäte najprv ukáže ako diff a čaká na Povoliť.'],
         ['bolt', 'Príkazy: /recall, /read, /model, /tools, /cost, /clear, /new, /help.'],
     ].forEach(([icon, text]) => {
         const li = el('li');
-        const mark = el('span', 'ms', icon);
+        const mark = iconSvg(icon);
         mark.setAttribute('aria-hidden', 'true');
         li.append(mark, el('span', null, text));
         list.append(li);
@@ -239,7 +240,7 @@ export function pushNotice(text) {
 export function pushError(text) {
     const box = el('div', 'msg error');
     const who = el('span', 'who');
-    const mark = el('span', 'ms', 'error');
+    const mark = iconSvg('alert-circle');
     mark.setAttribute('aria-hidden', 'true');
     who.append(mark, el('span', null, 'Chyba'));
     box.append(who);

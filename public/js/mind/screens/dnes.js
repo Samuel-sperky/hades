@@ -4,6 +4,7 @@ import { setJournalProject } from './dennik.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
 import { $, busy, deferSkeleton, emptyCardHtml, errorHtml, esc, fmtNum, getJson, prettyLabel, renderError, timeAgo } from '../util.js';
+import { iconMarkup } from '../../shared/icons.js';
 
 /* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
 
@@ -14,9 +15,9 @@ import { $, busy, deferSkeleton, emptyCardHtml, errorHtml, esc, fmtNum, getJson,
 const ORIGIN_LABEL = { brain: 'playbook', session: 'session' };
 export function originBadge(origin) {
     const o = origin === 'brain' ? 'brain' : 'session';
-    const icon = o === 'brain' ? 'menu_book' : 'bolt';
+    const icon = o === 'brain' ? 'book' : 'bolt';
     return '<span class="origin" data-origin="' + o + '">'
-        + '<span class="ms" aria-hidden="true">' + icon + '</span>' + ORIGIN_LABEL[o] + '</span>';
+        + iconMarkup(icon) + '' + ORIGIN_LABEL[o] + '</span>';
 }
 
 export async function renderToday() {
@@ -101,7 +102,7 @@ export async function renderToday() {
     const records = d.recent_records || [];
     h += '<section class="today-sec"><h2>Posledné záznamy</h2>'
         + (records.length
-            ? '<div class="today-list">' + records.map((r) => todayRow('article', r)).join('') + '</div>'
+            ? '<div class="today-list">' + records.map((r) => todayRow('doc', r)).join('') + '</div>'
             : emptyCardHtml('Zatiaľ žiadny záznam'))
         + '</section>';
 
@@ -191,11 +192,11 @@ export function dashboardHtml(dash, wb) {
         + '</div>'
         + (review
             ? '<button type="button" id="hero-review" class="hero-action">'
-              + '<span class="ms" aria-hidden="true">fact_check</span>'
+              + iconMarkup('check-list') + ''
               + '<span class="ha-val">' + num(review) + '</span>'
               + '<span class="ha-lbl">' + plural(review, 'poznatok', 'poznatky', 'poznatkov')
               + ' čaká na overenie</span></button>'
-            : '<div class="hero-action is-clear"><span class="ms" aria-hidden="true">check_circle</span>'
+            : '<div class="hero-action is-clear">' + iconMarkup('check-circle')
               + '<span class="ha-lbl">Nič nečaká na overenie</span></div>')
         + '</section>';
 
@@ -313,10 +314,10 @@ export function syncCardHtml(dash) {
         + (sync.message ? '<p class="sync-msg">' + esc(sync.message) + '</p>' : '')
         + stats
         + '<div class="sync-row sync-guard">'
-        + '<span class="ms" aria-hidden="true">' + (guardOn ? 'lock_open' : 'lock') + '</span>'
+        + iconMarkup((guardOn ? 'lock-open' : 'lock')) + ''
         + 'Zápis do playbookov: <strong>' + (guardOn ? 'zapnutý' : 'vypnutý') + '</strong></div>'
         + '<button type="button" id="sync-now" class="primary sync-btn">'
-        + '<span class="ms" aria-hidden="true">sync</span> Synchronizovať</button>'
+        + iconMarkup('refresh') + ' Synchronizovať</button>'
         + '</div>';
 }
 
@@ -408,7 +409,7 @@ export function todaySessionCard(s) {
 export function todayRow(icon, r) {
     return '<div class="li-wrap">'
         + '<button type="button" class="today-item" data-id="' + r.id + '" data-label="' + esc(r.label || '') + '">'
-        + '<span class="ms ti-ico" aria-hidden="true">' + icon + '</span>'
+        + iconMarkup(icon, { cls: 'ti-ico' }) + ''
         + '<span class="ti-text"><span class="ti-title">' + esc(prettyLabel(r.label, r.project)) + '</span>'
         + (r.snippet ? '<span class="ti-snip">' + esc(r.snippet) + '</span>' : '')
         + '</span>'

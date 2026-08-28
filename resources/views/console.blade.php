@@ -30,7 +30,6 @@
     <meta property="og:image" content="/brand/hades-og.png">
     {{-- Tie isté self-hosted fonty ako graf (Google Fonts CDN je zámerne preč,
          inak sa ikony vykreslia ako ligatúrové názvy). --}}
-    <link rel="preload" href="/fonts/material-symbols-rounded-subset.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
     {{-- mind.css nesie @font-face, farebné tokeny a tému; console.css len layout
@@ -57,14 +56,14 @@
                     </svg>
                 </a>
                 <button id="new-thread" type="button" title="Nové vlákno (Ctrl+N)">
-                    <span class="ms" aria-hidden="true">add</span><span class="lbl">Nové vlákno</span>
+                    <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 4.6 v 14.8 M 4.6 12 h 14.8"/></svg><span class="lbl">Nové vlákno</span>
                 </button>
             </div>
             {{-- Filter nad zoznamom je čisto klientský: `/api/console/threads` vracia
                  najviac 100 riadkov, takže hľadať sa má v tom, čo už je načítané —
                  druhý okruh na server by pri tejto veľkosti nič nepridal. --}}
             <div class="rail-find">
-                <span class="ms" aria-hidden="true">search</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.4" cy="10.4" r="6.2"/><path d="M 14.9 14.9 L 20.3 20.3"/></svg>
                 <input type="search" id="thread-find" autocomplete="off"
                        placeholder="Hľadať vo vláknach…" aria-label="Hľadať vo vláknach">
             </div>
@@ -77,7 +76,7 @@
                     {{-- Pod 860 px je panel skrytý; bez tohto prepínača by sa na úzkom
                          okne k histórii vlákien nedalo dostať vôbec. --}}
                     <button id="rail-toggle" type="button" title="Vlákna" aria-label="Vlákna">
-                        <span class="ms" aria-hidden="true">list</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 8 7 h 12 M 8 12 h 12 M 8 17 h 12"/><path d="M 4.2 7 h 0.01 M 4.2 12 h 0.01 M 4.2 17 h 0.01"/></svg>
                     </button>
                     <h1 id="thread-title">Charón</h1>
                 </div>
@@ -87,7 +86,7 @@
                          reálne stiahnuté v Ollame. Keď endpoint nie je, zhasne a
                          ukáže model vlákna. --}}
                     <label class="model-pick">
-                        <span class="ms" aria-hidden="true">memory</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 5.4 5.4 h 13.2 v 13.2 H 5.4 Z"/><path d="M 9.2 9.2 h 5.6 v 5.6 H 9.2 Z"/><path d="M 9.4 2.8 v 2.6 M 14.6 2.8 v 2.6 M 9.4 18.6 v 2.6 M 14.6 18.6 v 2.6 M 2.8 9.4 h 2.6 M 2.8 14.6 h 2.6 M 18.6 9.4 h 2.6 M 18.6 14.6 h 2.6"/></svg>
                         <select id="model-select" aria-label="Model"></select>
                     </label>
                     {{-- Auto-accept: povolí zápisové tooly bez pýtania sa. Default
@@ -117,7 +116,7 @@
                      ho prestane sledovať. Ikona `arrow_downward` v subsete NIE JE,
                      preto je to `arrow_upward` prevrátená v CSS. --}}
                 <button type="button" id="to-bottom" class="hidden" title="Na spodok" aria-label="Skočiť na spodok">
-                    <span class="ms flip" aria-hidden="true">arrow_upward</span>
+                    <svg class="ic flip" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg>
                 </button>
                 <div class="composer-row">
                     {{-- Paletu príkazov MUSÍ vlastniť toto pole. Do 20. 8. 2026 bola
@@ -132,10 +131,10 @@
                               role="combobox" aria-expanded="false" aria-controls="slash-palette"
                               aria-autocomplete="list" aria-haspopup="listbox"></textarea>
                     <button type="submit" id="send" title="Poslať (Enter)" aria-label="Poslať">
-                        <span class="ms" aria-hidden="true">arrow_upward</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg>
                     </button>
                     <button type="button" id="stop" class="hidden" title="Zastaviť beh (Esc)" aria-label="Zastaviť beh">
-                        <span class="ms" aria-hidden="true">stop</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6.7 6.7 h 10.6 v 10.6 H 6.7 Z"/></svg>
                     </button>
                 </div>
                 {{-- Klávesová časť je obalená v .hint-keys, aby sa na úzkom okne dala

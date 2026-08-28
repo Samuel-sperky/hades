@@ -14,6 +14,7 @@ import { setupCertTagFilter } from './tagfilter.js';
 import { setTheme } from './theme.js';
 import { showToast } from './toasts.js';
 import { $, applyOpts, blip, busy, setOpt, syncSlider } from './util.js';
+import { iconSwap } from '../shared/icons.js';
 
 // Knižnica — debounce timer filtra (jediné použitie je handler nižšie v setupControls).
 export let libraryTimer = null;
@@ -456,15 +457,19 @@ export function setupControls() {
     const disarmNodeDelete = () => {
         clearTimeout(nodeDel._disarm);
         nodeDel.classList.remove('armed');
-        nodeDel.classList.add('ms');
-        nodeDel.textContent = 'delete';
+        /* `iconSwap` zahodi vlastne TEXTOVE uzly prvku a vlozi kresbu. Priame
+           `textContent = 'trash'` by na <svg> nezobrazilo NIC a vynimku by nevydalo -
+           tlacidlo by po odchode fontu ticho ostalo prazdne. */
+        iconSwap(nodeDel, 'trash', { title: 'Zmazať uzol' });
     };
     $('node-close').addEventListener('click', disarmNodeDelete);
     nodeDel.onclick = async () => {
         if (!S.selected) return;
         if (!nodeDel.classList.contains('armed')) {
             nodeDel.classList.add('armed');
-            nodeDel.classList.remove('ms');
+            // Ozbrojeny stav nesie text, nie kresbu - preto sa kresba odstranuje.
+            const ic = nodeDel.querySelector('svg.ic');
+            if (ic) ic.remove();
             nodeDel.textContent = 'Naozaj zmazať?';
             nodeDel._disarm = setTimeout(() => { if (nodeDel.isConnected) disarmNodeDelete(); }, 3000);
             return;

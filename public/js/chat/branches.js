@@ -34,6 +34,7 @@ import { api, errorLine, plural, whenLabel } from './threads.js';
 /* Query string. `mind/urlstate.js` je jediné miesto v repe, ktoré ho číta aj
    píše (rozhodnutie 31), a je to čistý modul nad `URLSearchParams`. */
 import { urlValue, writeUrl } from '../mind/urlstate.js';
+import { iconSvg } from '../shared/icons.js';
 
 /* ---------------------------------------------------------------------------
    STAV
@@ -431,7 +432,8 @@ export function attachEdit(data) {
         box.dataset.mid = String(mid);
         if (box.querySelector(':scope > .cb-edit')) return;
 
-        const btn = el('button', 'cb-edit ms', 'edit');
+        const btn = el('button', 'cb-edit');
+        btn.append(iconSvg('pencil'));
 
         btn.type = 'button';
         btn.title = 'Upraviť správu a odpovedať znovu';

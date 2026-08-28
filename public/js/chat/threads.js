@@ -27,11 +27,12 @@
    `export const foo = () => {}` v cykle spadne na `ReferenceError: Cannot
    access 'foo' before initialization`.
 
-   IKONY sú len zo subsetu Material Symbols (215 glyfov zo 4271). Použité sú
-   `menu`, `add`, `edit`, `delete`, `close`, `check`, `search`, `description`,
-   `inventory_2` — každá z nich už v repozitári v kóde je (teda prešla meraním
-   šírky glyfu, glyf ≈ 1 em = 18 px), `inventory_2` je overená v subsete
-   samostatne. `arrow_downward`, `terminal`, `inventory` a `forum` v subsete NIE
+   IKONY sú z vlastnej sady `public/js/shared/icons.js` (inline SVG). Meno, ktoré
+   sada nepozná, sa NEVYKRESLÍ ticho — `iconMarkup()` ho zapíše do
+   `window.HADES._iconMiss` a nakreslí `ring`, takže chýbajúcu ikonu nájde merací
+   harness, nie až používateľ. Meraním šírky glyfu sa už nič neoveruje: ligatúrový
+   font je preč a s ním aj porucha, keď sa nevykreslená ikona ukázala ako svoje
+   meno. Nasledujúci odsek o subsete je HISTÓRIA, nie dnešný stav:
    SÚ a nesmú sa tu objaviť — vykreslili by sa ako svoj ligatúrový názov.
    =========================================================================== */
 
@@ -43,6 +44,7 @@ import { live, narrow, setPanel, syncPanelsToUrl } from './main.js';
    z `mind/`, takže `/chat` ním nestiahne graf. Debounce filtrov (220 ms) drží
    on sám — odtiaľto sa nedebouncuje druhý raz. */
 import { urlValue, writeUrl } from '../mind/urlstate.js';
+import { iconSvg } from '../shared/icons.js';
 
 /* ---------------------------------------------------------------------------
    STAV
@@ -729,7 +731,7 @@ function section(title, actions) {
 }
 
 function projectsSection() {
-    const add = iconButton('add', 'Nový projekt');
+    const add = iconButton('plus', 'Nový projekt');
     add.classList.add('ct-sec-act');
     add.addEventListener('click', () => {
         T.newProject = !T.newProject;
@@ -816,7 +818,7 @@ function projectRow(project) {
     const open = el('button', 'ct-open');
     open.type = 'button';
     open.setAttribute('aria-expanded', opened ? 'true' : 'false');
-    open.append(el('span', 'ms ct-ico', 'inventory_2'));
+    open.append(iconSvg('box', { cls: 'ct-ico' }));
     open.append(el('span', 'ct-ttl', project.name));
 
     // Počet je zo servera (`COUNT(*)` vedľa zoznamu) a znamená NEODLOŽENÉ vlákna
@@ -1051,7 +1053,7 @@ function searchHead() {
 
     head.append(el('h3', 'ct-sec-title', 'Nájdené v histórii'));
 
-    const clear = iconButton('close', 'Zrušiť hľadanie');
+    const clear = iconButton('x', 'Zrušiť hľadanie');
     clear.classList.add('ct-sec-act');
     clear.addEventListener('click', () => {
         const field = document.getElementById('chat-search');
@@ -1230,7 +1232,11 @@ function errorNote(text, retry) {
 }
 
 function iconButton(icon, label) {
-    const btn = el('button', 'ct-act ms', icon);
+    /* Kresbu vklada sada, nie textovy uzol: `el(tag, cls, text)` by na tlacidlo
+       posadil meno symbolu ako TEXT a po odchode fontu by z neho bolo vidiet slovo. */
+    const btn = el('button', 'ct-act');
+
+    btn.append(iconSvg(icon));
 
     btn.type = 'button';
     btn.title = label;
@@ -1248,7 +1254,7 @@ function iconButton(icon, label) {
  * zachytávanie kliku mimo ani počítanie polohy.
  */
 function actsToggle(label) {
-    const btn = iconButton('menu', label);
+    const btn = iconButton('dots-menu', label);
 
     btn.classList.add('ct-more-act');
     btn.setAttribute('aria-expanded', 'false');
@@ -1356,7 +1362,7 @@ function inlineForm(label, value, onSubmit, onCancel) {
     ok.type = 'submit';
     form.append(ok);
 
-    const cancel = iconButton('close', 'Zrušiť');
+    const cancel = iconButton('x', 'Zrušiť');
     cancel.addEventListener('click', onCancel);
     form.append(cancel);
 
@@ -1405,7 +1411,7 @@ export function ensureExport() {
     link.id = 'chat-export';
     link.className = 'ct-head-act';
     link.hidden = true;
-    link.replaceChildren(el('span', 'ms', 'description'), el('span', 'sr-only', 'Exportovať vlákno do markdownu'));
+    link.replaceChildren(iconSvg('file-text'), el('span', 'sr-only', 'Exportovať vlákno do markdownu'));
     link.title = 'Exportovať vlákno do markdownu';
 
     // Pred prepínačom artefaktu: ten je posledný v hlavičke zámerne (patrí

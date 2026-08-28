@@ -49,6 +49,7 @@ import { el, focusPending, num, pendingCard } from './render.js';
 import { live } from './main.js';
 import { argsSummary, diffHtml, iconFor, looksLikeDiff, writeTarget } from '../shared/gate.js';
 import { costLabel, stopNote } from '../shared/runstate.js';
+import { iconSvg } from '../shared/icons.js';
 
 /** Stav stromu pre AKTUÁLNY ťah. História ťahov žije v toku správ, nie tu. */
 const T = {
@@ -422,7 +423,7 @@ function head() {
     btn.type = 'button';
     btn.setAttribute('aria-expanded', T.open ? 'true' : 'false');
     btn.setAttribute('aria-controls', 'chat-agents');
-    btn.append(icon('account_tree'));
+    btn.append(icon('tree'));
     btn.append(el('strong', 'cs-title', 'Strom agentov'));
     btn.append(el('span', 'cs-count', `${num(T.kids.size, 0)} ${plural(T.kids.size)}`));
     btn.addEventListener('click', () => { setExpanded(!T.open); });
@@ -619,7 +620,7 @@ export function resetAgents() {
    --------------------------------------------------------------------------- */
 
 function icon(name, cls) {
-    const mark = el('span', cls ? `ms ${cls}` : 'ms', name);
+    const mark = iconSvg(name, cls ? { cls } : undefined);
 
     mark.setAttribute('aria-hidden', 'true');
 

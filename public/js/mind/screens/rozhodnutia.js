@@ -4,6 +4,7 @@ import { S } from '../state.js';
 import { showToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, busy, deferSkeleton, emptyHtml, esc, getJson, plainBlock, plainInline, renderError, renderFilterEmpty } from '../util.js';
+import { iconMarkup } from '../../shared/icons.js';
 
 /* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
    Časová os rozhodnutí zoskupená po mesiacoch (.dtl*), filtre obdobie/oblasť
@@ -185,7 +186,7 @@ export function renderDecisionsView() {
        posledný rad filtrov (vpravo, margin-left:auto v .dec-toolbar-row) a vlastný
        pás si vyžiadajú len vtedy, keď filtre nie sú (jeden rok, jedna oblasť). */
     const addBtn = '<button type="button" id="dec-add-toggle" class="chip">'
-        + '<span class="ms" aria-hidden="true">' + (decisionsState.adding ? 'close' : 'add') + '</span>'
+        + iconMarkup((decisionsState.adding ? 'x' : 'plus')) + ''
         + (decisionsState.adding ? 'Zrušiť' : 'Pridať rozhodnutie') + '</button>';
 
     /* Mazanie je za režimom, nie pri každej karte. Časová os má stovky záznamov a
@@ -193,7 +194,7 @@ export function renderDecisionsView() {
        a zároveň je nechcený klik o kúsok bližšie. Režim je prvý z dvoch krokov,
        druhý je ozbrojené potvrdenie na samotnom tlačidle. */
     const manageBtn = '<button type="button" id="dec-manage" class="chip' + (decisionsState.managing ? ' active' : '') + '">'
-        + '<span class="ms" aria-hidden="true">' + (decisionsState.managing ? 'check' : 'edit') + '</span>'
+        + iconMarkup((decisionsState.managing ? 'check' : 'pencil')) + ''
         + (decisionsState.managing ? 'Hotovo' : 'Upraviť zoznam') + '</button>';
 
     /* Hľadanie má vlastný rad, nie miesto medzi čipmi: vstupy majú v tejto appke
@@ -398,8 +399,12 @@ export function armDelete(btn, question, onConfirm) {
     // znamenajú, že druhý klik potvrdí niečo iné, než na čo sa človek pýtal.
     document.querySelectorAll('button[data-armed="1"]').forEach(disarmDelete);
     btn.dataset.armed = '1';
-    btn.dataset.armIcon = btn.textContent;
-    btn.classList.remove('ms');
+    /* Odkladame si UZOL kresby, nie jej meno. Do 28. 8. 2026 sa sem ukladal
+       `btn.textContent`, teda ligatura - po prechode na inline SVG je to prazdny
+       retazec a tlacidlo by sa po odzbrojeni uz nikdy nevratilo k svojej ikone.
+       Uzol vrati presne tu ikonu, ktora tam bola, bez tabulky mien. */
+    btn._armIcon = btn.querySelector('svg.ic');
+    if (btn._armIcon) btn._armIcon.remove();
     btn.classList.add('armed');
     btn.textContent = question;
     btn._disarm = setTimeout(() => { if (btn.isConnected) disarmDelete(btn); }, 3000);
@@ -410,8 +415,8 @@ export function disarmDelete(btn) {
     clearTimeout(btn._disarm);
     btn.dataset.armed = '0';
     btn.classList.remove('armed');
-    btn.classList.add('ms');
-    btn.textContent = btn.dataset.armIcon || 'delete';
+    btn.textContent = '';
+    if (btn._armIcon) { btn.insertBefore(btn._armIcon, btn.firstChild); btn._armIcon = null; }
 }
 
 export function wireDecisions(body) {

@@ -51,7 +51,6 @@
     {{-- Tie isté self-hosted fonty ako graf a konzola. Google Fonts CDN je
          zámerne preč: pri jeho nedostupnosti sa každá ikona vykreslila ako svoj
          ligatúrový názov a rozhranie sa rozpadlo (kontrakt §2c). --}}
-    <link rel="preload" href="/fonts/material-symbols-rounded-subset.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
     {{-- mind.css PRVÝ a je to podmienka, nie zvyk: nesie @font-face, farebné
@@ -88,14 +87,14 @@
                     </svg>
                 </a>
                 <button id="chat-new" type="button" title="Nové vlákno (Ctrl+N)">
-                    <span class="ms" aria-hidden="true">add</span><span class="lbl">Nové vlákno</span>
+                    <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 4.6 v 14.8 M 4.6 12 h 14.8"/></svg><span class="lbl">Nové vlákno</span>
                 </button>
             </div>
             {{-- Hľadanie. Či je klientské (nad načítaným zoznamom) alebo serverové
                  (fulltext v `console_messages`, kontrakt §3) rozhoduje vlna 3 —
                  kostra dáva len pole a udalosť `chat:search`. --}}
             <div class="cp-find">
-                <span class="ms" aria-hidden="true">search</span>
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.4" cy="10.4" r="6.2"/><path d="M 14.9 14.9 L 20.3 20.3"/></svg>
                 <input type="search" id="chat-search" autocomplete="off"
                        placeholder="Hľadať vo vláknach…" aria-label="Hľadať vo vláknach">
             </div>
@@ -125,7 +124,7 @@
                          ním človek získa celú šírku pre konverzáciu. --}}
                     <button id="chat-threads-toggle" type="button" title="Vlákna (Ctrl+B)"
                             aria-label="Vlákna" aria-expanded="true" aria-controls="chat-threads">
-                        <span class="ms" aria-hidden="true">list</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 8 7 h 12 M 8 12 h 12 M 8 17 h 12"/><path d="M 4.2 7 h 0.01 M 4.2 12 h 0.01 M 4.2 17 h 0.01"/></svg>
                     </button>
                     <h1 id="chat-title">Chat</h1>
                 </div>
@@ -163,7 +162,7 @@
                          prvom otvorení zakladať. --}}
                     <button id="chat-artifact-toggle" type="button" title="Panel artefaktu (Ctrl+J)"
                             aria-label="Panel artefaktu" aria-expanded="false" aria-controls="chat-artifact">
-                        <span class="ms" aria-hidden="true">layers</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 3.4 L 20.6 8 L 12 12.6 L 3.4 8 Z"/><path d="M 3.4 12 L 12 16.6 L 20.6 12"/><path d="M 3.4 16 L 12 20.6 L 20.6 16"/></svg>
                     </button>
                 </div>
             </header>
@@ -195,17 +194,17 @@
                      namiesto 18 px, teda by sa vykreslila ako text), preto je to
                      `arrow_upward` prevrátená v CSS. --}}
                 <button type="button" id="chat-to-bottom" class="hidden" title="Na spodok" aria-label="Skočiť na spodok">
-                    <span class="ms flip" aria-hidden="true">arrow_upward</span>
+                    <svg class="ic flip" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg>
                 </button>
                 <div class="cc-row">
                     <textarea id="chat-prompt" rows="1"
                               placeholder="Napíš úlohu pre vedomie… (Enter pošle, Shift+Enter nový riadok)"
                               aria-label="Správa pre vedomie"></textarea>
                     <button type="submit" id="chat-send" title="Poslať (Enter)" aria-label="Poslať">
-                        <span class="ms" aria-hidden="true">arrow_upward</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg>
                     </button>
                     <button type="button" id="chat-stop" class="hidden" title="Zastaviť beh (Esc)" aria-label="Zastaviť beh">
-                        <span class="ms" aria-hidden="true">stop</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6.7 6.7 h 10.6 v 10.6 H 6.7 Z"/></svg>
                     </button>
                 </div>
                 {{-- Klávesová časť je obalená v `.hint-keys`, aby sa na úzkom okne
@@ -240,7 +239,7 @@
             <header class="ca-head">
                 <h2 id="chat-artifact-title">Artefakt</h2>
                 <button type="button" id="chat-artifact-close" title="Zavrieť panel" aria-label="Zavrieť panel artefaktu">
-                    <span class="ms" aria-hidden="true">close</span>
+                    <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6 6 L 18 18 M 18 6 L 6 18"/></svg>
                 </button>
             </header>
             {{-- Jediný kontejner pre obsah artefaktu. Vlna 3 doňho kreslí a nič

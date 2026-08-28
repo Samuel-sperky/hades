@@ -8,6 +8,7 @@ import { draw, requestDraw } from './render.js';
 import { currentPath, go } from './sim.js';
 import { CORE_COLOR, S } from './state.js';
 import { T, THEMES } from './theme.js';
+import { iconMarkup } from '../shared/icons.js';
 
 export function setOpt(key, value) {
     S.opts[key] = value;
@@ -526,7 +527,7 @@ function wireAction(container, on) {
    `renderEmpty`. Volajúci, ktorý vracia reťazec, si listener pripojí sám podľa
    `data-act`. */
 export function emptyHtml(icon, text, hint, action) {
-    return '<div class="empty"><span class="ms" aria-hidden="true">' + icon + '</span><p>' + esc(text) + '</p>'
+    return '<div class="empty">' + iconMarkup(icon) + '<p>' + esc(text) + '</p>'
         + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '')
         + actionHtml(action)
         + '</div>';
@@ -556,7 +557,7 @@ function errorMarkup(subject, hint, action) {
     const s = String(subject || '').trim();
     const title = (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Obsah') + ' sa nepodarilo načítať';
     return '<div class="empty empty--error">'
-        + '<span class="ms" aria-hidden="true">cloud_off</span>'
+        + iconMarkup('cloud-off')
         + '<p class="title">' + esc(title) + '</p>'
         + '<p class="hint">' + esc(hint || ERROR_HINT) + '</p>'
         + actionHtml(action)
@@ -584,7 +585,7 @@ export function renderError(container, subject, retry, hint) {
 
 function filterMarkup(text, hint, action) {
     return '<div class="empty empty--filter">'
-        + '<span class="ms" aria-hidden="true">filter_alt_off</span>'
+        + iconMarkup('filter-off')
         + '<p>' + esc(text) + '</p>'
         + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '')
         + actionHtml(action)

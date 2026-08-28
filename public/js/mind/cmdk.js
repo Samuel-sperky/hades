@@ -3,6 +3,7 @@ import { openNodeFromAnywhere, setScreen } from './screens.js';
 import { gotoDirective } from './screens/smernica.js';
 import { certTagMatch, parseQueryFilter } from './search.js';
 import { $, emptyHtml, esc, plainInline, plainText, prettyProject, typeName } from './util.js';
+import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- Cmd-K paleta (zjednotené hľadanie + navigácia) ---------- */
 
@@ -12,14 +13,14 @@ import { $, emptyHtml, esc, plainInline, plainText, prettyProject, typeName } fr
    Poradie zrkadlí skupiny railu (TERAZ / ZÁZNAMY / ZNALOSTI), aby paleta a rail
    nehovorili o tej istej appke v dvoch rôznych poradiach. */
 export const CMDK_NAV = [
-    { screen: 'dnes', label: 'Dnes', icon: 'wb_sunny' },
+    { screen: 'dnes', label: 'Dnes', icon: 'sun' },
     { screen: 'graf', label: 'Graf', icon: 'hub' },
-    { screen: 'dennik', label: 'Denník', icon: 'receipt_long' },
+    { screen: 'dennik', label: 'Denník', icon: 'receipt' },
     { screen: 'rozhodnutia', label: 'Rozhodnutia', icon: 'gavel' },
     { screen: 'runy', label: 'Runy', icon: 'bolt' },
-    { screen: 'kniznica', label: 'Knižnica', icon: 'menu_book' },
-    { screen: 'kontrola', label: 'Kontrola', icon: 'fact_check' },
-    { screen: 'smernica', label: 'Smernica', icon: 'assignment' },
+    { screen: 'kniznica', label: 'Knižnica', icon: 'book' },
+    { screen: 'kontrola', label: 'Kontrola', icon: 'check-list' },
+    { screen: 'smernica', label: 'Smernica', icon: 'clipboard' },
     /* Charón NIE JE obrazovka grafu, ale samostatná plocha na vlastnej URL — preto
        `url` a nie `screen`, a klik robí `location.href`, nie `setScreen()`. Odchod zo
        stránky je zmena kontextu, takže to paleta priznáva podtitulom.
@@ -187,8 +188,8 @@ export function bindCmdkItems(root) {
    pri načítaní modulu a util.js je súčasťou cyklov (importuje render.js aj sim.js),
    takže by mohol byť undefined. Pravidlo projektu je jasné — cez cyklus sa ťahajú
    HOISTOVANÉ funkcie, nie hodnoty. */
-export const CMDK_TYPE_ICO = { core: 'brightness_7', skill: 'bolt', memory: 'psychology', project: 'inventory_2' };
-export const cmdkGroup = (t) => '<div class="cmdk-group">' + t + '</div>';
+export const CMDK_TYPE_ICO = { core: 'core', skill: 'bolt', memory: 'chip', project: 'box' };
+export function cmdkGroup(t) { return '<div class="cmdk-group">' + t + '</div>'; }
 
 export function renderCmdk(q) {
     const query = (q || '').trim();
@@ -201,7 +202,7 @@ export function renderCmdk(q) {
         html += cmdkGroup('Prejsť na')
             + nav.map((n) => '<button type="button" class="cmdk-item" '
                 + (n.url ? 'data-url="' + esc(n.url) + '"' : 'data-nav="' + n.screen + '"') + '>'
-                + '<span class="ms" aria-hidden="true">' + n.icon + '</span>'
+                + iconMarkup(n.icon)
                 + '<span class="cmdk-text"><span class="cmdk-title">' + esc(n.label) + '</span>'
                 + (n.sub ? '<span class="cmdk-sub">' + esc(n.sub) + '</span>' : '')
                 + '</span></button>').join('');
@@ -209,7 +210,7 @@ export function renderCmdk(q) {
     // Akcia: poskladať smernicu z aktuálneho dopytu (skočí na obrazovku Smernica)
     html += cmdkGroup('Akcia')
         + '<button type="button" class="cmdk-item" data-action="directive">'
-        + '<span class="ms" aria-hidden="true">assignment</span>'
+        + iconMarkup('clipboard')
         + '<span class="cmdk-text"><span class="cmdk-title">Vytvor smernicu' + (query ? ': ' + esc(query) : '…') + '</span>'
         + '<span class="cmdk-sub">Poskladá kontext pre Claude Code</span></span></button>';
     html += '<div id="cmdk-remote"></div>';
@@ -241,7 +242,7 @@ export function renderCmdk(q) {
                 h += cmdkGroup('Uzly')
                     + filtered.map((n) => '<button type="button" class="cmdk-item" data-id="' + n.id + '"'
                         + ' data-label="' + esc(n.label || '') + '" data-type="' + esc(n.type || 'skill') + '">'
-                        + '<span class="ms" aria-hidden="true">' + (CMDK_TYPE_ICO[n.type] || 'circle') + '</span>'
+                        + iconMarkup(CMDK_TYPE_ICO[n.type] || 'hub')
                         + '<span class="cmdk-text"><span class="cmdk-title">' + esc(plainInline(prettyProject(n.label)))
                         + (n.certainty ? ' ' + certBadge(n.certainty, true) : '') + '</span>'
                         + '<span class="cmdk-sub">' + (n.snippet ? esc(plainText(n.snippet)) : esc(typeName(n.type))) + '</span>'
@@ -250,12 +251,12 @@ export function renderCmdk(q) {
             if (books.length) {
                 h += cmdkGroup('Playbooky')
                     + books.map((b, i) => '<button type="button" class="cmdk-item" data-pb="' + i + '">'
-                        + '<span class="ms" aria-hidden="true">menu_book</span>'
+                        + iconMarkup('book')
                         + '<span class="cmdk-text"><span class="cmdk-title">' + esc(plainInline(b.title || b.path || '')) + '</span>'
                         + (b.snippet ? '<span class="cmdk-sub">' + esc(plainText(b.snippet)) + '</span>' : '')
                         + '</span></button>').join('');
             }
-            if (!filtered.length && !books.length) h = emptyHtml('search_off', 'Nič sa nenašlo');
+            if (!filtered.length && !books.length) h = emptyHtml('magnifier-off', 'Nič sa nenašlo');
             box.innerHTML = h;
             box._books = books;
             bindCmdkItems(box);

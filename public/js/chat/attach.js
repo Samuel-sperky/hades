@@ -43,6 +43,7 @@
 import { el, num } from './render.js';
 import { autoGrowPrompt, live } from './main.js';
 import { ensureThread } from './run.js';
+import { iconSvg } from '../shared/icons.js';
 
 /**
  * Stropy a typy, keď ich server do HTML nedal.
@@ -562,11 +563,11 @@ function ghostChip(ghost) {
  * existuje.
  */
 function thumb(item) {
-    if (!item?.is_image) return icon('description', 'cf-icon');
+    if (!item?.is_image) return icon('file-text', 'cf-icon');
 
     const src = previews.get(item.uuid) || item.url || '';
 
-    if (src === '') return icon('description', 'cf-icon');
+    if (src === '') return icon('file-text', 'cf-icon');
 
     const img = document.createElement('img');
 
@@ -620,7 +621,7 @@ export function textStateLabel(item) {
 }
 
 function icon(name, cls) {
-    const mark = el('span', cls ? `ms ${cls}` : 'ms', name);
+    const mark = iconSvg(name, cls ? { cls } : undefined);
 
     mark.setAttribute('aria-hidden', 'true');
 
@@ -691,7 +692,7 @@ export function ensureButton() {
     // nezobrazí nikdy a odmietnutie po nahraní 10 MB je horšie než veta dopredu.
     btn.title = `Priložiť súbor — ${limitsHint()}`;
     btn.setAttribute('aria-label', `Priložiť súbor. ${limitsHint()}.`);
-    btn.append(icon('description'));
+    btn.append(icon('file-text'));
     btn.addEventListener('click', () => { input.click(); });
 
     // Naľavo od poľa, teda pred textareu: je to vstup do správy, nie akcia nad

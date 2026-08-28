@@ -6,6 +6,7 @@ import { $, busy, emptyCardHtml, esc, getJson, plainText, renderEmpty, renderErr
 // celú appku, tak sa neduplikuje. Býva v rozhodnutiach len dočasne — patrí do
 // util.js, ktorý táto vlna nevlastní.
 import { armDelete } from './rozhodnutia.js';
+import { iconMarkup } from '../../shared/icons.js';
 
 /* ---------- obrazovka Smernica (/api/directive/*) ----------
    Prompt builder: úloha → Hades poskladá KDE ČO NÁJDE (skilly, projekty,
@@ -53,8 +54,8 @@ export function renderDirective(prefillTask) {
         + '<div class="dir-preview-wrap">'
         + '<div class="dir-preview-head"><h2>Náhľad smernice</h2>'
         + '<div class="dir-actions">'
-        + '<button type="button" id="dir-copy" class="ghost ms" title="Kopírovať smernicu" aria-label="Kopírovať smernicu">content_copy</button>'
-        + '<button type="button" id="dir-save" class="ghost ms" title="Uložiť ako .md" aria-label="Uložiť ako .md">save</button>'
+        + '<button type="button" id="dir-copy" class="ghost" title="Kopírovať smernicu" aria-label="Kopírovať smernicu">' + iconMarkup('copy') + '</button>'
+        + '<button type="button" id="dir-save" class="ghost" title="Uložiť ako .md" aria-label="Uložiť ako .md">' + iconMarkup('save') + '</button>'
         + '</div></div>'
         + '<div class="dir-preview md-body" id="dir-preview"></div>'
         + '</div></div>'
@@ -64,7 +65,7 @@ export function renderDirective(prefillTask) {
            (triedu `hidden` mu dáva syncDirManageBtn). */
         + '<section class="dir-saved-sec"><h2>Uložené smernice</h2>'
         + '<button type="button" id="dir-manage" class="chip hidden">'
-        + '<span class="ms" aria-hidden="true">edit</span>Upraviť zoznam</button>'
+        + iconMarkup('pencil') + 'Upraviť zoznam</button>'
         + '<div class="dir-saved" id="dir-saved"></div></section>';
 
     const taskInput = $('dir-task');
@@ -102,7 +103,7 @@ export function renderDirective(prefillTask) {
         renderDirectiveSuggest();
         renderDirectivePreview();
     } else {
-        renderEmpty($('dir-suggest'), 'assignment', 'Vyber šablónu alebo napíš úlohu');
+        renderEmpty($('dir-suggest'), 'clipboard', 'Vyber šablónu alebo napíš úlohu');
         renderDirectivePreview();
     }
 
@@ -127,7 +128,7 @@ export async function loadDirectiveTemplates() {
         }
         box.innerHTML = directiveTemplates.map((t, i) =>
             '<button type="button" class="dir-tpl" data-i="' + i + '" title="' + esc(t.hint || '') + '">'
-            + '<span class="ms" aria-hidden="true">bolt</span>' + esc(t.name) + '</button>'
+            + iconMarkup('bolt') + '' + esc(t.name) + '</button>'
         ).join('');
         box.querySelectorAll('.dir-tpl').forEach((b) => {
             b.onclick = () => {
@@ -190,14 +191,14 @@ export function renderDirectiveSuggest() {
     // a AI vedeli o návrhu iné číslo, presne ako to robil Denník nad 50 riadkami.
     const counts = directiveData.counts || {};
     const total = counts.total || 0;
-    if (!total) { renderEmpty(wrap, 'search_off', 'Nič relevantné sa nenašlo', 'Opíš úlohu inými slovami.'); return; }
+    if (!total) { renderEmpty(wrap, 'magnifier-off', 'Nič relevantné sa nenašlo', 'Opíš úlohu inými slovami.'); return; }
 
     let h = '';
     for (const sec of DIR_SECTIONS) {
         const items = sug[sec.key] || [];
         if (!items.length) continue;
         h += '<div class="dir-group"><div class="dir-group-head">'
-            + '<span class="ms" aria-hidden="true">' + sec.icon + '</span>' + esc(sec.title)
+            + iconMarkup(sec.icon) + '' + esc(sec.title)
             + '<span class="dir-group-n">' + (counts[sec.key] ?? items.length) + '</span></div>'
             + items.map((it) => dirItem(sec.key, it)).join('')
             + '</div>';
@@ -346,7 +347,7 @@ export function syncDirManageBtn() {
     // pravidlo prehliadača pre [hidden] prebije — tlačidlo by ostalo svietiť.
     btn.classList.toggle('hidden', !directiveSaved.length);
     btn.classList.toggle('active', directiveManaging);
-    btn.innerHTML = '<span class="ms" aria-hidden="true">' + (directiveManaging ? 'check' : 'edit') + '</span>'
+    btn.innerHTML = iconMarkup((directiveManaging ? 'check' : 'pencil')) + ''
         + (directiveManaging ? 'Hotovo' : 'Upraviť zoznam');
 }
 
@@ -364,7 +365,7 @@ export function renderDirectiveSaved() {
        koša — tlačidlo vnútri tlačidla je neplatné HTML a pre klávesnicu slepá
        ulička, takže sa riadok na ten čas prestane klikať celý. */
     box.innerHTML = directiveSaved.map((it) => {
-        const inner = '<span class="ms" aria-hidden="true">description</span>'
+        const inner = iconMarkup('file-text') + ''
             + '<span class="dsi-text"><span class="dsi-title">' + esc(it.title || it.name) + '</span>'
             + '<span class="dsi-path">' + esc(it.path) + '</span></span>';
         if (!directiveManaging) {

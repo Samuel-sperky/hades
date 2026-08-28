@@ -20,6 +20,7 @@
 import { el, num } from './dom.js';
 import { isWriteTool, pushBlock, scrollIfFollowing } from './render.js';
 import { argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeTarget } from '../shared/gate.js';
+import { iconSvg } from '../shared/icons.js';
 
 /* Slovník a formát brány (ikona, argumenty na riadok, diff, ľudský popis zápisu)
    žijú v public/js/shared/gate.js — dok Charóna nad grafom hovorí tú istú reč.
@@ -50,7 +51,7 @@ export function toolCard(frame) {
     head.type = 'button';
     head.setAttribute('aria-expanded', 'false');
 
-    const mark = el('span', 'ms', iconFor(frame.name));
+    const mark = iconSvg(iconFor(frame.name));
     mark.setAttribute('aria-hidden', 'true');
 
     head.append(el('span', 'tool-caret'));
@@ -308,7 +309,7 @@ export function permissionCard(frame, agent = null) {
     card.setAttribute('aria-label', `${writeTarget(frame.name, frame.arguments, frame.preview)} — čaká na povolenie`);
 
     const head = el('div', 'pc-head');
-    const mark = el('span', 'ms', iconFor(frame.name));
+    const mark = iconSvg(iconFor(frame.name));
     mark.setAttribute('aria-hidden', 'true');
     head.append(mark);
     head.append(el('strong', 'pc-name', frame.name || 'nástroj'));

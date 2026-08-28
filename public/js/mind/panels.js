@@ -18,6 +18,7 @@ import { showToast } from './toasts.js';
 const NARROW = window.matchMedia('(max-width: 900px)');
 
 import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, typeName, updateHeaderMetrics } from './util.js';
+import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- panely ---------- */
 export async function selectNode(n) {
@@ -228,7 +229,7 @@ export function renderNodeRecord(node) {
         html += '<h3>Commity</h3>'
             + meta.commits.map((c) => {
                 const label = typeof c === 'string' ? c : (c && (c.message || c.hash)) || '';
-                return '<div class="rec-commit"><span class="ms" aria-hidden="true">commit</span>'
+                return '<div class="rec-commit">' + iconMarkup('commit') + ''
                     + '<span>' + esc(clip(label, 160)) + '</span></div>';
             }).join('');
     }
@@ -285,7 +286,7 @@ export function buildLegend() {
             + '<span class="swatch" style="background:' + esc(mutedColor(a.color))
             + ';box-shadow:0 0 6px ' + esc(mutedColor(a.color)) + '"></span>'
             + '<span class="la-name">' + esc(a.name) + '</span>'
-            + '<span class="ms la-eye" aria-hidden="true">' + (off ? 'visibility_off' : 'visibility') + '</span>'
+            + iconMarkup(off ? 'eye-off' : 'eye', { cls: 'la-eye' })
             + '</button>';
     }).join('');
 

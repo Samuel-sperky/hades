@@ -31,6 +31,8 @@ import { wireRun } from './run.js';
 import { wireComposer, paintSend } from './composer.js';
 import { wireSlash, closePalette } from './slash.js';
 import { wireModels, paintModels } from './models.js';
+import { iconSwap } from '../shared/icons.js';
+import { iconSvg } from '../shared/icons.js';
 
 export { C };
 export { renderEmpty };
@@ -133,13 +135,13 @@ function threadRow(t) {
         openThread(t.uuid);
     });
 
-    const rename = actionBtn('edit', 'Premenovať vlákno');
+    const rename = actionBtn('pencil', 'Premenovať vlákno');
     rename.addEventListener('click', (event) => {
         event.stopPropagation();
         startRename(t.uuid);
     });
 
-    const remove = actionBtn('delete', 'Zmazať vlákno');
+    const remove = actionBtn('trash', 'Zmazať vlákno');
     remove.classList.add('act-del');
     remove.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -153,9 +155,11 @@ function threadRow(t) {
     return row;
 }
 
-/** Ikonové tlačidlo riadku. Text tlačidla JE ligatúra — `armDelete` ho vymieňa. */
+/** Ikonové tlačidlo riadku. Kresbu nesie <svg> zo sady; `armDelete` ju odoberie
+    a nahradí otázkou, `disarm` ju vráti cez `iconSwap`. */
 function actionBtn(icon, label) {
-    const btn = el('button', 'tr-act ms', icon);
+    const btn = el('button', 'tr-act');
+    btn.append(iconSvg(icon));
     btn.type = 'button';
     btn.title = label;
     btn.setAttribute('aria-label', label);
@@ -172,8 +176,9 @@ function actionBtn(icon, label) {
 function disarm(btn) {
     clearTimeout(btn._disarm);
     btn.classList.remove('armed');
-    btn.classList.add('ms');
-    btn.textContent = 'delete';
+    /* `iconSwap` zahodi textove uzly prvku a vlozi kresbu. Priame
+       `textContent = 'trash'` by na <svg> nezobrazilo NIC a vynimku by nevydalo. */
+    iconSwap(btn, 'trash');
     btn.title = 'Zmazať vlákno';
     btn.setAttribute('aria-label', 'Zmazať vlákno');
 }
@@ -191,7 +196,9 @@ function armDelete(btn, uuid) {
     $$('#thread-list .tr-act.armed').forEach(disarm);
 
     btn.classList.add('armed');
-    btn.classList.remove('ms');
+    // Ozbrojeny stav nesie text, nie kresbu.
+    const ic = btn.querySelector('svg.ic');
+    if (ic) ic.remove();
     btn.textContent = 'Naozaj zmazať?';
     btn.title = 'Potvrď druhým kliknutím';
     btn.setAttribute('aria-label', 'Naozaj zmazať vlákno? Potvrď druhým kliknutím.');

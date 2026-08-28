@@ -2,6 +2,7 @@ import { selectNode } from './panels.js';
 import { focusNode } from './render.js';
 import { REDUCED_MOTION, S } from './state.js';
 import { $, esc } from './util.js';
+import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- toasty, pomocnik, hinty ---------- */
 
@@ -13,11 +14,11 @@ export function showToast(text, nodeId, variant) {
     el.setAttribute('role', 'status');
     el.className = 'toast' + (variant ? ' ' + variant : '');
     // variantná ikona (success/warn/error); default hub
-    const icon = { success: 'check_circle', warn: 'warning', error: 'error' }[variant] || 'hub';
+    const icon = { success: 'check-circle', warn: 'alert-triangle', error: 'alert-circle' }[variant] || 'hub';
     const parts = String(text).split(/:\s(.+)/);
     el.innerHTML = parts.length > 1
-        ? '<span class="ms" aria-hidden="true">' + icon + '</span><span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
-        : '<span class="ms" aria-hidden="true">' + icon + '</span><span>' + esc(text) + '</span>';
+        ? iconMarkup(icon) + '<span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
+        : iconMarkup(icon) + '<span>' + esc(text) + '</span>';
 
 /* PREFERENCIA POKOJA SA TYKA POHYBU, NIE CASU NA CITANIE.
    Do 28. 8. 2026 sa pod `prefers-reduced-motion` nulovala aj DOBA ZOBRAZENIA
@@ -63,7 +64,7 @@ export function showUndoToast(text, onUndo) {
     const el = document.createElement('div');
     el.className = 'toast success';
     el.setAttribute('role', 'status');
-    el.innerHTML = '<span class="ms" aria-hidden="true">check_circle</span><span>' + esc(text) + '</span>';
+    el.innerHTML = iconMarkup('check-circle') + '<span>' + esc(text) + '</span>';
     const undo = document.createElement('button');
     undo.type = 'button';
     undo.className = 'toast-undo chip';

@@ -1,7 +1,7 @@
 /* ============================================================================
    HADES — AI mind design system · AURA-LIGHT
    "A precision loupe over a living network on warm paper."
-   Light theme (default) · Geist / Geist Mono / Playfair · Material Symbols Rounded
+   Light theme (default) · Geist / Geist Mono / Playfair · vlastná SVG sada ikon
    ONE amethyst accent = interactive chrome · gold = reserved brand/core moment only
    Retheme of token VALUES + canvas literals — all IDs/classes/JS hooks preserved.
    ============================================================================ */
@@ -20,12 +20,12 @@
    načíta vždy. Šípka U+2192 „→" v Geiste NEEXISTUJE (nebola ani v CDN verzii)
    a padá na system-ui — to nie je regresia, len sa na to nespoliehaj.
 
-   Material Symbols Rounded je subset (215 glyfov zo 4271, 132 kB namiesto
-   3,0 MB) vygenerovaný pyftsubset s --no-layout-closure; bez toho by ligatúrová
-   uzávera vtiahla všetky ikony späť. Zoznam ligatúr = priesečník všetkých
-   ligatúr fontu s tokenmi v public/js/mind/**, mind.blade.php a mind.css, teda
-   nadmnožina reálne použitých ikon (aj dynamických z certainty.js, cmdk.js,
-   toasts.js, renderEmpty). Keď pridáš NOVÚ ikonu, subset ju nemá — regeneruj.
+   IKONOVÝ FONT UŽ NEEXISTUJE. Do 28. 8. 2026 tu bol subset Material Symbols
+   Rounded (215 glyfov, 132 kB) a s ním celá trieda porúch: nevykreslená ligatúra
+   sa ukázala ako svoje MENO („wb_sunny", „hub"), takže výpadok fontu rozobral
+   chróm appky na text. Ikony sú odteraz inline SVG z `public/js/shared/icons.js`
+   — jedna sada pre všetky tri plochy, kreslí ju trieda `.ic` nižšie. Nová ikona
+   sa pridáva DO SADY; nič sa už neregeneruje a nič nemôže „chýbať v subsete".
    `font-display: block`, nie swap: krátky prázdny priestor je lepší než blik
    surových ligatúrových názvov, čo je presne tá porucha, ktorú tu riešime.
    --------------------------------------------------------------------------- */
@@ -76,13 +76,6 @@
     font-display: swap;
     src: url('/fonts/playfair-display-latin-ext.woff2') format('woff2');
     unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-    font-family: 'Material Symbols Rounded';
-    font-style: normal;
-    font-weight: 100 700;
-    font-display: block;
-    src: url('/fonts/material-symbols-rounded-subset.woff2') format('woff2');
 }
 
 /* ---------------------------------------------------------------------------
@@ -981,37 +974,14 @@ kbd {
     font-weight: var(--fw-medium);
 }
 
-/* `, sans-serif` a `liga` NIE SÚ kozmetika. Keď subset zhavaruje, každá ikona sa
-   vykreslí ako svoj ligatúrový názov („wb_sunny", „hub") — a `/` je plocha
-   s ôsmimi destináciami v raile, breadcrumbom a grafovými nástrojmi, takže sa
-   rozpadne celý chróm. Presne tá porucha, kvôli ktorej z projektu odišlo Google
-   Fonts CDN. Fallback bez pätiek to aspoň nechá čitateľné.
-   console.css a chat.css to mali; mind.css do vlny 1 nie. */
-.ms {
-    font-family: 'Material Symbols Rounded', sans-serif;
-    -webkit-font-feature-settings: 'liga';
-    font-feature-settings: 'liga';
-    font-weight: normal;
-    font-style: normal;
-    font-size: var(--icon-md);
-    line-height: 1;
-    letter-spacing: normal;
-    text-transform: none;
-    display: inline-block;
-    white-space: nowrap;
-    direction: ltr;
-    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-    -webkit-font-smoothing: antialiased;
-}
 
 /* ---------------------------------------------------------------------------
    `.ic` — KRESBA VLASTNEJ SADY INLINE SVG (rozhodnutie 19+21, manuál §7)
    ---------------------------------------------------------------------------
-   Toto je nástupca `.ms` a obe triedy tu ZÁMERNE žijú súčasne. Výmenu call-site
-   robia agenti F1/F2/C2/C3 a `.ms` odstraňuje až posledný agent reťazca; keby
-   fontová polovica zmizla teraz, appka by medzi vlnami nemala ikony vôbec.
-   Per-komponentné prepisy veľkosti sú preto písané ako `:is(.ms, .ic)` — obe
-   triedy sú (0-1-0), takže únia NIČ neoslabuje ani nezosilňuje (to je jediný
+   Nástupca fontovej `.ms`, ktorá 28. 8. 2026 odišla aj so subsetom. Veľkosť
+   nesie `font-size` v `em` presne tak, ako ju niesla ligatúra — preto všetkých
+   26 per-komponentných prepisov veľkosti prežilo prechod BEZ prepočtu hodnoty.
+   `.ic` je (0-1-0), rovnako ako bola `.ms` (to je jediný
    prípad, kde je `:is()` správne a `:where()` by bolo chybou: nechceme oslabiť,
    chceme dve rovnocenné mená pre jeden prvok).
 
@@ -1047,7 +1017,7 @@ kbd {
     fill: none;
     stroke: currentColor;
     /* `pointer-events: none` tu ZÁMERNE NIE JE, hoci sa pri ikone ponúka: kresba
-       je na jednom mieste sama nositeľom hoveru (`.dir-actions :is(.ms, .ic):hover`
+       je na jednom mieste sama nositeľom hoveru (`.dir-actions .ic:hover`
        nižšie je klikacia ikona bez obalového tlačidla). Vypnutie ukazovateľa by ten
        stav ticho zabilo — a ticho je presne to, čo tento prechod má odstrániť. */
 }
@@ -1530,7 +1500,7 @@ body[data-rail="slim"] .rail-eyebrow { display: none; }
     text-align: left;
     border-radius: var(--r-md);
 }
-#rail .rail-group :is(button, a).dest :is(.ms, .ic) { font-size: var(--icon-lg); line-height: 1; }
+#rail .rail-group :is(button, a).dest .ic { font-size: var(--icon-lg); line-height: 1; }
 /* Label je CHRÓM (rozhodnutie 13): --fs-caption 11px, nezdvíha sa s dátovým textom.
    V riadku dostane zvyšok šírky, takže výpustka je poistka pre preklad, nie plán. */
 #rail .rail-group :is(button, a).dest .lbl {
@@ -2075,7 +2045,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     transition: background var(--dur-fast) var(--ease);
 }
 .pb-item:hover { background: var(--hover-fill); }
-.pb-item :is(.ms, .ic) { font-size: var(--icon-sm); color: var(--muted); flex-shrink: 0; margin-top: 1px; }
+.pb-item .ic { font-size: var(--icon-sm); color: var(--muted); flex-shrink: 0; margin-top: 1px; }
 .pb-item .pb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pb-item .pb-title {
     font-size: var(--fs-body);
@@ -2352,7 +2322,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     border-radius: 2px;
     background: var(--accent);
 }
-.toast :is(.ms, .ic) { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
+.toast .ic { color: var(--accent); font-size: var(--icon-sm); flex-shrink: 0; }
 .toast strong { color: var(--text); font-weight: var(--fw-semibold); }
 .toast:hover { border-color: var(--border-accent); background: var(--panel-solid); }
 .toast.leaving {
@@ -2813,7 +2783,7 @@ pre.code code {
     padding: var(--sp-4) var(--sp-2);
     color: var(--muted);
 }
-.empty :is(.ms, .ic) {
+.empty .ic {
     /* `--icon-empty` (28px) NIE JE stupeň ikonovej škály (14–22px), ale kresba
        prázdneho stavu — preto stojí za škálou, nie v nej. Token má preto, že
        veľkosť inline SVG nesie `font-size` (`width: 1em`) a raw číslo v pravidle
@@ -2859,13 +2829,13 @@ pre.code code {
 }
 
 /* Ikona chyby je GRAFIKA s prahom 3:1, nie text — preto plná základná hodnota
-   `--danger` a `opacity: 1` (základ `.empty :is(.ms, .ic)` stmieva na polovicu).
+   `--danger` a `opacity: 1` (základ `.empty .ic` stmieva na polovicu).
    Namerané tokenovo (kompozícia nie je potrebná, obe pozadia sú nepriehľadné):
    svetlá 4,02:1 na papieri a 4,38:1 na paneli, tmavá 6,65:1 a 6,26:1.
-   Presne ten istý precedens ako `.empty.empty-network :is(.ms, .ic)` nižšie.
+   Presne ten istý precedens ako `.empty.empty-network .ic` nižšie.
    TEXT chyby ide vždy cez --text / --muted, NIKDY cez --danger: pre text má
    appka --danger-ink a základná hodnota by v texte spadla pod prah. */
-.empty--error :is(.ms, .ic) { color: var(--danger); opacity: 1; }
+.empty--error .ic { color: var(--danger); opacity: 1; }
 
 /* `.empty--filter` (prázdno spôsobené filtrom, nie neexistenciou dát) tu VLASTNÚ
    KRESBU nemá a je to rozhodnutie, nie diera: manuál §8 zakazuje prázdnemu stavu
@@ -2929,11 +2899,11 @@ pre.code code {
    pridaná váha by nebola zjednotenie, ale tretia verzia toho istého. */
 .msg-error-who { color: var(--danger-ink); }
 /* Ikona vnútri bubliny je GRAFIKA s prahom 3:1, teda plná základná hodnota —
-   ten istý precedens ako `.empty--error :is(.ms, .ic)` vyššie. Do vlny 2 tu ikona
+   ten istý precedens ako `.empty--error .ic` vyššie. Do vlny 2 tu ikona
    nebola vôbec a `chat/render.js` to odôvodňoval tým, že nevykreslená ligatúra
    subsetu sa ukáže ako svoje meno; po odchode Material Symbols ten dôvod
    neexistuje a kresba `.ic` nemá ako padnúť na text. */
-.msg-error :is(.ms, .ic) { color: var(--danger); flex: none; }
+.msg-error .ic { color: var(--danger); flex: none; }
 
 /* Načítavanie — súosé kruhy značky (amethystový prstenec + zlaté jadro), ktoré dýchajú.
    Ten istý motív nesie favicon aj #brand-core, takže čakanie vyzerá ako Hades,
@@ -3070,9 +3040,9 @@ pre.code code {
     color: inherit;
 }
 /* Ikony v hero ploche sú čitateľné značky bodov zoznamu, nie stlmená kresba
-   prázdna — .empty :is(.ms, .ic) ich stmieva na polovicu, čo tu je regresia kontrastu.
-   Veľkosť a farbu si drží volajúci (.empty-can :is(.ms, .ic)), preto tu len opacita. */
-.empty--hero :is(.ms, .ic) { opacity: 1; }
+   prázdna — .empty .ic ich stmieva na polovicu, čo tu je regresia kontrastu.
+   Veľkosť a farbu si drží volajúci (.empty-can .ic), preto tu len opacita. */
+.empty--hero .ic { opacity: 1; }
 
 /* Hero nad plátnom (prázdna sieť / chyba štartu) */
 .empty.empty-network {
@@ -3085,11 +3055,11 @@ pre.code code {
 /* KÁNON AKCENTU: „Vedomie sa nepodarilo prebudiť" je CHYBA, nie značka. Zlatá tu
    tvrdila „toto je Hades", pričom správa je „appka nenabehla" — a v tom istom bloku
    už stojí pravidlo, že prázdny stav si nevymýšľa novú farbu. --danger ten význam
-   v appke už nesie (.toast.error :is(.ms, .ic)) a je to naviac jediná voľba, ktorá TU prejde
+   v appke už nesie (.toast.error .ic) a je to naviac jediná voľba, ktorá TU prejde
    WCAG 1.4.11: na svetlom papieri dávala --gold 2,86:1 a --warn 2,92:1 (obe POD 3:1),
    --danger dáva 4,02:1. Na tmavej 6,65:1 (predtým 5,97:1). Ikona je 48 px a stojí
    nad vlastným titulkom, takže farbu netreba stlmovať do dekorácie. */
-.empty.empty-network :is(.ms, .ic) { font-size: var(--icon-hero); color: var(--danger); opacity: 1; }
+.empty.empty-network .ic { font-size: var(--icon-hero); color: var(--danger); opacity: 1; }
 .empty.empty-network .title {
     /* Kánon nadpisov: Geist 660 / −.025em — to isté, čo .screen-head h1. Serif tu
        bol do 20. 8. 2026; manuál (§4) ho vyhradzuje hero metrikám, a toto je titulok,
@@ -3369,7 +3339,7 @@ body.ambient #toasts {
     line-height: var(--lh-data);
     color: var(--text-secondary);
 }
-.rec-commit :is(.ms, .ic) { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
+.rec-commit .ic { font-size: var(--icon-xs); color: var(--muted); flex-shrink: 0; }
 .rec-commit span:last-child {
     min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -3888,7 +3858,7 @@ body[data-screen="graf"] #screens { display: none; }
                 border-color var(--dur-fast) var(--ease);
 }
 #cmdk-trigger:hover { border-color: var(--border-accent); color: var(--text); background: var(--accent-softer); }
-#cmdk-trigger :is(.ms, .ic) { font-size: var(--icon-sm); }
+#cmdk-trigger .ic { font-size: var(--icon-sm); }
 /* Kresba je v bare `kbd`; tu sa mení len papier — trigger sedí na hlavičke,
    nie na paneli, takže klávesa v ňom potrebuje nepriehľadné pozadie panelu. */
 #cmdk-trigger kbd { background: var(--panel-solid); }
@@ -3923,7 +3893,7 @@ body[data-screen="graf"] #screens { display: none; }
     padding: var(--sp-2);
     border-bottom: 1px solid var(--line-soft);
 }
-.cmdk-input-row :is(.ms, .ic) { color: var(--muted); }
+.cmdk-input-row .ic { color: var(--muted); }
 #cmdk-input {
     flex: 1;
     background: none; border: none;
@@ -3952,7 +3922,7 @@ body[data-screen="graf"] #screens { display: none; }
     text-align: left; color: var(--text);
 }
 .cmdk-item:hover, .cmdk-item:focus-visible { background: var(--accent-softer); outline: none; }
-.cmdk-item :is(.ms, .ic) { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.cmdk-item .ic { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .cmdk-text { display: flex; flex-direction: column; min-width: 0; }
 .cmdk-title { font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmdk-sub { font-size: var(--fs-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4233,7 +4203,7 @@ body[data-screen="graf"] #screens { display: none; }
     border-color: var(--border-accent); background: var(--accent-soft); color: var(--text);
 }
 /* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
-.dir-tpl :is(.ms, .ic) { font-size: var(--icon-sm); color: var(--accent); }
+.dir-tpl .ic { font-size: var(--icon-sm); color: var(--accent); }
 
 /* Vstup úlohy + tlačidlo Poskladať */
 .dir-input-row { display: flex; gap: var(--sp-1); margin-bottom: var(--sp-3); }
@@ -4267,7 +4237,7 @@ body[data-screen="graf"] #screens { display: none; }
     font-size: var(--fs-body); font-weight: var(--fw-medium);
     color: var(--text); margin-bottom: var(--sp-1);
 }
-.dir-group-head :is(.ms, .ic) { font-size: var(--icon-sm); color: var(--accent); }
+.dir-group-head .ic { font-size: var(--icon-sm); color: var(--accent); }
 .dir-group-n { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); font-weight: 400; }
 
 /* Položka návrhu — reuse label.check (18px amethyst box), vlastný text layout */
@@ -4316,12 +4286,12 @@ label.check.dir-check.off { opacity: .5; }
 }
 .dir-preview-head h2 { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); }
 .dir-actions { display: flex; gap: var(--sp-0); }
-.dir-actions :is(.ms, .ic) {
+.dir-actions .ic {
     width: 32px; height: 32px; min-height: 32px;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: var(--icon-sm); border-radius: var(--r-sm);
 }
-.dir-actions :is(.ms, .ic):hover { background: var(--accent-softer); color: var(--accent); }
+.dir-actions .ic:hover { background: var(--accent-softer); color: var(--accent); }
 .dir-preview.md-body {
     flex: none; padding: var(--sp-2) var(--sp-3);
     max-height: 60vh; overflow-y: auto;
@@ -4342,7 +4312,7 @@ label.check.dir-check.off { opacity: .5; }
     border-color: var(--border-accent); background: var(--accent-softer);
 }
 /* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
-.dir-saved-item :is(.ms, .ic) { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
+.dir-saved-item .ic { color: var(--muted); font-size: var(--icon-sm); flex-shrink: 0; }
 .dsi-text { display: flex; flex-direction: column; min-width: 0; }
 .dsi-title { font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dsi-path { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4368,11 +4338,11 @@ label.check.dir-check.off { opacity: .5; }
    TOAST VARIANTS (E7) — recolor the inset bar + icon; base .toast unchanged
    --------------------------------------------------------------------------- */
 .toast.success::before { background: var(--success); }
-.toast.success :is(.ms, .ic) { color: var(--success); }
+.toast.success .ic { color: var(--success); }
 .toast.warn::before { background: var(--warn); }
-.toast.warn :is(.ms, .ic) { color: var(--warn); }
+.toast.warn .ic { color: var(--warn); }
 .toast.error::before { background: var(--danger); }
-.toast.error :is(.ms, .ic) { color: var(--danger); }
+.toast.error .ic { color: var(--danger); }
 .toast.error { border-color: var(--danger-border); }
 /* Undo affordance inside a toast (F3 delete/skip) */
 .toast .toast-undo {
@@ -4551,7 +4521,7 @@ select {
     text-align: left;
     transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.hero-action :is(.ms, .ic) { font-size: var(--icon-sm); flex-shrink: 0; }
+.hero-action .ic { font-size: var(--icon-sm); flex-shrink: 0; }
 .hero-action .ha-val {
     font-family: var(--mono); font-weight: var(--fw-semibold);
     font-variant-numeric: tabular-nums;
@@ -4815,7 +4785,7 @@ button.hero-action:hover { border-color: var(--accent); }
     color: var(--cert-none-ink);
     background: var(--cert-none-soft);
 }
-.cert :is(.ms, .ic) { font-size: var(--icon-2xs); line-height: 1; }
+.cert .ic { font-size: var(--icon-2xs); line-height: 1; }
 /* R4: TEXT na tinte badge ide cez -ink, VÝPLŇ zostáva *-soft zo základu.
    Základné hodnoty dávali nad zloženým pozadím 4,17–4,51:1 na paperi. */
 .cert[data-cert="overene"] { color: var(--cert-overene-ink); background: var(--cert-overene-soft); }
@@ -4829,7 +4799,7 @@ button.hero-action:hover { border-color: var(--accent); }
     padding: 0; gap: 0;
     background: none; border: none;
 }
-.cert.cert--icon :is(.ms, .ic) { font-size: var(--icon-sm); }
+.cert.cert--icon .ic { font-size: var(--icon-sm); }
 
 /* ---------------------------------------------------------------------------
    ORIGIN BADGE (.origin) — brain (.md) vs session (DB) provenance, monochrome.
@@ -4848,7 +4818,7 @@ button.hero-action:hover { border-color: var(--accent); }
     background: var(--surface-2);
     border: 1px solid var(--border);
 }
-.origin :is(.ms, .ic) { font-size: var(--icon-2xs); line-height: 1; }
+.origin .ic { font-size: var(--icon-2xs); line-height: 1; }
 /* brain reads a touch stronger (indexed source of truth) */
 .origin[data-origin="brain"] {
     color: var(--text-secondary);
@@ -5006,7 +4976,7 @@ body[data-screen="graf"] #mind {
 }
 .sync-stats strong { color: var(--text-secondary); }
 .sync-guard { font-family: var(--mono); font-size: var(--fs-caption); color: var(--muted); }
-.sync-guard :is(.ms, .ic) { font-size: var(--icon-sm); }
+.sync-guard .ic { font-size: var(--icon-sm); }
 .sync-guard strong { color: var(--text-secondary); }
 .sync-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--sp-0h); }
 
@@ -5672,8 +5642,8 @@ button, input, select {
     cursor: pointer;
 }
 
-.run-toggle :is(.ms, .ic) { font-size: var(--icon-xs); transform: rotate(180deg); }
-.run-toggle[aria-expanded="true"] :is(.ms, .ic) { transform: none; }
+.run-toggle .ic { font-size: var(--icon-xs); transform: rotate(180deg); }
+.run-toggle[aria-expanded="true"] .ic { transform: none; }
 .run-toggle:hover { background: var(--accent-softer); color: var(--text); }
 
 .run-when, .run-model, .run-profile {
