@@ -43,6 +43,7 @@
 import { createRunClient } from '../shared/runclient.js';
 import { writeAsk } from '../shared/gate.js';
 import { cleanStop, costLabel } from '../shared/runstate.js';
+import { syncPanelsToUrl } from './main.js';
 import {
     announce, clearEmpty, live, setRunning, setStats, setTitle, threadFromUrl,
 } from './main.js';
@@ -484,6 +485,11 @@ function applyThread(data) {
 
     setTitle(data.title);
     if (location.pathname !== `/chat/${data.uuid}`) history.pushState({}, '', `/chat/${data.uuid}`);
+    /* Prepis celej adresy zahodi query string aj s klucmi, ktore o vlakne NIE SU
+       (`pt`/`pa` rozlozenie, `b` vetva, sest klucov hladania v historii).
+       Rozlozenie sa preto dopise spat cez `replace`, teda bez druheho zaznamu
+       v historii — presne tak, ako to uz robi `threads.js` pri zavreti vlakna. */
+    syncPanelsToUrl();
 
     renderThread(data);
     setParked(!!R.awaiting);
@@ -528,6 +534,11 @@ export async function newThread({ blank = true } = {}) {
     R.step = null;
 
     history.pushState({}, '', `/chat/${data.uuid}`);
+    /* Prepis celej adresy zahodi query string aj s klucmi, ktore o vlakne NIE SU
+       (`pt`/`pa` rozlozenie, `b` vetva, sest klucov hladania v historii).
+       Rozlozenie sa preto dopise spat cez `replace`, teda bez druheho zaznamu
+       v historii — presne tak, ako to uz robi `threads.js` pri zavreti vlakna. */
+    syncPanelsToUrl();
     setTitle(data.title);
     setParked(false);
 

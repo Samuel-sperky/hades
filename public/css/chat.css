@@ -879,3 +879,32 @@ body.cp-dragging {
     #chat-hint .hint-keys { display: none; }
     #chat-hint { font-size: var(--fs-micro); }
 }
+
+/* ---------------------------------------------------------------------------
+   MENU AKCII VLAKNA (.ct-acts) — MINIMALNA KRESBA, NIE HOTOVY KOMPONENT
+   ---------------------------------------------------------------------------
+   Toto menu stavia `chat/threads.js`, ale do 28. 8. 2026 nemalo v ZIADNOM
+   stylesheete ani jedno pravidlo. Dosledok bol merany, nie odhadnuty: 96 prvkov
+   <a class="ct-act-btn ct-export"> malo vychodiskovu farbu prehliadaca #0000EE
+   a na tmavej teme (ktora je default) to je kontrast ~2:1 voci papieru #0E1413.
+
+   Nie je to regresia tejto vlny — trieda nemala pravidlo ani pred nou. Je to
+   nalez kontrastneho overenia, ktore kontrakt (rozhodnutie 12) ziada a ktore
+   sa doteraz nespravilo.
+
+   Toto pravidlo riesi LEN citatelnost: polozka dedi farbu textu ako kazdy iny
+   ovladac a `ct-del` nesie danger rolu. Kresba menu (povrch, ram, hustota,
+   stavy) je otvoreny bod — dorobit ju znamena navrhnut komponent, nie opravit
+   chybu, a to patri do samostatneho zadania. */
+.ct-act-btn {
+    color: var(--text);
+    text-decoration: none;
+}
+.ct-act-btn:hover { color: var(--accent-ink); }
+.ct-act-btn.ct-del { color: var(--danger); }
+/* `#chat-export` v hlavicke je tiez <a> bez pravidla — ten isty nalez, ine miesto.
+   Zmerane: 1,98:1 na tmavej teme. Kresbu ikonoveho tlacidla hlavicky uz nesie
+   `.ch-right :is(a, button)` nizsie; chybala len farba. */
+.ct-head-act { color: var(--text); text-decoration: none; }
+.ct-head-act:hover { color: var(--accent-ink); }
+

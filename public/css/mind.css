@@ -422,9 +422,10 @@
        premýšľania, dýchajúci znak načítania, skeleton, bežiaci beh) — dovtedy tu
        boli tri rôzne hodnoty (1,2 / 1,4 / 1,8 s) pre jeden a ten istý význam,
        takže tri indikátory toho istého stavu tikali každý inak.
-       Značkové trvania (dýchanie jadra 4 s, zrod znaku 760 + 460 ms, zrod grafov
-       760 / 900 / 720 ms) tu ZÁMERNE nie sú: sú menované v docs/BRAND-HADES.md §2
-       ako podpis značky, nie ako priečka rebríka rozhrania. */
+       Jednorazové dramaturgie (dýchanie jadra 4 s, jadro znaku 460 + 620 ms,
+       fade grafovej karty 520 + 240 ms, stupňovanie segmentov 90 ms) tu ZÁMERNE
+       nie sú a zostávajú číslom pri svojom komponente: sú to jednotlivé scény,
+       nie priečky rebríka. Rebrík má šesť priečok trvania a tri krivky. */
     --dur-press: 80ms;
     --dur-fast: 150ms;
     --dur-base: 180ms;
@@ -441,6 +442,23 @@
        aby zmenil krivku. Zmerane agentom E este pred tym, nez token vznikol. */
     --ease-pulse: cubic-bezier(0.4, 0, 0.6, 1);
     --motion-shift: 8px;
+
+    /* ---- trvania zrodu grafov (docs/BRAND-HADES.md §3 „Trvania sú tokeny") ----
+       NIE SÚ to priečky rebríka vyššie a zámerne stoja ZA ním: rebrík rozhrania
+       končí na --dur-ambient (400 ms) a jeho komentár ho opisuje ako uzavretý.
+       Graf smie ísť ďalej, lebo kreslí dej, nie reakciu — ale nad ~900 ms by
+       zdržiaval, takže sú to rolové tokeny s vlastným stropom, nie ďalšie stupne.
+
+       PREČO tokeny a nie čísla, hoci sú to značkové hodnoty: --dur-chart-draw
+       žije na DVOCH miestach naraz (obtiahnutie prstenca znaku `bc-draw`
+       a segmentov donutu `.seg-draw`) a raz by sa tie dva zápisy rozišli.
+       Manuál ich §3 menuje ako tokeny; do 28. 8. 2026 tu stálo, že tokenmi
+       zámerne nie sú — to rozhodnutie je prepísané, nie opomenuté.
+       Tichú verziu nesie plošná podlaha prefers-reduced-motion (viď jej blok):
+       trvanie spadne na .01 ms, takže graf je hotový okamžite, nie nenakreslený. */
+    --dur-chart-draw: 760ms;
+    --dur-chart-curve: 900ms;
+    --dur-chart-reveal: 720ms;
 
     /* ---- z-index ladder ---- */
     --z-canvas: 0;
@@ -680,9 +698,18 @@
     --shadow-1: var(--elev-1);
     --shadow-2: var(--elev-2);
     --shadow-3: var(--elev-3);
+    /* --transition-base a --transition-slow tu boli do 28. 8. 2026 a sú ZMAZANÉ
+       (docs/BRAND-HADES.md §3). Dôvod nie je počet volajúcich — nula ich mali aj
+       predtým — ale to, že kompozit SKRÝVA, ktorú krivku si volajúci dostal.
+       Párový zápis `var(--dur-*) var(--ease)` to hovorí nahlas a má v public/css
+       prevahu 123 : 0 (zmerané po tejto zmene).
+
+       --transition-fast ZOSTÁVA, hoci dnes nemá volajúceho nikde v repe (zmerané:
+       0 v mind.css, console.css, chat.css aj charon.css — E prepísalo svoje tri
+       miesta, toto štvrté). Nie je to opomenutie: je to alias rodiny Aura a blok,
+       v ktorom stojí, má napísané, že alias bez volajúceho je tu zámerne. Manuál
+       menuje na zmazanie base a slow, nie fast. */
     --transition-fast: var(--dur-fast) var(--ease);
-    --transition-base: var(--dur-base) var(--ease);
-    --transition-slow: var(--dur-slow) var(--ease);
     --page-h1: var(--fs-h1);
     --kpi-value: var(--fs-kpi);
 }
@@ -1305,7 +1332,10 @@ button.close:active { background: var(--accent-soft); }
     gap: var(--sp-1);
     background: none; border: none;
     filter: drop-shadow(var(--core-shadow));
-    animation: core-pulse 4s var(--ease) infinite;
+    /* --ease-pulse, nie --ease: dýchanie je nekonečná slučka a príchodová krivka
+       na nej kulhá — spomalí na konci a skočí na začiatok. Trvanie zostáva 4 s
+       číslom: je to jednorazová dramaturgia značky, nie priečka rebríka. */
+    animation: core-pulse 4s var(--ease-pulse) infinite;
     transition: filter var(--dur-ambient) var(--ease), opacity var(--dur-ambient) var(--ease);
     padding: var(--sp-0) var(--sp-1);
     margin-bottom: 0;
@@ -1344,7 +1374,11 @@ button.close:active { background: var(--accent-soft); }
    s týmto nebije: intro animuje deti SVG, nie tlačidlo.
 
    Obvod prstenca je 2π × 8,64 = 54,29 — keď zmeníš polomer znaku, prepočítaj aj
-   dasharray, inak sa obtiahnutie zastaví v polovici alebo skočí. */
+   dasharray, inak sa obtiahnutie zastaví v polovici alebo skočí.
+
+   Trvanie obtiahnutia je --dur-chart-draw, ten istý token, aký nesú segmenty
+   donutu: je to jeden pohyb „čiara sa kreslí" na dvoch miestach, a kým to boli
+   dve čísla 760 ms, čakalo sa len na to, ktoré z nich sa zmení samo. */
 #brand-core .bc-ring,
 #back-to-graph .bc-ring {
     stroke-dasharray: 54.29;
@@ -1352,7 +1386,7 @@ button.close:active { background: var(--accent-soft); }
     /* od 12 hodín, nie od 3 — inak znak vzniká zboku */
     transform: rotate(-90deg);
     transform-origin: 12px 12px;
-    animation: bc-draw 760ms var(--ease) 100ms 1 both;
+    animation: bc-draw var(--dur-chart-draw) var(--ease) 100ms 1 both;
 }
 #brand-core .bc-core,
 #back-to-graph .bc-core {
@@ -2930,7 +2964,9 @@ pre.code code {
     width: 26px; height: 26px;
     border-radius: var(--r-pill);
     border: 2px solid var(--accent);
-    animation: load-breathe var(--dur-pulse) var(--ease) infinite;
+    /* Slučka → --ease-pulse (symetrická). Tichú verziu nesie pomenované pravidlo
+       nižšie: prstenec stojí na PLNEJ mierke, nie v spodnej fáze. */
+    animation: load-breathe var(--dur-pulse) var(--ease-pulse) infinite;
 }
 .empty.empty-loading .load-mark::after {
     content: "";
@@ -2949,23 +2985,37 @@ pre.code code {
    (dasharray / dashoffset / clip-path), nie fade celej karty — fade by povedal
    „niečo pribudlo", kým toto hovorí „takto to narástlo".
 
-   Trvania sú ZNAČKOVÉ, nie priečky rebríka rozhrania: 760 / 900 / 720 ms sú
-   menované v docs/BRAND-HADES.md §2 („Pohyb v rozhraní"), preto tu stoja ako
-   čísla a nie ako --dur-* tokeny. Rebrík rozhrania končí na --dur-ambient
-   (400 ms); graf smie ísť ďalej, lebo kreslí dej, ale nad ~900 ms by zdržiaval.
-   Spúšťa ich charts.js, ktorý pri prefers-reduced-motion triedy vôbec nepridá
-   (nie že by ich CSS potom prebíjalo) — preto tu nie je @media blok.
+   Trvania sú ZNAČKOVÉ, ale od 28. 8. 2026 sú to TOKENY (--dur-chart-draw /
+   -curve / -reveal, deklarované v :root za rebríkom rozhrania) — nie preto, aby
+   sa schovali, ale preto, že 760 ms tu žilo na dvoch miestach naraz (`bc-draw`
+   znaku a `.seg-draw` donutu) a raz by sa tie dva zápisy rozišli. Rebrík
+   rozhrania končí na --dur-ambient (400 ms); graf smie ísť ďalej, lebo kreslí
+   dej, ale nad ~900 ms by zdržiaval, a to je aj celý strop tejto trojice.
+
+   Číslom pri komponente ZOSTÁVAJÚ jednorazové dramaturgie: 520 + 240 ms fade
+   karty, 760 ms jeho neskorá varianta a 90 ms stupňovanie segmentov (v JS).
+   Sú to scény jedného grafu, nie rola, ktorú by čítalo druhé miesto.
+
+   TICHÁ VERZIA MÁ DVA NOSIČE a ani jeden nie je „vypnuté": charts.js pri
+   prefers-reduced-motion triedy vôbec nepridá (graf sa vykreslí rovno hotový),
+   a keby ich pridal, plošná podlaha v @media (prefers-reduced-motion: reduce)
+   stiahne trvanie na .01 ms — `heat-reveal` má `both`, takže dosadne na koncový
+   `inset(0 0 0 0)`, teda odkrytá mriežka, nie zamrznutý orez. Preto tu vlastný
+   @media blok NIE JE: nemal by čo dodať, len by pridal tretie miesto pravdy.
    --------------------------------------------------------------------------- */
 .donut .seg-draw {
-    transition: stroke-dasharray 760ms var(--ease);
+    transition: stroke-dasharray var(--dur-chart-draw) var(--ease);
 }
 .line-draw {
-    transition: stroke-dashoffset 900ms var(--ease);
+    transition: stroke-dashoffset var(--dur-chart-curve) var(--ease);
 }
 .chart-fade {
     opacity: 0;
     transition: opacity 520ms var(--ease) 240ms;
 }
+/* 760 ms je tu ONESKORENIE, nie trvanie kreslenia: karta má dobehnúť až po
+   obtiahnutí. Zapísané číslom zámerne — keby to bol --dur-chart-draw, tvárilo
+   by sa to ako tá istá rola a zmena trvania kresby by ticho posunula aj fade. */
 .chart-fade-late {
     transition-delay: 760ms;
 }
@@ -2975,7 +3025,7 @@ pre.code code {
 /* Heatmapa: odkrytie zľava jednou animáciou nad mriežkou. Per-bunkové oneskorenie
    by pri 365 bunkách znamenalo 365 inline štýlov a prekreslenie na každý rámec. */
 .heat-grid.heat-reveal {
-    animation: heat-reveal 720ms var(--ease) both;
+    animation: heat-reveal var(--dur-chart-reveal) var(--ease) both;
 }
 @keyframes heat-reveal {
     from { clip-path: inset(0 100% 0 0); }
@@ -4171,33 +4221,9 @@ body[data-screen="graf"] #screens { display: none; }
 /* W3b: --accent-ink (6,4:1) namiesto --accent-600 nad --accent-softer */
 #md-pack.in-pack { background: var(--accent-softer); color: var(--accent-ink); border-color: var(--border-accent); }
 
-/* ---------------------------------------------------------------------------
-   RESPONSIVE — užšie panely a redukovaná hlavička na menších oknách
-   --------------------------------------------------------------------------- */
-/* --panel-w sa prepisuje na :root, nie na paneloch — tak ho vidí aj grafový
-   layout (viewInsets) a nemôže sa rozísť so skutočnou šírkou panelu. */
-/* JEDINÝ blok max-width: 1280px v tomto súbore (plán §8). Chróm hlavičky sa
-   orezáva a panel sa zužuje — obe veci robia to isté rozhodnutie, tak stoja spolu.
-   #scope-label sa sem presunul zhora: jeho stav nesie aria-checked a popis drží
-   aria-labelledby, takže sa skrytím nestráca pre čítačku, len pre oko. */
-@media (max-width: 1280px) {
-    :root { --panel-w: min(300px, 26vw); }
-    #header-metrics { display: none; }
-    .h-scope #scope-label { display: none; }
-}
-
-@media (max-width: 900px) {
-    :root {
-        --panel-w: min(340px, calc(100vw - var(--content-left)));
-        --dock-at-left: 0;   /* dock sa presúva k pravej hrane — viď camInsets() */
-    }
-    #dock, #node-panel {
-        left: auto; right: var(--edge);
-        z-index: var(--z-panel);
-    }
-    #cmdk-trigger .cmdk-hint,
-    #cmdk-trigger kbd { display: none; }
-}
+/* Šírkové zlomy (1280 a 900) stoja SPOLU na konci súboru, v sekcii RESPONSIVE —
+   viď jej komentár, prečo tam a nie tu. Do 28. 8. 2026 bola sekcia na tomto
+   mieste a zlom 900 mal tri bloky roztrúsené po súbore. */
 
 /* ===========================================================================
    FÁZA SMERNICA — obrazovka prompt builderu (šablóny / návrh / náhľad / uložené)
@@ -4332,15 +4358,10 @@ label.check.dir-check.off { opacity: .5; }
 .dsi-title { font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dsi-path { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* 860 → 900 (plán §8): 860 a 900 boli od seba 40px a obe znamenali „úzko", takže
-   v pásme 861–900px mala appka dve rôzne definície úzkeho okna naraz — panely už
-   boli presunuté, druhý stĺpec Smernice ešte držal. Posun je hlboko v pásme
-   768–900 z rozhodnutia 18, teda bez straty. Po tejto zmene nemá súbor jediný
-   výskyt čísla 860 v mediálnej podmienke. */
-@media (max-width: 900px) {
-    .dir-cols { grid-template-columns: 1fr; }
-    .dir-preview-wrap { position: static; }
-}
+/* Jednostĺpcová Smernica pod 900px sa presunula do jediného bloku max-width: 900px
+   na konci súboru (sekcia RESPONSIVE). Základ .dir-cols a .dir-preview-wrap je
+   deklarovaný VYŠŠIE, takže prepis musí zostať za ním — preto sa sťahoval nadol
+   a nie nahor k ostatným pravidlám zlomu. */
 
 /* ###########################################################################
    APOLLO INTEGRATION — component library (Agent D1)
@@ -4404,7 +4425,9 @@ label.check.dir-check.off { opacity: .5; }
     position: absolute; inset: 0;
     transform: translateX(-100%);
     background: linear-gradient(90deg, transparent, var(--shimmer-sheen), transparent);
-    animation: hades-shimmer var(--dur-pulse) var(--ease) infinite;
+    /* Slučka → --ease-pulse. Tichá verzia je `display: none` na tomto ::after
+       (pokojná zdvihnutá plocha), nie `animation: none` so zamrznutým gradientom. */
+    animation: hades-shimmer var(--dur-pulse) var(--ease-pulse) infinite;
 }
 /* `1em` a nie px: riadok skeletonu má byť vysoký ako riadok, ktorý nahrádza.
    Kontejner preto MUSÍ mať font-size z tokenu — bez neho zdedí 14 px z body
@@ -5088,7 +5111,8 @@ button.danger.armed {
 .status-dot[data-status="error"] { background: var(--danger); }
 .status-dot[data-status="running"] {
     background: var(--accent);
-    animation: sync-pulse var(--dur-pulse) var(--ease) infinite;
+    /* Slučka → --ease-pulse; tichú verziu nesie pravidlo hneď pod keyframes. */
+    animation: sync-pulse var(--dur-pulse) var(--ease-pulse) infinite;
 }
 @keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) {
@@ -5224,11 +5248,9 @@ button.danger.armed {
       .dir-saved.
    --------------------------------------------------------------------------- */
 
-/* span-2 potrebuje aspoň 2 stĺpce; v jednostĺpcovom rade by pretekal */
-@media (max-width: 900px) {
-    .dash-card.span-2 { grid-column: auto; }
-
-}
+/* Zrušenie span-2 pod 900px (span-2 potrebuje aspoň 2 stĺpce, v jednostĺpcovom
+   rade by pretekal) sa presunulo do jediného bloku max-width: 900px na konci
+   súboru — sekcia RESPONSIVE. */
 
 /* ---------------------------------------------------------------------------
    3) PRAVIDELNÝ RYTMUS OBRAZOVIEK — jedna medzera medzi sekciami namiesto
@@ -5515,7 +5537,9 @@ button.danger.armed {
     color: var(--text-secondary);
     font-size: var(--fs-small);
     font-weight: var(--fw-medium);
-    transition: background var(--transition-fast), color var(--transition-fast);
+    /* Párový zápis, nie kompozit --transition-fast: kompozit skrýva, ktorú krivku
+       si segment dostal, a v tomto súbore to bol jeho posledný volajúci. */
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 /* Vlások medzi segmentmi — nie plný rám, aby ovládač zostal jeden predmet */
 #density .dens + .dens { box-shadow: inset 1px 0 0 var(--border); }
@@ -5830,3 +5854,71 @@ button, input, select {
 .dtl-dot[data-status="failed"] { background: var(--danger); }
 .dtl-dot[data-status="waiting"], .dtl-dot[data-status="running"] { background: var(--warn); }
 .dtl-dot[data-status="done"] { background: var(--success); }
+
+/* ===========================================================================
+   RESPONSIVE — jeden blok na hranicu, a obe hranice na konci súboru
+   ===========================================================================
+   JEDEN BLOK NA HRANICU (plán §8). Do 28. 8. 2026 mal zlom 900 tri bloky
+   roztrúsené po súbore (panely, druhý stĺpec Smernice, span-2 dashboardu),
+   takže hranica sa dala zmeniť v jednom a nie v druhom — a presne tak vznikol
+   predtým rozdiel 860 vs 900, teda dve definície „úzkeho okna" naraz.
+
+   PREČO AŽ TU A NIE V PÔVODNEJ SEKCII UPROSTRED SÚBORU: zlúčenie mení poradie
+   deklarácií, a pri rovnakej špecificite rozhoduje poradie. Základ .dir-cols,
+   .dir-preview-wrap a .dash-card.span-2 je deklarovaný NIŽŠIE, než kde sekcia
+   stála — prepis presunutý nahor by prehral so svojím vlastným základom
+   (grid-template-columns, position, grid-column, všetko rovnaká špecificita)
+   a tri pravidlá by ticho prestali platiť. Koniec súboru je jediné miesto, kde
+   platí „za všetkými základmi" bez toho, aby sa to muselo overovať pravidlo
+   po pravidle. Keď sem pridáš pravidlo, drž ho tu; keď pridáš nový základ,
+   patrí NAD túto sekciu.
+
+   PORADIE HRANÍC JE ZÁVÄZNÉ: 1280 pred 900. Obe prepisujú --panel-w na :root
+   s rovnakou špecificitou, takže pod 900px vyhráva ten, kto je druhý. Prehodenie
+   blokov by úzkym oknám dalo panel širokého okna.
+
+   --panel-w sa prepisuje na :root, nie na paneloch — tak ho vidí aj grafový
+   layout (viewInsets) a nemôže sa rozísť so skutočnou šírkou panelu.
+
+   Prechody šírky a polohy tu ZÁMERNE nie sú a nesmú pribudnúť: hodnoty prídu
+   z custom property (--panel-w, --content-left, --rail-w) a `transition` nad
+   takou hodnotou ju po prvom vykreslení zmrazí. Zaplatené 28. 8. 2026, viď
+   komentár pri #rail.
+   --------------------------------------------------------------------------- */
+
+/* 1280 — chróm hlavičky sa orezáva a panel sa zužuje; obe veci robia to isté
+   rozhodnutie, tak stoja spolu. #scope-label sa smie skryť, lebo jeho stav nesie
+   aria-checked a popis drží aria-labelledby — pre čítačku sa teda nestráca,
+   len pre oko. */
+@media (max-width: 1280px) {
+    :root { --panel-w: min(300px, 26vw); }
+    #header-metrics { display: none; }
+    .h-scope #scope-label { display: none; }
+}
+
+/* 900 — úzke okno (rozhodnutie 18: 768–900px nesmie nič prekrývať).
+   Hranica bola pre druhý stĺpec Smernice dovtedy 860; 860 a 900 boli od seba
+   40px a obe znamenali „úzko", takže v pásme 861–900px mala appka dve rôzne
+   definície úzkeho okna naraz — panely už boli presunuté, Smernica ešte držala
+   dva stĺpce. Posun je hlboko v pásme 768–900, teda bez straty; číslo 860 už
+   v mediálnej podmienke tohto súboru nie je. */
+@media (max-width: 900px) {
+    :root {
+        --panel-w: min(340px, calc(100vw - var(--content-left)));
+        --dock-at-left: 0;   /* dock sa presúva k pravej hrane — viď camInsets() */
+    }
+    #dock, #node-panel {
+        left: auto; right: var(--edge);
+        z-index: var(--z-panel);
+    }
+    #cmdk-trigger .cmdk-hint,
+    #cmdk-trigger kbd { display: none; }
+
+    /* Smernica na jeden stĺpec; náhľad prestáva byť sticky, lebo pod sebou už
+       nemá čo sledovať. */
+    .dir-cols { grid-template-columns: 1fr; }
+    .dir-preview-wrap { position: static; }
+
+    /* span-2 potrebuje aspoň 2 stĺpce; v jednostĺpcovom rade by pretekal. */
+    .dash-card.span-2 { grid-column: auto; }
+}
