@@ -169,6 +169,68 @@ pretože rail, ikony aj pohyb naň siahajú) → 2 agenti výmeny ikonových cal
 1 agent odchodu Material Symbols → 3 overovatelia (testy, zmeraný DOM, adversariálny
 review). Výsledok sa dopíše po behu.
 
+**Dobehlo 13 z 20 agentov; sedem padlo na session limit** (A3 pohyb v `mind.css`,
+F1 a F2 výmena ikonových call-site, G odchod Material Symbols, a všetci traja
+overovatelia). Ich práca tu **nie je** a vlna 2 preto nie je uzavretá. Podľa
+pravidla projektu som ich zmeny nehľadal ani neprerábal — čo pristálo, pristálo
+celé; čo nie, chýba celé.
+
+**Čo pristálo (commit `f5f3b8e`):** `mind/urlstate.js` ako jediné miesto v repe,
+ktoré query string číta aj píše (37 kľúčov, radené, defaulty sa vynechávajú),
+URL na šiestich dátových obrazovkách, v grafe a na `/chat`; prepísaný manuál
+značky (1256 → 2026 riadkov) a `docs/PLAN-VLNA2-3.md`; jeden zdroj geometrie
+znaku (`public/brand/build-mark.py` + `DERIVED.md`, favicon a Electron `.ico`
+z neho); `charon.css`, `console.css` a `chat.css` na typografickú škálu;
+kresba `.ic` pre vlastnú sadu a `shared/icons.js` so 61 ikonami.
+
+**Namerané po behu (koordinátor, nie agent):**
+
+| Vec | Číslo |
+|---|---|
+| `php artisan test` | 596 passed · 0 failed · 45 skipped — základná čiara |
+| MariaDB filter | 112 testov OK · 0 padnutých |
+| Syntax všetkých dotknutých ES modulov | 0 chýb |
+| `export const` arrow v dotknutých moduloch | 0 |
+| Hlboký odkaz `?s=graf&a=3&gv=layers&mw=1.5` | obnovil obrazovku, zanorenie, pohľad aj váhu |
+| Množinový filter `ft=project&ft=skill&fr=similarity` | obnovil oba Set-y presne |
+| Default sa v adrese neobjaví | `mw`=0 → v `location.search` nie je |
+| História | navigácia +1 záznam · zanorenie grafu +0 |
+| Konzola prehliadača na `/`, `/chat`, `/console` | 0 chýb okrem `ws://` (limit proxy) |
+
+**Medzera po A3, ktorú som zavrel sám:** `charon.css` a `console.css` čítajú
+`--ease-pulse`, ktorý mal do `:root` doplniť A3. Agent E to predvídal a zapísal
+tie animácie **longhandom** — v shorthande by neznáma hodnota zneplatnila celú
+deklaráciu a `animation-name` by spadlo na `none`, teda indikátor behu by
+prestal existovať, nie len zmenil krivku. Vďaka tomu appka nebola pokazená, len
+degradovaná na `ease`. Token som doplnil; zmerané: rozpustí sa na všetkých troch
+plochách.
+
+**Prečo Material Symbols zostáva:** `shared/icons.js` existuje, ale **nemá ani
+jedného volajúceho** — F1 a F2 padli. Je to teda dnes mŕtvy kód, presne v zmysle
+pasce tohto projektu, a je to zapísané tu, nie zamlčané. Fallback `.ms` drží
+všetkých 60 ikon na ploche; odstrániť ho pred výmenou by bola chyba.
+
+**Tri opravy kontraktu, každá overená mnou, nie prevzatá od agenta:**
+
+1. Rozhodnutie 19+21 hovorí **41** použitých ligatúr. Správne je **61**. Vlna 1
+   opravila 37 na 41 tým, že našla štyri ikony neviditeľné pre grep; sonda B
+   našla **celú šiestu a siedmu cestu** do DOM (ternár v template stringu,
+   mapovacie stoly typ → ikona). Krížová kontrola: môj vlastný naivný regex nájde
+   40 — teda presne to, čo vidí grep — a `CMDK_TYPE_ICO` v `cmdk.js` nesie
+   `brightness_7`, `psychology`, `inventory_2` a `circle`, z ktorých nevidí ani
+   jednu. To je dôkaz **pre** číslo 61, nie proti nemu.
+2. Geometria znaku nie je zapísaná 8×, ale **16×**.
+3. Meraný údaj v rozhodnutí 17 („pri 594 px výšky má rail 562 px a žiadny
+   `overflow-y`") je pravdivý len spolovice — výška a `overflow` sedia, ale prah
+   je 589 px (588 padne, 589 sadne, kalibrované z oboch strán).
+
+### Zostáva na vlnu 3
+
+Pohyb v `mind.css` (A3), výmena 61 ikonových call-site (F1, F2), odchod
+Material Symbols (G), a **celé overenie** — zmeraný DOM naprieč oboma témami,
+kontrast nových povrchov a adversariálny review diffu. Plán a vlastníctvo súborov
+pre nich sú hotové v `docs/PLAN-VLNA2-3.md`, takže sa dá nadviazať bez nových sond.
+
 **Oprava kontraktu:** rozhodnutie 19 hovorí „37 použitých ligatúr". Správne číslo je
 **41** (sonda A §4.1) — štyri vstupujú do DOM cestami, ktoré grep nad markupom nevidí
 (`search_off`, `filter_alt_off`, `play_arrow`, `pause`).

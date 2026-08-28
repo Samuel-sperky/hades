@@ -440,6 +440,13 @@
     --dur-pulse: 1.4s;
     --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
     --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    /* Krivka nekonecnych sluciek (dychanie, blikanie behu). Symetricka, na rozdiel
+       od --ease: slucka nema prichod, takze dojazd musi byt ten isty ako rozbeh,
+       inak pulz kulha. Citaju ju charon.css a console.css, a citaju ju LONGHANDOM:
+       v shorthande by neznama hodnota zneplatnila celu deklaraciu a animation-name
+       by spadlo na none, teda indikator behu by prestal existovat namiesto toho,
+       aby zmenil krivku. Zmerane agentom E este pred tym, nez token vznikol. */
+    --ease-pulse: cubic-bezier(0.4, 0, 0.6, 1);
     --motion-shift: 8px;
 
     /* ---- z-index ladder ---- */
