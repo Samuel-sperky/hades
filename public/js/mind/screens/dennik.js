@@ -2,6 +2,7 @@ import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeDetail } from '../screens.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, getJson, prettyLabel, renderEmpty, renderError, renderFilterEmpty } from '../util.js';
+import { iconMarkup } from '../../shared/icons.js';
 
 // Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',

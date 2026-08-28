@@ -34,9 +34,9 @@ export const DIR_SECTIONS = [
     { key: 'skills', title: 'Skilly', icon: 'bolt' },
     // Pasca (certainty=pasca) má vlastnú sekciu: „neopakuj túto chybu" je pre
     // Claude Code najsilnejší poznatok v smernici a medzi skillmi sa strácal.
-    { key: 'pitfalls', title: 'Pasce', icon: 'warning' },
-    { key: 'projects', title: 'Projekty', icon: 'inventory_2' },
-    { key: 'facts', title: 'Fakty', icon: 'psychology' },
+    { key: 'pitfalls', title: 'Pasce', icon: 'alert-triangle' },
+    { key: 'projects', title: 'Projekty', icon: 'box' },
+    { key: 'facts', title: 'Fakty', icon: 'head-gear' },
     { key: 'rules', title: 'Pravidlá', icon: 'gavel' },
 ];
 
@@ -373,8 +373,9 @@ export function renderDirectiveSaved() {
                 + inner + '</button>';
         }
         return '<div class="dir-saved-item">' + inner
-            + '<button type="button" class="danger ms dir-del" data-name="' + esc(it.name) + '"'
-            + ' title="Zmazať smernicu" aria-label="Zmazať smernicu">delete</button>'
+            + '<button type="button" class="danger dir-del" data-name="' + esc(it.name) + '"'
+            + ' title="Zmazať smernicu" aria-label="Zmazať smernicu">'
+            + iconMarkup('trash') + '</button>'
             + '</div>';
     }).join('');
 

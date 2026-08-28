@@ -25,7 +25,7 @@
 
 import { S } from './state.js';
 import { go } from './sim.js';
-import { iconSvg } from '../shared/icons.js';
+import { iconMarkup, iconSvg } from '../shared/icons.js';
 import { createRunClient } from '../shared/runclient.js';
 import {
     argsSummary, decisionLabel, diffHtml, iconFor, looksLikeDiff, writeAsk, writeTarget,

@@ -358,8 +358,9 @@ export function decisionCardHtml(dec) {
     // Kôš je SÚRODENEC karty, nie jej dieťa: .dtl-card je <button> a tlačidlo
     // vnútri tlačidla je neplatné HTML aj slepá ulička pre klávesnicu.
     const del = decisionsState.managing
-        ? '<button type="button" class="danger ms dec-del" data-id="' + dec.id + '"'
-            + ' title="Zmazať rozhodnutie" aria-label="Zmazať rozhodnutie">delete</button>'
+        ? '<button type="button" class="danger dec-del" data-id="' + dec.id + '"'
+            + ' title="Zmazať rozhodnutie" aria-label="Zmazať rozhodnutie">'
+            + iconMarkup('trash') + '</button>'
         : '';
     return '<div class="dtl-item">'
         + '<span class="dtl-dot" data-origin="' + (dec.origin === 'brain' ? 'brain' : 'session') + '" aria-hidden="true"></span>'

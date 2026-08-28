@@ -94,6 +94,30 @@ function entAlpha(n, ent, hl) {
     return a * S.dim;
 }
 
+/* ---------- PLYNULÉ ZANORENIE: INTERPOLÁCIA `ent.dim` ----------
+   `go()` je FILTER — nemení pozície ani nevymieňa scénu, mení sa len `ent.dim`
+   (fokus 1, kontext DIM_CTX = 0,34). Cieľ vlastní `computeLayout()` v `layout.js`
+   a TU SA NEMENÍ; mení sa jedine to, že sa k nemu ide plynulo namiesto skoku.
+
+   Delenie rolí je zámerné a nikto iný do neho nesiaha: čas nesie `S._dimTween`
+   ({ t0, dur }) zo `sim.js`, cieľ nesie layout, interpoláciu robí tento súbor.
+
+   Východisko nesie UZOL (`n._dimFrom`), nie zápis layoutu, a je ZAMRZNUTÉ v rámci
+   pred zmenou filtra. Oboje je nutné:
+     · `computeLayout()` vyrába pri každom prepočte NOVÉ objekty zápisov, takže staré
+       `dim` by so starou Mapou zaniklo — na uzle prežije,
+     · keby sa „from" čítalo každý rámec z naposledy nakresleného, vyšlo by
+       exponenciálne dobiehanie a nie krivka, ktorú `easeInOut` sľubuje.
+
+   Nie je to vzkriesený `S._morph`: ten interpoloval POZÍCIE, čím popieral, že `go()`
+   je filter, a preto bol 28. 8. 2026 zmazaný. Tu sa hýbe ALFA a nič iné — žiadny uzol
+   sa neposunie o pixel a kvôli prechodu sa neprepočítava layout.
+
+   `dim0` na zápise je odložený cieľ: `dim` sa každý rámec DOPOČÍTA z neho, takže sa
+   sám vráti na cieľ, keď prechod dobehne (aj pre uzol, ktorý bol medzitým odfiltrovaný
+   a vrátil sa). Zostarnúť nemôže — zápisy sú po každom prepočte nové objekty. */
+let _dimTweenSeen = null;   // objekt tweenu, ktorému sa už nasnímalo východisko
+
 /* ---------- GRAF B: VIZUÁLNY JAZYK ---------- */
 
 /* Farba, ktorou sa uzol reálne kreslí. Jadro je JEDINÝ sýty prvok kompozície
@@ -608,6 +632,40 @@ export function draw() {
     const L = ensureLayout();
     const level = L.level;
 
+    /* ---- PLYNULÉ ZANORENIE: fáza prechodu pre TENTO rámec (viď blok pri `_dimTweenSeen`) ----
+       Východisko sa sníma raz na tween, a to podľa `n._vd` z PREDCHÁDZAJÚCEHO rámca:
+       `_vd` sa nuluje až nižšie v tomto draw(), takže tu ešte hovorí „bol tento uzol
+       naposledy nakreslený?". Kto nakreslený nebol, nemá odkiaľ stmavovať a sadne rovno. */
+    const dimTw = S._dimTween;
+    let dimE = 1;
+    if (dimTw) {
+        if (dimTw !== _dimTweenSeen) {
+            _dimTweenSeen = dimTw;
+            for (const n of S.nodes) n._dimFrom = n._vd === 1 ? n._dimSeen : undefined;
+        }
+        const p = dimTw.dur > 0 ? (S._clock - dimTw.t0) / dimTw.dur : 1;
+        /* Tween sa nuluje SÁM, keď dobehne. Bez toho by ho `responsive` v frame()
+           držal navždy a 2675 uzlov by sa prekresľovalo za nič — presne tá cena,
+           ktorú pravidlo „mimo Grafu sa nekreslí" celý čas šetrí. */
+        if (!(p < 1)) { S._dimTween = null; _dimTweenSeen = null; }
+        else dimE = easeInOut(p);
+    }
+    const dimTweening = dimE < 1;
+    // Debug hooky — merač musí čítať ŽIVÚ fázu a živý počet, nie si prepočítavať
+    // formulu; kópia formuly by po zmene krivky merala samu seba.
+    S._dimEase = dimE;
+    let dimLerp = 0;
+
+    /* TICHÁ VERZIA (plán §2.3, manuál — tabuľka tichých verzií): pri
+       `prefers-reduced-motion` je `S._dimTween` už zo `sim.js` `null`, takže `dim`
+       sadne v jednom rámci. Keby sme tým skončili, bolo by to „vypnuté": zmena filtra
+       by prebehla bez jediného slova o tom, čo sa vybralo. Fokusová skupina preto
+       dostane TRVALÝ OBRYS — kým je filter aktívny, kreslia sa jej uzly hrubším
+       obrysom (RING_LW_HOT), ktorý nezhasína. Je to okamžitý ekvivalent: nič sa
+       nehýbe a nič sa nemusí dopočítať. Na mape (bez filtra) je fokusom celá scéna,
+       takže by obrys nič nerozlišoval — vtedy sa nekreslí. */
+    const quietFocusRing = level !== 'map' && (REDUCED_MOTION || reducedMotionActive());
+
     updateCanvasAria();   // P9: drž aria-label plátna živý (lacný guard na signatúre)
 
     ctx.translate(S.w / 2 + S.cam.x, S.h / 2 + S.cam.y);
@@ -679,6 +737,16 @@ export function draw() {
         const n = S.byId.get(id);
         if (!n || n._vd !== 1) continue;
         n._ent = ent;
+        /* Plynulé zanorenie — `dim` sa dopočíta PRED prvým čitateľom v tomto rámci
+           (kľúč a alfa vedierka prachu nižšie, pipy, tvary, popisky aj `drawEdges`
+           cez `n._ent`), aby celý rámec hovoril jednu hodnotu. Cieľ je `dim0`. */
+        const dimT = ent.dim0 !== undefined ? ent.dim0 : (ent.dim0 = ent.dim != null ? ent.dim : 1);
+        if (dimTweening) {
+            const from = n._dimFrom;
+            if (from !== undefined && from !== dimT) { ent.dim = from + (dimT - from) * dimE; dimLerp++; }
+            else ent.dim = dimT;
+        } else if (ent.dim !== dimT) ent.dim = dimT;
+        n._dimSeen = ent.dim;
         const isDust = ent.kind === 'dust' || ent.kind === 'ctx';
         // dustDrift vracia ZDIEĽANÝ objekt (jeden na appku) — čítame ho hneď
         const dr = isDust ? dustDrift(id, invK) : null;
@@ -716,6 +784,9 @@ export function draw() {
         });
     }
     for (const s of solid) s.r0 = s.r;
+    // Koľko uzlov sa v tomto rámci reálne interpolovalo (0 = prechod nebeží alebo
+    // nemá čo meniť). Živé číslo pre merač, viď S._dimEase.
+    S._dimLerp = dimLerp;
 
     /* ---- LOD: v hustých buňkách klesnú slabšie uzly na pip ----
        Musí byť PRED mriežkou prekážok aj pred rozložením popiskov — demotovaný uzol
@@ -872,7 +943,17 @@ export function draw() {
         if (n.flash) r *= 1 + Math.min(0.15, n.flash * 0.15) * Math.min(1.4, Math.max(S._anim, S._life));
         // Jadro je jediný sýty prvok kompozície a hub-y sú klikacie plochy — obom
         // zostáva plná alfa. Zľahčuje sa POKOJOVÝ prstenec, teda textúra.
-        const strong = n.type === 'core' || carriers.has(n.id);
+        const carrier = n.type === 'core' || carriers.has(n.id);
+        /* Hrubší obrys má DVA dôvody a alfu smie zdvihnúť len ten prvý:
+             · nositeľ informácie (jadro, hover, výber, pomenovaný uzol) — plná alfa,
+             · tichá verzia zanorenia — TRVALÝ OBRYS fokusovej skupiny pri
+               `prefers-reduced-motion` (viď `quietFocusRing` v hlavičke draw()).
+           Keby druhý dôvod zdvihol aj alfu, tichá verzia by prekreslila celú
+           kompozíciu: fokus je pri filtri stovky uzlov, nie hrsť. Obrys pridáva
+           kontrast (1,15 → 1,7 px), takže WCAG 1.4.11 sa tým nemôže zhoršiť.
+           `dim0` je cieľ z layoutu — fokus je 1, kontext DIM_CTX; berieme cieľ, nie
+           práve interpolovanú hodnotu, aby obrys nezávisel od fázy prechodu. */
+        const strong = carrier || (quietFocusRing && (ent.dim0 !== undefined ? ent.dim0 : ent.dim) >= 1);
         /* Pokojový faktor a spánok (S.dim) tvrdia TO ISTÉ — „toto nie je to, na čo sa
            práve pozeráš" — takže sa nesmú vynásobiť. Súčin 0,74 × 0,78 = 0,58 poslal
            pokojový prstenec na 2,4:1 (merané, scratchpad/gbcontrast.js), a to v stave,
@@ -880,7 +961,7 @@ export function draw() {
            ale Hadesa. Berieme preto prísnejší z oboch, nie ich súčin. Spánok naďalej
            tlmí sieť, areoly, mriežku a jadro a hlavička ho hlási textom, takže signál
            sa nestráca — len sa neplatí dvakrát tým istým prvkom. */
-        const restF = strong ? 1 : Math.min(T.ringRest, S.dim) / (S.dim || 1);
+        const restF = carrier ? 1 : Math.min(T.ringRest, S.dim) / (S.dim || 1);
         const alpha = entAlpha(n, ent, hl) * restF;
         ctx.globalAlpha = alpha;
         drawShape(n, x, y, r, paintColor(n), {
@@ -1715,11 +1796,11 @@ export function frame() {
         if (c.t >= 1) S._camTween = null;
     }
 
-    /* Morph pozicii medzi urovnami tu bol do 28. 8. 2026 a bol MRTVY: `S._morph`
-       sa v celom repe nikdy nenastavil na ine nez `null`. Patril do cias, ked
-       zanorenie prepocitavalo rozlozenie. Dnes je `go()` FILTER - nemeni pozicie
-       ani nevymiena scenu - takze kod, ktory pozicie interpoluje, hovoril opak
-       jedneho z nedotknutelnych invariantov kontraktu. */
+    /* Morph pozicii medzi urovnami tu bol do 28. 8. 2026 a bol MRTVY: `S._morph`
+       sa v celom repe nikdy nenastavil na ine nez `null`. Patril do cias, ked
+       zanorenie prepocitavalo rozlozenie. Dnes je `go()` FILTER - nemeni pozicie
+       ani nevymiena scenu - takze kod, ktory pozicie interpoluje, hovoril opak
+       jedneho z nedotknutelnych invariantov kontraktu. */
 
     if (S.replay.playing) {
         S.replay.t = Math.min(1, S.replay.t + dt / 22);
@@ -1733,7 +1814,11 @@ export function frame() {
     const dimTarget = isAwake() ? 1 : SLEEP_DIM;
     const dimActive = Math.abs(dimTarget - S.dim) > 0.001;
     const ambientLife = S._life > 0; // pokoj = dýchajúce jadro + veľmi pomalý prach
-    const responsive = !!S._camTween || S.replay.playing || S._interacting
+    /* `S._dimTween` je tu preto, že prechod zanorenia sa NESMIE oprieť o kameru:
+       `S._camTween` síce po `go()` beží dlhšie (0,55 s proti 0,18 s), ale ručný pan
+       ho v `interaction.js` zruší — a vtedy by stmievanie zamrzlo v polovici. Slučka
+       tým navždy nezostáva: draw() tween po dobehnutí sám nuluje. */
+    const responsive = !!S._camTween || !!S._dimTween || S.replay.playing || S._interacting
         || S.pulses.length > 0 || S._flows.length > 0 || S._settleFrames > 0 || dimActive;
     const active = responsive || ambientLife;
 

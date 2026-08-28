@@ -19,6 +19,7 @@ const NARROW = window.matchMedia('(max-width: 900px)');
 
 import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, typeName, updateHeaderMetrics } from './util.js';
 import { iconMarkup } from '../shared/icons.js';
+import { iconSwap } from '../shared/icons.js';
 
 /* ---------- panely ---------- */
 export async function selectNode(n) {
@@ -83,8 +84,9 @@ export async function selectNode(n) {
             return '<div class="nb-row">'
                 + '<button type="button" class="chip" data-id="' + m.id + '">' + esc(prettyProject(plainInline(m.label))) + '</button>'
                 + (edge
-                    ? '<button type="button" class="ghost ms nb-del" data-edge="' + edge.id
-                        + '" title="Zrušiť spojenie" aria-label="Zrušiť spojenie">close</button>'
+                    ? '<button type="button" class="ghost nb-del" data-edge="' + edge.id
+                        + '" title="Zrušiť spojenie" aria-label="Zrušiť spojenie">'
+                        + iconMarkup('x') + '</button>'
                     : '')
                 + '</div>';
         }).join('') || emptyCardHtml('Bez spojení');
@@ -135,7 +137,8 @@ export async function renderSuggestions(n) {
             + '<span class="swatch" style="background:' + esc(color) + '" aria-hidden="true"></span>'
             + '<span class="sug-label">' + esc(prettyProject(plainInline(s.label))) + '</span>'
             + '<span class="sug-score">' + esc(Number(s.score).toFixed(2)) + '</span>'
-            + '<button type="button" class="ghost ms sug-add" title="Prepojiť" aria-label="Prepojiť">add_link</button>'
+            + '<button type="button" class="ghost sug-add" title="Prepojiť" aria-label="Prepojiť">'
+            + iconMarkup('link-plus') + '</button>'
             + '</div>';
     }).join('');
 
@@ -297,7 +300,7 @@ export function buildLegend() {
             if (off) S.filter.areas.add(id); else S.filter.areas.delete(id);
             row.classList.toggle('off', off);
             row.setAttribute('aria-pressed', off ? 'false' : 'true');
-            row.querySelector('.la-eye').textContent = off ? 'visibility_off' : 'visibility';
+            iconSwap(row.querySelector('.la-eye'), off ? 'eye-off' : 'eye');
             persistFilter();
             draw();
         };

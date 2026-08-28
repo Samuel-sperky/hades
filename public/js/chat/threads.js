@@ -44,7 +44,7 @@ import { live, narrow, setPanel, syncPanelsToUrl } from './main.js';
    z `mind/`, takže `/chat` ním nestiahne graf. Debounce filtrov (220 ms) drží
    on sám — odtiaľto sa nedebouncuje druhý raz. */
 import { urlValue, writeUrl } from '../mind/urlstate.js';
-import { iconSvg } from '../shared/icons.js';
+import { iconMarkup, iconSvg } from '../shared/icons.js';
 
 /* ---------------------------------------------------------------------------
    STAV

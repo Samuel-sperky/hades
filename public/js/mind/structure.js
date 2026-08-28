@@ -4,6 +4,7 @@ import { S } from './state.js';
 import { mutedColor } from './theme.js';
 import { showToast } from './toasts.js';
 import { $, busy, deferSkeleton, emptyHtml, esc, getJson, markTreeActive, renderEmpty, renderError, renderLoading, setFocus, typeName } from './util.js';
+import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- štruktúra (oblasti a oddelenia) ---------- */
 
@@ -26,8 +27,9 @@ export async function renderStructure() {
                 html += '<div class="tree-row dept" role="button" tabindex="0" data-area="' + a.id + '" data-dept="' + d.id + '">'
                     + '<span class="t-name">' + esc(d.name) + '</span>'
                     + '<span class="count">' + (d.node_count || 0) + '</span>'
-                    + '<button type="button" class="ghost ms dept-more" data-more="' + d.id
-                    + '" title="Možnosti oddelenia" aria-label="Možnosti oddelenia">more_horiz</button>'
+                    + '<button type="button" class="ghost dept-more" data-more="' + d.id
+                    + '" title="Možnosti oddelenia" aria-label="Možnosti oddelenia">'
+                    + iconMarkup('ellipsis') + '</button>'
                     + '</div>';
             }
         }

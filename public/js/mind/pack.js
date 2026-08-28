@@ -4,6 +4,7 @@ import { mdLabel, mdNodeId, mdPath, syncMdFoot } from './md.js';
 import { S } from './state.js';
 import { showToast } from './toasts.js';
 import { $, esc } from './util.js';
+import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- „Do balíka" = priloženie do kontextu doku Charóna (A8, R-6) ----------
 
@@ -32,10 +33,11 @@ export function packHas(id) { return contextHas(id); }
 // Trieda .pack-btn a jej štýly v mind.css ostávajú; mení sa len význam (kontext).
 export function packBtn(id, label) {
     const on = packHas(id);
-    return '<button type="button" class="pack-btn ms' + (on ? ' in-pack' : '') + '"'
+    return '<button type="button" class="pack-btn' + (on ? ' in-pack' : '') + '"'
         + ' data-pack-id="' + esc(String(id)) + '" data-pack-label="' + esc(label || '') + '"'
         + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
-        + ' title="' + (on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru') + '">library_add</button>';
+        + ' title="' + (on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru') + '">'
+        + iconMarkup('library-plus') + '</button>';
 }
 
 // Naviaž pack-toggle tlačidlá v podstrome (stopPropagation, aby klik neotvoril aj

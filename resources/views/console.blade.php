@@ -116,7 +116,7 @@
                      ho prestane sledovať. Ikona `arrow_downward` v subsete NIE JE,
                      preto je to `arrow_upward` prevrátená v CSS. --}}
                 <button type="button" id="to-bottom" class="hidden" title="Na spodok" aria-label="Skočiť na spodok">
-                    <svg class="ic flip" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg>
+                    <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 4.4 v 15"/><path d="M 18.2 13.2 L 12 19.4 L 5.8 13.2"/></svg>
                 </button>
                 <div class="composer-row">
                     {{-- Paletu príkazov MUSÍ vlastniť toto pole. Do 20. 8. 2026 bola
@@ -131,7 +131,7 @@
                               role="combobox" aria-expanded="false" aria-controls="slash-palette"
                               aria-autocomplete="list" aria-haspopup="listbox"></textarea>
                     <button type="submit" id="send" title="Poslať (Enter)" aria-label="Poslať">
-                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 19.6 V 4.6"/><path d="M 5.8 10.8 L 12 4.6 L 18.2 10.8"/></svg>
+                        <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 20.6 3.4 L 3.4 10.2 L 10.9 13.1 L 13.8 20.6 Z"/><path d="M 20.6 3.4 L 10.9 13.1"/></svg>
                     </button>
                     <button type="button" id="stop" class="hidden" title="Zastaviť beh (Esc)" aria-label="Zastaviť beh">
                         <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6.7 6.7 h 10.6 v 10.6 H 6.7 Z"/></svg>

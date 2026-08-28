@@ -5,10 +5,10 @@ import { clearLocal } from './filters.js';
 import { anchorOf } from './layout.js';
 import { closeNodePanel } from './panels.js';
 import { markJournalSeen, setJournalDot } from './rail.js';
-import { requestDraw } from './render.js';
+import { SETTLE_FRAMES, requestDraw } from './render.js';
 import { renderJournal } from './screens/dennik.js';
 import { buildSim, kickSim } from './sim.js';
-import { S } from './state.js';
+import { REDUCED_MOTION, S } from './state.js';
 import { renderStructure } from './structure.js';
 import { showToast } from './toasts.js';
 import { $, blip, markAwake, updateHeaderMetrics } from './util.js';
@@ -61,14 +61,36 @@ export function handlePulse(type, data) {
         const a = anchorOf(n);
         n.x = a.x + (Math.random() - 0.5) * 40;
         n.y = a.y + (Math.random() - 0.5) * 40;
-        n.flash = 1;
-        n._born = S._clock; // FÁZA ANIMÁCIE (Q13): časovač zrodu — polomer 0→plný + prstenec
+        n._born = S._clock; // časovač zrodu — polomer 0→plný (birthScale) + prstenec zrodu
+        /* PRÍLET UZLA MÁ TRI POHYBY, NIE SEDEM (rozhodnutie 6: pohyb nesie informáciu,
+           neopakuje ju). Zostáva `birthScale` (polomer 0→plný, ~0,5 s), prstenec zrodu
+           (~0,6 s) a toast. Preč sú:
+             - `spawnPulse(hadesNode(), n)` — cestujúci pulz od jadra k novému uzlu,
+             - `emitFlows(n, …)` — svetlobody po VŠETKÝCH incidentných hranách, ktoré
+               navyše rozsvietili každého suseda druhotným flashom (render.js:1699),
+               hoci sa tie uzly vôbec nezmenili,
+             - `n.flash = 1` mimo tichej verzie — kreslí prstenec s konštantnou alfou
+               na r+3, teda presne to isté miesto a tú istú akcentovú farbu ako prstenec
+               zrodu; boli to dva prstence cez seba, nie dve informácie.
+           `kickSim()` zostáva nedotknutý: to nie je prechod, ale fyzika — nový uzol
+           a jeho hrany musia rozloženie dosadnúť. */
+
+        /* TICHÁ VERZIA (rozhodnutie 8) — nie „vypnuté", ale okamžitý ekvivalent.
+           Pri `prefers-reduced-motion` je `birthScale` aj prstenec zrodu potlačený
+           (stráže v `anim.js` a `render.js`), takže bez tohto by nový uzol pribudol
+           úplne nepozorovane a človek by prílet prehliadol. `flash` nakreslí okolo neho
+           prstenec s KONŠTANTNOU alfou, ktorý lineárne vyhasne — uzol je teda hneď
+           v plnej veľkosti a je označený. `_settleFrames` drží slučku nažive, aby to
+           vyhasnutie malo v čom prebehnúť; predtým ho na tomto mieste nastavovala tichá
+           vetva `spawnPulse()`, ktorá odchádza. */
+        if (REDUCED_MOTION) {
+            n.flash = 1;
+            S._settleFrames = Math.max(S._settleFrames, SETTLE_FRAMES);
+        }
         S.nodes.push(n);
         S.byId.set(n.id, n);
         buildSim();
         kickSim();
-        spawnPulse(hadesNode(), n, { speed: 1.4 });
-        emitFlows(n, { tone: 'accent', speed: 1.1 }); // tok po nových hranách uzla
         blip(520);
         showToast('Naučil som sa: ' + n.label, n.id);
         if (n.source === 'session') {

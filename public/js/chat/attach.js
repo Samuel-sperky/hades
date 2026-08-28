@@ -532,7 +532,7 @@ function chip(item) {
     drop.type = 'button';
     drop.title = 'Odobrať prílohu';
     drop.setAttribute('aria-label', `Odobrať prílohu ${item.name || ''}`.trim());
-    drop.append(icon('close'));
+    drop.append(icon('x'));
     drop.addEventListener('click', () => { removeAttachment(item.uuid); });
     row.append(drop);
 
@@ -543,7 +543,7 @@ function chip(item) {
 function ghostChip(ghost) {
     const row = el('li', 'cf-item is-loading');
 
-    row.append(icon('pending', 'cf-icon'));
+    row.append(icon('clock', 'cf-icon'));
 
     const body = el('div', 'cf-body');
 

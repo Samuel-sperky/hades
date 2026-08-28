@@ -472,7 +472,7 @@ function nodeRow(node, depth) {
 
     const top = el('div', 'cs-top');
 
-    top.append(icon(depth > 0 ? 'hub' : 'account_tree', 'cs-icon'));
+    top.append(icon(depth > 0 ? 'hub' : 'tree', 'cs-icon'));
     top.append(el('strong', 'cs-name', node.kind === 'parent' ? 'Rodič — tento ťah' : childName(node)));
     top.append(el('span', 'cs-state', STATE_LABEL[node.status] || node.status));
     row.append(top);
