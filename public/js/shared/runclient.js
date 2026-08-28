@@ -337,7 +337,7 @@ export function createRunClient({ request, state, view } = {}) {
                 closed = true;
                 call('onNotice', 'Beh zastavený. Čo prišlo, zostáva.');
             } else {
-                call('onError', `Spojenie s behom sa prerušilo: ${error?.message || 'neznáma chyba'}`);
+                call('onError', `Spojenie s behom sa prerušilo: ${error?.message || 'neznáma chyba'}`);
                 closed = true;
             }
         } finally {

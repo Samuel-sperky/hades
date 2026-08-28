@@ -113,7 +113,7 @@ export function diffHtml(text) {
 
 const DECISION_LABEL = {
     allow: 'Povolené',
-    allow_always: 'Povolené — a odteraz bez pýtania',
+    allow_always: 'Povolené — a odteraz bez pýtania',
     deny: 'Zamietnuté',
 };
 
@@ -148,7 +148,7 @@ export function writeTarget(name, args, preview) {
     let action = 'Zápis';
     if (/(^|_)(learn|remember)/.test(key)) action = 'Uloženie do pamäte';
     else if (/(^|_)decision/.test(key)) action = 'Zápis rozhodnutia do pamäte';
-    else if (/(^|_)delete/.test(key)) action = 'Vymazanie z pamäte';
+    else if (/(^|_)delete/.test(key)) action = 'Vymazanie z pamäte';
     else if (/(^|_)(write|edit|apply|move|rename)/.test(key)) action = 'Zápis do súboru';
 
     return detail !== '' ? `${action}: ${detail}` : action;

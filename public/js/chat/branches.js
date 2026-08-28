@@ -436,8 +436,8 @@ export function attachEdit(data) {
         btn.append(iconSvg('pencil'));
 
         btn.type = 'button';
-        btn.title = 'Upraviť správu a odpovedať znovu';
-        btn.setAttribute('aria-label', 'Upraviť správu a odpovedať znovu');
+        btn.title = 'Upraviť správu a odpovedať znovu';
+        btn.setAttribute('aria-label', 'Upraviť správu a odpovedať znovu');
         btn.addEventListener('click', () => openEditor(box, mid));
 
         box.append(btn);

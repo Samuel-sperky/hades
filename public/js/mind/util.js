@@ -377,7 +377,7 @@ export function plainInline(s) {
     if (!s) return '';
     return String(s)
         .replace(/`([^`]+)`/g, '$1')              // inline kód
-        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')// odkazy a obrázky → len text
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')// odkazy a obrázky → len text
         .replace(/(\*\*|__)(.*?)\1/g, '$2')       // bold (len párový)
         // Nepárový spätný apostrof padá tiež: názvy prichádzajú odseknuté („The
         // production build (`docker compose exec…"), takže párové pravidlo naň
@@ -460,7 +460,7 @@ export function prettyLabel(label, project) {
 }
 
 /* GET + JSON s kontrolou stavu — JEDEN zdroj pravdy pre čítacie volania obrazoviek.
-   `(await fetch(u)).json()` samo o sebe stav neprečíta: pri 500 s JSON telom
+   `(await fetch(u)).json()` samo o sebe stav neprečíta: pri 500 s JSON telom
    (`{"message": "..."}`) sa parsovanie podarí, `d.records` je undefined a obrazovka
    ukáže PRÁZDNY stav namiesto chyby — teda povie „nič tu nie je" o dátach, ktoré
    existujú. Chybová cesta obrazoviek stojí na tom, že táto funkcia hodí výnimku. */
@@ -483,8 +483,8 @@ export async function busy(btn, fn, busyText) {
 /* ---------- prázdne, chybové a načítavacie stavy ----------
 
    JEDEN slovník pre celú plochu `/`. Základ je `.empty`, modifikátor nesie
-   PRÍČINU — a to je informácia, nie kozmetika: „nič tu nie je", „tvoj filter to
-   skryl" a „načítanie padlo" sú tri rôzne správy a do 27. 8. 2026 mali všetky tri
+   PRÍČINU — a to je informácia, nie kozmetika: „nič tu nie je„, „tvoj filter to
+   skryl“ a „načítanie padlo" sú tri rôzne správy a do 27. 8. 2026 mali všetky tri
    ten istý tvar (ikona + veta + rada), takže sa nedali odlíšiť ani okom, ani
    aserciou nad DOM.
 
@@ -492,8 +492,8 @@ export async function busy(btn, fn, busyText) {
      .empty--filter  — dáta existujú, filter ich skryl (jediná akcia: zruš filter)
      .empty--error   — načítanie padlo (jediná akcia: skús znova)
 
-   Hlas: vecne, krátko, po slovensky a NEOSOBNE (docs/BRAND-HADES.md §1).
-   Prvý riadok povie ČO JE, druhý ČO S TÝM. Akcia je NAJVIAC JEDNA — dve akcie
+   Hlas: vecne, krátko, po slovensky a NEOSOBNE (docs/BRAND-HADES.md §1).
+   Prvý riadok povie ČO JE, druhý ČO S TÝM. Akcia je NAJVIAC JEDNA — dve akcie
    znamenajú, že stav nevie, ktorá je jeho jedna cesta ďalej.
 
    Kresba všetkých troch je v `mind.css`; tento modul píše len markup. */
@@ -508,7 +508,7 @@ function actionHtml(action) {
         + esc(action.label) + '</button>';
 }
 
-/* Napojí JEDINÉ `.empty-act` v kontejneri. Keď `on` nie je funkcia, nerobí nič —
+/* Napojí JEDINÉ `.empty-act` v kontejneri. Keď `on` nie je funkcia, nerobí nič —
    a renderery nižšie v tom prípade tlačidlo vôbec nevykreslia, takže mŕtve
    tlačidlo nevznikne. */
 function wireAction(container, on) {
@@ -517,13 +517,13 @@ function wireAction(container, on) {
     if (btn) btn.addEventListener('click', on);
 }
 
-/* `hint` je TRETÍ a `action` ŠTVRTÝ parameter, a to je väzba, nie štýl: tvar
+/* `hint` je TRETÍ a `action` ŠTVRTÝ parameter, a to je väzba, nie štýl: tvar
    `emptyHtml(icon, text)` volá päť modulov, ktoré táto vlna nevlastní (cmdk.js,
    md.js, panels.js, pack.js, charon.js). Zmena poradia alebo významu prvých troch
    parametrov by ich rozbila TICHO — vykreslil by sa nesprávny text alebo
    „undefined". Preto sa `emptyHtml` nesmie prepísať ani na objektový argument.
 
-   `action` je `{ label, act, on }`: `on` je nepovinná funkcia a napojí ju
+   `action` je `{ label, act, on }`: `on` je nepovinná funkcia a napojí ju
    `renderEmpty`. Volajúci, ktorý vracia reťazec, si listener pripojí sám podľa
    `data-act`. */
 export function emptyHtml(icon, text, hint, action) {
@@ -543,15 +543,15 @@ export function renderEmpty(container, icon, text, hint, action) {
 
 const ERROR_HINT = 'Server neodpovedá — skús to znova.';
 
-/* Vetu skládá HELPER, nie volajúci. `subject` je predmet v 4. páde a bez slova
-   „nepodarilo": „denník", „knižnicu", „behy", „frontu". Helper z neho vyrobí
-   „Denník sa nepodarilo načítať".
+/* Vetu skládá HELPER, nie volajúci. `subject` je predmet v 4. páde a bez slova
+   „nepodarilo„: „denník“, „knižnicu„, „behy“, „frontu„. Helper z neho vyrobí
+   „Denník sa nepodarilo načítať“.
 
-   Prečo tu a nie u volajúceho: jedenásť chybových ciest si vetu skládalo samo a
-   rozišli sa — dve z nich (structure.js) nepovedali ani predmet („Nepodarilo sa
-   načítať") a jedna (smernica.js) kreslila chybu ako tichý riadok prázdneho stavu.
+   Prečo tu a nie u volajúceho: jedenásť chybových ciest si vetu skládalo samo a
+   rozišli sa — dve z nich (structure.js) nepovedali ani predmet („Nepodarilo sa
+   načítať") a jedna (smernica.js) kreslila chybu ako tichý riadok prázdneho stavu.
 
-   Ikona `cloud_off` je grafika s prahom 3:1, nie text. Text chyby ide vždy cez
+   Ikona `cloud_off` je grafika s prahom 3:1, nie text. Text chyby ide vždy cez
    `--text` / `--muted`; `--danger` nesie kresbu, pre text má appka `--danger-ink`. */
 function errorMarkup(subject, hint, action) {
     const s = String(subject || '').trim();
@@ -571,8 +571,8 @@ export function errorHtml(subject, hint) {
     return errorMarkup(subject, hint, null);
 }
 
-/* `retry` je funkcia, typicky ta istá render funkcia, v ktorej fetch spadol.
-   MUSÍ čítať stav z modulu, nie z DOM — DOM, ktorý ju vyvolal, práve zmizol.
+/* `retry` je funkcia, typicky ta istá render funkcia, v ktorej fetch spadol.
+   MUSÍ čítať stav z modulu, nie z DOM — DOM, ktorý ju vyvolal, práve zmizol.
    Bez `retry` sa tlačidlo nevykreslí. */
 export function renderError(container, subject, retry, hint) {
     if (!container) return;
@@ -601,7 +601,7 @@ export function filterEmptyHtml(text, hint) {
 /* JEDINÉ miesto, kde prázdny stav MENÍ stav appky. `clear` musí filter naozaj
    zrušiť — appka má tri funkcie, ktoré neplatný filter rušia samé
    (`pruneLibraryArea`, `pruneDecisionFilters`, `pruneRunFilters`), takže tlačidlo
-   sa smie ponúknuť len tam, kde je filter PLATNÝ a naozaj skrýva dáta. Inak
+   sa smie ponúknuť len tam, kde je filter PLATNÝ a naozaj skrýva dáta. Inak
    vznikne tlačidlo, ktoré nič nerobí.
    `label` je nepovinný, pretože „zruš hľadanie" a „zruš filter" sú pre človeka
    dve rôzne veci — príčinu pozná volajúci, nie helper. */
@@ -616,12 +616,12 @@ export function renderFilterEmpty(container, text, hint, clear, label) {
 
 /* ---------- skeleton v tvare obsahu ----------
 
-   `/api/journal` a `/api/dashboard` bežia 3–4 s, takže načítavanie nie je
-   okrajový stav a prázdna plocha je z možností najhoršia. Skeleton drží
+   `/api/journal` a `/api/dashboard` bežia 3–4 s, takže načítavanie nie je
+   okrajový stav a prázdna plocha je z možností najhoršia. Skeleton drží
    ROZLOŽENIE, aby obsah po prílete neposkočil.
 
-   `shape` je ENUM, nie objekt s rozmermi: rozmery patria CSS (`--skel-h`), inak
-   sú pre CSSOM neviditeľné a žiadna asercia ich nenájde — presne tak vznikol
+   `shape` je ENUM, nie objekt s rozmermi: rozmery patria CSS (`--skel-h`), inak
+   sú pre CSSOM neviditeľné a žiadna asercia ich nenájde — presne tak vznikol
    inline `font-size:10px` na osi grafu. Neznámy `shape` padne na `list`. */
 
 const SKEL_LINE = '<div class="skel skel-line"></div>';
@@ -660,7 +660,7 @@ const SKEL_SHAPES = {
 };
 
 /* `sr-only` oznámenie je povinná časť skeletonu, nie ozdoba: plochy samotné sú
-   kresba bez textu, takže bez tejto vety čítačka obrazovky o načítavaní nedostane
+   kresba bez textu, takže bez tejto vety čítačka obrazovky o načítavaní nedostane
    nič. Vzor je `console/main.js`. */
 export function skeletonHtml(shape) {
     return '<p class="sr-only">Obsah sa načítava…</p>'
@@ -675,7 +675,7 @@ export function renderSkeleton(container, shape) {
 const SKELETON_DELAY = 300;
 
 /* Skeleton pod 300 ms je BLIK a pôsobí pomalšie než ticho. `deferSkeleton` preto
-   kresbu len naplánuje a vráti funkciu, ktorou volajúci čakanie zruší; tá vráti
+   kresbu len naplánuje a vráti funkciu, ktorou volajúci čakanie zruší; tá vráti
    true, keď sa skeleton ešte nevykreslil (kontejner teda drží pôvodný obsah).
 
    Zrušiť sa MUSÍ pred zápisom obsahu, nie v `finally` za ním: naplánovaná kresba

@@ -22,7 +22,7 @@ export const SHORTCUTS = [
     ['C', 'Charón — rozhovor nad grafom'],
     ['Enter', 'Zamerať zvolený uzol'],
     ['Esc', 'Zrušiť filter'],
-    ['Backspace', 'O úroveň von'],
+    ['Backspace', 'O úroveň von'],
     ['D', 'Denník'],
     ['R', 'Štruktúra (na Kontrole: vyriešiť položku)'],
     ['S', 'Prehľad'],
@@ -39,7 +39,7 @@ export const MOUSE_HINTS = [
     ['ťahanie uzla', 'Prehodenie uzla (sieť sa preleje)'],
     ['koliesko', 'Zoom'],
     ['klik na uzol', 'Detail + zúženie filtra'],
-    ['klik do prázdna', 'O úroveň von'],
+    ['klik do prázdna', 'O úroveň von'],
     ['dvojklik do prázdna', 'Zrušiť celý filter naraz'],
 ];
 
@@ -216,10 +216,10 @@ export function setupShortcuts() {
 }
 
 export const HINTS = [
-    { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš sedem obrazoviek — Dnes, Denník, Graf, Knižnica, Rozhodnutia, Kontrola a Smernica. Hades sa otvorí na Dnes.' },
-    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
-    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Graf je jedna veľká sieť — chodíš po nej ťahaním a zoomom. Klik na oblasť, oddelenie alebo uzol ju len zaostrí (zvyšok stmavne), Esc filter zruší. V prepne na Vrstvy.' },
-    { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, hustota, sieť) a Pomocníka.' },
+    { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš sedem obrazoviek — Dnes, Denník, Graf, Knižnica, Rozhodnutia, Kontrola a Smernica. Hades sa otvorí na Dnes.' },
+    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
+    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Graf je jedna veľká sieť — chodíš po nej ťahaním a zoomom. Klik na oblasť, oddelenie alebo uzol ju len zaostrí (zvyšok stmavne), Esc filter zruší. V prepne na Vrstvy.' },
+    { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, hustota, sieť) a Pomocníka.' },
 ];
 
 export function setupHints() {

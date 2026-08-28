@@ -92,7 +92,7 @@ export function paintModels() {
         select.disabled = true;
         select.title = current
             ? `Model vlákna: ${current}. Zoznam modelov konzola nedostala.`
-            : 'Konzola beží na predvolenom modeli z konfigurácie.';
+            : 'Konzola beží na predvolenom modeli z konfigurácie.';
 
         return;
     }
@@ -137,7 +137,7 @@ export async function setModel(wanted) {
             ok: false,
             reason: near.length > 1
                 ? `Meno „${wanted}" sedí na viac modelov: ${near.map((m) => m.id).join(', ')}.`
-                : `Model „${wanted}" tu nie je. K dispozícii: ${known}.`,
+                : `Model „${wanted}" tu nie je. K dispozícii: ${known}.`,
         };
     }
 

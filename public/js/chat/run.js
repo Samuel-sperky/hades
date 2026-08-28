@@ -272,7 +272,7 @@ const client = createRunClient({
 
             const count = Array.isArray(items) ? items.length : 0;
 
-            if (count > 0) live(`V poradí ${count} ${count === 1 ? 'správa' : 'správy'}.`);
+            if (count > 0) live(`V poradí ${count} ${count === 1 ? 'správa' : 'správy'}.`);
         },
 
         onQueueSend(item) {
@@ -300,7 +300,7 @@ function agentFrame(frame) {
             // blok a nemá vyrásť doprostred rozpísaného odseku.
             closeBubble();
             openAgent(frame);
-            announce(`Podagent začal pracovať s profilom ${frame.profile || 'bez profilu'}.`);
+            announce(`Podagent začal pracovať s profilom ${frame.profile || 'bez profilu'}.`);
 
             return true;
 
@@ -403,7 +403,7 @@ export function wireRun() {
         decideWrite(event.detail?.id, event.detail?.decision, event.detail?.thread);
     });
     document.addEventListener('chat:queue-cancel', (event) => {
-        if (client.cancelQueued(event.detail?.id)) live('Správa z poradia zrušená.');
+        if (client.cancelQueued(event.detail?.id)) live('Správa z poradia zrušená.');
     });
 
     // Esc v ZÁCHYTNEJ fáze, teda pred globálnym Esc v `main.js`: nad zaparkovaným
@@ -608,10 +608,10 @@ export async function submit(text) {
     client.enqueue(body);
 
     if (R.awaiting) {
-        announce('Beh čaká na rozhodnutie o zápise. Správa stojí v poradí a odíde po ňom.');
+        announce('Beh čaká na rozhodnutie o zápise. Správa stojí v poradí a odíde po ňom.');
         focusPending();
     } else if (R.running) {
-        announce('Beh ešte beží. Správa stojí v poradí.');
+        announce('Beh ešte beží. Správa stojí v poradí.');
     }
 }
 
@@ -742,7 +742,7 @@ function applyThreadState(frame) {
 
     if (frame.auto_accept && !before) {
         closeBubble();
-        pushNotice('Zápisy sa v tomto vlákne už nepýtajú — brána je vypnutá.');
-        announce('Zápisy sa v tomto vlákne už nepýtajú.');
+        pushNotice('Zápisy sa v tomto vlákne už nepýtajú — brána je vypnutá.');
+        announce('Zápisy sa v tomto vlákne už nepýtajú.');
     }
 }

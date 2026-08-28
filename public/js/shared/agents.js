@@ -26,7 +26,7 @@
    a `child_call`, ale nie diff: karta poskladaná z neho by inak nútila povoliť
    zápis naslepo bez toho, aby bolo vidieť, že chýba. Rozhodnutie bez diffu je
    horšie než pekná karta, ale lepšie než beh, ktorý čaká navždy. */
-const NO_PREVIEW = 'Náhľad zmeny nie je k dispozícii — prišlo len ohlásenie, že podagent zaparkoval na zápise.';
+const NO_PREVIEW = 'Náhľad zmeny nie je k dispozícii — prišlo len ohlásenie, že podagent zaparkoval na zápise.';
 
 const AGENT_FAILED = 'Podagent zlyhal.';
 
@@ -37,7 +37,7 @@ const AGENT_DONE = 'Podagent dokončil.';
 
 /** Ohlásenie štartu podbehu do čítačky (rámec `agent_start`). */
 export function agentStartAnnounce(frame) {
-    return `Podagent začal pracovať s profilom ${frame?.profile || 'bez profilu'}.`;
+    return `Podagent začal pracovať s profilom ${frame?.profile || 'bez profilu'}.`;
 }
 
 /**
@@ -50,7 +50,7 @@ export function agentStartAnnounce(frame) {
 export function agentWaitAnnounce(frame) {
     const name = frame?.name ? ` (${frame.name})` : '';
 
-    return `Podagent čaká na tvoje rozhodnutie o zápise${name}.`;
+    return `Podagent čaká na tvoje rozhodnutie o zápise${name}.`;
 }
 
 /** Veta k rámcu `error` dieťaťa. Správa modelu má prednosť, fallback je náš. */

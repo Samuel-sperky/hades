@@ -25,7 +25,7 @@ export function parseNdjsonLine(line) {
     try {
         return { frame: JSON.parse(text) };
     } catch {
-        return { error: 'Nečitateľný rámec z behu (preskočený).' };
+        return { error: 'Nečitateľný rámec z behu (preskočený).' };
     }
 }
 

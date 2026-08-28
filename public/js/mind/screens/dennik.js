@@ -189,7 +189,7 @@ export function renderJournalList() {
            dáta naozaj skrýva. */
         if (journalProject) {
             renderFilterEmpty(list, 'Žiadne záznamy pre tento projekt',
-                'Zruš filter a uvidíš celý denník.', () => setJournalProject(null));
+                'Zruš filter a uvidíš celý denník.', () => setJournalProject(null));
         } else {
             renderEmpty(list, 'receipt', 'Zatiaľ žiadne záznamy',
                 'Pribudnú, keď si Hades zapamätá prvý poznatok.');

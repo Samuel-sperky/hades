@@ -562,7 +562,7 @@ export async function setThreadFlag(uuid, key, value) {
 function threadFlagWord(key, value) {
     if (key === 'pinned') return value ? 'Vlákno je pripnuté.' : 'Vlákno už nie je pripnuté.';
 
-    return value ? 'Vlákno je v archíve.' : 'Vlákno je späť v zozname.';
+    return value ? 'Vlákno je v archíve.' : 'Vlákno je späť v zozname.';
 }
 
 /** Zaradenie vlákna do projektu. `''` znamená vyradiť — a to je iná route. */
@@ -571,7 +571,7 @@ export async function moveThread(uuid, project, fromProject) {
         const res = await api(`/api/console/projects/${fromProject}/threads/${uuid}`, { method: 'DELETE' });
 
         if (!res.ok) {
-            T.threadsError = errorLine(res, 'Vlákno sa nepodarilo vyradiť z projektu');
+            T.threadsError = errorLine(res, 'Vlákno sa nepodarilo vyradiť z projektu');
             paint();
 
             return;
@@ -590,7 +590,7 @@ export async function moveThread(uuid, project, fromProject) {
         }
 
         T.threadsError = '';
-        live(`Vlákno je v projekte ${T.projects.find((p) => p.uuid === project)?.name || ''}.`);
+        live(`Vlákno je v projekte ${T.projects.find((p) => p.uuid === project)?.name || ''}.`);
     } else {
         return;
     }
@@ -788,7 +788,7 @@ function threadsSection() {
 function archiveSection(projects, threads) {
     const box = section('Archív');
 
-    box.append(note('Odložené zložky a vlákna. Nezmazané — len mimo cesty.'));
+    box.append(note('Odložené zložky a vlákna. Nezmazané — len mimo cesty.'));
     projects.forEach((project) => box.append(projectRow(project)));
     threads.forEach((row) => box.append(threadRow(row)));
 
@@ -851,10 +851,10 @@ function projectActs(project) {
         project.pinned ? 'Projekt už nie je pripnutý.' : 'Projekt je pripnutý.',
     )));
 
-    acts.append(actButton(project.archived ? 'Vrátiť z archívu' : 'Archivovať', () => patchProject(
+    acts.append(actButton(project.archived ? 'Vrátiť z archívu' : 'Archivovať', () => patchProject(
         project.uuid,
         { archived: !project.archived },
-        project.archived ? 'Projekt je späť v zozname.' : 'Projekt je v archíve.',
+        project.archived ? 'Projekt je späť v zozname.' : 'Projekt je v archíve.',
     )));
 
     acts.append(armedButton(
@@ -877,7 +877,7 @@ function projectBody(project) {
     const rows = items.filter((row) => !row.archived);
 
     if (!rows.length && entry.state === 'ready') {
-        body.append(note('Zložka je prázdna. Vlákno sa do nej presúva z jeho akcií.'));
+        body.append(note('Zložka je prázdna. Vlákno sa do nej presúva z jeho akcií.'));
     }
 
     rows.forEach((row) => body.append(threadRow(row, project.uuid)));
@@ -944,7 +944,7 @@ function threadActs(row, inProject) {
     // nezmenilo. Brána je o zápise, nie o tom, čo panel prečítal.
     if (supportsThreadFlags()) {
         acts.append(actButton(row.pinned ? 'Odopnúť' : 'Pripnúť', () => setThreadFlag(row.uuid, 'pinned', !row.pinned)));
-        acts.append(actButton(row.archived ? 'Vrátiť z archívu' : 'Archivovať', () => setThreadFlag(row.uuid, 'archived', !row.archived)));
+        acts.append(actButton(row.archived ? 'Vrátiť z archívu' : 'Archivovať', () => setThreadFlag(row.uuid, 'archived', !row.archived)));
     }
 
     acts.append(exportLink(row.uuid, 'Exportovať'));
@@ -1010,7 +1010,7 @@ function searchView() {
     }
 
     if (T.search.state === 'loading' && !T.search.data) {
-        box.append(note('Hľadám v histórii…'));
+        box.append(note('Hľadám v histórii…'));
 
         return box;
     }
@@ -1051,7 +1051,7 @@ function searchView() {
 function searchHead() {
     const head = el('div', 'ct-sec-head');
 
-    head.append(el('h3', 'ct-sec-title', 'Nájdené v histórii'));
+    head.append(el('h3', 'ct-sec-title', 'Nájdené v histórii'));
 
     const clear = iconButton('x', 'Zrušiť hľadanie');
     clear.classList.add('ct-sec-act');

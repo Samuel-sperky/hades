@@ -14,12 +14,29 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        // Farby oblastí sú kalibrované na ODSTUP TÓNU PO UTLMENÍ, nie na to, ako
+        // vyzerá surový hex. Plátno aj každý swatch v DOM ich ženie cez
+        // mutedColor() (theme.js), ktoré zreže chromu na max 0,062 a zjednotí
+        // svetlosť, takže o rozlíšiteľnosti rozhoduje jedine tón.
+        //
+        // Do 28. 8. 2026 boli dva páry od seba len 32° a 34° (Marketing↔Osobné,
+        // Vývoj↔Biznis) — pri chrome ~0,05 sa nedali rozlíšiť. Nová sada má
+        // minimálny odstup 60° na oboch témach a kontrast voči papieru sa
+        // nezhoršil (tmavá 4,56–4,83 proti pôvodným 4,60–4,81; svetlá
+        // 4,81–5,11 proti 4,85–5,11 — zmerané funkciou mutedColor z appky nad
+        // živou stránkou, kalibrované na texte body 16,48 / 15,88:1).
+        //
+        // Marketing & SEO stratilo #b88a3a zámerne: bola to PRESNE značková
+        // zlatá (--brand-gold svetlej témy), teda oblasť a značka mali tú istú
+        // hodnotu. Na plátne to nebolo vidieť, pretože utlmenie ju zmenilo, ale
+        // v DB to bola kolízia kánonu (§4: zlatá je vyhradená značke a jadru).
+        // Rovnako Biznis & projekty malo presne hodnotu --node-memory.
         $areas = [
-            ['name' => 'Marketing & SEO', 'slug' => 'marketing-seo', 'color' => '#b88a3a', 'angle' => 270],
-            ['name' => 'Vývoj & kód', 'slug' => 'vyvoj-kod', 'color' => '#03797e', 'angle' => 342],
-            ['name' => 'Dizajn & kreatíva', 'slug' => 'dizajn-kreativa', 'color' => '#9d5c7a', 'angle' => 54],
-            ['name' => 'Biznis & projekty', 'slug' => 'biznis-projekty', 'color' => '#2f6d8f', 'angle' => 126],
-            ['name' => 'Osobné & preferencie', 'slug' => 'osobne-preferencie', 'color' => '#a86a4a', 'angle' => 198],
+            ['name' => 'Marketing & SEO', 'slug' => 'marketing-seo', 'color' => '#5b7328', 'angle' => 270],
+            ['name' => 'Vývoj & kód', 'slug' => 'vyvoj-kod', 'color' => '#007b76', 'angle' => 342],
+            ['name' => 'Dizajn & kreatíva', 'slug' => 'dizajn-kreativa', 'color' => '#8d5081', 'angle' => 54],
+            ['name' => 'Biznis & projekty', 'slug' => 'biznis-projekty', 'color' => '#3c6aa4', 'angle' => 126],
+            ['name' => 'Osobné & preferencie', 'slug' => 'osobne-preferencie', 'color' => '#9c503e', 'angle' => 198],
         ];
 
         foreach ($areas as $area) {

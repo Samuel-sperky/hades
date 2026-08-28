@@ -755,7 +755,7 @@ function previewBox(frame) {
 
     // Náhľad chýba (nástroj ho nevie zložiť). Argumenty sú horší, ale pravdivý
     // podklad pre rozhodnutie — prázdna karta by nútila povoliť naslepo.
-    box.textContent = frame.arguments ? JSON.stringify(frame.arguments, null, 2) : 'Náhľad zmeny nie je k dispozícii.';
+    box.textContent = frame.arguments ? JSON.stringify(frame.arguments, null, 2) : 'Náhľad zmeny nie je k dispozícii.';
 
     return box;
 }
@@ -965,11 +965,11 @@ export function renderQueue(items, held) {
 
         row.append(el('span', 'cq-pos', `${at + 1}.`));
         row.append(el('span', 'cq-text', item.body?.message ?? ''));
-        row.append(el('span', 'cq-state', held ? 'čaká v poradí' : 'odchádza…'));
+        row.append(el('span', 'cq-state', held ? 'čaká v poradí' : 'odchádza…'));
 
         const drop = el('button', 'cq-cancel ghost', 'Zrušiť');
         drop.type = 'button';
-        drop.setAttribute('aria-label', `Zrušiť ${at + 1}. správu v poradí`);
+        drop.setAttribute('aria-label', `Zrušiť ${at + 1}. správu v poradí`);
         drop.addEventListener('click', () => {
             document.dispatchEvent(new CustomEvent('chat:queue-cancel', { detail: { id: item.id } }));
         });
@@ -991,7 +991,7 @@ function queueList() {
         list = el('ul', 'cq');
         list.id = 'chat-queue';
         list.hidden = true;
-        list.setAttribute('aria-label', 'Správy v poradí');
+        list.setAttribute('aria-label', 'Správy v poradí');
         form.prepend(list);
     }
 
@@ -1146,9 +1146,9 @@ function restoreAwaiting(call, thread, parked) {
             return;
         }
 
-        pushNotice('Beh čaká na rozhodnutie o zápise podagenta. Otvor jeho podbeh na obrazovke Runy — '
-            + 'v tomto vlákne sa o ňom rozhodnúť nedá.');
-        announce('Beh čaká na rozhodnutie o zápise podagenta.');
+        pushNotice('Beh čaká na rozhodnutie o zápise podagenta. Otvor jeho podbeh na obrazovke Runy — '
+            + 'v tomto vlákne sa o ňom rozhodnúť nedá.');
+        announce('Beh čaká na rozhodnutie o zápise podagenta.');
 
         return;
     }

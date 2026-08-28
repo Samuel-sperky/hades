@@ -205,8 +205,8 @@ const client = createRunClient({
             if (typeof frame.auto_accept !== 'boolean') return;
             if (frame.auto_accept) {
                 closeBubble();
-                pushNotice('Zápisy sa v tomto vlákne už nepýtajú — brána je vypnutá.');
-                announce('Zápisy sa v tomto vlákne už nepýtajú.');
+                pushNotice('Zápisy sa v tomto vlákne už nepýtajú — brána je vypnutá.');
+                announce('Zápisy sa v tomto vlákne už nepýtajú.');
             }
         },
 
@@ -347,7 +347,7 @@ async function send(text) {
     }
 
     if (D.awaiting) {
-        pushNotice('Najprv rozhodni o čakajúcom zápise — Povoliť alebo Zamietnuť.');
+        pushNotice('Najprv rozhodni o čakajúcom zápise — Povoliť alebo Zamietnuť.');
         pendingCard()?.focus();
 
         return;
@@ -615,7 +615,7 @@ function syncNodeButton() {
     const on = !!(S.selected && S.charonCtx.has(+S.selected.id));
     btn.classList.toggle('in-context', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    btn.title = on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru';
+    btn.title = on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru';
 }
 
 /** Zosúladí riadkové tlačidlá „Do balíka" (.pack-btn, packBtn v pack.js) so
@@ -627,7 +627,7 @@ function syncPackButtons() {
         const on = contextHas(b.dataset.packId);
         b.classList.toggle('in-pack', on);
         b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        b.title = on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru';
+        b.title = on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru';
     });
 }
 
@@ -695,8 +695,8 @@ function renderEmpty() {
     const empty = el('div', 'charon-empty');
     empty.append(el('p', 'charon-empty-title', 'Charón nad grafom'));
     empty.append(el('p', null,
-        'Opýtaj sa na vedomie a Charón ho prehľadá. Vybrané uzly (čipy nižšie) '
-        + 'idú do otázky ako kontext a odpoveď vie graf zaostriť.'));
+        'Opýtaj sa na vedomie a Charón ho prehľadá. Vybrané uzly (čipy nižšie) '
+        + 'idú do otázky ako kontext a odpoveď vie graf zaostriť.'));
     box.append(empty);
 }
 
@@ -1014,8 +1014,8 @@ function openAgentStrip(frame) {
     if (frame.task) box.append(el('p', 'charon-agent-task', frame.task));
 
     box.append(el('p', 'charon-agent-note',
-        'Kroky a nástroje podagenta sa v doku nevypisujú — celý priebeh je '
-        + 'v konzole. Tu sa rozhoduje o jeho zápisoch.'));
+        'Kroky a nástroje podagenta sa v doku nevypisujú — celý priebeh je '
+        + 'v konzole. Tu sa rozhoduje o jeho zápisoch.'));
 
     node.append(who, box);
     appendBlock(node);

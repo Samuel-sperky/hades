@@ -456,7 +456,7 @@ function restoreAgentWait(data) {
     const entry = openAgent({ run: parked.run, thread: parked.thread });
 
     entry.box.classList.add('is-waiting');
-    entry.body.append(el('p', 'agent-note', 'Podagent čaká na rozhodnutie o zápise z predošlého behu.'));
+    entry.body.append(el('p', 'agent-note', 'Podagent čaká na rozhodnutie o zápise z predošlého behu.'));
     entry.body.append(permissionCard(parked, { thread: parked.thread }));
 
     // Stav sa prepíše na zápis, o ktorom sa naozaj rozhoduje: `main.js` doňho
@@ -524,7 +524,7 @@ export async function sendTurn(text) {
     }
 
     if (C.awaiting) {
-        pushNotice('Najprv rozhodni o čakajúcom zápise — Povoliť alebo Zamietnuť.');
+        pushNotice('Najprv rozhodni o čakajúcom zápise — Povoliť alebo Zamietnuť.');
         pendingCard()?.focus();
 
         return;
@@ -664,8 +664,8 @@ function applyThreadState(frame) {
 
     if (frame.auto_accept && !before) {
         closeBubble();
-        pushNotice('Zápisy sa v tomto vlákne už nepýtajú — brána je vypnutá. Vrátiť sa dá políčkom „Auto-povoliť zápisy" v hlavičke.');
-        announce('Zápisy sa v tomto vlákne už nepýtajú.');
+        pushNotice('Zápisy sa v tomto vlákne už nepýtajú — brána je vypnutá. Vrátiť sa dá políčkom „Auto-povoliť zápisy" v hlavičke.');
+        announce('Zápisy sa v tomto vlákne už nepýtajú.');
     }
 }
 

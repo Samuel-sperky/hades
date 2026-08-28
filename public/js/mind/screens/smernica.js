@@ -248,7 +248,7 @@ export async function renderDirectivePreview() {
         directiveMarkdown = '';
         // Nad kartou stojí nadpis „Náhľad smernice", takže 28px ikona pod ním hovorí
         // to isté druhýkrát — ostáva jeden tichý riadok (emptyCardHtml).
-        pv.innerHTML = emptyCardHtml('Napíš úlohu a poskladaj smernicu');
+        pv.innerHTML = emptyCardHtml('Napíš úlohu a poskladaj smernicu');
         return;
     }
 
@@ -356,7 +356,7 @@ export function renderDirectiveSaved() {
     if (!box) return;
     // Sekcia sa menuje „Uložené smernice" — prázdny stav ju nemá prehovoriť znova.
     if (!directiveSaved.length) {
-        box.innerHTML = emptyCardHtml('Zatiaľ žiadne — poskladanú smernicu môžeš uložiť a vrátiť sa k nej.');
+        box.innerHTML = emptyCardHtml('Zatiaľ žiadne — poskladanú smernicu môžeš uložiť a vrátiť sa k nej.');
         return;
     }
 

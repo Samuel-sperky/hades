@@ -214,6 +214,33 @@
     --danger-ink: #a52a2a;                /* 6,23:1 */
     --warn-ink: #9a4a08;                  /* 5,51:1 */
 
+    /* ---- DÁTOVÁ PALETA: trend a stav behu (kontrakt 28. 8. 2026, B3) ----
+       Sú to DEKLAROVANÉ ROLE, nie nová paleta. Každá ukazuje na existujúci
+       semantický token, takže do appky nepribudla ani jedna nová farba a kánon
+       akcentu drží. Prečo teda existujú: dovtedy si každý komponent vyberal sám
+       (`.badge[data-status]` čítalo --warn-ink pre `waiting`, ale `.dtl-dot`
+       čítalo --warn aj pre `running`), takže dva indikátory toho istého behu
+       hovorili inú farbu. Rola hovorí, ČO sa kreslí; hodnota, AKO.
+
+       BEH: `running` je akcent, nie varovanie — beh, ktorý pracuje, nie je
+       problém. To je oprava proti stavu do 28. 8., kde `running` a `waiting`
+       zdieľali --warn a nedali sa od seba odlíšiť. `waiting` zostáva varovaním
+       (čaká na človeka), `aborted` je utlmené (nie chyba, len zrušené). */
+    --run-running: var(--accent);
+    --run-waiting: var(--warn-ink);
+    --run-failed: var(--danger-ink);
+    --run-done: var(--success-ink);
+    --run-aborted: var(--muted);
+
+    /* TREND: rast/pokles/bez zmeny. Pozor na význam — v tejto appke NIE JE
+       pokles chyba (menej nových uzlov za týždeň je fakt, nie porucha), takže
+       --trend-down je červená len tam, kde metrika naozaj zlyháva. KPI karty
+       Dnes používajú up a flat; komponent, ktorý chce zafarbiť pokles, si to
+       musí vedome vybrať. Preto sú to tri role a nie automatika. */
+    --trend-up: var(--success-ink);
+    --trend-down: var(--danger-ink);
+    --trend-flat: var(--muted);
+
     /* ---- canvas identity colors ----
        Zostal JEDEN: --node-memory pre .dtl-dot[data-origin="brain"]. Ostatné štyri
        (--node-core/skill/project/relation) boli mŕtve — plátno berie farbu uzla z
@@ -838,6 +865,12 @@
     --success-ink: var(--success);
     --danger-ink: var(--danger);
     --warn-ink: var(--warn);
+    /* --run-* a --trend-* (dátová paleta, B3) tu ZÁMERNE nie sú a je to celý
+       dôvod, prečo sú to aliasy a nie hodnoty: ukazujú na --accent, --warn-ink,
+       --danger-ink, --success-ink a --muted, ktoré sa prepínajú v tomto bloku
+       samy. Zrkadlo by bola druhá kópia, ktorá sa raz rozíde s prvou. Keď budeš
+       niektorú rolu potrebovať inak než jej semantický základ, prepíš JU TU —
+       ale potom to je hodnota, nie alias, a patrí k nej komentár prečo. */
     --shimmer-sheen: rgba(255, 255, 255, .07);
     --elev-1: 0 1px 2px rgba(0, 0, 0, .40), inset 0 1px 0 var(--top-rim);
     --elev-2: 0 1px 2px rgba(0, 0, 0, .40), 0 8px 24px -14px rgba(0, 0, 0, .50), inset 0 1px 0 var(--top-rim);
@@ -2483,15 +2516,32 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* ČÍTACÍ REŽIM (kontrakt 28. 8. 2026, C4). `.md-body` je čítačka dokumentu —
+   playbook otvorený z Knižnice —, nie kus chrómu, takže dostáva vlastnú sadzbu:
+   16 px, prokládka 1,7 a miera 72ch v strede plochy.
+
+   Prečo 16 px a nie 15: rolové tokeny hustoty majú v tomto súbore napísané, že
+   ich hodnoty sú ZÁMERNE rovné existujúcim stupňom škály, a 15 px žiadny stupeň
+   nie je. 16 px je --fs-title. Zaviesť 15 px by znamenalo dieru medzi škálou a
+   rolami, čo je presne to, čo si tento súbor už raz zaplatil.
+
+   Prečo prokládka 1,7 a nie --lh-prose (1,6): próza v karte tečie v úzkom
+   stĺpci, čítačka na 72ch má dlhší riadok a oko potrebuje viac miesta na skok.
+   Je to rolová hodnota čítačky, nie nový stupeň — preto stojí tu pri komponente
+   a nie v škále. */
 .md-body {
     flex: 1;
     overflow-y: auto;
     padding: var(--sp-3);
     user-select: text;
     color: var(--text-secondary);
-    line-height: var(--lh-prose);
-    font-size: var(--fs-base);
+    line-height: 1.7;
+    font-size: var(--fs-title);
 }
+/* Miera sa drží obsahu, nie kontejnera: centrovaný blok vnútra, aby na širokom
+   okne riadok nenarástol na 200 znakov. `max-width` na .md-body samotnom by
+   zmenšil aj jeho scrollovaciu plochu a odsadenie by prestalo sedieť. */
+.md-body > * { max-width: var(--measure-prose); margin-inline: auto; }
 .md-body .md-front {
     display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-0) var(--sp-1);
     padding-bottom: var(--sp-1);
@@ -4333,10 +4383,17 @@ label.check.dir-check.off { opacity: .5; }
     font-size: var(--icon-sm); border-radius: var(--r-sm);
 }
 .dir-actions .ic:hover { background: var(--accent-softer); color: var(--accent); }
+/* Náhľad smernice je NÁHĽAD v prilepenom stĺpci, nie čítačka, takže sa z
+   čítacieho režimu `.md-body` vracia na základnú sadzbu. Nie je to opomenutie:
+   pri 16 px a miere 72ch by v tomto stĺpci vyšlo ~40 znakov na riadok, teda
+   horšie čítanie než dnes. Miera sa tu ruší z toho istého dôvodu — stĺpec je
+   užší než strop, takže centrovanie by len pridalo prázdne okraje. */
 .dir-preview.md-body {
     flex: none; padding: var(--sp-2) var(--sp-3);
     max-height: 60vh; overflow-y: auto;
+    font-size: var(--fs-base); line-height: var(--lh-prose);
 }
+.dir-preview.md-body > * { max-width: none; margin-inline: 0; }
 
 /* Uložené smernice */
 .dir-saved {
@@ -5844,16 +5901,24 @@ button, input, select {
 }
 
 /* Stav behu nesie farbu aj slovo — farba nikdy nie je jediný nosič významu.
-   `waiting` je varovanie a nie chyba: beh čaká na človeka, nie na opravu. */
-.badge[data-status="failed"], .run-step[data-status="failed"] .badge { color: var(--danger-ink); }
-.badge[data-status="waiting"], .run-step[data-status="pending"] .badge { color: var(--warn-ink); }
-.badge[data-status="done"] { color: var(--success-ink); }
-.badge[data-status="aborted"] { color: var(--muted); }
-.run-step[data-status="denied"] .badge { color: var(--danger-ink); }
+   `waiting` je varovanie a nie chyba: beh čaká na človeka, nie na opravu.
 
-.dtl-dot[data-status="failed"] { background: var(--danger); }
-.dtl-dot[data-status="waiting"], .dtl-dot[data-status="running"] { background: var(--warn); }
-.dtl-dot[data-status="done"] { background: var(--success); }
+   Farbu berú OBA indikátory (badge aj bodka) z tých istých --run-* rolí. Do
+   28. 8. 2026 si ju vyberal každý sám a `running` so `waiting` zdieľali --warn,
+   takže bežiaci beh a beh čakajúci na potvrdenie vyzerali rovnako — pritom jeden
+   nechce nič a druhý chce kliknutie. `running` je odteraz akcent. */
+.badge[data-status="failed"], .run-step[data-status="failed"] .badge { color: var(--run-failed); }
+.badge[data-status="waiting"], .run-step[data-status="pending"] .badge { color: var(--run-waiting); }
+.badge[data-status="running"] { color: var(--run-running); }
+.badge[data-status="done"] { color: var(--run-done); }
+.badge[data-status="aborted"] { color: var(--run-aborted); }
+.run-step[data-status="denied"] .badge { color: var(--run-failed); }
+
+.dtl-dot[data-status="failed"] { background: var(--run-failed); }
+.dtl-dot[data-status="waiting"] { background: var(--run-waiting); }
+.dtl-dot[data-status="running"] { background: var(--run-running); }
+.dtl-dot[data-status="done"] { background: var(--run-done); }
+.dtl-dot[data-status="aborted"] { background: var(--run-aborted); }
 
 /* ===========================================================================
    RESPONSIVE — jeden blok na hranicu, a obe hranice na konci súboru

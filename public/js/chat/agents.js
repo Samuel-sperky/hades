@@ -217,7 +217,7 @@ export function noteFrame(frame) {
             T.parked = true;
 
             setExpanded(true);
-            live(`Podagent čaká na tvoje rozhodnutie o zápise${frame.name ? ` (${frame.name})` : ''}.`);
+            live(`Podagent čaká na tvoje rozhodnutie o zápise${frame.name ? ` (${frame.name})` : ''}.`);
             break;
         }
 
@@ -446,7 +446,7 @@ function decideButton(node) {
     const btn = el('button', 'cs-decide primary');
 
     btn.type = 'button';
-    btn.append(el('span', null, 'Rozhodnúť o zápise'));
+    btn.append(el('span', null, 'Rozhodnúť o zápise'));
     btn.title = node.kind === 'child'
         ? 'Prejsť na kartu, ktorou zápis podagenta povolíš alebo zamietneš'
         : 'Prejsť na kartu, ktorou zápis povolíš alebo zamietneš';
@@ -540,7 +540,7 @@ function clockLine(node) {
     line.append(el('span', 'cs-lbl', 'na hodinách'));
     line.append(el('span', 'cs-val', clock(Math.max(0, end - node.t0))));
 
-    if (wait >= 1000) line.append(el('span', 'cs-sub', `z toho čakanie na teba ${clock(wait)}`));
+    if (wait >= 1000) line.append(el('span', 'cs-sub', `z toho čakanie na teba ${clock(wait)}`));
 
     return line;
 }
@@ -580,7 +580,7 @@ function askBlock(ask, node) {
     } else {
         // Náhľad nie je (nástroj ho nevie zložiť) — argumenty sú horší, ale
         // pravdivý podklad. Prázdny blok by tvrdil, že sa nemenilo nič.
-        box.textContent = argsSummary(ask.args) || 'Náhľad zmeny nie je k dispozícii.';
+        box.textContent = argsSummary(ask.args) || 'Náhľad zmeny nie je k dispozícii.';
     }
 
     wrap.append(box);
@@ -598,7 +598,7 @@ function legend() {
         'cs-legend',
         '„Na hodinách" je celý čas od začiatku po konec, teda aj čakanie na tvoje '
         + 'rozhodnutie. „Generovanie" je to, čo model naozaj napísal — preto sa tokeny '
-        + 'za sekundu z hodín nedajú vypočítať.',
+        + 'za sekundu z hodín nedajú vypočítať.',
     );
 }
 

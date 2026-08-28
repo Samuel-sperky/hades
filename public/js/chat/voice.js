@@ -69,12 +69,12 @@ let booted = false;
  * s rozpoznávaním nemá nič.
  */
 const ERROR_NOTE = {
-    'not-allowed': 'Prehliadač nedal prístup k mikrofónu. Povoľ ho v adresnom riadku a skús znova.',
+    'not-allowed': 'Prehliadač nedal prístup k mikrofónu. Povoľ ho v adresnom riadku a skús znova.',
     'service-not-allowed': 'Prehliadač rozpoznávanie reči nepovolil.',
     'audio-capture': 'Mikrofón sa nenašiel.',
     'no-speech': 'Nič som nezachytil.',
     aborted: '',
-    network: 'Rozpoznávanie reči je nedostupné — robí ho prehliadač a bez siete nefunguje.',
+    network: 'Rozpoznávanie reči je nedostupné — robí ho prehliadač a bez siete nefunguje.',
 };
 
 /** Kódy, po ktorých sa nemá skúšať znova — inak by sa hláška opakovala v cykle. */

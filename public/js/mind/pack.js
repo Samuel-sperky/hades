@@ -36,7 +36,7 @@ export function packBtn(id, label) {
     return '<button type="button" class="pack-btn' + (on ? ' in-pack' : '') + '"'
         + ' data-pack-id="' + esc(String(id)) + '" data-pack-label="' + esc(label || '') + '"'
         + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
-        + ' title="' + (on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru') + '">'
+        + ' title="' + (on ? 'V rozhovore — klikni pre odobratie' : 'Priložiť do rozhovoru') + '">'
         + iconMarkup('library-plus') + '</button>';
 }
 
@@ -49,7 +49,7 @@ export function bindPackButtons(root) {
             e.preventDefault();
             const r = attachToContext(b.dataset.packId, b.dataset.packLabel);
             if (r.full) showToast('Kontext má strop 8 uzlov — najprv niektorý odober');
-            else showToast(r.on ? 'Priložené do rozhovoru' : 'Odobraté z rozhovoru');
+            else showToast(r.on ? 'Priložené do rozhovoru' : 'Odobraté z rozhovoru');
         };
     });
 }

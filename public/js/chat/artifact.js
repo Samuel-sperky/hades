@@ -432,7 +432,7 @@ export function showDiff(path, diff) {
     art.append(metaRow(path, text));
     art.append(codeBlock(text, 'diff', 'Kopírovať diff'));
     body.replaceChildren(art);
-    announce(`Náhľad zmeny ${fileName(path)} je v paneli.`);
+    announce(`Náhľad zmeny ${fileName(path)} je v paneli.`);
 
     return art;
 }

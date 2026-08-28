@@ -84,7 +84,7 @@ const S_PY3S = /'''[\s\S]*?(?:'''|$)/;
 const C_LINE = /\/\/[^\n]*/;
 const C_HASH = /#[^\n]*/;
 const C_SQL = /--[^\n]*/;
-/* Bez príznaku `m`, a to je podmienka: s ním by `$` znamenalo koniec RIADKA a
+/* Bez príznaku `m`, a to je podmienka: s ním by `$` znamenalo koniec RIADKA a
    lenivé `[\s\S]*?` by každý blokový komentár zrezalo na prvom riadku. */
 const C_BLOCK = /\/\*[\s\S]*?(?:\*\/|$)/;
 const C_HTML = /&lt;!--[\s\S]*?(?:--&gt;|$)/;

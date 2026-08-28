@@ -205,7 +205,7 @@ export function renderDecisionsView() {
     const searchRow = total > 0
         ? '<div class="dtl-filter">'
             + '<input id="dec-search" type="search" value="' + esc(decisionsState.q) + '"'
-            + ' placeholder="Hľadať v texte a dôvodoch…" autocomplete="off" aria-label="Hľadať v rozhodnutiach">'
+            + ' placeholder="Hľadať v texte a dôvodoch…" autocomplete="off" aria-label="Hľadať v rozhodnutiach">'
             + '</div>'
         : '';   // v prázdnej pamäti nie je v čom hľadať
 
@@ -260,7 +260,7 @@ export function renderDecisionsList() {
            všetky tri osi naraz, tak by „Zruš hľadanie" sľubovalo menej, než robí. */
         if (anyAtAll && filtered) {
             renderFilterEmpty(list, 'Žiadne rozhodnutia pre tento filter',
-                'Zruš filter a uvidíš celú os.', clearDecisionFilters);
+                'Zruš filter a uvidíš celú os.', clearDecisionFilters);
         } else {
             list.innerHTML = emptyHtml('gavel', 'Zatiaľ žiadne rozhodnutia',
                 'Objavia sa, keď Hades zaznamená prvé rozhodnutie.');

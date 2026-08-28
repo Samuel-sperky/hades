@@ -242,7 +242,7 @@ export function rerenderKontrola(moveFocus) {
            ktorý prežil, je platný — a `f.q` sa nepruneuje vôbec. */
         if (kontrolaFiltersActive()) {
             renderFilterEmpty(list, 'Filtru nevyhovuje ani jeden uzol',
-                'Zruš filter a uvidíš celú frontu.', clearKontrolaFilters);
+                'Zruš filter a uvidíš celú frontu.', clearKontrolaFilters);
         } else {
             renderEmpty(list, 'check-list', 'Fronta na overenie je prázdna',
                 'Nové poznatky sem prídu po ďalšej session.');

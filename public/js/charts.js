@@ -192,7 +192,7 @@
 
         const p = document.createElement('p');
         let t = 'Aktivita za posledných ' + fmtNum(sum.days) + ' dní: spolu '
-            + fmtNum(sum.total) + ' záznamov, z toho dní so záznamom '
+            + fmtNum(sum.total) + ' záznamov, z toho dní so záznamom '
             + fmtNum(sum.activeDays) + '.';
         if (sum.best && sum.best.count > 0) {
             t += ' Najrušnejší deň ' + fmtDate(sum.best.date) + ' s '

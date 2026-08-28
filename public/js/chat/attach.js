@@ -147,7 +147,7 @@ function positive(value, fallback) {
 export function limitsHint() {
     const l = limits();
 
-    return `Do ${humanBytes(l.max_bytes)} na súbor · najviac ${l.max_per_thread} na vlákno · obrázky, PDF a text`;
+    return `Do ${humanBytes(l.max_bytes)} na súbor · najviac ${l.max_per_thread} na vlákno · obrázky, PDF a text`;
 }
 
 /**
@@ -194,7 +194,7 @@ export function precheck(file) {
     const type = String(file.type || '').toLowerCase();
 
     if (type !== '' && !Object.prototype.hasOwnProperty.call(l.mimes, type)) {
-        return `„${file.name}" je typ ${type}. Prijímajú sa obrázky, PDF a textové súbory.`;
+        return `„${file.name}" je typ ${type}. Prijímajú sa obrázky, PDF a textové súbory.`;
     }
 
     return '';
@@ -502,7 +502,7 @@ export function paintBar() {
         A.uploading.forEach((ghost) => list.append(ghostChip(ghost)));
 
         bar.append(list);
-        bar.append(el('p', 'cf-hint', `${limitsHint()} · text z príloh dostane model v prompte.`));
+        bar.append(el('p', 'cf-hint', `${limitsHint()} · text z príloh dostane model v prompte.`));
     }
 
     if (A.note !== '') {

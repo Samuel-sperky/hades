@@ -41,7 +41,7 @@ export async function renderStructure() {
         // Prázdny stav UČÍ: čo to je aj prečo je prázdne. Akcia tu nie je, pretože
         // oblasti sa nezakladajú z tohto panela — vznikajú zaradením uzlov.
         wrap.innerHTML = html || emptyHtml('tree', 'Zatiaľ žiadna štruktúra',
-            'Oblasti a oddelenia pribudnú, keď Hades zaradí prvé uzly.');
+            'Oblasti a oddelenia pribudnú, keď Hades zaradí prvé uzly.');
 
         const rowActivate = (row, fn) => {
             row.onclick = (e) => { if (!e.target.closest('.dept-more')) fn(); };
@@ -174,7 +174,7 @@ export async function findDuplicates() {
         const pairs = data.pairs || [];
         if (!pairs.length) {
             renderEmpty(wrap, 'check-double', 'Žiadne duplicity',
-                'Nič sa v pamäti neopakuje — nie je čo zlučovať.');
+                'Nič sa v pamäti neopakuje — nie je čo zlučovať.');
             return;
         }
 
@@ -205,7 +205,7 @@ export async function findDuplicates() {
                 card.remove();
                 if (!wrap.querySelector('.dup-card')) {
                     renderEmpty(wrap, 'check-double', 'Žiadne duplicity',
-                        'Nič sa v pamäti neopakuje — nie je čo zlučovať.');
+                        'Nič sa v pamäti neopakuje — nie je čo zlučovať.');
                 }
                 showToast('Zlúčené');
                 await reloadGraph();

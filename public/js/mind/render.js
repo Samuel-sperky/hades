@@ -580,7 +580,7 @@ export function updateCanvasAria() {
         _ariaSr = document.createElement('p');
         _ariaSr.className = 'sr-only';
         _ariaSr.id = 'graph-a11y-alt';
-        _ariaSr.textContent = 'Interaktívna sieť vedomia. Zoznam uzlov a spojení v textovej podobe '
+        _ariaSr.textContent = 'Interaktívna sieť vedomia. Zoznam uzlov a spojení v textovej podobe '
             + 'nájdete na obrazovke Knižnica.';
         if (canvas.parentNode) canvas.parentNode.insertBefore(_ariaSr, canvas.nextSibling);
         canvas.setAttribute('aria-describedby', 'graph-a11y-alt');

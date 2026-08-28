@@ -31,14 +31,14 @@ const CMDS = [
         arg: '<dopyt>',
         icon: 'chip',
         help: 'Prehľadaj pamäť Hadesa',
-        expand: (arg) => `Prehľadaj pamäť a zhrň, čo o tejto téme vieš: ${arg}`,
+        expand: (arg) => `Prehľadaj pamäť a zhrň, čo o tejto téme vieš: ${arg}`,
     },
     {
         cmd: '/read',
         arg: '<id alebo názov>',
         icon: 'file-text',
         help: 'Prečítaj jeden uzol celý',
-        expand: (arg) => `Prečítaj uzol ${arg} z pamäte a vypíš jeho popis, tagy a spojenia.`,
+        expand: (arg) => `Prečítaj uzol ${arg} z pamäte a vypíš jeho popis, tagy a spojenia.`,
     },
     {
         cmd: '/model',
@@ -328,17 +328,17 @@ async function switchModel(arg) {
  * a do rozhrania nepatria.
  */
 const TOOL_NOTE = {
-    mind_recall: 'nájde v pamäti uzly k téme',
+    mind_recall: 'nájde v pamäti uzly k téme',
     mind_read: 'prečíta jeden uzol celý',
     mind_overview: 'vypíše štruktúru pamäte (oblasti, typy, počty)',
-    grep: 'hľadá v súboroch projektu regulárnym výrazom',
+    grep: 'hľadá v súboroch projektu regulárnym výrazom',
     glob: 'vypíše súbory podľa vzoru cesty',
-    read_file: 'prečíta súbor projektu s číslami riadkov',
+    read_file: 'prečíta súbor projektu s číslami riadkov',
     mind_learn: 'zapíše nový poznatok do pamäte',
     mind_rename: 'premenuje uzol (oprava odpadového labelu)',
     mind_move: 'presune uzol do inej oblasti',
-    mind_delete: 'zmaže uzol z pamäte',
-    edit_file: 'prepíše presný úsek v jednom súbore',
+    mind_delete: 'zmaže uzol z pamäte',
+    edit_file: 'prepíše presný úsek v jednom súbore',
     write_file: 'založí súbor alebo prepíše celý jeho obsah',
 };
 

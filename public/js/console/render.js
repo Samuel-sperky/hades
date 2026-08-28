@@ -63,14 +63,14 @@ export function renderEmpty() {
     box.append(el('h2', null, 'Charón'));
     box.append(el('p', null,
         'Napíš úlohu. Charón vidí celú pamäť Hadesa aj súbory projektu — '
-        + 'a čo chce zmeniť, ukáže dopredu.'));
+        + 'a čo chce zmeniť, ukáže dopredu.'));
 
     const list = el('ul', 'empty-can');
 
     [
-        ['chip', 'Hľadá v pamäti — uzly, hrany, oblasti, rozhodnutia.'],
-        ['magnifier', 'Prehľadáva projekt cez ripgrep a číta súbory.'],
-        ['pencil', 'Zápisy do súborov aj do pamäte najprv ukáže ako diff a čaká na Povoliť.'],
+        ['chip', 'Hľadá v pamäti — uzly, hrany, oblasti, rozhodnutia.'],
+        ['magnifier', 'Prehľadáva projekt cez ripgrep a číta súbory.'],
+        ['pencil', 'Zápisy do súborov aj do pamäte najprv ukáže ako diff a čaká na Povoliť.'],
         ['bolt', 'Príkazy: /recall, /read, /model, /tools, /cost, /clear, /new, /help.'],
     ].forEach(([icon, text]) => {
         const li = el('li');
@@ -559,9 +559,9 @@ function restoreAwaiting(call, parked) {
            stavu. Presne to bol nález review z 26. 8. 2026. */
         if (parked && parked.id != null && parked.thread) return;
 
-        pushNotice('Beh čaká na rozhodnutie o zápise podagenta. Otvor jeho podbeh na obrazovke Runy — '
-            + 'v tomto vlákne sa o ňom rozhodnúť nedá.');
-        announce('Beh čaká na rozhodnutie o zápise podagenta.');
+        pushNotice('Beh čaká na rozhodnutie o zápise podagenta. Otvor jeho podbeh na obrazovke Runy — '
+            + 'v tomto vlákne sa o ňom rozhodnúť nedá.');
+        announce('Beh čaká na rozhodnutie o zápise podagenta.');
 
         return;
     }
@@ -610,7 +610,7 @@ export function isWriteTool(name) {
 /** /clear — vyčistí ZOBRAZENIE. História vlákna v DB zostáva nedotknutá. */
 export function clearView() {
     renderEmpty();
-    pushNotice('Zobrazenie je vyčistené. História vlákna zostáva v pamäti — obnov stránku a je späť.');
+    pushNotice('Zobrazenie je vyčistené. História vlákna zostáva v pamäti — obnov stránku a je späť.');
 }
 
 /**

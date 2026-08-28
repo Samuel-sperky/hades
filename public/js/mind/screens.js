@@ -127,7 +127,7 @@ function ensureMdDetailWiring() {
         btn.type = 'button';
         btn.className = 'ghost';
         btn.id = 'md-graph';
-        btn.textContent = 'Zobraziť v grafe';
+        btn.textContent = 'Zobraziť v grafe';
         // Zavrieť PRV než skočíme: closeMdOverlay() vráti fokus na spúšťač
         // a openNodeFromAnywhere() hneď za ním prepne obrazovku, takže sa
         // vrátený fokus nikde nezasekne.

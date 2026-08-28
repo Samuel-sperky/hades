@@ -26,7 +26,7 @@ export const CMDK_NAV = [
        stránky je zmena kontextu, takže to paleta priznáva podtitulom.
        Ikona `send` je tá istá ako v raile a je overená v subsete; `forum` v ňom NIE JE
        a nová ikona by znamenala regeneráciu subsetu. */
-    { url: '/console', label: 'Charón', icon: 'send', sub: 'Chat s vedomím — otvorí samostatnú plochu' },
+    { url: '/console', label: 'Charón', icon: 'send', sub: 'Chat s vedomím — otvorí samostatnú plochu' },
 ];
 export let cmdkTimer = null, cmdkSeq = 0;
 // Beží vzdialené hľadanie? Enter to potrebuje vedieť: kým výsledky nie sú vonku,

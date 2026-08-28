@@ -147,7 +147,7 @@ function renderRunsView() {
             body,
             'bolt',
             'Konzola ešte nič nebežala',
-            'Otvor Charóna a zadaj úlohu — každý beh sa tu objaví so svojou cenou.',
+            'Otvor Charóna a zadaj úlohu — každý beh sa tu objaví so svojou cenou.',
         );
         return;
     }
@@ -262,7 +262,7 @@ function timelineHtml() {
    s ostatnými — podľa `data-act="clear-filter"`. */
 function emptyFiltered() {
     return filterEmptyHtml('Tomuto filtru neodpovedá žiadny beh.',
-        'Zruš filter a uvidíš celý log behov.');
+        'Zruš filter a uvidíš celý log behov.');
 }
 
 /** Popisok dňa je slovo, nie údaj — kľúč `day` prišiel zo servera. */
@@ -471,9 +471,9 @@ async function rerun(uuid, btn) {
         }
         try {
             await navigator.clipboard.writeText(j.prompt);
-            showToast('Zadanie je v schránke, otváram vlákno.');
+            showToast('Zadanie je v schránke, otváram vlákno.');
         } catch (e) {
-            showToast('Vlákno otváram; zadanie skopíruj z detailu behu.', null, 'warn');
+            showToast('Vlákno otváram; zadanie skopíruj z detailu behu.', null, 'warn');
         }
         if (j.thread) window.location.href = '/console/' + j.thread;
     } finally {
