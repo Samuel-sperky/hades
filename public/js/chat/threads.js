@@ -766,7 +766,7 @@ function threadsSection() {
     // Jedno hlásenie, nie dve: zlyhané načítanie a zlyhaná akcia píšu do toho
     // istého poľa a „Skúsiť znova" má zmysel len pri načítaní.
     if (T.threadsError) box.append(errorNote(T.threadsError, T.threadsState === 'error' ? loadThreads : null));
-    if (T.threadsState === 'loading' && !T.threads.length) box.append(note('Načítavam vlákna…'));
+    if (T.threadsState === 'loading' && !T.threads.length) box.append(note('Vlákna sa načítavajú…'));
 
     const rows = supportsThreadFlags() ? T.threads.filter((row) => !row.archived) : T.threads;
 
@@ -870,7 +870,7 @@ function projectBody(project) {
     const body = el('div', 'ct-proj-body');
     const entry = T.open.get(project.uuid) || {};
 
-    if (entry.state === 'loading' && !(entry.items || []).length) body.append(note('Načítavam…'));
+    if (entry.state === 'loading' && !(entry.items || []).length) body.append(note('Načítava sa…'));
     if (entry.state === 'error') body.append(errorNote(entry.error, () => loadProjectThreads(project.uuid)));
 
     const items = entry.items || [];
@@ -1010,7 +1010,7 @@ function searchView() {
     }
 
     if (T.search.state === 'loading' && !T.search.data) {
-        box.append(note('Hľadám v histórii…'));
+        box.append(note('Hľadanie v histórii…'));
 
         return box;
     }

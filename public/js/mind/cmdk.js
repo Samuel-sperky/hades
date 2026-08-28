@@ -1,6 +1,11 @@
 import { certBadge } from './certainty.js';
 import { openNodeFromAnywhere, setScreen } from './screens.js';
+/* doSync je hoistovaná `export async function` — cez cyklus sa v tomto grafe
+   ťahajú len hoistované funkcie (viď pravidlo v CLAUDE.md), takže tento import
+   je bezpečný aj keď dnes.js siaha späť na obrazovky. */
+import { doSync } from './screens/dnes.js';
 import { gotoDirective } from './screens/smernica.js';
+import { showToast } from './toasts.js';
 import { certTagMatch, parseQueryFilter } from './search.js';
 import { $, emptyHtml, esc, plainInline, plainText, prettyProject, typeName } from './util.js';
 import { iconMarkup } from '../shared/icons.js';
@@ -26,7 +31,12 @@ export const CMDK_NAV = [
        stránky je zmena kontextu, takže to paleta priznáva podtitulom.
        Ikona `send` je tá istá ako v raile a je overená v subsete; `forum` v ňom NIE JE
        a nová ikona by znamenala regeneráciu subsetu. */
-    { url: '/console', label: 'Charón', icon: 'send', sub: 'Chat s vedomím — otvorí samostatnú plochu' },
+    /* Cieľ je `/chat` (plná appka Charóna od 25. 8. 2026), nie `/console`.
+       Technická konzola si URL drží, ale primárna navigácia na ňu už neposiela —
+       rovnako ako rail. Vlastnú položku nedostáva zámerne: súčasná ikonová sada nemá
+       glyf pre konzolu (`terminal` v nej NIE JE, len v komentári icons.js) a nová
+       ikona je zmena sady, nie položky palety. */
+    { url: '/chat', label: 'Charón', icon: 'send', sub: 'Chat s vedomím — otvorí samostatnú plochu' },
 ];
 export let cmdkTimer = null, cmdkSeq = 0;
 // Beží vzdialené hľadanie? Enter to potrebuje vedieť: kým výsledky nie sú vonku,
@@ -38,9 +48,28 @@ export let cmdkPending = false;
 // čiže presne ten používateľ, ktorému to vadí najviac.
 export let cmdkReturnFocus = null;
 
+/* Keš posledných vlákien Charóna. Prečo keš a nie dopyt pri písaní: vlákna sú
+   navigačné cieľe (ako destinácie railu), takže musia byť v palete OKAMŽITE — dopyt
+   za debouncom by ich ukázal až po druhom znaku a pri prázdnom dopyte nikdy.
+   Plní sa raz na otvorenie palety; zlyhanie je ticho prázdne pole, nie chyba:
+   paleta má fungovať aj keď je Charón nedostupný. */
+export let cmdkThreads = [];
+
+async function loadCmdkThreads() {
+    try {
+        const res = await fetch('/api/console/threads');
+        if (!res.ok) return;
+        const data = await res.json();
+        cmdkThreads = Array.isArray(data.threads) ? data.threads : [];
+        // Paleta už môže byť otvorená a vykreslená bez vlákien — prekresli ju.
+        if (cmdkOpen()) renderCmdk($('cmdk-input').value);
+    } catch (e) { /* Charón nemusí byť dostupný */ }
+}
+
 export function openCmdk() {
     const overlay = $('cmdk');
     if (!cmdkOpen()) cmdkReturnFocus = document.activeElement;
+    loadCmdkThreads();
     overlay.classList.remove('hidden');
     const input = $('cmdk-input');
     input.value = '';
@@ -181,6 +210,56 @@ export function bindCmdkItems(root) {
             gotoDirective(q);
         };
     });
+    /* Otvorenie vlákna. `uuid` ide z odpovede servera, nikdy z dopytu, a napriek tomu
+       sa validuje: do `location.href` nesmie ísť nič, čo nemá tvar uuid — keby sa raz
+       zmenil tvar odpovede, nemá to skončiť presmerovaním niekam inam. */
+    root.querySelectorAll('.cmdk-item[data-thread]').forEach((el) => {
+        el.onclick = () => {
+            const id = el.dataset.thread || '';
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return;
+            closeCmdk();
+            location.href = '/chat/' + id;
+        };
+    });
+    /* Nové vlákno: vlákno zakladá SERVER a paleta ide na jeho uuid. Skratka na
+       `/chat` bez uuid by nechala založenie na druhej ploche, takže by vznikli dve
+       cesty k tomu istému a jedna z nich by sa raz rozišla. Pri zlyhaní sa paleta
+       nezatvára a povie to — mlčky zavretá paleta vyzerá ako úspech. */
+    root.querySelectorAll('.cmdk-item[data-action="new-thread"]').forEach((el) => {
+        el.onclick = async () => {
+            const done = await newCharonThread();
+            if (done) closeCmdk();
+        };
+    });
+    /* Synchronizácia beží cez doSync() z obrazovky Dnes — je to jediný zdroj pravdy
+       pre POST /api/sync (vrátane 423 „už beží" a toastov). Druhá kópia tej logiky
+       v palete je presne to, čo audit tejto appky opakovane našiel ako príčinu
+       rozchodu dvoch plôch. Paletu zatvárame hneď: sync trvá a jeho výsledok hlási
+       toast, nie otvorená paleta. */
+    root.querySelectorAll('.cmdk-item[data-action="sync"]').forEach((el) => {
+        el.onclick = () => { closeCmdk(); doSync(null); };
+    });
+}
+
+async function newCharonThread() {
+    try {
+        const res = await fetch('/api/console/threads', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') || {}).content || '',
+            },
+            body: '{}',
+        });
+        const data = await res.json().catch(() => ({}));
+        const id = data.uuid || (data.thread && data.thread.uuid);
+        if (!res.ok || !id) { showToast('Vlákno sa nepodarilo založiť', null, 'error'); return false; }
+        location.href = '/chat/' + id;
+        return true;
+    } catch (e) {
+        showToast('Vlákno sa nepodarilo založiť', null, 'error');
+        return false;
+    }
 }
 
 /* Vlastná kópia mapy typov je zrušená — jediný zdroj je TYPE_NAMES v util.js,
@@ -207,12 +286,48 @@ export function renderCmdk(q) {
                 + (n.sub ? '<span class="cmdk-sub">' + esc(n.sub) + '</span>' : '')
                 + '</span></button>').join('');
     }
-    // Akcia: poskladať smernicu z aktuálneho dopytu (skočí na obrazovku Smernica)
-    html += cmdkGroup('Akcia')
-        + '<button type="button" class="cmdk-item" data-action="directive">'
-        + iconMarkup('clipboard')
-        + '<span class="cmdk-text"><span class="cmdk-title">Vytvor smernicu' + (query ? ': ' + esc(query) : '…') + '</span>'
-        + '<span class="cmdk-sub">Poskladá kontext pre Claude Code</span></span></button>';
+    /* AKCIE. Do 28. 8. 2026 tu bola jedna (smernica) a skupina sa volala „Akcia“.
+       Paleta je odteraz jediný vstup na navigáciu AJ na akcie (kontrakt D3), takže
+       skupina je množná a nesie tri.
+
+       Filtruje sa podľa `keys` a nie podľa titulku: titulok „Vytvor smernicu“ by na
+       dopyt „sync“ nenašiel nič, hoci akcia existuje. Kľúče sú synonymá, ktoré
+       človek reálne napíše. */
+    const actions = [
+        { id: 'directive', icon: 'clipboard', keys: 'smernica direktiva prompt claude kontext',
+            label: 'Vytvor smernicu', echo: true,
+            sub: 'Poskladá kontext pre Claude Code' },
+        { id: 'new-thread', icon: 'send', keys: 'vlakno charon chat nove konverzacia',
+            label: 'Nové vlákno Charóna', sub: 'Otvorí čistú konverzáciu s vedomím' },
+        { id: 'sync', icon: 'refresh', keys: 'synchronizovat sync pamat obnovit',
+            label: 'Synchronizovať pamäť', sub: 'Načíta nové poznatky zo sessions' },
+    /* Filtruje sa podľa `keys` a `label` — NIKDY podľa vykresleného titulku.
+       Smernica si dopyt vpisuje do titulku (`echo`), takže titulok obsahuje dopyt
+       vždy a podmienka nad ním by prepustila každú akciu na každé slovo: zmerané,
+       na „sync" vychádzali dve akcie namiesto jednej. */
+    ].filter((a) => !ql || a.keys.includes(ql) || a.label.toLowerCase().includes(ql));
+    if (actions.length) {
+        html += cmdkGroup('Akcie')
+            + actions.map((a) => '<button type="button" class="cmdk-item" data-action="' + a.id + '">'
+                + iconMarkup(a.icon)
+                + '<span class="cmdk-text"><span class="cmdk-title">'
+                + esc(a.label) + (a.echo ? (query ? ': ' + esc(query) : '…') : '') + '</span>'
+                + '<span class="cmdk-sub">' + esc(a.sub) + '</span></span></button>').join('');
+    }
+    /* POSLEDNÉ VLÁKNA sa kreslia z KEŠE, teda okamžite a bez debouncu — sú to
+       navigačné cieľe ako destinácie railu, nie výsledok hľadania. Keš plní
+       openCmdk(); kým nie je, skupina sa nekreslí vôbec (prázdna skupina učí, že
+       vlákna neexistujú). */
+    const threads = cmdkThreads
+        .filter((t) => !ql || (t.title || '').toLowerCase().includes(ql))
+        .slice(0, 5);
+    if (threads.length) {
+        html += cmdkGroup('Posledné vlákna')
+            + threads.map((t) => '<button type="button" class="cmdk-item" data-thread="' + esc(t.uuid) + '">'
+                + iconMarkup('send')
+                + '<span class="cmdk-text"><span class="cmdk-title">' + esc(plainInline(t.title || 'Nové vlákno')) + '</span>'
+                + '<span class="cmdk-sub">' + esc(t.model || 'Charón') + '</span></span></button>').join('');
+    }
     html += '<div id="cmdk-remote"></div>';
     wrap.innerHTML = html;
     bindCmdkItems(wrap);
@@ -224,7 +339,7 @@ export function renderCmdk(q) {
     if (query.length < 2) { cmdkPending = false; return; }
     cmdkPending = true;
     const remote = $('cmdk-remote');
-    if (remote) remote.innerHTML = '<div class="cmdk-hint-row">Hľadám…</div>';
+    if (remote) remote.innerHTML = '<div class="cmdk-hint-row">Hľadanie…</div>';
     cmdkTimer = setTimeout(async () => {
         try {
             const data = await (await fetch('/api/search?q=' + encodeURIComponent(query))).json();

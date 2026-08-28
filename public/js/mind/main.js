@@ -8,10 +8,10 @@ import { setupCharon } from './charon.js';
 import { setupInput } from './interaction.js';
 import { setupPack } from './pack.js';
 import { buildLegend } from './panels.js';
-import { checkJournalUnread, initialRail, wireRailCollapse } from './rail.js';
+import { checkJournalUnread, initialRail, wireRailCollapse, wireRailMore } from './rail.js';
 import { draw, fitView, frame, publishNavApi, requestDraw, resize, scheduleFrame, setupVisibilityRepaint } from './render.js';
 import { setScreen } from './screens.js';
-import { setupHints, setupShortcuts } from './shortcuts.js';
+import { setupShortcuts } from './shortcuts.js';
 import { setView } from './sim.js';
 import { S } from './state.js';
 import { initialTheme, setTheme } from './theme.js';
@@ -42,6 +42,7 @@ async function init() {
     // Šírka railu sadá pred prvým rámcom z toho istého dôvodu ako téma.
     initialRail();
     wireRailCollapse();
+    wireRailMore();
     resize();
     window.addEventListener('resize', () => { resize(); requestDraw(); }); // rozmer sa zmenil → prekresli
 
@@ -84,7 +85,6 @@ async function init() {
     // (potrebuje CSRF na window.fetch) a nahrádza niekdajšie setupPrompt(). Bootstrap
     // skript v mind.blade.php, ktorý ho volal vo fáze 1, je preto preč.
     setupCharon();
-    setupHints();
     connectWs(data.ws);
     checkJournalUnread();
 

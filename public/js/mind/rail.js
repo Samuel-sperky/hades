@@ -129,6 +129,23 @@ export function initialRail() {
     return applied;
 }
 
+/* „Viac" v spodnej lište (pod 768 px). Otvára PALETU, nie druhé menu: paleta už
+   pozná všetkých deväť destinácií, akcie aj posledné vlákna, takže vlastný
+   rozbaľovač by bol druhá kópia toho zoznamu — a tá by sa raz rozišla, presne
+   ako sa rozišla paleta s railom v auguste (chýbali jej Runy a Charón).
+   Import je LÍNY (vnútri handleru): cmdk.js siaha na screens.js aj dnes.js,
+   takže eager import na vrchole rail.js by pridal hranu do cyklu, ktorý sa
+   načítava skôr než obrazovky. */
+export function wireRailMore() {
+    const btn = document.getElementById('rail-more');
+    if (!btn) return false;
+    btn.addEventListener('click', async () => {
+        const { openCmdk } = await import('./cmdk.js');
+        openCmdk();
+    });
+    return true;
+}
+
 export function wireRailCollapse() {
     const btn = document.getElementById('rail-collapse');
     if (!btn) return false;

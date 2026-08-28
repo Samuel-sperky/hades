@@ -198,10 +198,23 @@
              Ikona: `send` je v subsete overená (je v kóde použitá). Vlastný glyf pre
              chat (`forum`, `chat`) by si vyžiadal regeneráciu subsetu — viď
              docs/BRAND-HADES.md §5. Význam nesie label, ikona je druhá. --}}
+        {{-- Cieľ je `/chat`, nie `/console`. Rail hovorí „Charón — chat s vedomím",
+             a to je od 25. 8. 2026 plnohodnotná appka na `/chat` (vlákna, projekty,
+             vetvenie, artefakty). `/console` zostáva TECHNICKÁ konzola a svoju URL
+             si drží — len na ňu už neposiela primárna navigácia. --}}
         <div class="rail-group" role="group" aria-label="Charón">
-            <a href="/console" class="dest" aria-label="Charón — chat s vedomím">
+            <a href="/chat" class="dest" aria-label="Charón — chat s vedomím">
                 <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 20.6 3.4 L 3.4 10.2 L 10.9 13.1 L 13.8 20.6 Z"/><path d="M 20.6 3.4 L 10.9 13.1"/></svg><span class="lbl">Charón</span>
             </a>
+            {{-- „Viac" existuje LEN v spodnej lište pod 768px (CSS ho inde skrýva).
+                 Neotvára druhé menu — otvára paletu Ctrl-K, ktorá už pozná všetkých
+                 deväť destinácií, akcie aj posledné vlákna. NIE `.dest` v zmysle
+                 cieľa? Je: v lište sa chová ako piaty stĺpec, takže triedu má, ale
+                 `aria-haspopup` priznáva, že otvára plochu a nenaviguje. --}}
+            <button id="rail-more" class="dest" type="button"
+                    aria-haspopup="dialog" aria-label="Viac — otvorí paletu">
+                <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 5.5 12 h 0.01 M 12 12 h 0.01 M 18.5 12 h 0.01"/></svg><span class="lbl">Viac</span>
+            </button>
         </div>
 
         <div class="rail-group bottom" role="group" aria-label="Systém">
@@ -552,13 +565,6 @@
         </div>
     </div>
 
-    <div id="hint" class="hidden" role="dialog" aria-label="Nápoveda">
-        <p id="hint-text"></p>
-        <div class="hint-foot">
-            <button id="hint-skip" class="ghost" type="button">Preskočiť</button>
-            <span id="hint-step" class="step"></span>
-            <button id="hint-next" class="primary" type="button">Ďalej</button>
-        </div>
     </div>
 
     <!-- VLNA GRAF A: d3 je späť — layout uzlov počíta d3.forceSimulation (sim.js).

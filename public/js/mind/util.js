@@ -472,6 +472,12 @@ export async function getJson(url) {
 
 // Async spätná väzba tlačidiel — disable + dočasný text počas behu
 export async function busy(btn, fn, busyText) {
+    /* Volanie BEZ tlačidla je legitímne: paletu Ctrl-K zatvárame ešte pred štartom
+       akcie, takže žiadne tlačidlo neexistuje a spätnú väzbu nesie toast. Bez tejto
+       stráže by `doSync(null)` padlo na čítaní `.disabled` z null. Ochrana proti
+       dvojkliku sa tým pre takého volajúceho nezapína — a nemá: zavretá paleta sa
+       druhýkrát kliknúť nedá. */
+    if (!btn) return await fn();
     if (btn.disabled) return;
     const old = btn.textContent;
     btn.disabled = true;
@@ -483,7 +489,7 @@ export async function busy(btn, fn, busyText) {
 /* ---------- prázdne, chybové a načítavacie stavy ----------
 
    JEDEN slovník pre celú plochu `/`. Základ je `.empty`, modifikátor nesie
-   PRÍČINU — a to je informácia, nie kozmetika: „nič tu nie je„, „tvoj filter to
+   PRÍČINU — a to je informácia, nie kozmetika: „nič tu nie je“, „tvoj filter to
    skryl“ a „načítanie padlo" sú tri rôzne správy a do 27. 8. 2026 mali všetky tri
    ten istý tvar (ikona + veta + rada), takže sa nedali odlíšiť ani okom, ani
    aserciou nad DOM.
@@ -544,7 +550,7 @@ export function renderEmpty(container, icon, text, hint, action) {
 const ERROR_HINT = 'Server neodpovedá — skús to znova.';
 
 /* Vetu skládá HELPER, nie volajúci. `subject` je predmet v 4. páde a bez slova
-   „nepodarilo„: „denník“, „knižnicu„, „behy“, „frontu„. Helper z neho vyrobí
+   „nepodarilo“: „denník“, „knižnicu“, „behy“, „frontu“. Helper z neho vyrobí
    „Denník sa nepodarilo načítať“.
 
    Prečo tu a nie u volajúceho: jedenásť chybových ciest si vetu skládalo samo a

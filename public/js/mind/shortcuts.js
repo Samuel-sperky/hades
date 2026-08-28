@@ -215,37 +215,3 @@ export function setupShortcuts() {
     });
 }
 
-export const HINTS = [
-    { pos: { left: '104px', top: '120px' }, text: 'Vľavo prepínaš sedem obrazoviek — Dnes, Denník, Graf, Knižnica, Rozhodnutia, Kontrola a Smernica. Hades sa otvorí na Dnes.' },
-    { pos: { left: '50%', top: '76px', transform: 'translateX(-50%)' }, text: 'Hore vpravo je hľadanie (Ctrl K alebo /). Nájde uzly, playbooky aj obrazovky.' },
-    { pos: { left: '50%', top: '40%', transform: 'translateX(-50%)' }, text: 'Graf je jedna veľká sieť — chodíš po nej ťahaním a zoomom. Klik na oblasť, oddelenie alebo uzol ju len zaostrí (zvyšok stmavne), Esc filter zruší. V prepne na Vrstvy.' },
-    { pos: { left: '104px', bottom: '24px' }, text: 'Dole vľavo nájdeš Nastavenia (tmavý režim, hustota, sieť) a Pomocníka.' },
-];
-
-export function setupHints() {
-    if (localStorage.getItem('hades.hints2') === 'done') return;
-    const el = $('hint');
-    let i = 0;
-
-    const finish = () => {
-        el.classList.add('hidden');
-        localStorage.setItem('hades.hints2', 'done');
-    };
-
-    const show = () => {
-        if (i >= HINTS.length) { finish(); return; }
-        const h = HINTS[i];
-        $('hint-text').textContent = h.text;
-        const step = $('hint-step');
-        if (step) step.textContent = (i + 1) + ' / ' + HINTS.length;
-        $('hint-next').textContent = i === HINTS.length - 1 ? 'Hotovo' : 'Ďalej';
-        el.style.left = ''; el.style.top = ''; el.style.bottom = ''; el.style.transform = '';
-        Object.assign(el.style, h.pos);
-        el.classList.remove('hidden');
-    };
-
-    $('hint-next').onclick = () => { i++; show(); };
-    const skip = $('hint-skip');
-    if (skip) skip.onclick = finish;
-    show();
-}

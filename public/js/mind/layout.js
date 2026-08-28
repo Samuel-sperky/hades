@@ -128,7 +128,10 @@ export function viewInsets() {
     const scs = sc ? getComputedStyle(sc) : null;
     const left = scs && parseFloat(scs.left) ? parseFloat(scs.left) : edge + cssPx('--rail-w', 80) + edge;
     const top = scs && parseFloat(scs.top) ? parseFloat(scs.top) : edge + cssPx('--header-h', 44) + cssPx('--sp-1', 8);
-    return { left, right: edge, top, bottom: edge + cssPx('--sp-4', 32) };
+    /* Spodok ide z tokenu --content-bottom (nie z `edge + sp-4`), aby sa scéna
+       odsadila od spodnej navigačnej lišty na mobile tak, ako sa zľava odsadzuje
+       od --rail-w. Fallback je pôvodná hodnota, takže bez tokenu sa nič nemení. */
+    return { left, right: edge, top, bottom: cssPx('--content-bottom', edge + cssPx('--sp-4', 32)) };
 }
 
 // Šírka, ktorú si otvorený bočný panel rezervuje, a základný okraj.

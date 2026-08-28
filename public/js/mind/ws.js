@@ -92,7 +92,7 @@ export function handlePulse(type, data) {
         buildSim();
         kickSim();
         blip(520);
-        showToast('Naučil som sa: ' + n.label, n.id);
+        showToast('Pribudlo: ' + n.label, n.id);
         if (n.source === 'session') {
             if (S.screen === 'dennik') { renderJournal(); markJournalSeen(); }
             else setJournalDot(true);
