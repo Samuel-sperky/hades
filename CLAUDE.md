@@ -145,18 +145,26 @@ kalibrovaný z oboch strán — vrátenie CDN do politiky aj do blade zhodí ka�
 Predtým to bola len disciplína toho, kto naposledy editoval blade: docblock sľuboval
 test, ktorý **nikdy neexistoval**.
 
-Material Symbols je **subset** (215 glyfov zo 4271, 132 kB namiesto 3 MB), vyrobený
-`pyftsubset --no-layout-closure` — bez toho flagu ligatúrová uzávera vtiahne všetky
-ikony späť. **Keď pridáš NOVÚ ikonu, subset ju nemá a vykreslí sa ako text —
-regeneruj.** Overené 19. 8. 2026 skriptom `iconcheck.js` (glyf = 1 em ≈ 18 px,
-nevykreslená ligatúra padne na fallback a je násobne širšia): v subsete SÚ `hub`,
-`add`, `memory`, `arrow_upward`, `stop`, `check`, `close`, `delete`, `edit`, `bolt`,
-`list`; **NIE SÚ** `terminal` (144 px, teda text) ani `arrow_downward` — konzola preto
-používa `arrow_upward` prevrátenú v CSS. Overiť sa to dá skriptom v scratchpade (`iconrender.js`): meria šírku
-textu v Material Symbols, vykreslený glyf zaberá jednu em, nevykreslená ligatúra
-padne na fallback a je násobne širšia. Ligatúry v subsete žijú v GSUB lookupe
-**typu 7 (Extension)** — bez rozbalenia `ExtSubTable` vyzerá font, akoby ligatúry
-nemal žiadne.
+**Ikonový font je preč (28. 8. 2026).** Ikony sú **inline SVG z `public/js/shared/icons.js`** —
+jedna sada 60 symbolov pre `/`, `/console` aj `/chat`, kreslí ju trieda `.ic`. Statický
+markup v blade nesie SVG priamo (výmena v JS by ukázala stránku najprv bez ikon), JS
+používa `iconMarkup()` (string), `iconSvg()` (element) a `iconSwap()` (výmena na mieste).
+
+**`textContent` na `<svg>` nezobrazí NIČ a výnimku nevydá** — preto každé armed-confirm
+tlačidlo ide cez `iconSwap()`. Priame priradenie by ho ticho vyprázdnilo. Kto si ikonu
+odkladá, nech si odkladá **uzol**, nie meno: `btn.textContent` je po prechode prázdny
+reťazec.
+
+**Neznáme meno sa nezamlčí:** `iconMarkup()` ho zapíše do `window.HADES._iconMiss`
+a nakreslí `ring`. Merací harness ho tam nájde skôr než používateľ; pri migrácii to
+chytilo štyri preklepy. Nová ikona sa pridáva DO SADY — nič sa už neregeneruje.
+
+**Ligatúry vstupovali do DOM SEDMIMI cestami** a preto sa ich počet trikrát menil
+(37 → 41 → 61): statický markup, template stringy, ternáre, päť mapovacích stolov,
+`el(tag,'ms',meno)`, `.textContent =`, a prvý argument `emptyHtml`/`renderEmpty`.
+Statický sken nad `/chat` a `/console` našiel **nula** call-site, kým bežiaca stránka
+kreslila **192** a **97** ikon. Keď niečo počítaš grepom nad markupom, over to na
+bežiacej stránke.
 
 `font-display: block` pre ikony (nie `swap`): krátky prázdny priestor je lepší než
 blik surových ligatúrových názvov, čo je presne tá porucha, ktorú tu riešime.
@@ -288,9 +296,8 @@ odišiel — sú prepísané a hovoria, že ide o **zmenu rozhodnutia**, nie o o
 Nevracaj titulky na Geist bez toho, aby si najprv prepísal manuál. V **chybe** je serif
 zakázaný (manuál §8): je to text, ktorý má človek použiť na opravu.
 
-**Ikon je 41, nie 37 ani 32.** Ligatúry vstupujú do DOM tromi cestami a štyri
-(`search_off`, `filter_alt_off`, `play_arrow`, `pause`) sú pre grep nad markupom
-neviditeľné. Subset (`mtime` 18. 8.) je starší než záznam o 32 ikonách.
+**Sada má 60 symbolov** (viď vyššie). Staršie záznamy o 32, 37 a 41 ikonách hovoria
+o subsete, ktorý už neexistuje.
 
 **Chyba má jeden komponent a vlastný predmet.** `.empty--error` + `.empty .title`
 + jedna `.empty-act` na desiatich call-site šiestich obrazoviek („Denník sa nepodarilo
@@ -301,6 +308,21 @@ správne**. Čo sa zámerne nezlialo: `.run-error` (obsah záznamu behu, nie sta
 `.toast.error` (prechodné oznámenie akcie) a `.card-empty` (iná rola).
 **Kontrola pri `soft` refreshi kostru NEKRESLÍ** — zmazala by presne to, na čo sa človek
 pozerá; hlási len `aria-busy`.
+
+**`transition` nad hodnotou z custom property ZMRAZÍ tú vlastnosť.** Zaplatené
+28. 8. 2026 hodinou hľadania: `#rail { width: var(--rail-w); transition: width … }`
+spôsobí, že sa šírka po prvom vykreslení **už nikdy neprepočíta** — token sa na `:root`
+zmení (zmerané: 80 ↔ 208 px) a odvodené tokeny sa prepočítajú, ale prvok zostane na
+hodnote z načítania. **`@property` so `syntax: '<length>'` to NEOPRAVÍ** (skúšané);
+opraví to jedine odstránenie prechodu. Držalo to naraz `#rail { width }`,
+`#app-header { left }` aj `#screens { left }`, takže zbalenie railu uvoľnilo 128 px,
+ktoré si obsah nevzal. Keď chceš pohyb aj token, museli by hodnoty stáť priamo
+v stavových pravidlách — ale to je druhá kópia hodnoty, ktorú číta `layout.js`.
+
+**`resize_window` v Browser pane neposiela do stránky `resize`.** Zmení
+`window.innerWidth` aj `matchMedia().matches`, ale kód visiaci na tej udalosti sa
+nespustí, takže funkčná responzivita vyzerá pokazene. Over ju ručne odoslaným
+`window.dispatchEvent(new Event('resize'))`.
 
 **Keď meníš CSS, over, že zmena je inertná, výmenou stylesheetu nad TÝM ISTÝM DOM**
 (`w8/cssswap.js`) — nie dvoma načítaniami stránky, Hades je živý a medzi nimi sa
