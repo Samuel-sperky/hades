@@ -273,29 +273,72 @@ vrátil som ich do commitu a zámenu zopakoval bez toho kroku.
 takže výnimka v generátore nechala `gate.js` prázdny — obnovené z gitu, pomocník
 odvtedy najprv počíta a až potom otvára.
 
-### Zostáva
+### Beh dokončenia (28. 8. 2026, 8 agentov, 0 padnutých)
 
-Menšie a dobre ohraničené; plán aj vlastníctvo súborov pre ne žijú v
-`docs/PLAN-VLNA2-3.md`, takže sa dá nadviazať bez nových sond:
+4 implementátori (delenie podľa súborov, prienik nula) → 4 overovatelia. Prehliadač
+dostal **jediný** agent; štyria implementátori by si o Browser pane konkurovali.
 
-- **Zvyšok tokenov pohybu (A3):** `--dur-chart-draw`, `--dur-chart-curve`,
-  `--dur-chart-reveal`; zmazať `--transition-base` a `--transition-slow`.
-- **Zjednotenie zlomov** na 1280 a 900 (dnes sú dva bloky `max-width: 1280px`
-  a tri `max-width: 900px`).
-- **`charts.js:74`** číta `prefers-reduced-motion` raz na module scope — má to byť
-  živý listener, ale cenu treba zmerať PRED zmenou (komentár tam obhajuje dopyt
-  pri 365 bunkách heatmapy).
-- **Prílet uzla cez WS:** zo siedmich súčasných pohybov nechať tri. Alphu
-  `kickSim()` nemeniť — to je zmena fyziky, nie prechodu, a rozhodnutie 7 ju
-  nekryje, takže potrebuje samostatné schválenie.
-- **Plynulé zanorenie** (`S._dimTween` v `render.js`) — `DIM_CTX` sa nemení.
-- **Overenie, ktoré nikto nespravil:** kontrast nových povrchov a ikon na OBOCH
-  témach (skladané pozadie, po prepnutí témy merať v ďalšom volaní, kalibrácia na
-  `body` ~16:1) a nezávislý adversariálny review celého diffu vĺn 2 a 3.
-- **`CLAUDE.md`** má dve zastarané čísla: 215 glyfov subsetu (subset je preč)
-  a počet ikon.
+**Postavené:** tokeny `--dur-chart-*` na štyroch animáciách zrodu a odchod
+`--transition-base` / `--transition-slow` · zlomy zjednotené na jeden blok pre 1280
+a jeden pre 900 · živý listener `prefers-reduced-motion` v `charts.js` · prílet uzla
+zo 7 pohybov na 3 · plynulé zanorenie cez `S._dimTween`.
 
-**Limit harnessu, na ktorý sa dá naletieť:** `resize_window` v Browser pane mení
-`window.innerWidth` aj `matchMedia().matches`, ale do stránky **neposiela udalosť
-`resize`** — kód, ktorý na nej visí, sa preto pri meraní netvári, že beží. Overuje
-sa to ručne odoslaným `new Event('resize')`; vtedy rail prepne správne.
+**Zlúčenie zlomov malo netriviálny dôvod pre svoje umiestnenie:** sekcia sa presunula
+na KONIEC súboru, nie nahor, pretože základy troch presúvaných pravidiel sú deklarované
+NIŽŠIE než pôvodné miesto sekcie — presun nahor by ich pri rovnakej špecificite nechal
+prehrať s vlastným základom a tri pravidlá by ticho prestali platiť.
+
+### Čo našiel review a ja som nenašiel
+
+Toto je najdôležitejšia časť tohto behu. **Moje overenie meralo obrazovky, ktoré som
+otvoril; review našiel to, čo som otvoriť nemohol.** Tri blockery, všetky moje:
+
+1. `dennik.js` volal `iconMarkup()` **bez importu**. Obrazovka hádzala `ReferenceError`
+   pri každom vykreslení, `renderJournal()` ho zhltol v `try/catch` a človek videl
+   chybový stav — ktorý som ja prečítal ako „prázdny denník". `charon.js`
+   a `chat/threads.js` mali tú istú chybu s čiastočným importom.
+2. **Deväť ďalších call-site** stále vypisovalo ligatúrové mená ako doslovný text.
+   Môj grep hľadal `class="ms"`; tieto ju mali uprostred zoznamu tried, na inom
+   zreťazenom riadku, alebo nemali triedu vôbec.
+3. Tlačidlá **Poslať** kreslili `arrow_upward` (náhrada z čias, keď subset nemal
+   papierovú vlaštovku) a tlačidlá **Na spodok** mali `class="ic flip"` — rotáciu,
+   ktorej CSS pravidlo odišlo s fontom, takže šípka dole mierila hore.
+
+**Sken je odteraz nad ZOZNAMOM LIGATÚR, nie nad markupom**, v siedmich tvaroch, akými
+môže meno vstúpiť do DOM, a filtrovaný proti skutočnej sade — meno platné v oboch
+abecedách (`hub`, `bolt`, `send`) inak vyzerá ako chyba. Hlási tri zásahy a všetky tri
+sú normalizátory stavu `status === 'failed' ? 'error'`, nie ikony.
+
+**Kontrastné overenie našlo predexistujúcu chybu:** 96 odkazov na `/chat` v prehliadačovej
+modrej `#0000EE`, teda ~2:1 voči tmavému papieru. Príčina je, že `.ct-acts` a `.ct-act-btn`
+nemajú v **žiadnom** stylesheete ani jedno pravidlo — menu akcií vlákna sa postavilo
+v JS a nikdy sa nenakreslilo. Nie je to regresia tejto vlny. Opravená je len čitateľnosť
+(16,48:1, merač kalibrovaný na `body` na tú istú hodnotu); nakresliť ten komponent je
+samostatné zadanie.
+
+**`/chat` zahadzoval celý query string pri otvorení vlákna** — `threads.js` to pri
+zatvorení riešil aj s komentárom, obe prepisy v `run.js` nie.
+
+### Zostáva — vedome neopravené
+
+- **`gate.js` stratil štyri mapovania nástrojov** (`bash`/`shell`/`php`/`artisan` → `code`).
+  Padajú na `bolt`, teda vyzerajú ako ktorýkoľvek neznámy nástroj. Zmazanie bolo
+  rozhodnutie plánu (§5: symbol `code` sada zámerne nevydáva), ale dôsledok plán
+  nepomenoval. **Patrí to používateľovi:** buď sada dostane 61. symbol, alebo sa to
+  prijme.
+- **`.msg-error` je mŕtvy kód** — A1 ho nakreslil v `mind.css`, nemá volajúceho a tri
+  kópie chybovej bubliny žijú ďalej.
+- **Deväť súborov argumentuje neexistujúcim fontom.** Nie sú to len zastarané komentáre:
+  päť z nich sú UI rozhodnutia (text namiesto ikony, chýbajúca ikona) zdôvodnené
+  obmedzením, ktoré od 28. 8. neplatí.
+- **Hlas: štyri zásahy prvej osoby v DOM.** Kontrakt vo vlne 1 hlási „0 zásahov" — to
+  meranie bežalo len nad `mind/`, nie nad `chat/` a `console/`.
+- **Znak: tri z deviatich výskytov** nie sú z generátora, hoci manuál §2 to žiada.
+- **Neoverené tvrdenie:** review hlási, že aplikátor URL grafu ignoruje zanorenie, keď
+  sa naraz zmenil aj pohľad. **Nereprodukoval som to** — hlboký odkaz `?s=graf&a=3&gv=layers`
+  aj tlačidlo Naspäť obnovili zanorenie aj pohľad správne. Nechávam to zapísané ako
+  otvorené, nie ako opravené.
+
+**Limit harnessu:** kritérium „rAF mimo obrazovky Graf = 0 rámcov" sa v Browser pane
+overiť **nedá** — kalibrácia z druhej strany padá, pretože rAF sa nedoručí ani na Grafe.
+Kto ho odhlási ako splnené, hlási nulu, ktorá nič nemeria.
