@@ -529,7 +529,6 @@ export function go(target = {}) {
     // Používateľ zamieril sám → usadzovanie mu už kameru nemá preberať.
     if (!first) S._fitOnSettle = false;
     aimCamera(L, animate, next.level);
-    S._morph = null;
     if (graphActive()) draw();   // nech cieľ nezabliká pred prvým rAF framom
     requestDraw();
     return next;

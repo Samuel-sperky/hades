@@ -126,7 +126,7 @@ export function viewInsets() {
     const edge = cssPx('--edge', 16);
     const sc = document.getElementById('screens');
     const scs = sc ? getComputedStyle(sc) : null;
-    const left = scs && parseFloat(scs.left) ? parseFloat(scs.left) : edge + cssPx('--rail-w', 72) + edge;
+    const left = scs && parseFloat(scs.left) ? parseFloat(scs.left) : edge + cssPx('--rail-w', 80) + edge;
     const top = scs && parseFloat(scs.top) ? parseFloat(scs.top) : edge + cssPx('--header-h', 44) + cssPx('--sp-1', 8);
     return { left, right: edge, top, bottom: edge + cssPx('--sp-4', 32) };
 }

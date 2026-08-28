@@ -19,11 +19,17 @@ export function showToast(text, nodeId, variant) {
         ? '<span class="ms" aria-hidden="true">' + icon + '</span><span>' + esc(parts[0]) + ': <strong>' + esc(parts[1]) + '</strong></span>'
         : '<span class="ms" aria-hidden="true">' + icon + '</span><span>' + esc(text) + '</span>';
 
+/* PREFERENCIA POKOJA SA TYKA POHYBU, NIE CASU NA CITANIE.
+   Do 28. 8. 2026 sa pod `prefers-reduced-motion` nulovala aj DOBA ZOBRAZENIA
+   (5200 / 6000 / 2500 ms na 0), takze toast zmizol v tom istom ramci, v ktorom
+   vznikol — clovek s tou preferenciou oznamenie NIKDY neprecital a moznost
+   „Spat" mu zmizla pod rukami. Znulovat sa smie VYHRADNE 200 ms odchodovy
+   prechod, co je pohyb. Doba zobrazenia zostava rovnaka alebo dlhsia. */
     const leave = (node) => {
         node.classList.add('leaving');
         setTimeout(() => node.remove(), REDUCED_MOTION ? 0 : 200);
     };
-    const arm = () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 5200); };
+    const arm = () => { el._t = setTimeout(() => leave(el), 5200); };
 
     el.onclick = () => {
         const n = nodeId ? S.byId.get(nodeId) : null;
@@ -35,7 +41,7 @@ export function showToast(text, nodeId, variant) {
         leave(el);
     };
     const hold = () => clearTimeout(el._t);
-    const release = () => { el._t = setTimeout(() => leave(el), REDUCED_MOTION ? 0 : 2500); };
+    const release = () => { el._t = setTimeout(() => leave(el), 2500); };
     el.addEventListener('mouseenter', hold);
     el.addEventListener('mouseleave', release);
     /* Pauza platí aj pre fokus, nielen pre myš. Toast je fokusovateľný (button,
@@ -65,10 +71,10 @@ export function showUndoToast(text, onUndo) {
     el.appendChild(undo);
 
     const leave = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), REDUCED_MOTION ? 0 : 200); };
-    let t = setTimeout(leave, REDUCED_MOTION ? 0 : 6000);
+    let t = setTimeout(leave, 6000);
     undo.onclick = () => { clearTimeout(t); leave(); if (onUndo) onUndo(); };
     const hold = () => clearTimeout(t);
-    const release = () => { t = setTimeout(leave, REDUCED_MOTION ? 0 : 2500); };
+    const release = () => { t = setTimeout(leave, 2500); };
     el.addEventListener('mouseenter', hold);
     el.addEventListener('mouseleave', release);
     // Fokus drží toast rovnako ako myš — viď poznámku v showToast().

@@ -56,7 +56,7 @@ export function resize() {
     if (S.nodes.length) {
         const L = computeLayout();
         applyLayoutPositions(L);
-        S._morph = null; S._camTween = null;
+        S._camTween = null;
         const c = fitCam(fitBBox(L));
         if (rel) {
             // Strop/podlaha zoomu držíme rovnaké ako fitCam a zoomAt, aby sa kamera
@@ -81,7 +81,7 @@ export function visibleInReplay(n) {
 function ensureLayout() {
     const prev = S.layout;
     const L = computeLayout();
-    if (L !== prev) { applyLayoutPositions(L); S._morph = null; }
+    if (L !== prev) applyLayoutPositions(L);
     return L;
 }
 
@@ -889,8 +889,14 @@ export function draw() {
 
         if (ent.dim < 0.5) { if (n.flash) n.flash = Math.max(0, n.flash - 0.02); continue; }
 
-        // ŽIARA — nedávno aktívne uzly jemne pulzujú teal (event-driven, aj pri REDUCED_MOTION)
-        const glowA = (n.flash || 0) * (0.55 + 0.45 * Math.sin(S._clock * 6 + n.id));
+        /* ZIARA nedavno aktivneho uzla. Alfa je KONSTANTNA a vyhasina lineárne
+           spolu s `n.flash` (-0,02 na ramec, teda ~830 ms pri 60 fps).
+           Do 28. 8. 2026 tu bol `Math.sin(S._clock * 6 + n.id)`, teda blikot -
+           a komentar nad nim to priznaval slovami „aj pri REDUCED_MOTION", hoci
+           `anim.js` na tom istom mieste slubuje staticke zvyraznenie. Susedny
+           `breatheFactor()` strazcu ma; toto ho nemalo. Vyhasinanie je zmena
+           stavu (uzol bol prave aktivny a uz nie je), blikot je dekoracia. */
+        const glowA = (n.flash || 0);
         if (glowA > 0.03) {
             ctx.globalAlpha = Math.min(0.55, glowA) * alpha;
             ctx.lineWidth = 1.4 * invK;
@@ -1709,21 +1715,11 @@ export function frame() {
         if (c.t >= 1) S._camTween = null;
     }
 
-    // morph pozícií medzi úrovňami (rovnaký časovač ako kamera → jeden plynulý pohyb)
-    if (S._morph) {
-        const m = S._morph;
-        m.t = Math.min(1, m.t + dt / m.dur);
-        const e = easeInOut(m.t);
-        for (const n of S.nodes) {
-            const a = m.from.get(n.id), b = m.to.get(n.id);
-            if (a && b) { n.x = a.x + (b.x - a.x) * e; n.y = a.y + (b.y - a.y) * e; }
-        }
-        if (m.t >= 1) {
-            for (const n of S.nodes) { const b = m.to.get(n.id); if (b) { n.x = b.x; n.y = b.y; } }
-            S._morph = null;
-            requestDraw();
-        }
-    }
+    /* Morph pozicii medzi urovnami tu bol do 28. 8. 2026 a bol MRTVY: `S._morph`
+       sa v celom repe nikdy nenastavil na ine nez `null`. Patril do cias, ked
+       zanorenie prepocitavalo rozlozenie. Dnes je `go()` FILTER - nemeni pozicie
+       ani nevymiena scenu - takze kod, ktory pozicie interpoluje, hovoril opak
+       jedneho z nedotknutelnych invariantov kontraktu. */
 
     if (S.replay.playing) {
         S.replay.t = Math.min(1, S.replay.t + dt / 22);
@@ -1737,7 +1733,7 @@ export function frame() {
     const dimTarget = isAwake() ? 1 : SLEEP_DIM;
     const dimActive = Math.abs(dimTarget - S.dim) > 0.001;
     const ambientLife = S._life > 0; // pokoj = dýchajúce jadro + veľmi pomalý prach
-    const responsive = !!S._morph || !!S._camTween || S.replay.playing || S._interacting
+    const responsive = !!S._camTween || S.replay.playing || S._interacting
         || S.pulses.length > 0 || S._flows.length > 0 || S._settleFrames > 0 || dimActive;
     const active = responsive || ambientLife;
 

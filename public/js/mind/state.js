@@ -169,7 +169,6 @@ export const S = {
     skeleton: bootValue('sk', lsGet('hades.skeleton') === '1' ? '1' : '0', '0') === '1',
     // FÁZA ANIMÁCIE: stav animačnej vrstvy
     _flows: [],           // putujúce svetlobody po hranách (event-driven): { from,to,e,t,speed,tone,dim,wait }
-    _morph: null,         // prechod náhľadov: { from:Map, to:Map, t, dur }
     _clock: 0,            // monotónny animačný čas (s) — fáza pre dýchanie / sínusovky (mrzne pri skrytom tabe)
     _anim: 0,             // efektívna intenzita animácií tento frame (animLevel(), vrátane ambient boostu)
     _interacting: false,  // drag/pan prebieha → dýchanie sa pozastaví
