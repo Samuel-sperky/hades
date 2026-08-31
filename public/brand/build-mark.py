@@ -13,12 +13,19 @@ jedného tvaru; zlieva to do jedného ZDROJA a rozdiely medzi výskytmi robí
 vypočítanými, nie ručnými.
 
 ZDROJE (jediné miesta, kde sa geometria a farby znaku píšu rukou):
-  * public/brand/hades-sigil-mini.svg  — kánon mini: prstenec r36/hrúbka 9, jadro r15
-  * public/brand/hades-sigil.svg       — kánon master: A46 / B34 / C22 / satelit / jadro
+  * public/brand/hades-sigil-mini.svg  — KÁNON: prstenec r36/hrúbka 9, jadro r15
   * public/css/mind.css                — tmavý papier (`--bg-rgb`) pod faviconom
 
+Master (hades-sigil.svg) sa od 28. 8. 2026 GENERUJE z mini a ručným zdrojom už NIE
+JE. Dovtedy to boli dva nezávislé výkresy a rozišli sa: master mal nosný prstenec
+0,46 boxu, mini 0,36 — znak vedľa znaku teda nesúhlasil. Master pridáva nad mini
+len dej (hranica, delenia, prerušenie, hrana, satelit, obežnica) a robí to
+z konštánt MASTER_* nižšie.
+
 VÝSTUPY:
-  1. public/brand/hades-sigil-mono.svg      (master jednofarebne)
+  1. public/brand/hades-sigil.svg           (master = mini + dej)
+  1b. public/brand/hades-sigil-mono.svg     (master jednofarebne)
+  1c. public/brand/hades-lockup-h/-v.svg    (znak + wordmark; wordmark sa nehýbe)
   2. public/brand/hades-favicon.svg         (mini na atramentovom disku — zdroj data-URI)
   3. public/brand/apple-touch-icon.png      (180 px, tá istá kompozícia)
   4. public/favicon.ico + electron/assets/hades.ico  (16/24/32/48/64/128/256)
@@ -39,6 +46,7 @@ prepísal súbor.
 from __future__ import annotations
 
 import io
+import math
 import re
 import sys
 from pathlib import Path
@@ -508,18 +516,226 @@ nezrodí — animáciu na ne vešia `mind.css` (`chat.blade.php:86` a `:182` ich
 ```
 {uri}
 ```
+
+## Lockupy a rastrové derivát y — DVA generátory, jeden kánon
+
+Lockupy (`hades-lockup-h.svg`, `hades-lockup-v.svg`) vydáva tento generátor: vymení
+v nich **skupinu `.sig`** za aktuálny master a wordmark nechá presne tam, kde je.
+Umiestnenie wordmarku (výška znaku : výška verzálky = 1,55 : 1, medzera 0,34 ×
+výška znaku) vypočítal retirovaný `docs/build-brand.py` z metrík fontu Cinzel,
+ktorý v tejto vetve nie je — preto sa neprepočítava, len zachováva.
+
+Do 28. 8. 2026 lockupy generátor **nevlastnil nikto** a nesli geometriu starého
+mastera (prstenec r 34, jadro r 8,5) dlho po tom, ako sa master zmenil. Assety bez
+generátora zastarajú a nikto si to nevšimne.
+
+PNG derivát y (`hades-lockup-300/600/1200.png`, `hades-sigil-128/256/512.png`,
+`hades-og.png`) vydáva **`public/brand/build-raster.js`** (node + headless Chrome).
+Je to druhý skript, a to zámerne: PIL v tomto generátore vie kresliť kruhy, takže
+zvládne favicon aj `.ico`, ale **wordmark je písmo v krivkách a ten nenakreslí**.
+V prostredí nie je žiadny SVG rasterizér (`cairosvg` chýba, `convert` je Windowsov
+konvertor diskov, nie ImageMagick), takže rasterizuje Chrome — cesta, ktorú si
+projekt zapísal ako funkčnú v CLAUDE.md.
+
+**Poradie je povinné**, PNG sa fotia z hotových SVG:
+
+```
+python public/brand/build-mark.py     # SVG kánon
+node   public/brand/build-raster.js   # PNG z neho
+```
 """
     emit(BRAND / "DERIVED.md", md)
 
 
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# 6b. MASTER — obohatenie mini kánonu
+# --------------------------------------------------------------------------- #
+#
+# Master sa GENERUJE z mini, nie kreslí ručne. To je celý zmysel variantu
+# „Jedno oko" (kontrakt 28. 8. 2026, A1): nosný prstenec a jadro sú v oboch
+# výkresoch tie isté hodnoty, takže znak v 16 px a znak v 512 px je ten istý
+# objekt. Do 28. 8. 2026 boli master a mini dva nezávislé súbory a rozišli sa —
+# master mal prstenec 0,46 boxu, mini 0,36.
+#
+# Tieto konštanty sú JEDINÉ, čo master pridáva nad mini. Menia sa tu a nikde inde.
+MASTER_GAP_DEG = 34.0        # šírka prerušenia nosného prstenca
+MASTER_GAP_AT = -38.0        # stred prerušenia v SVG stupňoch = 52° od vertikály
+MASTER_HAIR_R = 47.0         # vlásková hranica vedomia (neprerušená)
+MASTER_HAIR_W = 1.0
+MASTER_TICKS = 12            # delenia po 30°; v prerušení mlčia
+MASTER_TICK_R1 = 43.0
+MASTER_SAT_R = 5.5           # satelit: jeden uzol, prstenec nie disk
+MASTER_SAT_W = 2.5
+MASTER_ORBIT_R = 22.0        # obežnica jadra (zlatá)
+MASTER_EDGE_R1 = 30.0        # hrana: od satelitu k jadru
+MASTER_EDGE_R2 = 18.0
+MASTER_EDGE_W = 1.6
+
+
+def _pt(cx: float, cy: float, r: float, deg: float) -> tuple[float, float]:
+    a = math.radians(deg)
+    return cx + r * math.cos(a), cy + r * math.sin(a)
+
+
+def build_master(mini: Mini) -> str:
+    """Master = mini (prstenec + jadro) + dej okolo neho."""
+    cx, cy = mini.cx, mini.cy
+    g0 = MASTER_GAP_AT + MASTER_GAP_DEG / 2
+    g1 = MASTER_GAP_AT - MASTER_GAP_DEG / 2
+    ax, ay = _pt(cx, cy, mini.ring_r, g0)
+    bx, by = _pt(cx, cy, mini.ring_r, g1)
+    span = (g1 - g0) % 360
+    large = 1 if span > 180 else 0
+
+    ticks = []
+    for i in range(MASTER_TICKS):
+        ang = -90.0 + i * (360.0 / MASTER_TICKS)
+        # mlčí v prerušení — porovnáva sa uhol RELATÍVNE k začiatku medzery
+        if (ang - (MASTER_GAP_AT - MASTER_GAP_DEG / 2)) % 360 < MASTER_GAP_DEG:
+            continue
+        x1, y1 = _pt(cx, cy, MASTER_TICK_R1, ang)
+        x2, y2 = _pt(cx, cy, MASTER_HAIR_R, ang)
+        ticks.append(f'    <line x1="{num(x1)}" y1="{num(y1)}" '
+                     f'x2="{num(x2)}" y2="{num(y2)}" stroke-width="1"/>')
+
+    sx, sy = _pt(cx, cy, mini.ring_r, MASTER_GAP_AT)
+    e1x, e1y = _pt(cx, cy, MASTER_EDGE_R1, MASTER_GAP_AT)
+    e2x, e2y = _pt(cx, cy, MASTER_EDGE_R2, MASTER_GAP_AT)
+    nl = newline_of(read(MINI_SRC))
+    box = num(mini.box)
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {box} {box}" role="img" aria-label="Hades">',
+        "  <title>Hades</title>",
+        "  <!-- GENEROVANÉ public/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->",
+        "  <style>",
+        f"    svg {{ --acc: {mini.acc_light}; --gold: {mini.gold_light}; }}",
+        f"    @media (prefers-color-scheme: dark) {{ svg {{ --acc: {mini.acc_dark}; --gold: {mini.gold_dark}; }} }}",
+        "    path, circle, line { stroke: var(--acc); stroke-linecap: round; fill: none; }",
+        "    .gold-stroke { stroke: var(--gold); }",
+        "    .gold-fill { fill: var(--gold); stroke: none; }",
+        "    .ticks line { opacity: .45; }",
+        "    .edge { opacity: .75; }",
+        "  </style>",
+        f"  <!-- vlásková hranica vedomia (r {num(MASTER_HAIR_R)}): neprerušená, len rám deja -->",
+        f'  <circle cx="{num(cx)}" cy="{num(cy)}" r="{num(MASTER_HAIR_R)}" '
+        f'stroke-width="{num(MASTER_HAIR_W)}" opacity=".55"/>',
+        f"  <!-- {MASTER_TICKS} delení po {num(360 / MASTER_TICKS)}°, mlčia v prerušení -->",
+        '  <g class="ticks">',
+        *ticks,
+        "  </g>",
+        f"  <!-- NOSNÝ PRSTENEC (r {num(mini.ring_r)}, hrúbka {num(mini.ring_w)}) — TOTOŽNÝ s mini",
+        f"       kánonom. Prerušený {num(MASTER_GAP_DEG)}° tam, kde vstupuje uzol. Pod 64 px sa",
+        "       prerušenie zatvára a kreslí sa mini: ten istý prstenec, to isté jadro. -->",
+        f'  <path d="M {num(ax)} {num(ay)} A {num(mini.ring_r)} {num(mini.ring_r)} 0 {large} 1 '
+        f'{num(bx)} {num(by)}" stroke-width="{num(mini.ring_w)}"/>',
+        "  <!-- hrana: uzol viazaný na jadro -->",
+        f'  <line x1="{num(e1x)}" y1="{num(e1y)}" x2="{num(e2x)}" y2="{num(e2y)}" '
+        f'stroke-width="{num(MASTER_EDGE_W)}" class="edge"/>',
+        "  <!-- satelit: jeden uzol, prstenec (nie disk), v prerušení NA prstenci -->",
+        f'  <circle cx="{num(sx)}" cy="{num(sy)}" r="{num(MASTER_SAT_R)}" '
+        f'stroke-width="{num(MASTER_SAT_W)}"/>',
+        f"  <!-- jadro: obežnica + jediný sýty PLNÝ prvok znaku. r {num(mini.core_r)} = mini kánon. -->",
+        f'  <circle cx="{num(cx)}" cy="{num(cy)}" r="{num(MASTER_ORBIT_R)}" stroke-width="1" class="gold-stroke"/>',
+        f'  <circle cx="{num(cx)}" cy="{num(cy)}" r="{num(mini.core_r)}" class="gold-fill"/>',
+        "</svg>",
+        "",
+    ]
+    return nl.join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# 7. lockupy — znak + wordmark
+# --------------------------------------------------------------------------- #
+
+LOCKUPS = ("hades-lockup-h.svg", "hades-lockup-v.svg")
+
+
+def scope_sigil(master: str) -> str:
+    """Telo mastera so štýlmi zapuzdrenými pod `.sig`.
+
+    Bez zapuzdrenia by `path { fill: none; stroke: ... }` zo znaku ušlo na písmo
+    lockupu a wordmark by sa vykreslil obtiahnutý namiesto vyplneného. Logika je
+    portovaná z `docs/build-brand.py`, ktorý v tejto vetve UŽ NEEXISTUJE — a to
+    bol presne dôvod, prečo lockupy nesli geometriu starého mastera (r 34, jadro
+    r 8,5) ešte dlho po tom, ako sa master zmenil. Assety bez generátora zastarajú.
+    """
+    inner = re.sub(r"^<svg[^>]*>|</svg>$", "", master.strip(), flags=re.S)
+    inner = re.sub(r"<title>.*?</title>", "", inner, flags=re.S)
+
+    def scope_rules(css: str) -> str:
+        out = []
+        for rule in re.findall(r"[^{}]+\{[^{}]*\}", css, flags=re.S):
+            sel, body = rule.split("{", 1)
+            sels = ", ".join((".sig" if p.strip() == "svg" else ".sig " + p.strip())
+                             for p in sel.split(",") if p.strip())
+            out.append(sels + "{" + body)
+        return "".join(out)
+
+    def scope(m: "re.Match[str]") -> str:
+        css = m.group(1)
+        out = []
+        for chunk in re.findall(r"@media[^{]*\{.*?\}\s*\}|[^{}]+\{[^{}]*\}", css, flags=re.S):
+            if chunk.strip().startswith("@media"):
+                head, inner_css = chunk.split("{", 1)
+                out.append(head + "{" + scope_rules(inner_css.rsplit("}", 1)[0]) + "}")
+            else:
+                out.append(scope_rules(chunk))
+        return "<style>" + "".join(out) + "</style>"
+
+    return re.sub(r"<style>(.*?)</style>", scope, inner, flags=re.S)
+
+
+def build_lockups(master: str) -> None:
+    """Vymení SKUPINU `.sig` v hotových lockupoch, wordmark nechá na mieste.
+
+    Prečo výmena a nie prestavba celého lockupu: umiestnenie wordmarku (pomer
+    1,55 : 1 k výške verzálky, medzera 0,34 × výška znaku) vypočítal retirovaný
+    `docs/build-brand.py` z metrík fontu Cinzel, ktorý v repe nie je. Prestavba
+    by tie čísla musela odhadnúť z viewBoxu wordmarku — zmerané, vyšla by šírka
+    327 namiesto 312, teda by sa lockup posunul bez toho, aby to niekto chcel.
+    Výmena tela znaku je presne tá zmena, ktorá sa udiala.
+    """
+    body = scope_sigil(master)
+    for name in LOCKUPS:
+        path = BRAND / name
+        if not path.exists():
+            raise SystemExit(f"lockup {name} chýba — nemám čo aktualizovať")
+        src = read(path)
+        open_m = re.search(r'<g class="sig"[^>]*>', src)
+        if not open_m:
+            raise SystemExit(f"lockup {name}: nenašiel som skupinu .sig")
+        # VYVÁŽENÉ párovanie <g>, nie `.*?</g>`: master nesie vnorenú skupinu
+        # <g class="ticks">, takže nenásytný regex skončil na JEJ zatváracej
+        # značke a v súbore zostali oba znaky naraz — zmerané, v lockupe boli
+        # súčasne r 34 aj r 47. Nenásytnosť je tu chyba, nie optimalizácia.
+        i = open_m.end()
+        depth = 1
+        while depth:
+            nxt = re.search(r"<g\b|</g>", src[i:])
+            if not nxt:
+                raise SystemExit(f"lockup {name}: skupina .sig nie je uzavretá")
+            depth += 1 if nxt.group(0) == "<g" else -1
+            i += nxt.end()
+        close_at = i - len("</g>")
+        nl = newline_of(src)
+        emit(path, src[:open_m.end()] + nl + "  " + body.strip() + nl + "  " + src[close_at:])
+
+
 def main() -> int:
     mini = Mini(read(MINI_SRC))
     ink = dark_paper_hex()
     d = derived(mini)
 
-    emit(BRAND / "hades-sigil-mono.svg", build_mono(read(MASTER_SRC)))
+    # Poradie je väzba, nie zvyk: master sa VYDÁ z mini, a mono aj lockupy sa
+    # potom čítajú z hotového mastera. Keby sa mono skladalo skôr, nesie o beh
+    # starú kresbu — presne tak zostarli lockupy.
+    emit(MASTER_SRC, build_master(mini))
+    master = read(MASTER_SRC)
+    emit(BRAND / "hades-sigil-mono.svg", build_mono(master))
+    build_lockups(master)
     emit(BRAND / "hades-favicon.svg", favicon_svg(mini, ink))
     uri = favicon_data_uri(mini, ink)
     patch_blade_icons(uri)

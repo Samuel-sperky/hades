@@ -118,23 +118,49 @@ Znak je **sigil zo súosných prstencov** — uzol z plátna povýšený na zna�
 
 ### Konštrukcia (viewBox 100 × 100, stred 50 50)
 
+**Prepísané 28. 8. 2026** (kontrakt `KONTRAKT-DIZAJN-BRANDING-2026-08-28.md`, A1).
+Predchádzajúca konštrukcia (prstenec A 46/1,5, stupnica 60 delení, B 34/3,5, C 22,
+satelit na r 46, jadro 8,5) **už neplatí** — je vymenená, nie doplnená.
+
 | Prvok | Polomer | Hrúbka | Poznámka |
 |---|---|---|---|
-| Prstenec A | 46 | 1,5 | hranica vedomia, **prerušená 26°** v smere 52° |
-| Stupnica | 42–46 | 0,8 / 1,2 | 60 delení po 6°, každé piate dlhšie; v prerušení mlčí |
-| Prstenec B | 34 | 3,5 | nosná hmota znaku |
-| Prstenec C | 22 | 1,5 | |
-| Hrana | — | 1,6 | od satelitu k jadru, v smere 52°, opacity 0,75 |
-| Satelit | 5 | 2,0 | jeden uzol, **prstenec, nie disk**, v strede prerušenia |
-| Obežnica jadra | 15 | 1,0 | zlatá |
-| **Jadro** | 8,5 | výplň | **jediný plný prvok znaku**, zlaté |
+| Vlásková hranica | 47 | 1,0 | neprerušená, opacity 0,55 — len rám deja |
+| Stupnica | 43–47 | 1,0 | **12 delení po 30°**; v prerušení mlčí, opacity 0,45 |
+| **Nosný prstenec** | **36** | **9** | hmota znaku, **prerušená 34°** v smere 52°. **Totožná s mini kánonom.** |
+| Hrana | 30 → 18 | 1,6 | od satelitu k jadru, v smere 52°, opacity 0,75 |
+| Satelit | 5,5 | 2,5 | jeden uzol, **prstenec, nie disk**, v prerušení **na** nosnom prstenci |
+| Obežnica jadra | 22 | 1,0 | zlatá |
+| **Jadro** | **15** | výplň | **jediný plný prvok znaku**, zlaté. **Totožné s mini kánonom.** |
 
-Progresia 46 / 34 / 22 je krok 12. Uhol 52° je jediná asymetria a nesie celý dej —
-neposúvať ho „aby to bolo vyvážené"; symetrický znak stráca vetu.
+Uhol 52° od vertikály je jediná asymetria a nesie celý dej — neposúvať ho „aby to
+bolo vyvážené"; symetrický znak stráca vetu.
+
+### Pravidlo redukcie (prečo master a mini konečne súhlasia)
+
+Dovtedajšia porucha nebola vzhľad, ale to, že **master a mini boli dva rôzne
+výkresy**: favicon a načítavacia značka kreslili prstenec s pomerom 0,36 boxu,
+master 0,46. Znak vedľa znaku teda nesúhlasil.
+
+Nový master je **nadmnožina mini** — nosný prstenec r 36 / hrúbka 9 a jadro r 15 sú
+v oboch tie isté hodnoty (overené parsovaním oboch súborov). Rozdiel je len
+v detaile a ten sa **redukuje podľa veľkosti**:
+
+| Veľkosť | Čo sa kreslí |
+|---|---|
+| ≥ 64 px | celý master: hranica, 12 delení, prerušenie, hrana, satelit, obežnica, jadro |
+| < 64 px | mini: nosný prstenec (**zatvorený**) + jadro |
+
+Prerušenie a satelit sa v malom **zatvárajú zámerne**, nie z opomenutia, a dôvod je
+technický aj vizuálny. Technický: `Mini` parser generátora prijíma presne dva kruhy,
+raster kreslí prstenec ako anulus dvoma diskami a `.load-mark` je CSS `border` —
+ani jeden z tých troch výstupov prerušenie vyjadriť nedokáže. Vizuálny: pri 16 px má
+34° medzera 3,4 px a satelit obrys 1,8 px, teda detail, ktorý by sa rozpadol na
+antialiasingu. **Keď sa raz mini má prerušiť, musia sa zmeniť všetky tri výstupy
+naraz** — inak sa vráti presne ten rozchod, ktorý toto pravidlo rieši.
 
 ### Jeden zdroj geometrie
 
-**Geometria znaku je dnes zapísaná 16× v repe** (a 2× v binárke bez generátora).
+**Geometria znaku bola 28. 8. 2026 zapísaná 16× v repe; dnes je z toho 14 miest pod generátorom a lockupy pribudli ako 17. a 18. miesto, ktoré generátor nemal.** Zoznam nižšie je stav PRED zjednotením a číta sa ako inventár, nie ako TODO.
 Manuál tu do 27. 8. 2026 tvrdil „osemkrát" — bolo to podhlásené, pretože počítalo
 len web a Python a nevidelo Electron chrome, offline stav a **CSS prekresbu**
 načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora znaku:
@@ -142,7 +168,7 @@ načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora 
 | # | Miesto | Tvar zápisu |
 |---|---|---|
 | 1 | `public/brand/hades-sigil-mini.svg:7–8` | **kánon mini**: viewBox 100, prstenec r 36 / hrúbka 9, jadro r 15; farby z `prefers-color-scheme` |
-| 2 | `public/brand/hades-sigil.svg:12+` | **kánon master**: A 46 / stupnica 42–46 / B 34 / C 22 / hrana / satelit 5 / obežnica 15 / jadro 8,5 |
+| 2 | `public/brand/hades-sigil.svg` | **kánon master**: hranica 47 / 12 delení / nosný prstenec 36–9 prerušený 34° / hrana / satelit 5,5 / obežnica 22 / jadro 15 — **GENEROVANÝ z mini, ručne needituj** |
 | 3 | `public/brand/hades-sigil-mono.svg` | master znovu, jednofarebne (`currentColor`) |
 | 4 | `resources/views/mind.blade.php:16` | data-URI faviconu: disk r 50 `#0e1413`, prstenec r 36/9 `#c4a2f5`, jadro r 15 `#d8b878` |
 | 5 | `resources/views/console.blade.php:20` | to isté, **bajt na bajt** (md5 `c0ebff62…`) |

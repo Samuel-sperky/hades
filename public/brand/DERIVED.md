@@ -68,3 +68,30 @@ nezrodí — animáciu na ne vešia `mind.css` (`chat.blade.php:86` a `:182` ich
 ```
 data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>
 ```
+
+## Lockupy a rastrové derivát y — DVA generátory, jeden kánon
+
+Lockupy (`hades-lockup-h.svg`, `hades-lockup-v.svg`) vydáva tento generátor: vymení
+v nich **skupinu `.sig`** za aktuálny master a wordmark nechá presne tam, kde je.
+Umiestnenie wordmarku (výška znaku : výška verzálky = 1,55 : 1, medzera 0,34 ×
+výška znaku) vypočítal retirovaný `docs/build-brand.py` z metrík fontu Cinzel,
+ktorý v tejto vetve nie je — preto sa neprepočítava, len zachováva.
+
+Do 28. 8. 2026 lockupy generátor **nevlastnil nikto** a nesli geometriu starého
+mastera (prstenec r 34, jadro r 8,5) dlho po tom, ako sa master zmenil. Assety bez
+generátora zastarajú a nikto si to nevšimne.
+
+PNG derivát y (`hades-lockup-300/600/1200.png`, `hades-sigil-128/256/512.png`,
+`hades-og.png`) vydáva **`public/brand/build-raster.js`** (node + headless Chrome).
+Je to druhý skript, a to zámerne: PIL v tomto generátore vie kresliť kruhy, takže
+zvládne favicon aj `.ico`, ale **wordmark je písmo v krivkách a ten nenakreslí**.
+V prostredí nie je žiadny SVG rasterizér (`cairosvg` chýba, `convert` je Windowsov
+konvertor diskov, nie ImageMagick), takže rasterizuje Chrome — cesta, ktorú si
+projekt zapísal ako funkčnú v CLAUDE.md.
+
+**Poradie je povinné**, PNG sa fotia z hotových SVG:
+
+```
+python public/brand/build-mark.py     # SVG kánon
+node   public/brand/build-raster.js   # PNG z neho
+```

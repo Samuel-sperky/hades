@@ -147,7 +147,10 @@ Všetko nižšie. Čo tu nie je menované, do rozsahu nepatrí.
 ## Akceptačné kritériá
 
 1. Nový znak, wordmark a ikonová sada nasadené na `/`, `/console`, `/chat`,
-   favicon aj Electron; používateľ vybral variant znaku pred nasadením.
+   favicon aj Electron. POZN.: variant NEVYBRAL používateľ — výber odmietol a dal
+   pokyn pokračovať, takže ho vybral autonómny beh (viď Rozhodnutia počas behu).
+   Wordmark sa NEKRESLIL nanovo: v repe už bol Cinzel 600 v krivkách a A2 sa
+   plní tým, že mu lockupy konečne drží generátor, nie nový logotyp.
 2. Manuál `docs/BRAND-HADES.md` aktualizovaný PRVÝ (vzor z 27. 8.): znak §2,
    dátová paleta §4, chart štýl (nová sekcia), mikrotypografia §6, AAA §4.
 3. Grep hlasu a mýtu: 0 zásahov prvej osoby; mýtické formulácie mimo mien 0.
@@ -197,6 +200,34 @@ Všetko nižšie. Čo tu nie je menované, do rozsahu nepatrí.
   tokene (OK), alebo o dieru (fix v rámci behu — auth je v rozsahu review).
 - Hades MCP tooly v tejto session nedostupné — zápisy `mind_decision`/
   `mind_learn` sa spravia na konci, ak sa spojenie obnoví; inak do reportu.
+
+## Rozhodnutia počas behu (moje, keď kontrakt nestačil)
+
+- **Variant znaku: B „Jedno oko"** (28. 8. 2026). Používateľ výber nepotvrdil a dal
+  pokyn pokračovať, takže som rozhodol sám — je to reverzibilné (generátor + jeden
+  commit). Dôvod: B je jediný z troch variantov, ktorý rieši NAMERANÝ problém, že
+  master a mini boli dva rôzne výkresy (0,46 vs 0,36 boxu), a robí to tak, že
+  master sa stane nadmnožinou mini.
+- **Pravidlo redukcie namiesto prerušeného mini.** Karta variantu B kreslila
+  prerušenie a satelit aj v 16 px. V kóde to nejde bez prepísania troch výstupov
+  naraz (`Mini` parser prijíma dva kruhy, raster kreslí anulus dvoma diskami,
+  `.load-mark` je CSS `border`), a pri 16 px má medzera 3,4 px a satelit obrys
+  1,8 px. Prerušenie a satelit sa preto kreslia od 64 px a nižšie sa hranica
+  zatvára. Zapísané v manuáli §2 ako pravidlo, nie ako výnimka.
+- **Master sa generuje z mini.** Nebolo v kontrakte, ale bez toho by master zostal
+  druhým ručným zdrojom a rozišiel by sa znova — presne to sa už raz stalo.
+- **Lockupy pribrané pod generátor + nový `build-raster.js` pre PNG.** Lockupy nesli
+  geometriu starého mastera (r 34, jadro r 8,5), pretože ich vyrábal
+  `docs/build-brand.py`, ktorý v tejto vetve neexistuje. PNG rasterizuje Chrome,
+  lebo PIL nenakreslí wordmark v krivkách a v prostredí nie je SVG rasterizér
+  (`cairosvg` chýba, `convert` je Windowsov konvertor diskov).
+- **Nová devDependency `puppeteer-core`** (22 balíkov) — dôvod vyššie.
+- **Rail a paleta mieria na `/chat`**, nie `/console`; konzola si URL drží.
+- **J2 v plnom rozsahu** (inline potvrdenia, toast len pre zlyhania a globálne
+  udalosti) — používateľ rozsah nepotvrdil a dal pokyn pokračovať.
+- **Zmazané tri staršie zálohy DB.** Rotácia „drž posledné 3" bežala v tom istom
+  príkaze ako dump, dump zlyhal na heslo a 0-bajtový súbor sa počítal ako najnovšia
+  záloha. Nenávratné; nová záloha je overená (17,7 MB, obsahuje `areas`).
 
 ## Výsledok
 
