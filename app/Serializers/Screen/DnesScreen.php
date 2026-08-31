@@ -240,8 +240,27 @@ class DnesScreen extends ScreenSerializer
     {
         $queue = (new KontrolaScreen(['limit' => 3]))->data();
 
+        /* RIADOK SA ZÚŽI NA ŠTYRI POLIA a je to oprava po review, nie úspora.
+         * `KontrolaScreen::data()` vracia celý `Node::toApi()` (17 polí) a kľúč
+         * `focus` je vo `fieldsForAi()` ako celý podstrom, takže AI dostávala na
+         * Dnes 17 polí na riadok — kým na Kontrole tá istá fronta prepúšťa vedome
+         * OSEM. Dve AI plochy nad tou istou frontou by tým hovorili inak, a pri
+         * dokumentovanom strope `num_ctx` je to 13 polí × 3 riadky navyše na každé
+         * otvorenie Dnes.
+         *
+         * Zúženie sa robí TU a nie v `fieldsForAi()`: tečkované cesty ten zoznam
+         * nepozná (chytil to test parity) a obrazovka viac než tieto štyri polia
+         * ani nekreslí — takže sa tým zmenšuje obom plochám naraz.
+         */
+        $review = array_map(static fn (array $row): array => [
+            'id' => $row['id'] ?? null,
+            'label' => $row['label'] ?? null,
+            'area' => $row['area'] ?? null,
+            'certainty' => $row['certainty'] ?? null,
+        ], $queue['queue']);
+
         return [
-            'review' => $queue['queue'],
+            'review' => $review,
             'review_total' => $queue['total'],
             // Otvorený beh je `running` alebo `waiting` — členstvo drží model,
             // nie tento zoznam (Run::OPEN_STATES), takže sa nedá rozísť.

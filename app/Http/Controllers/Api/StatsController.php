@@ -159,11 +159,22 @@ class StatsController extends Controller
         $days = 30;
         $from = today()->subDays($days - 1);
 
-        /** @var array<string, \Illuminate\Database\Eloquent\Builder> $sources */
+        /* KAŽDÝ TREND MUSÍ POČÍTAŤ TÚ ISTÚ MNOŽINU, akú hlási číslo na karte —
+           inak karta ukazuje jeden súčet a tvar pod ním patrí inému.
+           Zaplatené 28. 8. 2026: `records` tu bolo `source = 'session'`, kým
+           `counts.session` je `$totalNodes - $brain`, teda `origin != 'brain'`.
+           Zmerané v DB: `source='session'` = 145 uzlov, `origin != 'brain'` =
+           2 696. Karta teda hlásila „2 696 záznamov / +15 za týždeň", hoci
+           správna delta bola 35, a sparkline kreslil tvar 145-uzlovej podmnožiny.
+
+           `origin` nemá v tejto DB ani jeden NULL (zmerané), takže `!=` sedí
+           s odčítaním presne; keby NULL pribudol, treba `orWhereNull`.
+           `playbooks` číta `origin = 'brain'` a s `counts.brain` (88) sedí.
+           @var array<string, \Illuminate\Database\Eloquent\Builder> $sources */
         $sources = [
             'edges' => Edge::query(),
             'playbooks' => Node::query()->where('origin', 'brain'),
-            'records' => Node::query()->where('source', 'session'),
+            'records' => Node::query()->where('origin', '!=', 'brain'),
             'decisions' => Decision::query(),
         ];
 

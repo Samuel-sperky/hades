@@ -550,10 +550,19 @@
            could ever find it, so all three charts drifted apart unnoticed.
            `el()` is this file's own local helper; charts.js is a classic script
            (IIFE exposing `window.HadesCharts`), never an ES module. */
+        /* POPISKY OSI SÚ SLOVÁ, nie dáta. `series.dateLabels` hovorí, že prišli
+           ako ISO dátumy (30-dňový pohľad z heatmapy), nie ako mesačné kľúče —
+           bez toho os vypísala „2026-08-02", teda kód, nie dátum. Ten istý
+           rozdiel rieši `fmtDate()` v tooltipe heatmapy; príznak sa posielal
+           už predtým, ale nikto ho nečítal (nález review).
+
+           Mesačné kľúče („2026-08") ide `fmtMonthKey()`, čo bolo aj doteraz
+           správne — preto sa vetví podľa príznaku a nie podľa tvaru reťazca. */
         if (labels.length) {
+            const fmt = series.dateLabels ? fmtDate : fmtMonthKey;
             const axis = el('div', 'chart-axis');
-            const a = el('span'); a.textContent = labels[0] || '';
-            const b = el('span'); b.textContent = labels[labels.length - 1] || '';
+            const a = el('span'); a.textContent = labels[0] ? fmt(labels[0]) : '';
+            const b = el('span'); b.textContent = labels[labels.length - 1] ? fmt(labels[labels.length - 1]) : '';
             axis.appendChild(a);
             if (labels.length > 1) axis.appendChild(b);
             container.appendChild(axis);

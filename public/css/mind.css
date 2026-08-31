@@ -667,7 +667,7 @@
     --kpi-cols: 160px;
     --dash-cols: 280px;
     --rec-cols: 420px;                    /* .rec-grid a .today-list */
-    --card-cols: 300px;                   /* .lib-skills, .today-grid, .dir-saved */
+    --card-cols: 300px;                   /* .lib-skills, .dir-saved */
 
     /* ---- rozmery ovládacích prvkov — jedno pomenované miesto ----
        Audit hlásil konflikt „32 vs 30 px" (mind.css dáva každému <button>
@@ -3892,6 +3892,26 @@ body[data-screen="graf"] #screens { display: none; }
    poradí (nadpis, podtitul, ovládanie pod nimi) bez jediného prepisu.
    --------------------------------------------------------------------------- */
 @media (min-width: 901px) {
+    /* OBSAH SA ZÚŽI, KEĎ JE OTVORENÝ PANEL DETAILU (nález review).
+
+       Plátno Grafu si rezervu na `#node-panel` počíta samo (`camInsets()`
+       v layout.js), ale tabuľka nie — a nič `#screens` nezúžilo. Zmerané pri
+       1400 px s otvoreným behom: panel `left = 1084`, tabuľka `right = 1346`,
+       panel nepriehľadný, takže stĺpce Tokeny (86 px) a Trvanie (97 px) boli
+       prekryté CELÉ a Profil o 71 z 86 px. Tabuľka existuje presne na to, aby
+       sa čísla dali čítať v rade — a obe číselné kolóny boli neviditeľné.
+
+       LEN nad 900 px: pod tou hranicou má panel `right: var(--edge)` a šírku
+       takmer celej plochy (blok 900 nižšie), takže zúžením obsahu by nezostalo
+       nič — tam panel prekrývať MÁ, rovnako ako `#node-panel`.
+
+       `:has()` je v tomto súbore zavedený idióm (viď `:root:has(> body[...])`)
+       a je to jediná cesta: stav „panel je otvorený" nesie trieda NA PANELI,
+       nie na `<body>`, a duplikovať ho na body by bol druhý zdroj pravdy. */
+    body:has(#rec-panel:not(.hidden)) #screens {
+        right: calc(var(--edge) + var(--panel-w) + var(--edge));
+    }
+
     .screen-head:has(> #library-search) {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
@@ -4164,36 +4184,7 @@ body[data-screen="graf"] #screens { display: none; }
 .today-line strong { color: var(--text); font-family: var(--mono); font-weight: 600; }
 
 /* Dnes: "Naposledy si robil na…" — karty sessions */
-.today-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(var(--card-cols), 1fr));
-    gap: var(--sp-2);
-    align-items: stretch;
-}
-.today-card-wrap { display: flex; align-items: stretch; gap: 2px; }
-.today-card-link {
-    flex: 1; min-width: 0;
-    display: flex; flex-direction: column; gap: var(--sp-0h);
-    color: var(--text);
-    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-}
-.today-card-link:hover, .today-card-link:focus-visible {
-    border-color: var(--border-accent); background: var(--accent-softer);
-}
 /* Fokus nesie --focus-ring — dnes z globálneho `:focus-visible`, nie farbu; viď .lib-skill. */
-.tcl-title {
-    font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text);
-    overflow: hidden; text-overflow: ellipsis;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-}
-.tcl-meta { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
-.tcl-proj {
-    font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted);
-    background: var(--surface-subtle); border: 1px solid var(--border);
-    border-radius: var(--r-pill); padding: 1px var(--sp-1);
-    max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.tcl-time { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); flex-shrink: 0; }
 
 /* Oblasť a oddelenie v detaile uzla sú NAVIGÁCIA, nie popiska — zúžia filter
    rovnako ako breadcrumb. Vyzerajú ako text, kým na ne človek nesiahne: meta riadok
@@ -4235,7 +4226,6 @@ body[data-screen="graf"] #screens { display: none; }
                 background var(--dur-fast) var(--ease);
 }
 .li-wrap:hover .pack-btn,
-.today-card-wrap:hover .pack-btn,
 .pack-btn:focus-visible,
 .pack-btn.in-pack { opacity: 1; }
 /* W3b: --accent-ink (6,4:1), nie --accent-600 — ten dával nad --accent-softer 2,5–3,3:1 */
@@ -5197,7 +5187,6 @@ button.danger.armed {
       v inej (inak by dedila padding rodiča namiesto vlastného).
    --------------------------------------------------------------------------- */
 .today-card,
-.today-card-link,
 .kpi-card,
 .dash-card,
 .lib-skill,
@@ -5269,7 +5258,6 @@ button.danger.armed {
    Jeho dvojriadkovú variantu (.kpi-card--block, D9) preto stretch nedáva táto
    skupina, ale modifikátor sám — a to je aj dôvod, prečo tu nesmie pribudnúť. */
 .today-card,
-.today-card-link,
 .dash-card,
 .lib-skill,
 .dtl-card,
@@ -5291,7 +5279,6 @@ button.danger.armed {
 .lib-skills > .li-wrap,
 .rec-grid > .li-wrap,
 .today-list > .li-wrap,
-.today-grid > .today-card-wrap { height: 100%; }
 
 /* ---------------------------------------------------------------------------
    2) FLUIDNÉ MRIEŽKY — auto-fill/auto-fit cez celú dostupnú šírku.
@@ -5300,7 +5287,7 @@ button.danger.armed {
       Hodnoty (grid-template-columns/gap/align-items) sú deklarované PRIAMO pri
       každej mriežke vyššie v súbore, nie prepisom tu — mriežka má tak celú svoju
       definíciu (display: grid + stĺpce + gap) na jednom mieste. Dotknuté
-      mriežky: .kpi-grid, .dash-grid, .today-cards, .today-grid, .lib-skills,
+      mriežky: .kpi-grid, .dash-grid, .today-cards, .lib-skills,
       .dir-saved.
    --------------------------------------------------------------------------- */
 
@@ -5925,6 +5912,11 @@ button, input, select {
     white-space: nowrap;
     animation: inline-ok-in var(--dur-base) var(--ease) both;
 }
+/* ODMIETNUTIE, nie potvrdenie: validácia poľa („Zadaj názov uzla") nesmie byť
+   v úspechovej zelenej. Vlastná rola, nie nová farba — --danger-ink je textová
+   rola, ktorá po vlne AAA drží 7,12 / 7,17:1. */
+.inline-ok--error { color: var(--danger-ink); }
+
 @keyframes inline-ok-in {
     from { opacity: 0; transform: translateX(calc(var(--motion-shift) * -0.5)); }
     to { opacity: 1; transform: none; }
@@ -6572,6 +6564,17 @@ button, input, select {
     /* Hlavička sa posúva na celú šírku (rail už nie je vľavo). */
     #app-header, #screens { left: var(--edge); }
 
+    /* Obsah sa MUSÍ odsadiť od spodnej lišty. Bez tohto siahal `#screens` na
+       `bottom: var(--edge)` (16 px), teda až do y = 796 pri okne 812, kým lišta
+       začína na 756 — a keďže obe majú `z-index: var(--z-panel)` a `#screens`
+       je v DOM za `#rail`, vyhral obsah. Zmerané: `elementFromPoint` v strede
+       všetkých piatich destinácií vracal kartu KPI alebo sparkline, takže lišta
+       bola CELÁ neklikateľná. Token na to už existoval (`--content-bottom`),
+       ale prečítal si ho len `layout.js` pre plátno.
+
+       `#rec-panel` z toho istého dôvodu: panel detailu inak končí pod lištou. */
+    #screens, #rec-panel { bottom: var(--content-bottom); }
+
     /* Pod 768 px sa riadok láme: akcie idú pod názov, aby na 375 px nezostal na
        názov jediný znak a výpustka. */
 
@@ -6593,6 +6596,18 @@ button, input, select {
     .rec-table :is(th, td):is(.col-model, .col-tool_profile, .col-tokens_out, .col-origin) {
         display: none;
     }
+
+    /* ŠÍRKY SA MUSIA VYNULOVAŤ, inak skrytie stĺpcov nepomôže. `renderTable()`
+       píše `width` INLINE na `<th>` (z definície stĺpca), takže percentá z
+       desktopu prežijú aj po skrytí troch stĺpcov a `table-layout: fixed` ich
+       poslušne dodrží. Zmerané pred opravou pri 375 px: Kedy 25 px, Trvanie
+       28 px, Stav 44 px — teda MENEJ než tých 44 px na stĺpec, ktoré malo
+       skrytie vyriešiť, a tabuľka navyše pretekala svoj obal (338 vs 311).
+
+       `!important` je tu jediná cesta: inline štýl prebije akékoľvek pravidlo
+       bez neho. S `width: auto` a `table-layout: fixed` rozdelí prehliadač
+       šírku rovnomerne medzi VIDITEĽNÉ stĺpce. */
+    .rec-table :is(th, td) { width: auto !important; }
 }
 
 /* „Viac" je piaty stĺpec spodnej lišty a NIKDE INDE neexistuje. Skrýva ho CSS

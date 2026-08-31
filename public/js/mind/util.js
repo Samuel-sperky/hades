@@ -487,19 +487,33 @@ export async function getJson(url) {
    takže čítačka ho má prečítať, keď dohovorí, nie skočiť doprostred vety.
    Predchádzajúce potvrdenie na tom istom kotviacom prvku sa ODSTRÁNI — dva
    „Skopírované" vedľa seba po dvoch klikoch sú šum, nie informácia. */
-export function inlineOk(anchor, text) {
+export function inlineOk(anchor, text, kind) {
     if (!anchor || !anchor.parentNode) return null;
     const prev = anchor.parentNode.querySelector(':scope > .inline-ok');
     if (prev) prev.remove();
     const el = document.createElement('span');
-    el.className = 'inline-ok';
-    el.setAttribute('role', 'status');
+    /* DVE ROLE, nie jedna farba (nález review). Potvrdenie je zelené, ODMIETNUTIE
+       nie: „Zadaj názov uzla" v úspechovej zelenej hlási, že sa niečo podarilo,
+       hoci sa práve nestalo nič. Manuál §8 navyše žiada, aby chyba mala vlastnú
+       kresbu, a appka na to má vlastnú rolu (`--danger-ink`).
+
+       `role="alert"` pri odmietnutí a `status` pri potvrdení: potvrdenie čítačka
+       prečíta, keď dohovorí, odmietnutie musí prerušiť — je to odpoveď na klik,
+       ktorý sa nevykonal. */
+    const bad = kind === 'error';
+    el.className = 'inline-ok' + (bad ? ' inline-ok--error' : '');
+    el.setAttribute('role', bad ? 'alert' : 'status');
     el.textContent = text;
     anchor.insertAdjacentElement('afterend', el);
     /* Odchod po 2,4 s. Nie kratšie: potvrdenie, ktoré zmizne skôr, než sa naň
-       oko presunie, je to isté ako žiadne. Časovač sa viaže na PRVOK, aby ho
-       ďalší klik zrušil spolu s ním a nezhasil ten nový. */
-    el._t = setTimeout(() => { if (el.isConnected) el.remove(); }, 2400);
+       oko presunie, je to isté ako žiadne.
+
+       Časovač sa NERUŠÍ a nemusí: pri druhom klike sa starý prvok odstráni vyššie,
+       takže jeho timeout dobehne a `el.isConnected` ho nechá bez práce — nový
+       prvok má vlastný. Komentár tu do opravy po review tvrdil, že „ďalší klik
+       zruší časovač spolu s prvkom"; to nie je pravda, len výsledok je ten istý.
+       Držať referenciu netreba, preto tu žiadna nie je. */
+    setTimeout(() => { if (el.isConnected) el.remove(); }, 2400);
     return el;
 }
 

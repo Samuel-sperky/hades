@@ -17,8 +17,13 @@ import { iconMarkup } from '../../shared/icons.js';
 
    Kľúč `month` zo servera sa preto NEČÍTA a je to zámer, nie opomenutie:
    štruktúru nesie zoradený stĺpec „Kedy". Mesiac ako šiesty stĺpec by bol ten
-   istý údaj dvakrát. `monthLabel()` a `decisionsTimelineHtml()` tým zmizli;
-   `.dtl*` v CSS zostáva živé, kreslia ním Runy.
+   istý údaj dvakrát. `monthLabel()` a `decisionsTimelineHtml()` tým zmizli.
+
+   POZOR: `.dtl*` v CSS už NIE JE živé. Runy prešli na tabuľku v tej istej vlne,
+   takže z deviatich rodín `.dtl-*` má producenta len `.dtl-filter` (16 miest);
+   `.dtl-card`, `-dot`, `-item`, `-head`, `-date`, `-text`, `-reason`, `-meta`
+   a `-month` sú bez volajúceho. Zmazané nie sú, pretože sú popretkávané so
+   živými selektormi v zdieľaných zoznamoch — ide to von ako samostatná úloha.
 
    STĹPCE SÚ LEN TIE, ČO V DÁTACH NAOZAJ SÚ. Kontrakt vymenúva aj „Projekt"
    a „Istotu" — tabuľka `decisions` ani jeden z nich nemá (schéma: `node_id`,
@@ -846,7 +851,7 @@ export async function deleteDecision(btn, id) {
 export async function saveDecision(btn) {
     const text = ($('dec-text').value || '').trim();
     // Validácia inline pri poli (J2) — fokus tam už aj tak ide.
-    if (!text) { inlineOk($('dec-text'), 'Napíš text rozhodnutia'); $('dec-text').focus(); return; }
+    if (!text) { inlineOk($('dec-text'), 'Napíš text rozhodnutia', 'error'); $('dec-text').focus(); return; }
     const reason = ($('dec-reason').value || '').trim();
     const areaVal = $('dec-area').value;
     const dateVal = $('dec-date').value;

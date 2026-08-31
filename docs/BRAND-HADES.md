@@ -1396,8 +1396,15 @@ grep -rn "showToast(" public/js/mind/ | grep -v toasts.js \
   | grep -iE "nepodaril|zlyhal|nenašl|vypršal|zamknut" | grep -v "'error'"
 ```
 
-Stav 28. 8. 2026: **0 zásahov**. Rozpis: 43 `error`, 6 `warn`, 3 `success`,
-17 neutrálnych, **5 inline** — celkom 69 toastov proti pôvodným 85.
+Stav 28. 8. 2026 (po finálnom review): **0 zásahov**. Rozpis: 47 `error`,
+6 `warn`, 3 `success`, 17 neutrálnych, **5 inline** — celkom **73** toastov proti
+pôvodným 85 (baseline overený na `5198d78`).
+
+**Tie počty sú SNÍMKA, nie konštanta**, a raz už zastarali: uprostred vlny tu
+stálo „43 error / 69 celkom", lebo sa merali skôr, než pribudli ďalšie hlásenia —
+prechod Runov a Rozhodnutí na tabuľky si priniesol svoje chybové toasty. Finálny
+review to chytil. **Trvalá kontrola je ten grep vyššie, nie tieto čísla**: keď sa
+rozídu, prepíš čísla, nie grep.
 
 **Pozor na koreň slova, nie celý tvar.** Prvá verzia toho grepu hľadala
 „nepodarilo" a minula ženské „nepodarila" (`structure.js`, dva zásahy). Slovenské

@@ -300,7 +300,7 @@ export function dirAllIds() {
    sa práve stal, a patrí k tlačidlu, nie do rohu obrazovky. */
 export async function copyDirective() {
     const btn = $('dir-copy');
-    if (!directiveMarkdown) { inlineOk(btn, 'Najprv poskladaj smernicu'); return; }
+    if (!directiveMarkdown) { inlineOk(btn, 'Najprv poskladaj smernicu', 'error'); return; }
     try { await navigator.clipboard.writeText(directiveMarkdown); inlineOk(btn, 'Skopírované'); }
     catch (e) { showToast('Kopírovanie sa nepodarilo', null, 'error'); }
 }

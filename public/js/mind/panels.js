@@ -504,7 +504,7 @@ export async function createNode() {
     const label = $('edit-label').value.trim();
     /* Validácia ide INLINE k poľu (J2): je to odpoveď na klik, ktorý sa práve
        stal, a človek má oči na formulári, nie v rohu obrazovky. */
-    if (!label) { inlineOk($('edit-label'), 'Zadaj názov uzla'); $('edit-label').focus(); return; }
+    if (!label) { inlineOk($('edit-label'), 'Zadaj názov uzla', 'error'); $('edit-label').focus(); return; }
     try {
         const res = await fetch('/api/nodes', {
             method: 'POST',

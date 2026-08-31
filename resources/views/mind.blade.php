@@ -592,8 +592,6 @@
         </div>
     </div>
 
-    </div>
-
     <!-- VLNA GRAF A: d3 je späť — layout uzlov počíta d3.forceSimulation (sim.js).
          Keby sa d3 nenačítalo, buildSim() to zvládne aj bez neho (`d3ok()` v
          sim.js): uzly zostanú na deterministických semienkach pri svojich

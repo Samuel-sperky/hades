@@ -154,7 +154,11 @@ export async function deptRequest(deptId, method, body, okMsg) {
             return;
         }
         if (S.focus.departmentId === deptId && method === 'DELETE') setFocus(S.focus.areaId, null);
-        showToast(okMsg);
+        /* Politika J2: viditeľná zmena hlási sama. Premenovanie a presun
+           oddelenia prekreslí `renderStructure()` + `reloadGraph()`, takže toast
+           je to isté dvakrát. MAZANIE hlási aj tak — je to jediná NEVRATNÁ
+           operácia tejto trojice a manuál ju medzi výnimkami menuje. */
+        if (method === 'DELETE') showToast(okMsg);
         await reloadGraph();
         if (dockOpen === 'structure') renderStructure();
     } catch (e) {

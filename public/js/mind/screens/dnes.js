@@ -1,4 +1,5 @@
 import { bindPackButtons, packBtn } from '../pack.js';
+import { setRailBadge } from '../rail.js';
 import { openNodeFromAnywhere, setScreen } from '../screens.js';
 import { setJournalProject } from './dennik.js';
 import { showToast } from '../toasts.js';
@@ -138,7 +139,10 @@ export async function renderToday() {
     // Jediné číslo na obrazovke, s ktorým sa dá niečo urobiť, vedie na Kontrolu.
     const reviewBtn = $('hero-review');
     if (reviewBtn) reviewBtn.onclick = () => setScreen('kontrola');
-    body.querySelectorAll('.today-item[data-id], .today-card-link[data-id]').forEach((el) => {
+    /* `.today-card-link` je z tohto selektora VON: jej jediný producent
+       (`todaySessionCard()`) zmizol v tejto vlne spolu s mriežkou kariet, takže
+       tá časť selektora už nikdy nič netrafí. */
+    body.querySelectorAll('.today-item[data-id]').forEach((el) => {
         el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
     });
     /* Čip projektu = preklik do Denníka s nasadeným filtrom. Poradie je dôležité:
@@ -201,8 +205,14 @@ function focusHtml(dash) {
             h += '<div class="focus-row" data-review-id="' + esc(r.id) + '">'
                 + '<button type="button" class="focus-open" data-id="' + esc(r.id) + '"'
                 + ' data-label="' + esc(r.label || '') + '">'
-                + '<span class="focus-title">' + esc(prettyLabel(r.label, r.project)) + '</span>'
-                + (r.area_name ? '<span class="focus-area">' + esc(r.area_name) + '</span>' : '')
+                /* Kľúče sú z `KontrolaScreen`, nie z dashboardu: riadok fronty nesie
+                   `area` (hotový názov oblasti) a `project` NEMÁ vôbec. Do opravy
+                   po review tu stálo `r.area_name` a `r.project`, takže oblasť sa
+                   nevykreslila NIKDY (zmerané: 0 prvkov `.focus-area` na troch
+                   riadkoch, hoci CSS preň existuje) a `prettyLabel` dostával
+                   `undefined` ako projekt. */
+                + '<span class="focus-title">' + esc(prettyLabel(r.label)) + '</span>'
+                + (r.area ? '<span class="focus-area">' + esc(r.area) + '</span>' : '')
                 + '</button>'
                 /* Dve akcie, obe cez existujúce endpointy Kontroly — Dnes si
                    nevymýšľa tretiu cestu k tej istej fronte. */
@@ -214,7 +224,11 @@ function focusHtml(dash) {
         h += '</div>';
         if (more) {
             h += '<button type="button" class="focus-more" data-goto="kontrola">'
-                + 'a ďalších ' + esc(fmtNum(more)) + ' v Kontrole</button>';
+                /* Zhoduje sa aj číslovka: jeden ďalší, dva ďalšie, päť ďalších.
+                   Modul `plural()` má a o pár riadkov vyššie ho kvôli zhode slovesa
+                   volá dvakrát — tu chýbal a pri jednej položke znel text „a ďalších 1". */
+                + 'a ' + plural(more, 'ďalší', 'ďalšie', 'ďalších') + ' '
+                + esc(fmtNum(more)) + ' v Kontrole</button>';
         }
     }
 
@@ -259,6 +273,13 @@ async function focusDecide(row, id, kind) {
         showToast(j.message || j.error || 'Akcia zlyhala', null, 'error');
         return;
     }
+    /* VÝHRADA sa nesmie zahodiť: `kontrola.js` má pri tom istom endpointe
+       napísané, že v prekreslení ju nevidno a toast je jediná cesta, ako sa k nej
+       človek dostane. Z Dnes sa k nej predtým nedostal vôbec. `warn`, nie
+       `success` — uzol je overený, ale niečo si ešte žiada pozornosť. */
+    const warns = Array.isArray(j.warnings) ? j.warnings : [];
+    if (warns.length) showToast('Overené — ' + warns[0], null, 'warn');
+
     row.remove();
     /* Hero číslo je JEDINÝ ďalší nositeľ tej istej fronty na tejto obrazovke,
        takže sa musí pohnúť s ňou — inak by karta hlásila štyri a zoznam dva.
@@ -270,6 +291,9 @@ async function focusDecide(row, id, kind) {
             ? +j.queue_total
             : Math.max(0, (parseInt(heroVal.textContent.replace(/\s/g, ''), 10) || 0) - 1);
         heroVal.textContent = fmtNum(next);
+        /* Odznak v raile je TRETÍ nositeľ tej istej fronty. Bez tohto zostal po
+           inline overení zastaraný až do najbližšieho prekreslenia Kontroly. */
+        setRailBadge('kontrola', next);
         if (next === 0) {
             const btn = $('hero-review');
             if (btn) btn.remove();
