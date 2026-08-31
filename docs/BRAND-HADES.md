@@ -623,6 +623,56 @@ Keby zlato nieslo aj interaktívny stav, ten jediný vyhradený význam sa rozdr
 Zlato sa nemenilo: `--gold #b88a3a`, `--brand-gold #d8b878`, `--gold-text #8a6417`
 (svetlá) / `#d8b878` (tmavá).
 
+### AAA — čo drží, čo nie, a prečo (kontrakt 28. 8. 2026, J6)
+
+Latka sa zdvihla z AA na **AAA (7:1 pre bežný text, 4,5:1 pre veľký)** tam, kde sa
+to dá bez straty identity. Všetko nižšie je **zmerané na živej appke** nad
+zloženým pozadím (vrstvy od prvku nahor po prvú nepriehľadnú, alfa kompozícia
+zdola), po dosadnutí prechodu témy, s kalibráciou na texte `body` — **16,48:1 na
+tmavej, 15,88:1 na svetlej**. Bez tej kalibrácie sa ostatným číslam nedá veriť.
+
+**Drží AAA** (tmavá / svetlá):
+
+| Rola | Kontrast |
+|---|---|
+| `--text` | 16,48 / 15,88 |
+| `--text-secondary` | 11,82 / 10,87 |
+| `--accent-ink` | 10,54 / 8,36 |
+| `--success-ink` | 9,68 / **7,14** |
+| `--warn-ink` | 8,67 / **7,12** |
+| `--danger-ink` | **7,12** / **7,17** |
+| `--cert-overene-ink` | 8,63 / **7,18** |
+| `--cert-hypoteza-ink` | 9,79 / **7,14** |
+| `--cert-pasca-ink` | **7,12** / **7,14** |
+| `--cert-none-ink` | 7,16 / **7,14** |
+
+Zvýraznené hodnoty sú nové: sedem `-ink` rolí sa posunulo **posunom svetlosti
+v OKLCh**, takže tón a chroma zostali — je to tá istá farba, len čitateľnejšia.
+`--cert-none-ink` pri tom **prestal byť aliasom** na `--cert-none` (komentár pri
+ňom tvrdil „základ stačí"; pri AAA to prestalo platiť, 5,35:1). Výplňové role
+(`--danger`, `--cert-*`) sa **nehýbali**: na nich nesie kontrast text, ktorý na
+nich stojí.
+
+**Nedrží AAA — dve menované výnimky a nič nad ne nepridávaj:**
+
+1. **`--muted` (6,40 / 5,35)** — tretia, zámerne tichá textová úroveň. Nesie chróm:
+   eyebrow, jednotky, počty, `kbd`, popisky osi. Zdvihnúť ju na 7:1 znamená
+   priblížiť ju `--text-secondary` (11,82 / 10,87) a zrušiť tým hierarchiu, ktorá
+   v tejto appke nesie význam — chróm má byť tichý. **Nad AA drží s rezervou.**
+2. **Odznaky istoty na svojom tinte (5,34–6,68 tmavá, 6,51–6,80 svetlá)** — text
+   nestojí na paperi, ale na `*-soft` washi, ktorý podlahu zdvihne. Na tmavej je
+   najhorší `pasca` (5,34): text `rgb(246,123,122)` na zloženom `rgb(54,41,40)`.
+   Dostať to na 7:1 sa dá dvoma cestami a obe stoja viac, než prinesú — buď
+   vymyť červenú do ružovej, alebo stlmiť wash, ktorý je jediným znakom, že ide
+   o odznak. **Nad AA držia všetky štyri na oboch témach.**
+
+**Meranie, nie dojem.** Harnessy sú v scratchpade sondy (`.aaa.mjs` — všetok text
+na ôsmich obrazovkách oboch tém, `.tiers.mjs` — role voči papieru, `.badge.mjs` —
+odznaky na tinte) a dajú sa zopakovať. Pozor pri opakovaní: **počet meraných
+prvkov sa medzi behmi líši** (zmerané 107 vs 155 na tmavej), pretože Hades je živý
+a obrazovky sa načítajú rôzne. Porovnávať dva behy po počte zásahov preto nemá
+zmysel — porovnávaj **rolové** čísla, tie sú deterministické.
+
 ### Namerané (19. 8. 2026)
 
 Kritérium nebolo „prejsť absolútny prah", ale **nezhoršiť sa oproti tealu**, ktorý

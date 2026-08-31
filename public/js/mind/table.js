@@ -71,8 +71,11 @@ export function renderTable(container, columns, opts) {
     for (const c of columns) {
         const active = o.sortKey === c.key;
         const aria = active ? (o.sortDir === DESC ? 'descending' : 'ascending') : 'none';
-        h += '<th scope="col"'
-            + (c.kind === 'num' ? ' class="num"' : '')
+        /* Trieda stĺpca (`col-<key>`) je na `<th>` aj `<td>`, aby sa stĺpec dal
+           adresovať z CSS bez `:nth-child` — poradie stĺpcov sa mení podľa
+           obrazovky a index by bol väzba, ktorá sa ticho rozíde. Na mobile ju
+           používa mediálne pravidlo, ktoré najmenej nosné stĺpce skryje. */
+        h += '<th scope="col" class="col-' + esc(c.key) + (c.kind === 'num' ? ' num' : '') + '"'
             + (c.sortable === false ? '' : ' aria-sort="' + aria + '"')
             + (c.width ? ' style="width:' + c.width + '"' : '') + '>';
         if (c.sortable === false) {
@@ -103,7 +106,7 @@ export function renderTable(container, columns, opts) {
                 const t = c.titleFrom(r);
                 if (t != null && String(t) !== '') title = ' title="' + esc(String(t)) + '"';
             }
-            h += '<td' + (c.kind === 'num' ? ' class="num"' : '') + title + '>'
+            h += '<td class="col-' + esc(c.key) + (c.kind === 'num' ? ' num' : '') + '"' + title + '>'
                 + (c.cell ? c.cell(r) : esc(r[c.key] == null ? '' : String(r[c.key])))
                 + '</td>';
         }

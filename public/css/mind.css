@@ -210,9 +210,9 @@
        --success/--danger/--warn sú ladené ako VÝPLŇ a akcent, takže na svetlom tinte
        badge dávajú 3,76 / 3,85 / 2,80:1 — teda pod AA. Zmerané na reálnom pozadí
        badge (rgb 244,238,252) 20. 8. 2026, s rezervou, nie na hranici. */
-    --success-ink: #0b6a44;               /* 5,85:1 na tinte badge */
-    --danger-ink: #a52a2a;                /* 6,23:1 */
-    --warn-ink: #9a4a08;                  /* 5,51:1 */
+    --success-ink: #005f3a;               /* 7,14:1 na paperi (bolo #0b6a44, 6,10) */
+    --danger-ink: #9d2224;                /* 7,17:1 (bolo #a52a2a, 6,50) */
+    --warn-ink: #8a3b00;                  /* 7,12:1 (bolo #9a4a08, 5,74) */
 
     /* ---- DÁTOVÁ PALETA: trend a stav behu (kontrakt 28. 8. 2026, B3) ----
        Sú to DEKLAROVANÉ ROLE, nie nová paleta. Každá ukazuje na existujúci
@@ -548,10 +548,10 @@
        --cert-none je jediná, ktorá aj v základe prechádza s rezervou (5,10/4,70),
        preto je jej ink alias — token existuje, aby komponent nemusel vedieť,
        ktorý stupeň rebríka práve kreslí. */
-    --cert-overene-ink: #15603b;          /* 6,45 / 5,95:1 */
-    --cert-hypoteza-ink: #7a4c0e;         /* 6,20 / 5,72:1 */
-    --cert-pasca-ink: #9c2a22;            /* 6,35 / 5,86:1 */
-    --cert-none-ink: var(--cert-none);    /* 5,10 / 4,70:1 — základ stačí */
+    --cert-overene-ink: #125e39;          /* 7,18:1 (bolo #15603b, 6,96) */
+    --cert-hypoteza-ink: #764807;         /* 7,14:1 (bolo #7a4c0e, 6,72) */
+    --cert-pasca-ink: #9a2820;            /* 7,14:1 (bolo #9c2a22, 6,96) */
+    --cert-none-ink: #445652;             /* 7,14:1 — ALIAS ZRUŠENÝ, viď blok nižšie */
 
     /* ---- activity heat ramp (0 = empty neutral, 1..4 = amethyst saturation climb)
        Luminancia každého stupňa je zhodná s pôvodnou tealovou rampou (odchýlka
@@ -878,7 +878,10 @@
        na tinte badge), takže ink je tá istá farba — token existuje preto, aby ho
        komponent mohol použiť bez toho, aby vedel, na ktorej téme beží. */
     --success-ink: var(--success);
-    --danger-ink: var(--danger);
+    /* Na tmavej NIE JE alias: `--danger` (#f07575) dáva ako TEXT 6,65:1, teda
+       pod AAA. Zosvetlené o 0,018 v OKLab — tá istá červená, čitateľnejšia.
+       Výplň (`--danger`) sa nemení: tam kontrast nesie text na nej. */
+    --danger-ink: #f67b7a;                /* 7,12:1 na paperi tmavej témy */
     --warn-ink: var(--warn);
     /* --run-* a --trend-* (dátová paleta, B3) tu ZÁMERNE nie sú a je to celý
        dôvod, prečo sú to aliasy a nie hodnoty: ukazujú na --accent, --warn-ink,
@@ -917,7 +920,8 @@
        Tmavej sa tu nedotýkame; pád je výhradne na svetlej. */
     --cert-overene-ink: var(--cert-overene);
     --cert-hypoteza-ink: var(--cert-hypoteza);
-    --cert-pasca-ink: var(--cert-pasca);
+    /* Tá istá červená ako --danger-ink a z toho istého dôvodu (6,65 -> 7,12). */
+    --cert-pasca-ink: #f67b7a;
     --cert-none-ink: var(--cert-none);
 
     /* heat ramp — dark cells climb from a low neutral to bright accent amethyst */
@@ -6574,6 +6578,21 @@ button, input, select {
     .focus-row { flex-wrap: wrap; }
     .focus-open { flex: 1 1 100%; }
     .focus-acts { margin-left: auto; }
+
+    /* TABUĽKA NA MOBILE: menej stĺpcov, nie menšie písmo (kontrakt J4).
+       Bez tohto majú Runy 7 stĺpcov v 311 px obsahu, teda 44 px na stĺpec —
+       zmerané. Vodorovný pretok nevzniká (tabuľka sa zmestí), takže to nie je
+       „rozpadnuté", ale ani použiteľné: v 44 px je z každej hodnoty výpustka.
+
+       Skrývajú sa stĺpce, ktoré pri čítaní na telefóne nesú najmenej: model,
+       profil, tokeny a pôvod. Zostáva stav, identifikátor riadka, čas
+       a trvanie. Nič sa nestráca — celý záznam otvára ten istý pravý panel.
+
+       Adresované TRIEDOU stĺpca, nie `:nth-child`: poradie stĺpcov sa medzi
+       obrazovkami líši a index by bol väzba, ktorá sa ticho rozíde. */
+    .rec-table :is(th, td):is(.col-model, .col-tool_profile, .col-tokens_out, .col-origin) {
+        display: none;
+    }
 }
 
 /* „Viac" je piaty stĺpec spodnej lišty a NIKDE INDE neexistuje. Skrýva ho CSS
