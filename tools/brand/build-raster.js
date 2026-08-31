@@ -1,6 +1,10 @@
 /*
  * Rastrové derivát y značky: PNG lockupy, OG obrázok a PNG znaku.
  *
+ * ŽIJE MIMO `public/`: web root servuje web server priamo a `auth.ui` naň
+ * nedosiahne, takže tento súbor bol cez ngrok verejne čitateľný — a nesie
+ * lokálnu cestu k Chrome, teda prezrádzal OS aj používateľa.
+ *
  * PREČO DRUHÝ GENERÁTOR VEDĽA build-mark.py: `build-mark.py` rastruje cez PIL,
  * ktoré vie kresliť kruhy — a presne preto zvládne favicon aj .ico, kde je znak
  * len prstenec a jadro. Lockup ale nesie WORDMARK, teda písmo prevedené do
@@ -12,8 +16,8 @@
  * KÁNON JE STÁLE JEDEN: tento skript nič nekreslí, len fotí hotové SVG
  * z public/brand/, ktoré vydal build-mark.py. Poradie je teda povinné:
  *
- *     python public/brand/build-mark.py     # SVG kánon
- *     node   public/brand/build-raster.js   # PNG z neho
+ *     python tools/brand/build-mark.py     # SVG kánon
+ *     node   tools/brand/build-raster.js   # PNG z neho
  *
  * Pozadie je PRIEHĽADNÉ okrem OG obrázka — ten musí mať papier, pretože ho
  * vykresľujú cudzie platformy na svojom vlastnom podklade.
@@ -26,7 +30,10 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const BRAND = path.dirname(fileURLToPath(import.meta.url));
+// Skript žije v tools/brand, ale assety sú v public/brand — cesta preto ide
+// o dve úrovne von a späť dolu, nie z adresára súboru.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const BRAND = path.join(ROOT, 'public', 'brand');
 // Tmavý papier appky. Nie je to voľba tohto skriptu — je to tá istá hodnota,
 // akú build-mark.py čita z mind.css (--bg-rgb tmavej témy) pre disk faviconu.
 const INK = '#0e1413';

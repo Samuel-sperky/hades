@@ -533,7 +533,7 @@ k modelu · aktivovať vetvu z URL.
    povýšený: číta SVG, nie hardcoded tuply). Zdroj je
    `public/brand/hades-sigil-mini.svg` (mini) a `hades-sigil.svg` (master).
    Umiestni ho tam, kde ho vlastníš — `electron/assets/build-icon.py` prepíš alebo
-   pridaj `public/brand/build-mark.py`.
+   pridaj `tools/brand/build-mark.py`.
 2. Výstupy:
    1. SVG assety v `public/brand/`,
    2. **data-URI faviconu** pre všetky tri `<head>` (bit-identický, ako dnes),

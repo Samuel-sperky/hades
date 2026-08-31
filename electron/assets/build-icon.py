@@ -7,7 +7,7 @@ a prstenec ako anulus r40,5 − r31,5. Bol to zápis #14 zo šestnástich a jedi
 generátor akejkoľvek `.ico` v repe, pričom `public/favicon.ico` zdroj nemal vôbec.
 Teraz obe `.ico` vydáva jeden generátor, ktorý číta `public/brand/hades-sigil-mini.svg`:
 
-    python public/brand/build-mark.py
+    python tools/brand/build-mark.py
 
 Súbor tu zostáva preto, že `electron-builder.yml` a README naň odkazovali a beh
 `python electron/assets/build-icon.py` je zabehnutý zvyk — má teda robiť správnu

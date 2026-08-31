@@ -18,7 +18,7 @@ shortcut.js          globálna skratka (registrácia aj ODREGISTROVANIE)
 docker.js            voliteľné spustenie Dockeru — len so súhlasom človeka
 settings.js          settings.json v userData: skratka, Docker, notifikácie
 assets/hades.ico     ikona okna, appky, tray a inštalátora (7 veľkostí, 16–256 px)
-assets/build-icon.py zástupca — znak generuje public/brand/build-mark.py (jeden zdroj)
+assets/build-icon.py zástupca — znak generuje tools/brand/build-mark.py (jeden zdroj)
 package.json         "type": "commonjs" — NEMAZAŤ, viď nižšie
 ```
 

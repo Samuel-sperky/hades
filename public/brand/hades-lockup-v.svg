@@ -6,7 +6,7 @@
     @media (prefers-color-scheme: dark) { svg { --acc: #c4a2f5; --gold: #d8b878; --ink: #eaf3f1; } }
   </style>
   <g class="sig" transform="translate(106.00 0.00) scale(1.00000)">
-  <!-- GENEROVANÉ public/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->
+  <!-- GENEROVANÉ tools/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->
   <style>.sig{ --acc: #6d3fb5; --gold: #b88a3a; }@media (prefers-color-scheme: dark) {.sig{ --acc: #c4a2f5; --gold: #d8b878; }}.sig path, .sig circle, .sig line{ stroke: var(--acc); stroke-linecap: round; fill: none; }.sig .gold-stroke{ stroke: var(--gold); }.sig .gold-fill{ fill: var(--gold); stroke: none; }.sig .ticks line{ opacity: .45; }.sig .edge{ opacity: .75; }</style>
   <!-- vlásková hranica vedomia (r 47): neprerušená, len rám deja -->
   <circle cx="50" cy="50" r="47" stroke-width="1" opacity=".55"/>

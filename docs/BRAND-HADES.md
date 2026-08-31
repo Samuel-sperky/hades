@@ -1999,7 +1999,48 @@ obe verzie, netreba `-dark` / `-light` dvojičky.
 **Pasca pri vkladaní znaku do väčšieho SVG:** jeho `<style>` platí pre celý
 dokument, takže `path { fill: none; stroke: … }` utečie na písmo lockupu a wordmark
 sa vykreslí obtiahnutý namiesto vyplneného. Preto sa pravidlá znaku pri vkladaní
-zapuzdrujú pod `.sig` (robí to `build-brand.py`).
+zapuzdrujú pod `.sig` (robí to `scope_sigil()` v `tools/brand/build-mark.py`;
+`docs/build-brand.py`, ktorý to robil predtým, v tejto vetve NEEXISTUJE — a práve
+preto lockupy dlho nesli starú geometriu).
+
+### Čo smie žiť v `public/` — a prečo generátory nesmú
+
+**Web root je verejný a `auth.ui` naň nedosiahne.** Zmerané 28. 8. 2026 na
+bežiacej appke: `/` a `/api/today` vracajú **401**, ale `/brand/build-mark.py`
+a `/brand/build-raster.js` vracali **200 bez tokenu**. Statické súbory servuje
+web server priamo, takže do Laravelu — a teda do middleware — sa vôbec
+nedostanú. Appka je tunelovaná cez ngrok, takže „verejný" znamená verejný.
+
+Nič citlivé odkryté nebolo (`.env` 404, `.git` 404, `vendor/` 404, `storage/logs`
+403 — to je správne), ale **build skript nie je asset**:
+
+- `build-raster.js` nesie natvrdo cestu `C:\Program Files\Google\Chrome\…`,
+  teda prezrádza OS aj profil používateľa.
+- `build-mark.py` a `DERIVED.md` sú vývojárska dokumentácia geometrie.
+
+Preto od 28. 8. 2026 žijú v **`tools/brand/`**:
+
+```
+python tools/brand/build-mark.py      # SVG kánon + favicon + .ico + DERIVED.md
+node   tools/brand/build-raster.js    # PNG derivát y (poradie je povinné)
+```
+
+Presun je robustnejší než pravidlo web servera — funguje nezávisle od toho, čo
+statiku práve servuje, a nedá sa omylom prekonfigurovať.
+
+**`public/js/vendor/README.md` v web roote ZOSTÁVA** a nie je to opomenutie: nesie
+licencie d3 a pusher-js, ktoré sa spolu s kódom šíriť majú, plus ich sha256.
+Licenčný text pri kóde je štandard, nie únik.
+
+**Pravidlo:** do `public/` patrí len to, čo prehliadač naozaj načítava. Skript,
+ktorý assety VYRÁBA, tam nepatrí. Keď pridávaš čokoľvek do `public/`, over to
+jedným príkazom:
+
+```
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/<cesta>
+```
+
+200 znamená „toto vidí internet".
 
 ---
 

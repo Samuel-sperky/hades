@@ -2,8 +2,14 @@
 # -*- coding: utf-8 -*-
 """Jeden generátor znaku Hades — jeden zdroj geometrie, sedem výstupov.
 
-    python public/brand/build-mark.py            # prepíše výstupy
-    python public/brand/build-mark.py --dry-run  # len vypíše odvodené hodnoty
+ŽIJE MIMO `public/` a je to bezpečnostné rozhodnutie, nie estetika: všetko pod
+`public/` servuje web server priamo a `auth.ui` na to nemá dosah (zmerané
+28. 8. 2026: `/` dáva 401, ale `/brand/build-mark.py` dávalo 200 bez tokenu).
+Appka je tunelovaná cez ngrok, takže web root je verejný. Build skript nie je
+asset.
+
+    python tools/brand/build-mark.py             # prepíše výstupy
+    python tools/brand/build-mark.py --dry-run   # len vypíše odvodené hodnoty
 
 PREČO to existuje: geometria znaku bola 27. 8. 2026 zapísaná 16× v repe a dvakrát
 ako binárka bez zdroja (`public/favicon.ico`, `electron/assets/hades.ico`). Každý
@@ -31,7 +37,7 @@ VÝSTUPY:
   4. public/favicon.ico + electron/assets/hades.ico  (16/24/32/48/64/128/256)
   5. <link rel="icon"> data-URI v troch blade súboroch (bit-identický vo všetkých)
   6. znak v electron/chrome/topbar.html a electron/states/offline.html (medzi ZNAK markermi)
-  7. public/brand/DERIVED.md — odvodené čísla pre CSS a Blade, ktoré tento generátor
+  7. tools/brand/DERIVED.md — odvodené čísla pre CSS a Blade, ktoré tento generátor
      nevlastní (`stroke-dasharray`, tri čísla `.load-mark`, inline blok viewBox 24)
 
 Kánon akcentu (BRAND-HADES §6): ZLATÁ je značková a patrí jadru — na plátne aj
@@ -55,6 +61,9 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
 BRAND = ROOT / "public" / "brand"
+# DERIVED.md je vývojárska dokumentácia, nie asset — žije pri generátore
+# a NIE v web roote (viď bezpečnostná poznámka v hlavičke).
+TOOLS = ROOT / "tools" / "brand"
 
 MINI_SRC = BRAND / "hades-sigil-mini.svg"
 MASTER_SRC = BRAND / "hades-sigil.svg"
@@ -261,7 +270,7 @@ def favicon_svg(mini: Mini, ink: str) -> str:
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb} {vb}" role="img" aria-label="Hades">\n'
         "  <title>Hades</title>\n"
-        "  <!-- GENEROVANÉ public/brand/build-mark.py — needituj ručne.\n"
+        "  <!-- GENEROVANÉ tools/brand/build-mark.py — needituj ručne.\n"
         "       Kompozícia faviconu: atramentový disk (papier tmavej témy) + kánon mini.\n"
         "       Tmavá vetva palety zámerne: karta prehliadača a dlaždica OS sú tmavé. -->\n"
         f'  <circle cx="{c}" cy="{c}" r="{num(mini.disk_r)}" fill="{ink}"/>\n'
@@ -375,7 +384,7 @@ def build_electron_html(mini: Mini) -> None:
     )
     patch_between(ROOT / "electron" / "chrome" / "topbar.html",
                   "<!-- ZNAK: generuje", "<!-- /ZNAK -->",
-                  " public/brand/build-mark.py zo hades-sigil-mini.svg.\n"
+                  " tools/brand/build-mark.py zo hades-sigil-mini.svg.\n"
                   "           Needituj ručne. Znak tu nesie rolu „desktop okno\" (identita appky v ráme,\n"
                   "           ktorý nie je prehliadač), preto sa NEANIMUJE — pulz behu patrí #brand-core. -->"
                   + topbar)
@@ -389,7 +398,7 @@ def build_electron_html(mini: Mini) -> None:
         "        </svg>\n        "
     )
     patch_between(off, "<!-- ZNAK: generuje", "<!-- /ZNAK -->",
-                  " public/brand/build-mark.py — needituj ručne -->" + markup)
+                  " tools/brand/build-mark.py — needituj ručne -->" + markup)
 
     style = (
         "\n"
@@ -399,7 +408,7 @@ def build_electron_html(mini: Mini) -> None:
         f"transform-origin: {num(mini.cx)}px {num(mini.cy)}px; }}\n        "
     )
     patch_between(off, "/* ZNAK-STYLE: generuje", "/* /ZNAK-STYLE */",
-                  " public/brand/build-mark.py zo hades-sigil-mini.svg.\n"
+                  " tools/brand/build-mark.py zo hades-sigil-mini.svg.\n"
                   "           Needituj ručne — pri najbližšom behu generátora sa zmena stratí.\n"
                   "           Dôvod, prečo je geometria aj tu: tento dokument sa zobrazuje, KEĎ SERVER\n"
                   "           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/. */"
@@ -449,17 +458,17 @@ def blade_inline_svg(mini: Mini, d: dict[str, object]) -> str:
 
 
 def build_derived_md(mini: Mini, ink: str, uri: str, d: dict[str, object]) -> None:
-    md = f"""<!-- GENEROVANÉ public/brand/build-mark.py — needituj ručne. -->
+    md = f"""<!-- GENEROVANÉ tools/brand/build-mark.py — needituj ručne. -->
 # Odvodené hodnoty znaku
 
-Tento súbor je výstup `public/brand/build-mark.py`. Nesie čísla pre miesta, ktoré
+Tento súbor je výstup `tools/brand/build-mark.py`. Nesie čísla pre miesta, ktoré
 generátor **nevlastní** (CSS a Blade markup), aby ich nikto nepočítal rukou. Keď sa
 zmení `hades-sigil-mini.svg`, spusti generátor a prepíš podľa tejto tabuľky.
 
 Regenerácia:
 
 ```
-python public/brand/build-mark.py
+python tools/brand/build-mark.py
 ```
 
 ## Kánon mini (zo zdroja)
@@ -477,7 +486,7 @@ python public/brand/build-mark.py
 
 ```css
 /* Obvod prstenca = 2π × {num(d["blade_ring_r"])} = {d["dasharray"]:.2f} — DERIVÁT POLOMERU
-   z public/brand/build-mark.py, nie ručná konštanta. Keď sa zmení zdroj znaku,
+   z tools/brand/build-mark.py, nie ručná konštanta. Keď sa zmení zdroj znaku,
    prepočíta ho generátor a vypíše sem. */
 stroke-dasharray: {d["dasharray"]:.2f};
 stroke-dashoffset: {d["dasharray"]:.2f};
@@ -530,7 +539,7 @@ mastera (prstenec r 34, jadro r 8,5) dlho po tom, ako sa master zmenil. Assety b
 generátora zastarajú a nikto si to nevšimne.
 
 PNG derivát y (`hades-lockup-300/600/1200.png`, `hades-sigil-128/256/512.png`,
-`hades-og.png`) vydáva **`public/brand/build-raster.js`** (node + headless Chrome).
+`hades-og.png`) vydáva **`tools/brand/build-raster.js`** (node + headless Chrome).
 Je to druhý skript, a to zámerne: PIL v tomto generátore vie kresliť kruhy, takže
 zvládne favicon aj `.ico`, ale **wordmark je písmo v krivkách a ten nenakreslí**.
 V prostredí nie je žiadny SVG rasterizér (`cairosvg` chýba, `convert` je Windowsov
@@ -540,11 +549,11 @@ projekt zapísal ako funkčnú v CLAUDE.md.
 **Poradie je povinné**, PNG sa fotia z hotových SVG:
 
 ```
-python public/brand/build-mark.py     # SVG kánon
-node   public/brand/build-raster.js   # PNG z neho
+python tools/brand/build-mark.py     # SVG kánon
+node   tools/brand/build-raster.js   # PNG z neho
 ```
 """
-    emit(BRAND / "DERIVED.md", md)
+    emit(TOOLS / "DERIVED.md", md)
 
 
 # --------------------------------------------------------------------------- #
@@ -609,7 +618,7 @@ def build_master(mini: Mini) -> str:
     lines = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {box} {box}" role="img" aria-label="Hades">',
         "  <title>Hades</title>",
-        "  <!-- GENEROVANÉ public/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->",
+        "  <!-- GENEROVANÉ tools/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->",
         "  <style>",
         f"    svg {{ --acc: {mini.acc_light}; --gold: {mini.gold_light}; }}",
         f"    @media (prefers-color-scheme: dark) {{ svg {{ --acc: {mini.acc_dark}; --gold: {mini.gold_dark}; }} }}",

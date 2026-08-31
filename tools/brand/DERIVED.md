@@ -1,14 +1,14 @@
-<!-- GENEROVANÉ public/brand/build-mark.py — needituj ručne. -->
+<!-- GENEROVANÉ tools/brand/build-mark.py — needituj ručne. -->
 # Odvodené hodnoty znaku
 
-Tento súbor je výstup `public/brand/build-mark.py`. Nesie čísla pre miesta, ktoré
+Tento súbor je výstup `tools/brand/build-mark.py`. Nesie čísla pre miesta, ktoré
 generátor **nevlastní** (CSS a Blade markup), aby ich nikto nepočítal rukou. Keď sa
 zmení `hades-sigil-mini.svg`, spusti generátor a prepíš podľa tejto tabuľky.
 
 Regenerácia:
 
 ```
-python public/brand/build-mark.py
+python tools/brand/build-mark.py
 ```
 
 ## Kánon mini (zo zdroja)
@@ -26,7 +26,7 @@ python public/brand/build-mark.py
 
 ```css
 /* Obvod prstenca = 2π × 8.64 = 54.29 — DERIVÁT POLOMERU
-   z public/brand/build-mark.py, nie ručná konštanta. Keď sa zmení zdroj znaku,
+   z tools/brand/build-mark.py, nie ručná konštanta. Keď sa zmení zdroj znaku,
    prepočíta ho generátor a vypíše sem. */
 stroke-dasharray: 54.29;
 stroke-dashoffset: 54.29;
@@ -82,7 +82,7 @@ mastera (prstenec r 34, jadro r 8,5) dlho po tom, ako sa master zmenil. Assety b
 generátora zastarajú a nikto si to nevšimne.
 
 PNG derivát y (`hades-lockup-300/600/1200.png`, `hades-sigil-128/256/512.png`,
-`hades-og.png`) vydáva **`public/brand/build-raster.js`** (node + headless Chrome).
+`hades-og.png`) vydáva **`tools/brand/build-raster.js`** (node + headless Chrome).
 Je to druhý skript, a to zámerne: PIL v tomto generátore vie kresliť kruhy, takže
 zvládne favicon aj `.ico`, ale **wordmark je písmo v krivkách a ten nenakreslí**.
 V prostredí nie je žiadny SVG rasterizér (`cairosvg` chýba, `convert` je Windowsov
@@ -92,6 +92,6 @@ projekt zapísal ako funkčnú v CLAUDE.md.
 **Poradie je povinné**, PNG sa fotia z hotových SVG:
 
 ```
-python public/brand/build-mark.py     # SVG kánon
-node   public/brand/build-raster.js   # PNG z neho
+python tools/brand/build-mark.py     # SVG kánon
+node   tools/brand/build-raster.js   # PNG z neho
 ```

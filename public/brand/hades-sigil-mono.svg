@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Hades">
   <title>Hades</title>
-  <!-- GENEROVANÉ public/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->
+  <!-- GENEROVANÉ tools/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->
   <style>
     /* monochróm: jedna farba, dedí sa cez currentColor (tlač, razítko, jednofarebné
        podklady). Jadro tu nesie plnú výplň — hierarchia zostáva, aj keď farba zmizne. */

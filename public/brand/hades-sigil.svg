@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Hades">
   <title>Hades</title>
-  <!-- GENEROVANÉ public/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->
+  <!-- GENEROVANÉ tools/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->
   <style>
     svg { --acc: #6d3fb5; --gold: #b88a3a; }
     @media (prefers-color-scheme: dark) { svg { --acc: #c4a2f5; --gold: #d8b878; } }
