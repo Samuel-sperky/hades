@@ -170,10 +170,13 @@ const DICT = [
     // Knižnica má zámernú asymetriu: `q` filtruje server, oblasť filtruje KLIENT
     // (server posiela limit=null). `kna` sa nesmie premietnuť do dopytu na server.
     { k: 'kna', kind: 'one', v: vSlug, def: null, screen: 'kniznica', deb: DEB_FILTER },
+    // Otvorený playbook v pravom paneli. Trojička k 'roo'/'ruo'.
+    { k: 'kno', kind: 'one', v: vInt, def: null, screen: 'kniznica', deb: DEB_FILTER },
     { k: 'kot', kind: 'one', v: vEnum(['core', 'skill', 'project', 'memory']), def: '', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'koc', kind: 'one', v: vEnum(['overene', 'hypoteza', 'pasca']), def: '', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'koa', kind: 'one', v: vSlug, def: '', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'kol', kind: 'one', v: vStep(100, 100, 500), def: '100', screen: 'kontrola', deb: DEB_FILTER },
+    { k: 'koo', kind: 'one', v: vInt, def: null, screen: 'kontrola', deb: DEB_FILTER },
     { k: 'roy', kind: 'one', v: vYear, def: null, screen: 'rozhodnutia', deb: DEB_FILTER },
     { k: 'roa', kind: 'one', v: vInt, def: null, screen: 'rozhodnutia', deb: DEB_FILTER },
     // Otvorené rozhodnutie v pravom paneli (G6). Dvojička k 'ruo' pre Runy —
@@ -183,6 +186,16 @@ const DICT = [
     { k: 'rus', kind: 'one', v: vEnum(['running', 'waiting', 'failed', 'aborted', 'done']), def: null, screen: 'runy', deb: DEB_FILTER },
     { k: 'rum', kind: 'one', v: vText, def: null, screen: 'runy', deb: DEB_FILTER },
     { k: 'ruo', kind: 'one', v: vUuid, def: null, screen: 'runy', deb: DEB_FILTER },
+    // Otvorená smernica sa adresuje MENOM, nie id: smernica je súbor
+    // (`directives/<meno>.md`) a v DB riadok nemá, takže vSlug je jej presný tvar.
+    { k: 'smo', kind: 'one', v: vSlug, def: null, screen: 'smernica', deb: DEB_FILTER },
+
+    // Prečo pribudli 'kno', 'koo' a 'smo' naraz (31. 8. 2026): Knižnica, Kontrola
+    // a Smernica dostali pravý panel v jednej vlne a všetky tri ho postavili
+    // správne — panel sa otvoril, ale adresu nenesol. `writeUrl()` neznámy kľúč
+    // TICHO ZAHODÍ (`if (!e) continue`), takže tri nezávislé merania hlásili to
+    // isté: `location.search` = '?s=<obrazovka>' a kľúč panelu v nej chýba.
+    // Chyba nebola v obrazovkách, ale v tom, že tento slovník nikto nedoplnil.
 
     // F · /chat. Vlákno nesie pathname `/chat/<uuid>`, nie kľúč.
     // `b` je ČÍTACIE: aktívna vetva je stav servera a jediná klientská cesta k nej
