@@ -534,5 +534,325 @@
         }
     }
 
-    window.HadesCharts = { heatmap: heatmap, donut: donut, growthLine: growthLine };
+
+    /* =======================================================================
+       JEDEN JAZYK GRAFOV (kontrakt 28. 8. 2026, F1–F5)
+       =======================================================================
+       PREČO TENTO SÚBOR ZOSTÁVA BEZ ZÁVISLOSTÍ, hoci kontrakt hovoril „d3":
+       d3 je na `/` naozaj načítané (a to PRED charts.js), takže by bolo po ruke.
+       Nepoužíva sa z troch dôvodov a je to zmena rozhodnutia, nie opomenutie:
+         1. Tokové diagramy v jadre d3 NIE SÚ — `d3-sankey` je samostatný balík,
+            takže „použi d3" by tú jednu vec, pre ktorú by sa hodilo najviac,
+            nevyriešilo a pribudla by nová závislosť (kontrakt ju zakazuje).
+         2. Všetko ostatné tu sú škály a cesty, ktoré si tento súbor už dnes
+            skladá sám a robí to v ~40 riadkoch.
+         3. Bez závislostí sa charts.js dá načítať aj na `/console` a `/chat`,
+            kde d3 nie je — a tam grafy raz budú chcieť byť.
+
+       SPOLOČNÉ PRVKY (os, mriežka, legenda, tooltip, prázdny stav) sú helpery
+       nižšie. Nový graf ich MUSÍ použiť; keď si nakreslí vlastnú os, jazyk sa
+       rozíde presne tak, ako sa rozišli tri grafy pred vlnou 1.
+
+       TICHÁ VERZIA: kreslenie je `opacity`/`transform` prechod na triedach
+       `.in`, takže plošná podlaha `prefers-reduced-motion` v mind.css ho
+       skráti na .01 ms a graf je hotový OKAMŽITE, nie nenakreslený. */
+
+    /* ---- tooltip: jeden na dokument, nie jeden na graf --------------------
+       Jeden prvok znovupoužívaný všetkými grafmi. Dôvod nie je výkon, ale to,
+       že dva tooltipy naraz sú vždy chyba — pri prechode myšou medzi dvoma
+       grafmi by starý zostal visieť.
+       `aria-hidden`: obsah tooltipu je VŽDY aj v `aria-label` alebo `title`
+       daného prvku, takže pre čítačku by to bola druhá kópia tej istej vety. */
+    let _tip = null;
+    function tipEl() {
+        if (_tip && _tip.isConnected) return _tip;
+        _tip = el('div', 'chart-tip');
+        _tip.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(_tip);
+        return _tip;
+    }
+    function showTip(html, x, y) {
+        const t = tipEl();
+        t.innerHTML = html;
+        t.classList.add('on');
+        // Najprv zobraz, potom meraj — skrytý prvok má nulové rozmery.
+        const r = t.getBoundingClientRect();
+        const pad = 10;
+        let left = x - r.width / 2;
+        let top = y - r.height - pad;
+        // Držať v okne: tooltip pri hrane sa preklopí, neodreže sa.
+        left = clamp(left, pad, window.innerWidth - r.width - pad);
+        if (top < pad) top = y + pad;
+        t.style.left = Math.round(left) + 'px';
+        t.style.top = Math.round(top) + 'px';
+    }
+    function hideTip() { if (_tip) _tip.classList.remove('on'); }
+
+    /** Napojí tooltip na prvok. `fn` vracia HTML (už escapované volajúcim). */
+    function bindTip(node, fn) {
+        node.addEventListener('mouseenter', (e) => showTip(fn(), e.clientX, e.clientY));
+        node.addEventListener('mousemove', (e) => showTip(fn(), e.clientX, e.clientY));
+        node.addEventListener('mouseleave', hideTip);
+        /* Dotyk tooltip NEDOSTÁVA: na dotykovom zariadení nie je „hover" a
+           tooltip pod prstom zakrýva presne to, na čo sa človek pozerá. Význam
+           tam nesie `aria-label` a textová alternatíva pod grafom. */
+    }
+
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /* ---- prázdny stav grafu ----------------------------------------------
+       Prázdny GRAF nie je prázdna OBRAZOVKA, preto to nie je `.empty`: nemá
+       ikonu ani akciu, je to jedna veta na mieste, kde by bola kresba. Manuál
+       §8 zakazuje prázdnemu stavu vymýšľať si novú farbu — nesie `--muted`. */
+    function emptyChart(container, text) {
+        if (!container) return;
+        container.innerHTML = '';
+        const box = el('div', 'chart-empty');
+        box.textContent = text || 'Zatiaľ bez dát';
+        container.appendChild(box);
+    }
+
+    /* ---- mriežka a os ----------------------------------------------------
+       Vodorovná mriežka: `ticks` liniek vrátane nuly. Kreslí sa POD dáta a
+       nesie `--chart-grid` (nie `--line-soft`): mriežka je súčasť jazyka grafov
+       a musí sa dať posunúť bez toho, aby sa pohli rámy kariet. */
+    function gridLines(svg, W, H, pad, ticks) {
+        const g = svgEl('g', { class: 'chart-grid' });
+        for (let i = 0; i <= ticks; i++) {
+            const y = pad + (i / ticks) * (H - pad * 2);
+            g.appendChild(svgEl('line', { x1: pad, y1: y, x2: W - pad, y2: y }));
+        }
+        svg.appendChild(g);
+        return g;
+    }
+
+    /** Textová os pod grafom — tá istá kresba pre všetky typy (`.chart-axis`). */
+    function axisRow(container, labels) {
+        if (!labels || !labels.length) return null;
+        const axis = el('div', 'chart-axis');
+        for (const l of labels) { const s = el('span'); s.textContent = l; axis.appendChild(s); }
+        container.appendChild(axis);
+        return axis;
+    }
+
+    /** Legenda — jeden tvar swatchu pre celú appku. */
+    function legendRow(container, items) {
+        if (!items || !items.length) return null;
+        const wrap = el('div', 'chart-legend');
+        for (const it of items) {
+            const row = el('span', 'chart-legend-item');
+            const sw = el('i', 'chart-legend-sw');
+            sw.style.background = it.color;
+            row.appendChild(sw);
+            const tx = el('span'); tx.textContent = it.label;
+            row.appendChild(tx);
+            wrap.appendChild(row);
+        }
+        container.appendChild(wrap);
+        return wrap;
+    }
+
+    /* ---- prepínač období (F3, F4) ----------------------------------------
+       Vracia prvok; volajúci ho vloží tam, kde ho chce mať. `onPick` dostane
+       kľúč obdobia. Aktívne obdobie nesie `aria-pressed`, nie vlastnú triedu —
+       stav ovládača patrí do prístupnostného stromu, nie len do CSS. */
+    function periodSwitch(periods, active, onPick) {
+        const wrap = el('div', 'chart-periods');
+        wrap.setAttribute('role', 'group');
+        wrap.setAttribute('aria-label', 'Obdobie grafu');
+        for (const p of periods) {
+            const b = el('button', 'chart-period');
+            b.type = 'button';
+            b.textContent = p.label;
+            b.setAttribute('aria-pressed', p.key === active ? 'true' : 'false');
+            b.addEventListener('click', () => {
+                for (const other of wrap.querySelectorAll('.chart-period')) {
+                    other.setAttribute('aria-pressed', 'false');
+                }
+                b.setAttribute('aria-pressed', 'true');
+                onPick(p.key);
+            });
+            wrap.appendChild(b);
+        }
+        return wrap;
+    }
+
+    /* ---- sparkline (E4) ---------------------------------------------------
+       Bez osí, bez mriežky, bez tooltipu: je to TVAR trendu vedľa čísla, nie
+       graf na čítanie hodnôt. Preto ani nedostáva `role="img"` s popisom —
+       hodnotu aj zmenu nesie text karty vedľa neho, a druhá kópia tej vety by
+       čítačku len zdržala. */
+    function sparkline(container, values, opts) {
+        if (!container) return;
+        container.innerHTML = '';
+        const vals = Array.isArray(values) ? values.map((v) => +v || 0) : [];
+        if (vals.length < 2) return;
+        opts = opts || {};
+        const W = 100, H = 24;
+        const min = Math.min.apply(null, vals);
+        const max = Math.max.apply(null, vals);
+        const span = (max - min) || 1;
+        const xAt = (i) => (i / (vals.length - 1)) * W;
+        const yAt = (v) => H - ((v - min) / span) * (H - 2) - 1;
+        const svg = svgEl('svg', {
+            viewBox: '0 0 ' + W + ' ' + H,
+            preserveAspectRatio: 'none',
+            class: 'spark',
+            'aria-hidden': 'true',
+        });
+        let d = '';
+        vals.forEach((v, i) => { d += (i ? ' L ' : 'M ') + xAt(i).toFixed(1) + ' ' + yAt(v).toFixed(1); });
+        const area = svgEl('path', {
+            d: d + ' L ' + W + ' ' + H + ' L 0 ' + H + ' Z',
+            class: 'spark-area',
+        });
+        const line = svgEl('path', { d: d, class: 'spark-line' });
+        if (opts.trend) svg.setAttribute('data-trend', opts.trend);
+        svg.appendChild(area);
+        svg.appendChild(line);
+        container.appendChild(svg);
+    }
+
+    /* ---- scatter (F2) -----------------------------------------------------
+       Body sú PRSTENCE, nie disky — tá istá vizuálna sémantika ako na plátne
+       grafu (priehľadnosť nesie diera, nie nízka alfa), takže sa prekrývajúce
+       body dajú čítať. */
+    function scatter(container, points, opts) {
+        if (!container) return;
+        container.innerHTML = '';
+        const pts = Array.isArray(points) ? points : [];
+        if (!pts.length) { emptyChart(container, (opts && opts.empty) || 'Zatiaľ bez dát'); return; }
+        opts = opts || {};
+        const W = 320, H = 180, pad = 18;
+        const xs = pts.map((p) => +p.x || 0);
+        const ys = pts.map((p) => +p.y || 0);
+        const xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs) || 1;
+        const yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys) || 1;
+        const xSpan = (xMax - xMin) || 1, ySpan = (yMax - yMin) || 1;
+        const xAt = (v) => pad + ((v - xMin) / xSpan) * (W - pad * 2);
+        const yAt = (v) => H - pad - ((v - yMin) / ySpan) * (H - pad * 2);
+
+        const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img' });
+        svg.setAttribute('aria-label', opts.label
+            || (pts.length + ' bodov, ' + (opts.xLabel || 'x') + ' proti ' + (opts.yLabel || 'y')));
+        gridLines(svg, W, H, pad, 4);
+        const dots = svgEl('g', { class: 'scatter-dots' });
+        for (const p of pts) {
+            const c = svgEl('circle', {
+                cx: xAt(+p.x || 0).toFixed(1),
+                cy: yAt(+p.y || 0).toFixed(1),
+                r: p.r || 4,
+                class: 'scatter-dot',
+            });
+            if (p.color) c.style.stroke = p.color;
+            bindTip(c, () => '<b>' + esc(p.label || '') + '</b><br>'
+                + esc(opts.xLabel || 'x') + ': ' + fmtNum(p.x) + '<br>'
+                + esc(opts.yLabel || 'y') + ': ' + fmtNum(p.y));
+            dots.appendChild(c);
+        }
+        svg.appendChild(dots);
+        container.appendChild(svg);
+        axisRow(container, [String(opts.xLabel || ''), String(opts.yLabel || '')]);
+        nextFrame(() => dots.classList.add('in'));
+    }
+
+    /* ---- toky (F2, „sankey") ---------------------------------------------
+       DVOJVRSTVOVÝ tok, nie všeobecný sankey. Rozhodnutie s dôvodom: `d3-sankey`
+       je samostatný balík (nová závislosť, kontrakt ju zakazuje) a jeho jediná
+       výhoda — iteratívne rozvrstvenie viacúrovňového grafu — je pre otázku
+       „ktorá oblasť tečie do ktorého projektu" zbytočná. Dve vrstvy sa dajú
+       rozvrhnúť presne: výška uzla = jeho podiel na súčte, poradie = zostupne.
+
+       Stuhy sú kubické Bézierove krivky s vodorovnými riadiacimi bodmi, takže
+       vstup aj výstup dosadá na uzol pod pravým uhlom a stuhy sa nekrížia viac,
+       než musia. */
+    function flows(container, data, opts) {
+        if (!container) return;
+        container.innerHTML = '';
+        data = data || {};
+        const links = Array.isArray(data.links) ? data.links.filter((l) => (+l.value || 0) > 0) : [];
+        if (!links.length) { emptyChart(container, (opts && opts.empty) || 'Zatiaľ žiadne toky'); return; }
+        opts = opts || {};
+
+        const W = 340, H = 200, nodeW = 10, gap = 6;
+        const side = (key) => {
+            const seen = new Map();
+            for (const l of links) {
+                const k = l[key];
+                seen.set(k, (seen.get(k) || 0) + (+l.value || 0));
+            }
+            return [...seen.entries()].sort((a, b) => b[1] - a[1]);
+        };
+        const left = side('source'), right = side('target');
+        const total = links.reduce((s, l) => s + (+l.value || 0), 0);
+
+        const place = (arr, x) => {
+            const usable = H - gap * Math.max(0, arr.length - 1);
+            let y = 0;
+            const map = new Map();
+            for (const [name, v] of arr) {
+                const h = Math.max(2, (v / total) * usable);
+                map.set(name, { x: x, y: y, h: h, v: v, name: name, cursor: y });
+                y += h + gap;
+            }
+            return map;
+        };
+        const L = place(left, 0), R = place(right, W - nodeW);
+
+        const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img' });
+        svg.setAttribute('aria-label', opts.label || ('Toky: ' + links.length + ' spojení, '
+            + left.length + ' zdrojov, ' + right.length + ' cieľov'));
+
+        // stuhy pod uzlami — uzol musí prekryť ich zakončenie
+        const ribbons = svgEl('g', { class: 'flow-ribbons' });
+        for (const l of [...links].sort((a, b) => (+b.value || 0) - (+a.value || 0))) {
+            const a = L.get(l.source), b = R.get(l.target);
+            if (!a || !b) continue;
+            const t = (+l.value || 0) / total;
+            const h = Math.max(1, t * (H - gap * Math.max(0, Math.max(left.length, right.length) - 1)));
+            const y1 = a.cursor + h / 2, y2 = b.cursor + h / 2;
+            a.cursor += h; b.cursor += h;
+            const x1 = nodeW, x2 = W - nodeW;
+            const cx = (x1 + x2) / 2;
+            const p = svgEl('path', {
+                d: 'M ' + x1 + ' ' + y1.toFixed(1)
+                    + ' C ' + cx + ' ' + y1.toFixed(1) + ', ' + cx + ' ' + y2.toFixed(1)
+                    + ', ' + x2 + ' ' + y2.toFixed(1),
+                class: 'flow-ribbon',
+                'stroke-width': h.toFixed(1),
+            });
+            if (l.color) p.style.stroke = l.color;
+            bindTip(p, () => esc(l.source) + ' → ' + esc(l.target) + '<br><b>' + fmtNum(l.value) + '</b>');
+            ribbons.appendChild(p);
+        }
+        svg.appendChild(ribbons);
+
+        const nodes = svgEl('g', { class: 'flow-nodes' });
+        for (const map of [L, R]) {
+            for (const n of map.values()) {
+                const r = svgEl('rect', {
+                    x: n.x, y: n.y.toFixed(1), width: nodeW, height: n.h.toFixed(1),
+                    rx: 2, class: 'flow-node',
+                });
+                if (n.color) r.style.fill = n.color;
+                bindTip(r, () => '<b>' + esc(n.name) + '</b><br>' + fmtNum(n.v));
+                nodes.appendChild(r);
+            }
+        }
+        svg.appendChild(nodes);
+        container.appendChild(svg);
+        nextFrame(() => ribbons.classList.add('in'));
+    }
+
+    /* Export: jeden objekt, jeden jazyk. Nový typ grafu sa PRIDÁVA sem a musí
+       použiť spoločné helpery (gridLines, axisRow, legendRow, bindTip, emptyChart) —
+       inak sa jazyk osí a legiend rozíde presne tak, ako sa rozišiel pred vlnou 1. */
+    window.HadesCharts = {
+        heatmap: heatmap, donut: donut, growthLine: growthLine,
+        sparkline: sparkline, scatter: scatter, flows: flows,
+        periodSwitch: periodSwitch, emptyChart: emptyChart, legend: legendRow,
+    };
 })();

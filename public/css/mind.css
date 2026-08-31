@@ -6137,3 +6137,157 @@ body:not([data-screen="graf"]) #header-metrics { display: none; }
 @media (prefers-reduced-motion: reduce) {
     .inline-ok { animation: none !important; opacity: 1 !important; transform: none !important; }
 }
+
+/* ===========================================================================
+   GRAFY — SPOLOČNÝ JAZYK (kontrakt 28. 8. 2026, F1–F5)
+   ===========================================================================
+   `.chart-axis` (vyššie) bola prvá spoločná časť; toto je zvyšok. Mriežka,
+   legenda, tooltip, prázdny stav a prepínač období majú JEDNU kresbu pre
+   všetky typy grafov. Nový graf ich použije — vlastná os alebo vlastná legenda
+   je presne to, čím sa tri grafy pred vlnou 1 rozišli.
+
+   TOKEN MRIEŽKY je vlastný (`--chart-grid`), nie `--line-soft`: mriežka je
+   súčasť jazyka grafov a musí sa dať posunúť bez toho, aby sa pohli rámy
+   kariet. Hodnota je dnes zhodná — a to je v poriadku, alias s dôvodom nie je
+   duplicita.
+   =========================================================================== */
+:root {
+    --chart-grid: var(--line-soft);
+    --chart-tip-bg: var(--surface-2);
+}
+
+.chart-grid line {
+    stroke: var(--chart-grid);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+/* ---- legenda ---- */
+.chart-legend {
+    display: flex; flex-wrap: wrap;
+    gap: var(--sp-0h) var(--sp-2);
+    margin-top: var(--sp-1);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-chart-axis);
+    color: var(--text-secondary);
+}
+.chart-legend-item { display: inline-flex; align-items: center; gap: var(--sp-0h); }
+/* Swatch je PRSTENEC, nie plný disk — tá istá vizuálna sémantika ako na plátne
+   grafu (docs/BRAND-HADES.md §2: plné disky v legende učili zle). Výnimka je
+   donut a heatmapa, ktoré kreslia plochu, nie uzly; tie si swatch nastavujú
+   inline `background` a tento základ prepíšu. */
+.chart-legend-sw {
+    width: 10px; height: 10px;
+    border-radius: var(--r-pill);
+    flex: none;
+}
+
+/* ---- tooltip ----
+   Jeden prvok na dokument (viď tipEl() v charts.js). `pointer-events: none` je
+   podmienka, nie kozmetika: tooltip stojí pod kurzorom a bez toho by si bral
+   `mouseleave` prvku, nad ktorým visí, a blikal by. */
+.chart-tip {
+    position: fixed;
+    z-index: var(--z-tooltip);
+    pointer-events: none;
+    opacity: 0;
+    max-width: 260px;
+    padding: var(--sp-0h) var(--sp-1);
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: var(--chart-tip-bg);
+    color: var(--text);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    box-shadow: var(--elev-tooltip);
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.chart-tip.on { opacity: 1; }
+.chart-tip b { font-weight: var(--fw-semibold); }
+
+/* ---- prázdny stav grafu ----
+   NIE `.empty`: prázdny graf nie je prázdna obrazovka, nemá ikonu ani akciu.
+   `min-height` drží výšku karty, aby zmiznutie kresby nespôsobilo skok layoutu. */
+.chart-empty {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 90px;
+    padding: var(--sp-2);
+    color: var(--muted);
+    font-size: var(--fs-data);
+    text-align: center;
+}
+
+/* ---- prepínač období ---- */
+.chart-periods { display: inline-flex; gap: 2px; }
+.chart-period {
+    font-family: var(--mono);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-control);
+    padding: 2px var(--sp-1);
+    min-height: auto;
+    color: var(--muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+}
+.chart-period:hover { color: var(--text); border-color: var(--border); }
+/* Aktívne obdobie nesie stav v `aria-pressed`, takže CSS ho číta ODTIAĽ a nie
+   z vlastnej triedy — jeden nosič stavu, a ten je zároveň v strome prístupnosti. */
+.chart-period[aria-pressed="true"] {
+    color: var(--accent-ink);
+    border-color: var(--border-accent);
+    background: var(--accent-hover-wash);
+}
+
+/* ---- sparkline ----
+   Bez osí a bez tooltipu: je to tvar trendu vedľa čísla. Farbu nesie `data-trend`,
+   teda rola z dátovej palety (B3), nie natvrdo zapísaná zelená/červená. */
+.spark { width: 100%; height: 24px; display: block; }
+.spark-line {
+    fill: none;
+    stroke: var(--trend-flat);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.spark-area { fill: var(--trend-flat); opacity: .10; stroke: none; }
+.spark[data-trend="up"] .spark-line { stroke: var(--trend-up); }
+.spark[data-trend="up"] .spark-area { fill: var(--trend-up); }
+.spark[data-trend="down"] .spark-line { stroke: var(--trend-down); }
+.spark[data-trend="down"] .spark-area { fill: var(--trend-down); }
+
+/* ---- scatter ----
+   Body sú PRSTENCE (fill: none), nie disky — priehľadnosť nesie diera, takže sa
+   prekrývajúce body dajú prečítať. Je to to isté pravidlo ako na plátne grafu. */
+.scatter-dots { opacity: 0; transition: opacity var(--dur-chart-reveal) var(--ease); }
+.scatter-dots.in { opacity: 1; }
+.scatter-dot {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+.scatter-dot:hover { stroke: var(--accent-ink); stroke-width: 2.5; }
+
+/* ---- toky ----
+   Stuha je OBTAH s veľkou hrúbkou, nie výplň: hrúbka = hodnota, takže sa
+   nemusí počítať obrys plochy a stuha drží šírku aj pri zmene viewBoxu. */
+.flow-ribbons { opacity: 0; transition: opacity var(--dur-chart-curve) var(--ease); }
+.flow-ribbons.in { opacity: 1; }
+.flow-ribbon {
+    fill: none;
+    stroke: var(--accent);
+    opacity: .28;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.flow-ribbon:hover { opacity: .62; }
+.flow-node { fill: var(--text-secondary); }
+
+/* Tichá verzia: kresba je hotová OKAMŽITE, nie nenakreslená. Plošná podlaha
+   `prefers-reduced-motion` skráti prechody na .01 ms, takže `.in` dosadne v tom
+   istom rámci — tu preto stačí PRIPNÚŤ konečný stav pre prípad, že by trieda
+   `.in` z nejakého dôvodu nepribehla (napr. rAF stojí mimo Grafu). */
+@media (prefers-reduced-motion: reduce) {
+    .scatter-dots, .flow-ribbons { opacity: 1 !important; transition: none !important; }
+}

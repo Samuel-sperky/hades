@@ -2090,3 +2090,106 @@ ich výstupy a plán, ktorý z nich vznikol, sú v `docs/PLAN-VLNA2-3.md`. Skrip
 merania sú v scratchpade sond, aby sa dali zopakovať a **prekalibrovať** — a to je
 podmienka, nie zdvorilosť: tri z piatich opravených tvrdení vznikli tým, že prvý
 harness meral svoju vlastnú kópiu formuly alebo nekalibrovanú stranu.
+
+---
+
+## 14. Grafy — jeden jazyk
+
+Zavedené 28. 8. 2026 (kontrakt `KONTRAKT-DIZAJN-BRANDING-2026-08-28.md`, F1–F5).
+Všetky grafy appky kreslí **jeden modul `public/js/charts.js`** a používajú
+**spoločné helpery**. Nový typ grafu, ktorý si nakreslí vlastnú os alebo vlastnú
+legendu, jazyk rozíde — presne tak sa pred vlnou 1 rozišli tri grafy, ktoré
+mali každý svoju os s inou veľkosťou písma.
+
+### Bez závislostí — a je to zmena rozhodnutia
+
+Kontrakt F1 hovoril „d3 + vlastný štýl" a d3 je na `/` naozaj načítané (a to
+**pred** `charts.js`). Nepoužíva sa, z troch dôvodov:
+
+1. **Tokové diagramy v jadre d3 nie sú.** `d3-sankey` je samostatný balík, takže
+   „použi d3" by tú jednu vec, pre ktorú by sa hodilo najviac, nevyriešilo — a
+   pribudla by nová závislosť, ktorú ten istý kontrakt zakazuje.
+2. Všetko ostatné sú **škály a cesty**, ktoré si `charts.js` skladá sám v ~40
+   riadkoch.
+3. Bez závislostí sa `charts.js` dá načítať aj na `/console` a `/chat`, kde d3
+   nie je.
+
+### Sada typov
+
+| Typ | API | Kde žije |
+|---|---|---|
+| heatmapa | `heatmap(el, data)` | Dnes — ročná aktivita |
+| donut | `donut(el, segs, opts)` | Dnes — Istota |
+| kumulatívna krivka | `growthLine(el, series)` | Dnes — Rast siete |
+| sparkline | `sparkline(el, values, opts)` | KPI karty (vlna V4) |
+| scatter | `scatter(el, points, opts)` | **bez volajúceho** — viď nižšie |
+| toky | `flows(el, {links}, opts)` | **bez volajúceho** — viď nižšie |
+
+**Scatter a toky zatiaľ nemá kto volať a je to priznané, nie zamlčané.** Sú
+súčasťou jazyka, pretože kontrakt F2 ich vymenoval, a sú **overené meraním**
+(scatter: 5 bodov, 5 liniek mriežky, os aj popis; toky: 4 stuhy, 5 uzlov,
+popis „Toky: 4 spojení, 2 zdrojov, 3 cieľov"). Nie sú napojené, pretože žiadna
+obrazovka dnes dvojrozmerný pohľad ani tok nežiada a vymýšľať si preň kartu je
+rozhodnutie o produkte, ktoré sekcia E kontraktu nekryje. Platí tu tá istá veta
+ako pri škále veľkostí: **diera v jazyku je horšia než nepoužitý typ** — ďalší
+človek by si na jeho mieste nakreslil vlastný.
+
+Pozor pri napájaní tokov: `top_projects` je na dnešných dátach **prázdne**
+(zmerané, 0 položiek), takže graf oblasť → projekt by dnes ukázal prázdny stav.
+
+### Spoločné prvky — nový graf ich MUSÍ použiť
+
+| Helper | Kreslí |
+|---|---|
+| `gridLines(svg, W, H, pad, ticks)` | vodorovná mriežka, token `--chart-grid` |
+| `axisRow(container, labels)` | `.chart-axis` — mono, 11 px, `--muted` |
+| `legendRow(container, items)` | `.chart-legend`, swatch je **prstenec** |
+| `bindTip(node, fn)` | hover tooltip, jeden prvok na dokument |
+| `emptyChart(container, text)` | `.chart-empty` — jedna veta, bez ikony a akcie |
+| `periodSwitch(periods, active, onPick)` | `.chart-periods`, stav v `aria-pressed` |
+
+Tri veci, ktoré sa okolo toho dajú ľahko pokaziť:
+
+- **Tooltip je JEDEN na dokument**, nie jeden na graf. Dôvod nie je výkon: dva
+  tooltipy naraz sú vždy chyba a pri prechode myšou medzi dvoma grafmi by starý
+  zostal visieť. Nesie `pointer-events: none` — bez toho si berie `mouseleave`
+  prvku, nad ktorým visí, a bliká.
+- **Tooltip nedostáva dotyk.** Na dotyku nie je „hover" a tooltip pod prstom
+  zakrýva to, na čo sa človek pozerá. Význam tam nesie `aria-label` grafu a
+  textová alternatíva pod ním.
+- **Prázdny graf nie je prázdna obrazovka.** `.chart-empty` nie je `.empty`:
+  nemá ikonu ani akciu a nesie `--muted` (manuál §8 zakazuje prázdnemu stavu
+  vymýšľať si novú farbu). `min-height: 90px` drží výšku karty, aby zmiznutie
+  kresby nespôsobilo skok.
+
+### Prepínač období mení VELIČINU, nie len výrez
+
+Graf **Rast siete** má tri obdobia a každé kreslí niečo iné: `30 d` denné
+prírastky z heatmapy, `rok` mesačné prírastky, `všetko` kumuláciu.
+
+**Čo prepínač NEROBÍ** (zmerané na živých dátach, aby to nikto neskúšal znova):
+mesačný prírastok hokejku **nevyrovná**. Podiel maxima na súčte je 0,735 proti
+0,791 pri kumulácii a bodov pod 2 % výšky je v oboch prípadoch **10 z 12**.
+Dáta taký tvar naozaj majú — 2 041 uzlov pribudlo v jednom mesiaci.
+Čitateľnosť zlepšuje až 30-dňový pohľad (podiel maxima **0,264**), a aj tam je
+15 z 30 dní na nule. Keby to malo byť čitateľné aj v ročnom pohľade, je na to
+**logaritmická os**, nie ďalšia veličina.
+
+### Farba v grafoch
+
+- **Kategórie = oblasti.** Osemfarebná kategoriálna škála v tejto appke
+  neexistuje a nemá vzniknúť: kategórie sú oblasti vedomia a tie majú farbu v DB
+  (a idú cez `mutedColor()`). Do 28. 8. 2026 to isté hovoril komentár pri
+  `--chart-*` v `mind.css`; platí ďalej.
+- **Rampy** majú tokeny: `--cert-*` (donut), `--heat-*` (heatmapa),
+  `--accent` (krivka).
+- **Trend** nesie dátová paleta: `sparkline` číta `--trend-up/-down/-flat` cez
+  atribút `data-trend`, nie natvrdo zapísanú zelenú a červenú.
+
+### Tichá verzia
+
+Kreslenie je prechod `opacity` na triedach `.in`, takže plošná podlaha
+`prefers-reduced-motion` v `mind.css` ho skráti na `.01 ms` a graf je hotový
+**okamžite, nie nenakreslený**. `.scatter-dots` a `.flow-ribbons` majú navyše
+pripnuté `opacity: 1 !important` pre prípad, že by trieda `.in` nepribehla —
+`requestAnimationFrame` mimo obrazovky Graf stojí.

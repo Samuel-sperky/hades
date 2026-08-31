@@ -321,6 +321,91 @@ export function syncCardHtml(dash) {
         + '</div>';
 }
 
+/* RAST SIETE — tri obdobia z JEDNÝCH dát (kontrakt F4).
+   Hokejku nespôsobil graf, ale to, že kreslil KUMULÁCIU: pamäť vznikla za
+   posledné dva mesiace, takže desať mesiacov leží na nule a potom sa zdvihne
+   stena. Zmerané na živých dátach: 12 mesačných bodov 0,0,0,…,734,2775.
+
+   Prepínač preto nemení len výrez, ale aj VELIČINU:
+     · 30 d    denné prírastky z heatmapy (tie dáta už v odpovedi sú)
+     · rok     mesačné prírastky (diff kumulácie)
+     · všetko  kumulácia, teda pôvodný graf
+   Prírastok je to, čo človek hľadá („čo sa deje"), kumulácia to, čo hlási
+   veľkosť („kde sme"). Obe sú pravda, len odpovedajú na inú otázku.
+
+   ČO PREPÍNAČ NEROBÍ — zmerané 28. 8. 2026 na živých dátach, aby to nikto
+   nemusel skúšať znova: mesačný prírastok hokejku NEVYROVNÁ. Podiel maxima na
+   súčte je 0,735 proti 0,791 pri kumulácii a bodov pod 2 % výšky je v oboch
+   prípadoch 10 z 12. Dáta taký tvar naozaj majú — 2 041 uzlov pribudlo v jednom
+   mesiaci. Čitateľnosť zlepšuje až 30-dňový pohľad (podiel maxima 0,264), a aj
+   tam je 15 z 30 dní na nule. Keby to raz malo byť čitateľné aj v ročnom
+   pohľade, je na to logaritmická os — nie ďalšia veličina.
+
+   PREČO SA TO POČÍTA V PREHLIADAČI: nie sú to nové fakty, ale prevod už
+   doručených čísel (CLAUDE.md: dátové veci na server, ale toto nie je nový
+   údaj — je to tá istá rada inak zosumovaná). Nový endpoint by znamenal zmenu
+   serializéra a registra parity za nulovú novú informáciu. */
+function growthSeries(dash, period) {
+    const g = dash.growth || {};
+    const labels = Array.isArray(g.labels) ? g.labels : [];
+    const values = Array.isArray(g.values) ? g.values.map((v) => +v || 0) : [];
+
+    if (period === 'all') return { labels: labels, values: values };
+
+    if (period === 'year') {
+        // diff kumulácie; prvý bod nemá predchodcu, takže je sám sebe prírastkom
+        const out = values.map((v, i) => (i ? Math.max(0, v - values[i - 1]) : v));
+        return { labels: labels, values: out };
+    }
+
+    // 30 d — denné počty z heatmapy. Mriežka je pole týždňov po 7 dní (null =
+    // deň mimo rozsahu), takže sa najprv sploští a až potom kráti.
+    const weeks = (dash.heatmap || {}).weeks;
+    if (!Array.isArray(weeks)) return null;
+    const days = [];
+    for (const w of weeks) {
+        if (!Array.isArray(w)) continue;
+        for (const d of w) if (d) days.push(d);
+    }
+    if (!days.length) return null;
+    const last = days.slice(-30);
+    return {
+        labels: [last[0].date, last[last.length - 1].date],
+        values: last.map((d) => +d.count || 0),
+        dateLabels: true,
+    };
+}
+
+const GROWTH_PERIODS = [
+    { key: '30d', label: '30 d' },
+    { key: 'year', label: 'rok' },
+    { key: 'all', label: 'všetko' },
+];
+// Voľba prežije prekreslenie dashboardu, ale nie reload — je to pohľad na graf,
+// nie nastavenie appky, takže do localStorage nepatrí.
+let growthPeriod = 'year';
+
+export function renderGrowth(container, dash) {
+    const draw = () => {
+        container.innerHTML = '';
+        const series = growthSeries(dash, growthPeriod);
+        if (!series || !series.values.length) {
+            HadesCharts.emptyChart(container, 'Zatiaľ žiadny rast');
+        } else {
+            const box = document.createElement('div');
+            container.appendChild(box);
+            HadesCharts.growthLine(box, series);
+        }
+        // Prepínač sa kreslí ZNOVA po každom prekreslení, aby si držal stav
+        // aktívneho obdobia bez druhého zdroja pravdy.
+        container.appendChild(HadesCharts.periodSwitch(GROWTH_PERIODS, growthPeriod, (k) => {
+            growthPeriod = k;
+            draw();
+        }));
+    };
+    draw();
+}
+
 // Napojenie chartov (charts.js) a Sync tlačidla na existujúce DOM kontajnery.
 export function renderDashboardBlocks(dash) {
     if (!window.HadesCharts) return;
@@ -344,11 +429,7 @@ export function renderDashboardBlocks(dash) {
     }
 
     const growth = $('dash-growth');
-    if (growth) {
-        const vals = (dash.growth || {}).values;
-        if (Array.isArray(vals) && vals.length) HadesCharts.growthLine(growth, dash.growth);
-        else growth.innerHTML = emptyCardHtml('Zatiaľ žiadny rast');
-    }
+    if (growth) renderGrowth(growth, dash);
 
     const syncBtn = $('sync-now');
     if (syncBtn) syncBtn.onclick = () => doSync(syncBtn);
