@@ -461,6 +461,14 @@
             <h3>História</h3>
             <div id="node-history"></div>
             <div class="row node-actions">
+                {{-- „Overiť" je vidieť LEN pri uzle, ktorý na overenie čaká, a je
+                     PRVÉ v rade: keď uzol čaká na rozhodnutie, je to jediná akcia,
+                     ktorú od človeka niekto chce. Panel dovtedy odznak „čaká na
+                     overenie" len ZOBRAZIL a odpovedať sa naň dalo iba prechodom
+                     na Kontrolu — a to je tá istá porucha, akú na obrazovke Dnes
+                     opravila sekcia fokusu. Endpoint je ten istý, ktorý používa
+                     Kontrola aj Dnes; tretia cesta k tej fronte nevzniká. --}}
+                <button id="node-verify" class="primary hidden">Overiť</button>
                 <button id="node-edit" class="primary">Upraviť</button>
                 {{-- A8: #node-pack („Do balíka") zaniklo — kontext doku je jediný
                      mechanizmus a #node-charon plní ten istý kontext. --}}
@@ -485,6 +493,25 @@
                 <button id="edit-cancel">Zrušiť</button>
             </div>
         </div>
+    </aside>
+
+    {{-- DETAIL ZÁZNAMU (kontrakt 28. 8. 2026, G6) — jeden panel pre Runy aj
+         Rozhodnutia. Nie je to druhý `#node-panel`: ten nesie uzol vedomia a má
+         vlastné akcie (prepojiť, zmazať, do rozhovoru). Tento nesie ZÁZNAM
+         z tabuľky a jeho obsah skladá obrazovka, ktorá ho otvorila.
+
+         Geometriu a animáciu dedí z `#node-panel` (spoločné pravidlo v CSS) — dva panely
+         s dvoma rôznymi šírkami by boli dva rôzne pravé okraje na tej istej
+         ploche, a `camInsets()` v layout.js číta `--panel-w` raz.
+
+         `aria-label` sa dopisuje z JS podľa toho, čo je otvorené — statické
+         „Detail" by čítačke nepovedalo, detail čoho. --}}
+    <aside id="rec-panel" class="hidden" aria-label="Detail záznamu">
+        <div class="dock-head">
+            <h2 id="rec-panel-title"></h2>
+            <button class="close" id="rec-panel-close" aria-label="Zavrieť"><svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 6 6 L 18 18 M 18 6 L 6 18"/></svg></button>
+        </div>
+        <div id="rec-panel-body"></div>
     </aside>
 
     {{-- A8 (R-6): zásuvka „Balík pre Claude Code" a export do schránky zanikli.

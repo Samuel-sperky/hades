@@ -37,7 +37,11 @@ export function renderNodeBadges(n) {
     if (!row) {
         row = document.createElement('div');
         row.id = 'node-badges';
-        row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 2px;';
+        /* Kresba je v CSS (`#node-badges`), nie tu. Rozmer a rozloženie napísané
+           v JS je pre CSSOM NEVIDITEĽNÉ a žiadna asercia ho nenájde — presne tak
+           v tomto projekte vznikol inline `font-size: 10px` na osi grafu (viď
+           komentár pri .chart-axis v mind.css). Element sa tu len vytvorí a
+           pomenuje. */
         const anchor = $('node-type');
         if (anchor) anchor.insertAdjacentElement('afterend', row);
         else view.insertBefore(row, view.firstChild);

@@ -20,6 +20,7 @@ const NARROW = window.matchMedia('(max-width: 900px)');
 import { $, busy, emptyCardHtml, esc, inlineOk, nodeColor, plainBlock, plainInline, prettyProject, typeName, updateHeaderMetrics } from './util.js';
 import { iconMarkup } from '../shared/icons.js';
 import { iconSwap } from '../shared/icons.js';
+import { syncNodeVerifyBtn } from './controls.js';
 
 /* ---------- panely ---------- */
 export async function selectNode(n) {
@@ -53,6 +54,7 @@ export async function selectNode(n) {
     $('node-desc').textContent = plainBlock(n.description);
     $('node-meta').textContent = 'sila ' + (n.strength || 1).toFixed(0);
     renderNodeBadges(n); // F4: origin + cert + značky
+    syncNodeVerifyBtn(n);   // I2: „Overiť" je vidieť len keď uzol na overenie čaká
 
     $('node-neighbors').innerHTML = '';
     $('node-history').innerHTML = '';

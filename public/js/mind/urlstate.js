@@ -176,6 +176,10 @@ const DICT = [
     { k: 'kol', kind: 'one', v: vStep(100, 100, 500), def: '100', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'roy', kind: 'one', v: vYear, def: null, screen: 'rozhodnutia', deb: DEB_FILTER },
     { k: 'roa', kind: 'one', v: vInt, def: null, screen: 'rozhodnutia', deb: DEB_FILTER },
+    // Otvorené rozhodnutie v pravom paneli (G6). Dvojička k 'ruo' pre Runy —
+    // kľúč je viazaný na obrazovku, takže pri prepnutí obrazovky zmizne sám a dva
+    // panely sa v jednej adrese otvoriť nedajú.
+    { k: 'roo', kind: 'one', v: vInt, def: null, screen: 'rozhodnutia', deb: DEB_FILTER },
     { k: 'rus', kind: 'one', v: vEnum(['running', 'waiting', 'failed', 'aborted', 'done']), def: null, screen: 'runy', deb: DEB_FILTER },
     { k: 'rum', kind: 'one', v: vText, def: null, screen: 'runy', deb: DEB_FILTER },
     { k: 'ruo', kind: 'one', v: vUuid, def: null, screen: 'runy', deb: DEB_FILTER },

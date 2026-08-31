@@ -15,6 +15,18 @@ import { setTheme } from './theme.js';
 import { showToast } from './toasts.js';
 import { $, applyOpts, blip, busy, setOpt, syncSlider } from './util.js';
 import { iconSwap } from '../shared/icons.js';
+import { renderNodeBadges } from './certainty.js';
+
+/* Viditeľnosť tlačidla „Overiť" je funkcia STAVU uzla, nie miesta, kde sa práve
+   klikalo — preto samostatná funkcia na úrovni modulu, ktorú vie zavolať aj panel
+   pri otvorení, aj obsluha po úspešnom overení. `export function`, teda hoistovaná:
+   panels.js a controls.js sú v cykle a arrow v `const` by pri ňom spadla na
+   ReferenceError (pravidlo projektu, viď CLAUDE.md). */
+export function syncNodeVerifyBtn(node) {
+    const b = document.getElementById('node-verify');
+    if (!b) return;
+    b.classList.toggle('hidden', !(node && node.needs_review));
+}
 
 // Knižnica — debounce timer filtra (jediné použitie je handler nižšie v setupControls).
 export let libraryTimer = null;
@@ -398,6 +410,41 @@ export function setupControls() {
     };
 
     $('btn-new-node').onclick = openCreateNode;
+
+    /* OVERENIE priamo z panelu (kontrakt I2). Endpoint je ten istý, ktorý volá
+       Kontrola aj sekcia fokusu na Dnes — tretia cesta k tej fronte nevzniká.
+
+       Po úspechu sa NEHLÁSI nič (politika J2): odznak „čaká na overenie" zmizne,
+       pribudne odznak istoty a tlačidlo sa skryje, takže zmena je vidieť. Zlyhanie
+       je toast, pretože panel zostane taký, aký bol, a dôvod treba prečítať. */
+    $('node-verify').onclick = () => {
+        const n = S.selected;
+        if (!n) return;
+        busy($('node-verify'), async () => {
+            let res;
+            try {
+                res = await fetch('/api/nodes/' + encodeURIComponent(n.id) + '/verify', { method: 'POST' });
+            } catch (e) {
+                showToast('Overenie zlyhalo', null, 'error');
+                return;
+            }
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(j.message || j.error || 'Overenie zlyhalo', null, 'error');
+                return;
+            }
+            /* Uzol v pamäti prehliadača sa musí posunúť s pravdou na serveri —
+               inak by odznak po prekreslení panelu naskočil späť. Server vracia
+               celý uzol; berieme jeho polia, nie vlastný odhad. */
+            const fresh = j.node || {};
+            n.needs_review = fresh.needs_review ?? false;
+            if (fresh.certainty !== undefined) n.certainty = fresh.certainty;
+            if (fresh.verified_at !== undefined) n.verified_at = fresh.verified_at;
+            renderNodeBadges(n);
+            syncNodeVerifyBtn(n);
+            draw();
+        }, '…');
+    };
 
     $('node-edit').onclick = () => {
         if (!S.selected) return;

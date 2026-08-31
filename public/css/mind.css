@@ -1811,7 +1811,7 @@ body[data-rail="slim"] #rail #rail-collapse { align-self: center; }
 /* ---------------------------------------------------------------------------
    DOCK + NODE-PANEL — shared white-glass primitive
    --------------------------------------------------------------------------- */
-#dock, #node-panel {
+#dock, #node-panel, #rec-panel {
     position: fixed;
     top: var(--content-top); bottom: var(--edge);
     width: var(--panel-w);
@@ -1830,6 +1830,18 @@ body[data-rail="slim"] #rail #rail-collapse { align-self: center; }
     animation: panel-in-r var(--dur-slow) var(--ease);
     /* left color-rail echoing the selected node; --node-c set inline by JS */
     border-left: 2px solid var(--node-c, var(--border));
+}
+
+/* Detail záznamu (G6) stojí na tom istom pravom okraji ako #node-panel a berie
+   si tú istú animáciu vstupu. Farebný pruh vľavo NEMÁ: ten na #node-panel nesie
+   farbu OBLASTI vybraného uzla a záznam behu ani rozhodnutie do oblasti nepatria,
+   takže by to bol pruh bez významu.
+
+   Dva panely sa nikdy neotvoria naraz: obrazovka Graf má #node-panel, obrazovky
+   Runy a Rozhodnutia #rec-panel, a to sú disjunktné obrazovky. */
+#rec-panel {
+    right: var(--edge);
+    animation: panel-in-r var(--dur-slow) var(--ease);
 }
 
 @keyframes panel-in-l {
@@ -3170,6 +3182,7 @@ body.ambient #rail,
 body.ambient #app-header,
 body.ambient #dock,
 body.ambient #node-panel,
+body.ambient #rec-panel,
 body.ambient #zoomctl,
 body.ambient #toasts {
     opacity: 0;
@@ -6204,6 +6217,171 @@ button, input, select {
     text-decoration: none;
 }
 .focus-chip:hover { border-color: var(--border-accent); color: var(--text); }
+
+/* ===========================================================================
+   TABUĽKA ZÁZNAMOV (kontrakt 28. 8. 2026, G1–G4) — mechanika v mind/table.js
+
+   Appka do tejto vlny žiadnu tabuľku nemala, takže toto je nový jazyk a platí
+   pre Runy aj Rozhodnutia. Denník ostáva kartový (naratívna os, nie stĺpce).
+
+   `table-layout: fixed` je podmienka, nie optimalizácia: bez neho si prehliadač
+   šírky stĺpcov prepočítava z obsahu, takže po kliknutí na „Ďalších 50" celá
+   tabuľka poskočí do iných šírok — a to je layout shift na mieste, kde človek
+   práve čítal riadok.
+   =========================================================================== */
+.rec-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
+}
+
+/* Meno tabuľky je pre ČÍTAČKU, nie pre oko — nadpis nad tabuľkou už na
+   obrazovke je, takže druhý by bol tá istá veta dvakrát. */
+.rec-table caption {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.rec-table th {
+    text-align: left;
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-chart-axis);
+    font-weight: var(--fw-medium);
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    padding: 0 var(--sp-1) var(--sp-0h);
+    /* Hlavička drží pri scrollovaní dlhého zoznamu — inak sa po tridsiatom
+       riadku nedá zistiť, ktorý stĺpec je ktorý. */
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 1;
+}
+
+/* Triediace tlačidlo je celá hlavička, nie ikona v nej: cieľ 24 × 24 px je na
+   dotyku minimum a text stĺpca je najprirodzenejšie miesto, kam človek klikne. */
+.rec-sort {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: none; border: none;
+    padding: var(--sp-0) 0;
+    min-height: auto;
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+}
+.rec-sort:hover { color: var(--text); }
+.rec-sort-ico { font-size: 12px; }
+
+/* POHODLNÁ hustota bez prepínača (G4). 40 px je cieľová výška riadka; drží ju
+   padding, nie `height` — riadok s dvojriadkovým obsahom musí smieť narásť. */
+.rec-table td {
+    padding: var(--sp-1);
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: middle;
+    /* Text sa reže s výpustkou a NEZLOMÍ riadok: tabuľka porovnáva stĺpce, a
+       riadok, ktorý narastie na tri linky, to porovnanie zabije. Celý text nesie
+       `title` na cele (dopĺňa ho volajúci) a detail v paneli. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Číselné stĺpce vpravo, mono a tabulárne — inak sa čísla nedajú porovnať
+   očami, hoci stoja pod sebou. */
+.rec-table :is(th, td).num {
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--ls-mono);
+}
+.rec-table th.num .rec-sort { flex-direction: row-reverse; }
+
+.rec-row { cursor: pointer; transition: background var(--dur-fast) var(--ease); }
+.rec-row:hover { background: var(--accent-hover-wash); }
+.rec-row:focus-visible { background: var(--accent-focus-wash); }
+/* Otvorený riadok nesie stav v `aria-current`, takže CSS ho číta ODTIAĽ —
+   jeden nosič stavu a je aj v strome prístupnosti. Trieda `.open` zostáva pre
+   prípad, že by riadok mal byť zvýraznený bez toho, aby bol „aktuálny". */
+.rec-row[aria-current="true"] {
+    background: var(--accent-hover-wash);
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Prázdna tabuľka nie je prázdna obrazovka — jedna veta, bez ikony a akcie,
+   presne ako `.chart-empty`. */
+.rec-empty {
+    padding: var(--sp-3);
+    color: var(--muted);
+    font-size: var(--fs-data);
+    text-align: center;
+}
+
+/* ---- „Ďalších N" ---- */
+.rec-more {
+    display: flex; align-items: center; gap: var(--sp-2);
+    margin-top: var(--sp-2);
+}
+.rec-more-btn {
+    font-size: var(--fs-data);
+    padding: var(--sp-0h) var(--sp-2);
+}
+/* Počet je PRIZNANIE, nie ozdoba: „24 z 312" hovorí, že zoznam pokračuje, a
+   „všetkých 24", že už nie. Zoznam, ktorý mlčky skončí, vyzerá nedopočítaný. */
+.rec-more-n {
+    font-family: var(--mono);
+    font-size: var(--fs-chart-axis);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+/* ---- uložené filtre ---- */
+.rec-saved { display: flex; flex-wrap: wrap; gap: var(--sp-0h); align-items: center; }
+.rec-saved-chip {
+    display: inline-flex; align-items: center;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+}
+.rec-saved-apply,
+.rec-saved-del,
+.rec-saved-add {
+    background: none; border: none;
+    min-height: auto;
+    font-size: var(--fs-caption);
+    color: var(--text-secondary);
+    padding: var(--sp-0) var(--sp-1);
+}
+.rec-saved-apply:hover, .rec-saved-add:hover { color: var(--text); }
+/* Mazanie filtra je malé a utlmené — je to údržba, nie akcia, ktorú človek
+   hľadá. Na hover sa priznáva ako deštruktívne. */
+.rec-saved-del { color: var(--muted); padding-inline: var(--sp-0); }
+.rec-saved-del:hover { color: var(--danger-ink); }
+.rec-saved-add {
+    border: 1px dashed var(--border);
+    border-radius: var(--r-pill);
+}
+.rec-saved-add:disabled { opacity: var(--disabled-opacity); }
+
+/* Rad odznakov v detaile uzla (origin + istota + čakanie na overenie + značky).
+   Kresba je TU a nie v JS: certainty.js element len vytvorí a pomenuje. Inline
+   `style.cssText` tam bol do 28. 8. 2026 a bol to ten istý defekt, aký si tento
+   súbor už raz zaplatil na osi grafu — hodnota napísaná v JS je pre CSSOM
+   neviditeľná, takže ju žiadna asercia nenájde a nikto nezistí, že sa rozišla.
+
+   Hodnoty sú zámerne tie isté, aké mal inline zápis (6px medzera, 6px/2px
+   odstupy) — je to presun kresby, nie zmena vzhľadu. Prepísané na tokeny:
+   6 = --sp-0h, 2 = polovica --sp-0. */
+#node-badges {
+    display: flex; flex-wrap: wrap;
+    gap: var(--sp-0h);
+    align-items: center;
+    margin: var(--sp-0h) 0 2px;
+}
 
 /* ===========================================================================
    RESPONSIVE — jeden blok na hranicu, a obe hranice na konci súboru

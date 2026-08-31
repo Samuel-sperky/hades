@@ -1,4 +1,5 @@
 import { closeMdOverlay, mdLabel, mdNodeId, openMdOverlay } from './md.js';
+import { dropRecPanel } from './recpanel.js';
 import { setGraphScope } from './pack.js';
 import { showToast } from './toasts.js';
 import { closeNodePanel, selectNode } from './panels.js';
@@ -26,6 +27,11 @@ export const SCREEN_LABELS = { dnes: 'Dnes', graf: 'Graf', dennik: 'Denník', ro
 export function setScreen(name) {
     if (!SCREENS.includes(name)) name = 'dnes';
     const changed = S.screen !== name;
+    /* Pravý panel detailu záznamu patrí OBRAZOVKE, nie appke: pri prepnutí sa
+       zatvára BEZ zápisu do adresy — kľúč (`ruo` / `roo`) je viazaný na obrazovku
+       a urlstate ho pri prepnutí zahodí sám, takže druhý zápis by len pridal
+       záznam do histórie navigácie. */
+    if (changed) dropRecPanel();
     S.screen = name;
     localStorage.setItem('hades.screen', name);
     document.body.dataset.screen = name;

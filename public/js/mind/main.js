@@ -9,6 +9,7 @@ import { setupInput } from './interaction.js';
 import { setupPack } from './pack.js';
 import { buildLegend } from './panels.js';
 import { checkJournalUnread, initialRail, wireRailCollapse, wireRailMore } from './rail.js';
+import { wireRecPanel } from './recpanel.js';
 import { draw, fitView, frame, publishNavApi, requestDraw, resize, scheduleFrame, setupVisibilityRepaint } from './render.js';
 import { setScreen } from './screens.js';
 import { setupShortcuts } from './shortcuts.js';
@@ -43,6 +44,7 @@ async function init() {
     initialRail();
     wireRailCollapse();
     wireRailMore();
+    wireRecPanel();
     resize();
     window.addEventListener('resize', () => { resize(); requestDraw(); }); // rozmer sa zmenil → prekresli
 
