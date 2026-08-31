@@ -298,6 +298,45 @@ mariadb filter **112 passed / 932 asercií**. Odpushnuté.
 5. **Triedenie tabuliek nie je v adrese** — `urlstate.js` pre ňu nemá kľúč a
    vymyslieť si ho znamená kľúč, ktorý nikto nevaliduje.
 
+### Finálny review a čo našiel (28. 8. 2026)
+
+Review celého diffu vydal 12 nálezov + päť drobností; **všetky opravené** okrem
+jednej, ktorá odišla ako samostatná úloha. Tri z nich boli reálne rozbitie:
+
+1. **Spodná lišta na mobile bola celá neklikateľná** — `#screens` siahal pod ňu
+   a v z-poradí vyhral. Token na to v tom istom diffe existoval
+   (`--content-bottom`), ale prečítal si ho len `layout.js` pre plátno.
+   Zmerané: `elementFromPoint` vracal na všetkých piatich destináciách kartu KPI
+   alebo sparkline.
+2. **Skrytie stĺpcov na mobile nepomohlo** — `renderTable()` píše `width` INLINE
+   na `<th>`, takže percentá z desktopu prežili a `table-layout: fixed` ich
+   dodržal: Kedy 25 px, Trvanie 28 px, teda MENEJ než tých 44 px, ktoré to malo
+   vyriešiť, a tabuľka pretekala obal (338 vs 311). Moje vlastné meranie „78 px na
+   stĺpec" bola aritmetika (šírka / počet), nie skutočný layout — review meral
+   stĺpce.
+3. **KPI „záznamov" kreslila deltu z inej množiny než číslo nad ňou** —
+   `counts.session` je `origin != brain` (2 696 uzlov), trend počítal
+   `source = session` (145). Karta hlásila „+15 za týždeň", správne je 35.
+
+Ďalej: oblasť v sekcii fokusu sa nevykreslila **ani raz** (čítali sa kľúče
+`area_name` a `project`, ktoré `KontrolaScreen` neposiela), otvorený panel
+prekrýval číselné stĺpce tabuľky celé, `inlineOk()` kreslil odmietnutia
+úspechovou zelenou, 30-dňová os hlásila surové ISO (hoci ten istý diff to na
+tooltipe heatmapy práve opravil), riadky fokusu posielali AI 17 polí namiesto
+ôsmich, osirely `</div>` po onboardingu, mŕtve `.today-*` CSS a **zastarané počty
+toastov v manuáli** (43 / 69 namiesto 47 / 73).
+
+**Nedokončené zámerne:** deväť rodín `.dtl-*` stratilo posledného producenta, keď
+obrazovky prešli na tabuľky. Sú popretkávané so živými selektormi v zdieľaných
+zoznamoch a CLAUDE.md hovorí „upratovanie navrhuj ako samostatné úlohy" — ide to
+von ako vlastná úloha. Falošné tvrdenie, že ich kreslia Runy, je opravené.
+
+**Čo review overil a NEbol to nález:** cyklické importy (nové hrany ťahajú
+hoistované funkcie), escapovanie do `innerHTML`, rozsah „čo NIE" (žiadny gradient,
+žiadna tretia cesta k modelu, `AgentRunner` nedotknutý, migrácia bez schémy),
+bezpečnostný bod (`/brand/build-*` = 404) a kontrastná tabuľka AAA — tá sa
+reprodukovala presne vrátane kalibrácie 16,48 / 15,88.
+
 ### Vecné škody, ktoré tento beh spôsobil
 
 - **Zmazané tri staršie zálohy DB.** Rotácia „drž posledné 3" bežala v tom istom
