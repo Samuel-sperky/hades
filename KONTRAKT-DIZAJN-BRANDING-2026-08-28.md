@@ -92,6 +92,15 @@ Všetko nižšie. Čo tu nie je menované, do rozsahu nepatrí.
 
 - **G1 Runy + Rozhodnutia = tabuľky** (stĺpce, triedenie); **Denník ostáva
   kartový** (naratívny).
+
+  **OPRAVA KONTRAKTU (28. 8. 2026):** tento bod pôvodne menoval pre Rozhodnutia
+  stĺpce „Kedy, Rozhodnutie, Projekt, Oblasť, Istota". **Projekt ani Istota
+  v dátach NEEXISTUJÚ** — tabuľka `decisions` má `node_id, area_id, decided_on,
+  text, reason, origin, source_file` a `/api/decisions` nič iné nevracia.
+  Dopočítať projekt z `S.nodes` v prehliadači by znamenalo stĺpec, ktorý človek
+  vidí a AI nie — teda presne ten rozchod plôch, ktorý celá vlna E liečila.
+  Skutočné stĺpce sú **Kedy · Rozhodnutie · Oblasť · Pôvod**. Chyba je moja:
+  kontrakt som písal z odpovedí, bez kontroly schémy.
 - **G2 Filtre: dátum + projekt + oblasť + stav + uložené filtre** (localStorage).
 - **G3 Načítavanie: tlačidlo „ďalších 50".**
 - **G4 Pohodlná hustota** (~40 px), bez prepínača.

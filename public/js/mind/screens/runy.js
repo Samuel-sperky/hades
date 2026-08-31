@@ -1,12 +1,20 @@
 import { showToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, filterEmptyHtml, fmtNum, getJson, loadingHtml, plainInline, renderEmpty, renderError, timeAgo } from '../util.js';
-import { iconMarkup } from '../../shared/icons.js';
+import { ASC, DESC, moreRow, renderSavedFilters, renderTable, sortRows } from '../table.js';
+import { closeRecPanel, onRecPanelClose, openRecPanel, recOpenId, updateRecPanel } from '../recpanel.js';
 
 /* ---------- obrazovka Runy (/api/runs) — čo konzola robila ----------
-   Časová os behov zoskupená po dňoch (rovnaký idióm ako Rozhodnutia: .dtl*),
-   filtre stav/model ako .chip v .dtl-filter, detail behu sa rozbalí klikom na
-   kartu a dotiahne sa z /api/runs/{uuid}.
+   TABUĽKA behov (kontrakt G1) s triedením, filtrami stav/model ako .chip
+   v .dtl-filter a detailom v PRAVOM PANELI (G6), nie v rozbalenej karte.
+
+   Prečo tabuľka: beh je päť čísel v rade (tokeny, trvanie, model, profil, stav)
+   a karta sa na porovnávanie čísel nedá použiť — dve karty pod sebou majú svoje
+   čísla v inom vodorovnom mieste. Karty tu boli do 28. 8. 2026 a spolu s nimi
+   zmizlo aj ZOSKUPENIE PO DŇOCH (`.dtl-month`): hlavička dňa má význam len
+   v zozname zoradenom podľa času, a tabuľka sa dá zoradiť podľa tokenov. Deň sa
+   preto nestratil, presunul sa do `title` stĺpca Kedy — a stále je to serverový
+   kľúč `day`, nie dopočet z `started_at` (hranicu dňa určuje zóna servera).
 
    DÁTA SÚ SERVEROVÉ. Obrazovka si nič nedopočítava: počty podľa stavu (`counts`),
    ponuka modelov (`models`) aj kľúč dňa (`day`) prichádzajú z
@@ -15,10 +23,17 @@ import { iconMarkup } from '../../shared/icons.js';
    miesto, kde je číslo v odpovedi: presne tým sa Denník aj Kontrola dostali do
    stavu, že čip sľuboval číslo, ktoré zoznam nedal.
 
-   Čo TU zostáva vizuálne, a je to tak správne: popisok hlavičky dňa
-   (dnes/včera/dátum), formát trvania a `timeAgo`. To sú slová, nie údaje. */
+   Čo TU zostáva vizuálne, a je to tak správne: popisok dňa (dnes/včera/dátum),
+   formát trvania a `timeAgo`. To sú slová, nie údaje.
 
-/* Boot z URL (slovník §6): `rus` stav · `rum` model · `ruo` rozbalený beh.
+   TRIEDENIE JE KLIENTSKE a je to priznaný kompromis, nie omyl: `/api/runs`
+   pozná len `orderByDesc('started_at')` a `sort`/`dir` parameter nemá. Tabuľka
+   teda radí OKNO, ktoré prišlo (default 50 riadkov, strop 200) — „najdrahší beh"
+   je najdrahší z načítaných, nie z celej tabuľky. Serverový `sort` je zmena
+   mimo tohto súboru; kým nebude, je toto jediná pravda, ktorú sa dá povedať bez
+   dopočtu nad neúplnými dátami. */
+
+/* Boot z URL (slovník §6): `rus` stav · `rum` model · `ruo` otvorený beh.
    Číta sa pri načítaní modulu, teda pred prvým `query()` — odkaz tak pošle na
    server rovno svoj filter.
 
@@ -30,12 +45,29 @@ import { iconMarkup } from '../../shared/icons.js';
 const BOOT_MINE = readUrl().s === 'runy';
 const bootKey = (k) => (BOOT_MINE ? urlValue(k) : null) || null;
 
+/* Strop, ktorý drží server (`RunsScreen::MAX_LIMIT`). Je tu zdvojený zámerne
+   a vedome: validátor v `RunsController` nad 200 vracia 422, takže sa strop NEDÁ
+   zistiť pokusom — a `limit` v odpovedi hlási len to, čo klient poslal. Bez tejto
+   konštanty by „Ďalších 50" pri 200 riadkoch spôsobilo chybu, teda toast namiesto
+   riadkov. */
+const LIMIT_MAX = 200;
+const LIMIT_STEP = 50;
+
 export const runsState = {
     items: [], counts: {}, models: [],
-    status: bootKey('rus'), model: bootKey('rum'), open: bootKey('ruo'),
+    status: bootKey('rus'), model: bootKey('rum'),
+    /* `open` NIE JE stav panelu — je to JEDNORAZOVÉ prianie z adresy („otvor mi
+       tento beh"), ktoré `applyOpenWish()` spotrebuje a zahodí. Stav panelu
+       vlastní `recpanel.js` (`recOpenId('runy')`), pretože zavrieť sa dá aj jeho
+       vlastným krížikom a Escom, o ktorých táto obrazovka nevie nič. Keby tu
+       zostala druhá pravda, najbližšie prekreslenie by zavretie panelu odvolalo. */
+    open: bootKey('ruo'),
+    /* Koľko riadkov si obrazovka vyžiadala. Do adresy NEIDE: slovník `urlstate.js`
+       preň kľúč nemá a vymyslieť si ho tu by bol kľúč, ktorý nikto nevaliduje. */
+    limit: LIMIT_STEP,
+    sortKey: 'started_at',
+    sortDir: DESC,
     details: new Map(),
-    /** uuid behu, na ktorého prepínač sa má po prekreslení vrátiť fokus */
-    focus: null,
 };
 
 /** Stav behu → slovo pre človeka. Beh, ktorý čaká na povolenie zápisu, NIE JE chyba. */
@@ -47,13 +79,17 @@ const STATUS_LABEL = {
     failed: 'spadlo',
 };
 
-/** Poradie filtračných čipov je poradie, v akom to človek hľadá — nie abecedné. */
+/* Poradie filtračných čipov je poradie, v akom to človek hľadá — nie abecedné.
+   Slúži aj ako kľúč triedenia stĺpca Stav: `localeCompare` slovenských slov by
+   dal „beží, čaká, hotové, prerušené, spadlo", teda poradie bez významu.
+   Zoradiť podľa stavu znamená „ukáž mi najprv to, čo ma zaujíma", a to je presne
+   toto poradie. */
 const STATUS_ORDER = ['running', 'waiting', 'failed', 'aborted', 'done'];
 
 export async function renderRuns() {
     const body = $('runy-body');
     if (!body) return;
-    // Skeleton v tvare obsahu (rad filtračných čipov + riadky časovej osi).
+    // Skeleton v tvare obsahu (rad filtračných čipov + riadky tabuľky).
     const cancelSkeleton = deferSkeleton(body, 'table');
     try {
         const d = await getJson('/api/runs' + query());
@@ -61,15 +97,23 @@ export async function renderRuns() {
         runsState.items = d.items || [];
         runsState.counts = d.counts || {};
         runsState.models = d.models || [];
+        // Strop berieme zo SERVERA: `RunsScreen` si ho stláča sám (`min(limit, MAX)`),
+        // takže po jeho zásahu je pravdou odpoveď, nie prianie klienta.
+        if (d.limit) runsState.limit = d.limit;
         pruneRunFilters();
+        /* Panel otvorený na behu, ktorý filtru už nevyhovuje, je tá istá pasca ako
+           filter bez dát: obsah panelu by tvrdil niečo, čo v zozname nie je vidieť.
+           Zatvára sa až TU, po orezaní stavu, a cez `closeRecPanel()`, aby sa
+           z adresy stratil aj `ruo`. */
+        if (recOpenId('runy') && !hasRun(recOpenId('runy'))) closeRecPanel();
         /* Až tu je stav orezaný o to, čo v odpovedi neexistuje, takže do adresy ide
            pravda, ktorou sa obrazovka riadi — nie prianie z odkazu. `replace`:
-           filter ani rozbalenie behu do histórie nepatria (rozhodnutie 10). */
+           filter do histórie nepatrí (rozhodnutie 10). */
         syncRunsUrl();
         renderRunsView();
-        // Rozbalený beh z odkazu ešte nemá detail — dotiahni ho, akoby naň klikol
+        // Otvorený beh z odkazu ešte nemá detail — dotiahne sa, akoby naň klikol
         // človek. Až PO `renderRunsView()`, aby zoznam nečakal na druhý request.
-        if (runsState.open) loadRunDetail(runsState.open);
+        applyOpenWish();
     } catch (e) {
         cancelSkeleton();
         renderError(body, 'behy', renderRuns);
@@ -81,8 +125,16 @@ function query() {
     const p = new URLSearchParams();
     if (runsState.status) p.set('status', runsState.status);
     if (runsState.model) p.set('model', runsState.model);
+    // `limit` posiela obrazovka vždy, aj default — „Ďalších 50" je inak jediné
+    // miesto, ktoré by ho posielalo, a dopyt by sa medzi prvým a druhým načítaním
+    // líšil viac než o počet riadkov.
+    p.set('limit', String(Math.min(LIMIT_MAX, Math.max(1, runsState.limit || LIMIT_STEP))));
     const q = p.toString();
     return q ? '?' + q : '';
+}
+
+function hasRun(uuid) {
+    return runsState.items.some((r) => r.uuid === uuid);
 }
 
 /* Filter, ktorý po znovunačítaní nemá čo ukázať, je pasca — rady čipov sa
@@ -91,44 +143,60 @@ function query() {
 export function pruneRunFilters() {
     if (runsState.status && !(runsState.counts[runsState.status] > 0)) runsState.status = null;
     if (runsState.model && !runsState.models.includes(runsState.model)) runsState.model = null;
-    /* Rozbalený beh, ktorý v odpovedi nie je, je tá istá pasca o jednu úroveň
-       nižšie: `ruo` z odkazu môže mieriť na beh, ktorý filtru nevyhovuje alebo
-       už neexistuje, a `runItemHtml()` by ho nikde nevykreslil — stav by teda
-       ostal zapnutý a neviditeľný. Zhodíme ho, a adresa sa tým skrátí. */
-    if (runsState.open && !runsState.items.some((r) => r.uuid === runsState.open)) {
-        runsState.open = null;
-    }
+    /* Prianie z adresy, ktoré v odpovedi nemá riadok, je tá istá pasca o úroveň
+       nižšie: `ruo` môže mieriť na beh, ktorý filtru nevyhovuje alebo už
+       neexistuje. Zhodíme ho, a adresa sa tým skrátí. */
+    if (runsState.open && !hasRun(runsState.open)) runsState.open = null;
 }
 
-/* Adresný riadok nie je dopyt: `query()` vyššie skládá `?status=&model=` pre
-   `/api/runs` a `ruo` doň nepatrí (rozbalenie je poloha čitateľa, server o ňom
-   nevie). Tu je to naopak — všetky tri kľúče a žiadny preklad. */
+/* Adresný riadok nie je dopyt: `query()` vyššie skladá `?status=&model=&limit=`
+   pre `/api/runs`. Tu sú len kľúče, ktoré nesú polohu čitateľa —  a `ruo` medzi
+   nimi ZÁMERNE nie je: ten píše a maže `recpanel.js` pri otvorení a zavretí
+   panelu. Keby ho písala aj obrazovka, zavretý panel by si pri najbližšom
+   prekreslení vrátil svoj kľúč do adresy. */
 function syncRunsUrl() {
     writeUrl({
         rus: runsState.status || null,
         rum: runsState.model || null,
-        ruo: runsState.open || null,
     }, 'replace');
 }
 
 /* Späť / Dopredu: adresa je vstup. Keď sa zmenil len `ruo`, netreba nový dopyt na
-   zoznam — rozbalenie je poloha čitateľa, nie filter, a `renderRuns()` by kvôli
-   nemu zbytočne znova volal `/api/runs`. */
+   zoznam — otvorenie panelu je poloha čitateľa, nie filter, a `renderRuns()` by
+   kvôli nemu zbytočne znova volal `/api/runs`. */
 registerUrlApply('runy', (url) => {
     if (url.s !== 'runy') return;
     const nextStatus = url.rus || null;
     const nextModel = url.rum || null;
     const nextOpen = url.ruo || null;
     const filterChanged = nextStatus !== runsState.status || nextModel !== runsState.model;
-    if (!filterChanged && nextOpen === runsState.open) return;
+    if (!filterChanged && nextOpen === recOpenId('runy')) return;
     runsState.status = nextStatus;
     runsState.model = nextModel;
     runsState.open = nextOpen;
     if (document.body.dataset.screen !== 'runy') return;
     if (filterChanged) { renderRuns(); return; }
-    renderRunsView();
-    if (nextOpen) loadRunDetail(nextOpen);
+    applyOpenWish();
 });
+
+/* Spotrebovanie priania z adresy. Beží po každom prekreslení zoznamu a po
+   Späť/Dopredu; `runsState.open` sa hneď nuluje, aby prianie platilo RAZ. Bez
+   toho by kliknutie na filtračný čip po zavretí panelu panel znova otvorilo —
+   stav by mal dvoch vlastníkov a vyhral by ten zastaraný. */
+function applyOpenWish() {
+    const want = runsState.open;
+    runsState.open = null;
+    const cur = recOpenId('runy');
+    if (!want) {
+        // Späť na adresu bez `ruo`: panel má zmiznúť. `closeRecPanel()` počas
+        // aplikovania histórie do adresy nezapíše (stráž `applying` v urlstate).
+        if (cur) { closeRecPanel(); markOpenRow(null); }
+        return;
+    }
+    if (cur === want) return;
+    const row = runsState.items.find((r) => r.uuid === want);
+    if (row) openRun(row);
+}
 
 function renderRunsView() {
     const body = $('runy-body');
@@ -138,9 +206,9 @@ function renderRunsView() {
        beh sa nespúšťa odtiaľto, takže tlačidlo by nemalo kam viesť.
 
        Text hovorí „beh", nie „ťah": obrazovka vypisuje záznamy z `runs`, teda
-       BEHY. Ťah je jedna výmena s modelom VNÚTRI behu a je vidieť až v detaile
-       (`.run-steps`). Pomenovania sú nezameniteľné — ťah, ktorý zaparkuje na
-       bráne, nikdy nepošle rámec `end`, takže cena jeho prvého segmentu sa
+       BEHY. Ťah je jedna výmena s modelom VNÚTRI behu a je vidieť až v paneli
+       detailu (`.run-steps`). Pomenovania sú nezameniteľné — ťah, ktorý zaparkuje
+       na bráne, nikdy nepošle rámec `end`, takže cena jeho prvého segmentu sa
        počíta inak než cena behu. */
     if (!runsState.items.length && !runsState.status && !runsState.model) {
         renderEmpty(
@@ -152,7 +220,16 @@ function renderRunsView() {
         return;
     }
 
-    body.innerHTML = filtersHtml() + timelineHtml();
+    /* Jedna kostra pre všetky stavy: čipy, uložené filtre, tabuľka, priznanie
+       počtu. Prázdno z filtra ide do `#runy-table` namiesto tabuľky, takže
+       uložené filtre zostanú dosiahnuteľné aj vtedy, keď filter nič nenašiel —
+       práve tam ich človek potrebuje najviac. */
+    body.innerHTML = filtersHtml()
+        + '<div id="runy-saved"></div>'
+        + '<div id="runy-table"></div>'
+        + '<div id="runy-more"></div>';
+
+    wirePanelMirror();
 
     body.querySelectorAll('.chip[data-status]').forEach((c) => {
         c.onclick = () => {
@@ -168,18 +245,41 @@ function renderRunsView() {
             renderRuns();
         };
     });
-    body.querySelectorAll('button[data-toggle]').forEach((btn) => {
-        btn.onclick = () => toggleRun(btn.dataset.toggle);
+
+    renderSavedFilters($('runy-saved'), 'runy', {
+        onApply: (state) => {
+            const s = state || {};
+            runsState.status = s.status || null;
+            runsState.model = s.model || null;
+            /* Nasadenie filtra je viditeľná zmena plochy, takže sa NEHLÁSI —
+               politika notifikácií tejto vlny. Zlyhanie dopytu ohlási `renderRuns()`
+               svojím chybovým stavom. */
+            renderRuns();
+        },
+        current: currentFilter,
     });
-    body.querySelectorAll('.dtl-card[data-run]').forEach((card) => {
-        card.onclick = (ev) => {
-            if (ev.target.closest('button, a')) return;
-            toggleRun(card.dataset.run);
-        };
-    });
-    body.querySelectorAll('button[data-rerun]').forEach((b) => {
-        b.onclick = () => rerun(b.dataset.rerun, b);
-    });
+
+    if (!runsState.items.length) {
+        /* Prázdno z filtra, nie `.rec-empty` z `renderTable()`: „tvoj filter to
+           skryl" je iná správa než „zatiaľ žiadne záznamy" a má mať svoju jedinú
+           akciu. Tú `renderTable()` ponúknuť nevie a ani nemá — je to komponent
+           tabuľky, nie stavov plochy. */
+        $('runy-table').innerHTML = emptyFiltered();
+    } else {
+        const columns = runColumns();
+        renderTable($('runy-table'), columns, {
+            rows: sortRows(runsState.items, runsState.sortKey, runsState.sortDir, columns),
+            sortKey: runsState.sortKey,
+            sortDir: runsState.sortDir,
+            onSort: sortBy,
+            onOpen: openRun,
+            openId: recOpenId('runy'),
+            idKey: 'uuid',
+            caption: 'Log behov konzoly',
+        });
+        renderMore();
+    }
+
     /* Akcia prázdneho stavu z filtra. Tlačidlo tam je len vtedy, keď filter
        naozaj skrýva dáta: `pruneRunFilters()` vyššie zhodil stav bez počtu aj
        model, ktorý v ponuke nie je, takže čo prežilo, je platné. */
@@ -191,13 +291,158 @@ function renderRunsView() {
             renderRuns();
         };
     }
+}
 
-    // Prekreslenie zahodí celý `innerHTML`, teda aj prvok, na ktorom bol fokus —
-    // ten by spadol na `<body>` a klávesnica by začínala od začiatku stránky.
-    // Vracia sa preto na prepínač toho behu, s ktorým človek práve pracoval.
-    if (runsState.focus) {
-        body.querySelector('button[data-toggle="' + CSS.escape(runsState.focus) + '"]')?.focus();
+/* ---------- stĺpce ----------
+
+   Poradie: Stav · Zadanie · Kedy · Model · Profil · Tokeny · Trvanie.
+   Zadanie je HLAVNÝ IDENTIFIKÁTOR riadka, preto stojí hneď za stavom a je to
+   jediný stĺpec bez `width` — pri `table-layout: fixed` mu tak pripadne celý
+   zvyšok šírky. Keby stálo za číslami, čítalo by sa poslednou a riadok by sa
+   identifikoval podľa modelu, teda podľa hodnoty, ktorú má polovica riadkov
+   spoločnú.
+
+   ŠÍRKY SÚ V PERCENTÁCH, nie v `rem`, a je to zaplatené meraním: pri `9rem + …`
+   dal súčet 656 px a v 502 px širokom obsahu (rail rozbalený, úzke okno) zostalo
+   na Zadanie **0 px** — hlavný identifikátor riadka zmizol celý. Percentá sa
+   zmenšujú spolu s tabuľkou, takže zvyšok pre Zadanie je vždy 40 % šírky, nikdy
+   nula. Dôsledok, s ktorým treba počítať: na úzkej ploche sa režú aj chrómové
+   stĺpce, preto nesú `title`.
+
+   `sortValue` je tam, kde sa ZOBRAZENÁ hodnota porovnať nedá: „2 min" vs „45 s"
+   sú texty, ktorých abecedné poradie je náhoda, a „pred 3 d" je text bez dátumu.
+   Triedi sa vždy surová hodnota zo servera. */
+function runColumns() {
+    return [
+        {
+            key: 'status', label: 'Stav', width: '14%',
+            cell: (r) => {
+                const w = STATUS_LABEL[r.status] || r.status;
+                return '<span class="badge" data-status="' + esc(r.status) + '" title="' + esc(w) + '">'
+                    + esc(w) + '</span>';
+            },
+            // Poradie významu, nie abecedy — dôvod je pri `STATUS_ORDER`.
+            sortValue: (r) => {
+                const i = STATUS_ORDER.indexOf(r.status);
+                return i < 0 ? STATUS_ORDER.length : i;
+            },
+        },
+        {
+            key: 'prompt', label: 'Zadanie',
+            /* `title` nesie ten istý text ako cela. Nie je to zdvojenie: cela sa
+               reže s výpustkou (`.rec-table td` je nowrap + overflow hidden),
+               takže bez `title` sa dlhšie zadanie nedá prečítať bez otvorenia
+               panelu. Krátené je už zo servera na 160 znakov — obe plochy tak
+               vidia ten istý text. */
+            cell: (r) => {
+                const p = plainInline(r.prompt || '(bez zadania)');
+                return '<span title="' + esc(p) + '">' + esc(p) + '</span>';
+            },
+            sortValue: (r) => plainInline(r.prompt || ''),
+        },
+        {
+            key: 'started_at', label: 'Kedy', width: '8%',
+            cell: (r) => {
+                const when = timeAgo(r.started_at);
+                if (!when) return '—';
+                return '<span title="' + esc(whenTitle(r)) + '">' + esc(when) + '</span>';
+            },
+            /* ISO zo servera nesie OFFSET (`+02:00` v lete, `+01:00` v zime),
+               takže jeho abecedné poradie nie je chronologické na hranici času.
+               Normalizácia na UTC dá pevný tvar rovnakej dĺžky, kde abecedné
+               poradie chronologické JE — a to je dôvod, prečo tento stĺpec
+               nemusí byť `num`. */
+            sortValue: (r) => (r.started_at ? new Date(r.started_at).toISOString() : null),
+        },
+        {
+            key: 'model', label: 'Model', width: '13%',
+            cell: (r) => (r.model ? '<span title="' + esc(r.model) + '">' + esc(r.model) + '</span>' : '—'),
+        },
+        {
+            // Profil nástrojov, s ktorým beh bežal (memory/files/graph/full). `null`
+            // = beh z čias pred profilmi; prázdne riadky idú pri triedení na konec
+            // samy (`sortRows`), pretože „nič" nie je najmenšia hodnota.
+            key: 'tool_profile', label: 'Profil', width: '8%',
+            cell: (r) => (r.tool_profile ? esc(r.tool_profile) : '—'),
+        },
+        {
+            key: 'tokens_out', label: 'Tokeny', kind: 'num', width: '8%',
+            cell: (r) => (r.tokens_out == null ? '—' : esc(fmtNum(r.tokens_out))),
+        },
+        {
+            /* Trvanie je wall clock (obsahuje čas, kým sa človek rozhodoval o zápise),
+               kým `tokens_per_second` je z generovacieho času. Sú to dva rôzne údaje
+               a ani jeden nie je chyba — do tabuľky ide len trvanie, tok/s je v paneli
+               vedľa ostatnej ceny behu a pomenovaný inak. */
+            key: 'duration_ms', label: 'Trvanie', kind: 'num', width: '9%',
+            cell: (r) => (r.duration_ms == null ? '—' : esc(dur(r.duration_ms))),
+        },
+    ];
+}
+
+/* Prvý klik na stĺpec: čísla a čas ZOSTUPNE, text vzostupne. Najdrahší beh
+   a najnovší beh sú to, čo človek hľadá; „najstarší" chce až druhým klikom.
+   Triedenie do adresy neide — slovník `urlstate.js` pre ňu kľúč nemá. */
+function sortBy(key) {
+    if (runsState.sortKey === key) {
+        runsState.sortDir = runsState.sortDir === ASC ? DESC : ASC;
+    } else {
+        const col = runColumns().find((c) => c.key === key) || {};
+        runsState.sortKey = key;
+        runsState.sortDir = (col.kind === 'num' || key === 'started_at') ? DESC : ASC;
     }
+    renderRunsView();
+}
+
+/* „Ďalších 50" (G3).
+
+   Server posiela `limit` (strop okna), ale NEPOSIELA počet riadkov, ktoré filtru
+   vyhovujú. `counts` je nad celou tabuľkou BEZ filtrov, takže celkový počet je
+   známy presne v dvoch prípadoch: bez filtra (`counts.total`) a pri filtri len
+   podľa stavu (`counts[status]`). Pri filtri podľa modelu ho nemá odkiaľ vziať —
+   a dopočítať si ho z `items.length` je presne tá lož, na ktorú už naletel Denník.
+   Vtedy sa priznanie počtu NEKRESLÍ: mlčať je lepšie než ukázať číslo, ktoré
+   platí pre inú množinu.
+
+   Nad serverovým stropom (200) sa tiež nekreslí nič — tlačidlo, ktoré nemôže
+   priniesť ďalší riadok, je horšie než jeho absencia; ďalej sa dostane už len
+   filtrom. */
+function renderMore() {
+    const box = $('runy-more');
+    if (!box) return;
+    box.innerHTML = '';
+    const total = knownTotal();
+    if (total == null) return;
+    const shown = runsState.items.length;
+    if (shown < total && shown >= LIMIT_MAX) return;
+    moreRow(box, shown, total, () => {
+        runsState.limit = Math.min(LIMIT_MAX, (runsState.limit || LIMIT_STEP) + LIMIT_STEP);
+        renderRuns();
+    });
+}
+
+/** Celkový počet riadkov filtru, alebo `null` = server ho nepovedal (viď `renderMore`). */
+function knownTotal() {
+    const c = runsState.counts || {};
+    if (runsState.model) return null;
+    if (runsState.status) return typeof c[runsState.status] === 'number' ? c[runsState.status] : null;
+    return typeof c.total === 'number' ? c.total : null;
+}
+
+/* Uložený filter (G2). Meno si filter nesie sám — poskladané z aktívnych filtrov
+   („beží · qwen3:8b"), pretože meno vymyslené z obsahu je presnejšie než meno
+   napísané rukou o týždeň neskôr. `null` = nie je čo uložiť; ukladať „všetko"
+   nemá zmysel, to je stav bez filtra.
+
+   Do stavu ide `status` a `model`, NIE `limit` ani triedenie: filter je to, čo
+   sa pýtam servera. Koľko riadkov som si dolistoval a podľa čoho som ich zoradil,
+   je poloha v zozname, nie pohľad na dáta. */
+function currentFilter() {
+    const bits = [];
+    if (runsState.status) bits.push(STATUS_LABEL[runsState.status] || runsState.status);
+    if (runsState.model) bits.push(runsState.model);
+    if (!bits.length) return null;
+    return { name: bits.join(' · '), state: { status: runsState.status, model: runsState.model } };
 }
 
 function filtersHtml() {
@@ -235,31 +480,11 @@ function chip(label, active, attrs, n) {
         + '</button>';
 }
 
-function timelineHtml() {
-    if (!runsState.items.length) {
-        return '<div class="dtl">' + emptyFiltered() + '</div>';
-    }
-
-    let out = '<div class="dtl">';
-    let day = null;
-
-    runsState.items.forEach((r) => {
-        if (r.day !== day) {
-            day = r.day;
-            out += '<div class="dtl-month">' + esc(dayLabel(day)) + '</div>';
-        }
-        out += runItemHtml(r);
-    });
-
-    return out + '</div>';
-}
-
-/* Prázdno z filtra, nie tichý riadok v karte: „tvoj filter to skryl" je iná
+/* Prázdno z filtra, nie tichý riadok v tabuľke: „tvoj filter to skryl" je iná
    správa než „nič tu nie je" a jej jediná akcia je zrušiť filter.
 
-   `filterEmptyHtml` (reťazec) a nie `renderFilterEmpty`: časová os sa skládá do
-   jedného `innerHTML` v `renderRunsView()`, takže listener sa pripája tam, spolu
-   s ostatnými — podľa `data-act="clear-filter"`. */
+   `filterEmptyHtml` (reťazec) a nie `renderFilterEmpty`: listener sa pripája
+   v `renderRunsView()`, spolu s ostatnými — podľa `data-act="clear-filter"`. */
 function emptyFiltered() {
     return filterEmptyHtml('Tomuto filtru neodpovedá žiadny beh.',
         'Zruš filter a uvidíš celý log behov.');
@@ -277,47 +502,131 @@ function dayLabel(day) {
     return +dd + '. ' + +mm + '. ' + yy;
 }
 
-/* Karta NIE JE tlačidlo, hoci sa na ňu dá kliknúť.
-   Bola ním (`role="button" tabindex="0"`) a bola to chyba v návrhu, nie preklep:
-   vnorené `<button>` a `<a>` sú vnútri `role="button"` neplatné, a prístupné meno
+/* Presný čas do `title` stĺpca Kedy. Relatívny čas („pred 3 d") je v tabuľke
+   čitateľnejší, ale sám neodpovie na otázku „ktorý deň to bolo" — a odkedy tabuľka
+   nahradila hlavičky dní, nikde inde na obrazovke deň nie je. Deň berieme zo
+   serverového kľúča `day` (hranicu určuje zóna servera), hodinu z `started_at`. */
+function whenTitle(r) {
+    if (!r.started_at) return dayLabel(r.day);
+    const t = new Date(r.started_at).toLocaleTimeString('sk', { hour: '2-digit', minute: '2-digit' });
+    return dayLabel(r.day) + ', ' + t;
+}
+
+/* RIADOK TABUĽKY NIE JE TLAČIDLO a nesmie ním byť — je to ten istý dôvod, ktorý
+   tu do 28. 8. 2026 stál nad kartou behu.
+
+   Karta bola `role="button" tabindex="0"` a bola to chyba v návrhu, nie preklep:
+   vnorené `<button>` a `<a>` sú vnútri `role="button"` neplatné a prístupné meno
    karty vyšlo na 778 znakov — obsahovalo celý diff aj JSON argumentov, takže
    čítačka namiesto „otvoriť beh" prečítala celý obsah karty.
-   Rozbaľuje preto skutočné tlačidlo v hlavičke: krátke meno, `aria-controls`,
-   a Enter aj Space obsluhuje prehliadač sám. Klik na telo karty zostáva ako
-   pohodlie pre myš, nie ako prístupná cesta. */
-function runItemHtml(r) {
-    const open = runsState.open === r.uuid;
+
+   Prechod na tabuľku ten dôvod nezrušil, len presunul. Riadok je `<tr>`, ktorému
+   `table.js` dáva `tabindex` a obsluhu Enter/Space, ale ŽIADNU `role` — čítačka
+   ho číta ako riadok tabuľky, teda „stĺpec Stav, riadok 3", a jeho prístupné meno
+   je obsah ciel. Preto v riadku nie je ani diff, ani argumenty toolu, ani výsledok:
+   všetko dlhé žije v paneli. Najdlhšia cela je Zadanie a to je krátené SERVEROM
+   na 160 znakov, takže meno riadka má strop, ktorý sa nedá prekročiť obsahom behu.
+
+   Panel je jediná dlhá plocha a má vlastné meno („Detail: <zadanie>"), ktoré mu
+   dáva `openRecPanel` z `title` nižšie — krátené na 70 znakov, nie na 778. */
+function openRun(r) {
+    /* Druhý klik na otvorený riadok zatvára. Panel má vlastný krížik aj Esc,
+       takže to nie je jediná cesta von — ale riadok nesie `aria-current="true"`,
+       takže je to cesta, ktorú človek na tom mieste hľadá. */
+    if (recOpenId('runy') === r.uuid) {
+        closeRecPanel();
+        markOpenRow(null);
+        return;
+    }
+
     const detail = runsState.details.get(r.uuid);
-    const panelId = 'run-detail-' + r.uuid;
+    openRecPanel({
+        ns: 'runy',
+        id: r.uuid,
+        urlKey: 'ruo',
+        title: clipLabel(plainInline(r.prompt || '(bez zadania)')),
+        html: runPanelHtml(r, detail),
+    });
+    wireRunPanel();
+    markOpenRow(r.uuid);
+    if (!detail) loadRunDetail(r.uuid);
+}
+
+/* Zvýraznenie otvoreného riadka sa mení NA MIESTE, nie prekreslením tabuľky.
+   `renderTable()` prepíše `innerHTML`, takže by kliknutý riadok zmizol z DOM —
+   a `recpanel.js` si pri otvorení odložil `document.activeElement`, aby po zavretí
+   vrátil fokus. Odložený odpojený `<tr>` má `isConnected === false`, takže by sa
+   fokus po Esc nevrátil nikam a Tab by začínal od začiatku dokumentu.
+
+   Riadok sa hľadá porovnaním `dataset`, nie selektorom: `CSS.escape` uvnútri
+   uvedzovkovej hodnoty atribútu uuid začínajúce číslicou (`01a024b7-…`) zakóduje
+   na `\30 1a024b7…` a selektor prestane nachádzať čokoľvek. */
+/* Zrkadlo zvýraznenia riadka nad zavretím panelu.
+
+   Panel sa zatvára aj cestami, o ktorých táto obrazovka nevie: jeho vlastný
+   krížik, Esc obslúžený v `recpanel.js` a `dropRecPanel()` pri zmene obrazovky.
+   Bez notifikácie zostal po Escu riadok s `aria-current="true"` a s akcentovým
+   pruhom — čítačka aj oko by tvrdili, že detail je otvorený, hoci nie je
+   (zmerané pred opravou: 1 riadok s `aria-current` pri zavretom paneli).
+
+   Do 28. 8. 2026 to držal `MutationObserver` nad triedou panelu. Fungoval, ale
+   sledoval DÔSLEDOK (či je panel vidieť) namiesto UDALOSTI, a druhý panel by si
+   ten observer musel napísať znova — preto `recpanel.js` odteraz ohlasuje
+   zavretie sám a obrazovka si len povie, čo pri ňom urobí.
+
+   Registruje sa RAZ: druhá registrácia by tú prvú prepísala (`Map` podľa menného
+   priestoru), takže opakovaný `wireRuns()` nič nepokazí — ale zbytočne. */
+let mirrorWired = false;
+
+function wirePanelMirror() {
+    if (mirrorWired) return;
+    mirrorWired = true;
+    onRecPanelClose('runy', () => {
+        // Prepnutie obrazovky panel tiež zatvára; vtedy už tabuľka Runov nie je
+        // na obrazovke a jej prekreslenie by bolo práca do prázdna.
+        if (document.body.dataset.screen !== 'runy') return;
+        markOpenRow(null);
+    });
+}
+
+function markOpenRow(uuid) {
+    const table = $('runy-table');
+    if (!table) return;
+    table.querySelectorAll('.rec-row[data-rec]').forEach((tr) => {
+        const on = uuid != null && tr.dataset.rec === uuid;
+        tr.classList.toggle('open', on);
+        if (on) tr.setAttribute('aria-current', 'true');
+        else tr.removeAttribute('aria-current');
+    });
+}
+
+/** Meno panelu má povedať, ČO otvoril — nie prečítať celý beh. */
+function clipLabel(text) {
+    return text.length > 70 ? text.slice(0, 69) + '…' : text;
+}
+
+/* ---------- telo pravého panelu ----------
+
+   Panel nesie to, čo sa do riadka tabuľky nezmestilo, a to nie je len časová os
+   krokov: `steps`, `tool_calls`, `tok/s` a chybová správa behu boli v karte
+   a v tabuľke stĺpec nemajú. Keby zostali len tam, človek by po prechode na
+   tabuľku videl MENEJ než AI (`mind_runs` ich posiela) — a to je presne ten
+   rozchod plôch, ktorý má šprint rušiť, len obrátený. */
+function runPanelHtml(r, detail) {
     const prompt = plainInline(r.prompt || '(bez zadania)');
 
-    return '<div class="dtl-item">'
-        + '<span class="dtl-dot" data-status="' + esc(r.status) + '"></span>'
-        + '<article class="dtl-card run-card' + (open ? ' open' : '') + '" data-run="' + esc(r.uuid) + '">'
-        + '<div class="run-head">'
+    let out = '<div class="run-head">'
         + '<span class="badge" data-status="' + esc(r.status) + '">' + esc(STATUS_LABEL[r.status] || r.status) + '</span>'
         + '<span class="run-when">' + esc(timeAgo(r.started_at)) + '</span>'
         + (r.model ? '<span class="run-model">' + esc(r.model) + '</span>' : '')
-        // Profil nástrojov, s ktorým beh bežal (memory/files/graph/full). null = beh
-        // z čias pred profilmi, vtedy sa nič nehlási.
         + (r.tool_profile ? '<span class="run-profile">' + esc(r.tool_profile) + '</span>' : '')
-        + '<button type="button" class="run-toggle" data-toggle="' + esc(r.uuid) + '"'
-        + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="' + esc(panelId) + '"'
-        + ' aria-label="' + esc((open ? 'Zavrieť beh: ' : 'Otvoriť beh: ') + clipLabel(prompt)) + '">'
-        + iconMarkup('arrow-up') + ''
-        + '</button>'
-        + '</div>'
-        + '<p class="run-prompt">' + esc(prompt) + '</p>'
-        + costHtml(r)
-        + (r.error ? '<p class="run-error">' + esc(r.error) + '</p>' : '')
-        + (open ? detailHtml(r, detail, panelId) : '')
-        + '</article>'
         + '</div>';
-}
 
-/** Meno tlačidla má povedať, ČO otvorí — nie prečítať celú kartu. */
-function clipLabel(text) {
-    return text.length > 70 ? text.slice(0, 69) + '…' : text;
+    out += '<p class="run-prompt">' + esc(prompt) + '</p>';
+    out += costHtml(r);
+    if (r.error) out += '<p class="run-error">' + esc(r.error) + '</p>';
+    out += detailHtml(r, detail);
+    return out;
 }
 
 /* Cena behu. Trvanie je wall clock (obsahuje čas, kým sa človek rozhodoval
@@ -347,24 +656,28 @@ function metric(value, unit) {
     return '<span class="run-metric"><b>' + esc(String(value)) + '</b> ' + esc(unit) + '</span>';
 }
 
+/* Nedeliteľná medzera medzi číslom a jednotkou je pravidlo, nie ozdoba: „2 min
+   45 s" sa v stĺpci Trvanie nesmie zlomiť po čísle. */
 function dur(ms) {
-    if (ms < 1000) return ms + ' ms';
+    if (ms < 1000) return ms + ' ms';
     const s = ms / 1000;
-    if (s < 60) return (s < 10 ? s.toFixed(1) : Math.round(s)) + ' s';
+    if (s < 60) return (s < 10 ? s.toFixed(1) : Math.round(s)) + ' s';
     const m = Math.floor(s / 60);
-    return m + ' min ' + Math.round(s - m * 60) + ' s';
+    return m + ' min ' + Math.round(s - m * 60) + ' s';
 }
 
-function detailHtml(r, detail, panelId) {
-    const attrs = ' id="' + esc(panelId) + '" role="region" aria-label="Priebeh behu"';
-
-    /* Načítavanie sa dnes NEKRESLÍ ako prázdno. `emptyCardHtml` tu tvrdil, že
-       v detaile nič nie je, hoci sa práve dotahoval — a text bol navyše v prvej
+/* Priebeh behu. `role="region"` a `aria-label` tu už NIE SÚ a je to správne:
+   region je odteraz celý `#rec-panel`, ktorý si meno dopisuje z `title` záznamu
+   („Detail: <zadanie>"). Druhý pojmenovaný region vnútri prvého by v zozname
+   orientačných bodov len zdvojil ten istý obsah. */
+function detailHtml(r, detail) {
+    /* Načítavanie sa NEKRESLÍ ako prázdno. `emptyCardHtml` tu kedysi tvrdil, že
+       v detaile nič nie je, hoci sa práve doťahoval — a text bol navyše v prvej
        osobe. Dýchajúci znak (nie skeleton): detail behu je rôzne dlhý zoznam
        krokov, takže nemá tvar, ktorý sa dá predkresliť. */
-    if (!detail) return '<div class="run-detail"' + attrs + '>' + loadingHtml('Načítava sa beh…') + '</div>';
+    if (!detail) return '<div class="run-detail">' + loadingHtml('Načítava sa beh…') + '</div>';
 
-    let out = '<div class="run-detail"' + attrs + '>';
+    let out = '<div class="run-detail">';
 
     if (r.stop_reason) {
         out += '<p class="run-stop">Ukončené: <b>' + esc(r.stop_reason) + '</b></p>';
@@ -384,6 +697,18 @@ function detailHtml(r, detail, panelId) {
     out += '</div>';
 
     return out + '</div>';
+}
+
+/* Akcie panelu sa napájajú po KAŽDOM zápise do jeho tela — teda aj po
+   `updateRecPanel()`. Telo je `innerHTML`, takže dobehnutý detail zahodí staré
+   prvky aj s ich `onclick`om; bez druhého napojenia by „Spustiť znovu" fungovalo
+   len pri behu, ktorý bol v cache. */
+function wireRunPanel() {
+    const box = $('rec-panel-body');
+    if (!box) return;
+    box.querySelectorAll('button[data-rerun]').forEach((b) => {
+        b.onclick = () => rerun(b.dataset.rerun, b);
+    });
 }
 
 function messageStepHtml(e) {
@@ -421,26 +746,14 @@ function toolWord(status) {
     }[status] || (status || '—');
 }
 
-async function toggleRun(uuid) {
-    runsState.focus = uuid;
+/* Dotiahnutie detailu je oddelené od `openRun()`, pretože panel má DVA spúšťače:
+   klik na riadok a `ruo` z odkazu. Kópia tela fetchu v druhej ceste by znamenala
+   dve miesta, kde sa cache `details` plní — a jedno z nich by sa raz prestalo
+   držať strážcu „je ten beh ešte otvorený".
 
-    if (runsState.open === uuid) {
-        runsState.open = null;
-        syncRunsUrl();
-        renderRunsView();
-        return;
-    }
-
-    runsState.open = uuid;
-    syncRunsUrl();
-    renderRunsView();
-    loadRunDetail(uuid);
-}
-
-/* Dotiahnutie detailu je oddelené od `toggleRun()`, pretože rozbalenie má odteraz
-   DVE spúšťače: klik a `ruo` z odkazu. Kópia tela fetchu v druhej ceste by
-   znamenala dve miesta, kde sa cache `details` plní — a jedno z nich by sa raz
-   prestalo držať strážcu `runsState.open`. */
+   Zlyhanie je TOAST s variantom `error`: dopočet nemá kde inde zlyhať viditeľne
+   a panel by inak zostal navždy pri dýchajúcom znaku. Prázdna `timeline` v cache
+   je zámerná — bez nej by každé prekreslenie skúšalo fetch znova. */
 async function loadRunDetail(uuid) {
     if (runsState.details.has(uuid)) return;
 
@@ -451,7 +764,12 @@ async function loadRunDetail(uuid) {
         runsState.details.set(uuid, { timeline: [] });
         showToast('Detail behu sa nepodarilo načítať.', null, 'error');
     }
-    if (runsState.open === uuid) renderRunsView();
+    // Kým dopočet bežal, človek mohol panel zavrieť alebo otvoriť iný beh.
+    if (recOpenId('runy') !== uuid) return;
+    const row = runsState.items.find((r) => r.uuid === uuid);
+    if (!row) return;
+    updateRecPanel(runPanelHtml(row, runsState.details.get(uuid)));
+    wireRunPanel();
 }
 
 /* „Spustiť znovu" beh NESPÚŠŤA. Vyžiada si od servera zadanie, položí ho do
@@ -471,9 +789,9 @@ async function rerun(uuid, btn) {
         }
         try {
             await navigator.clipboard.writeText(j.prompt);
-            showToast('Zadanie je v schránke, otváram vlákno.');
+            showToast('Zadanie je v schránke, otváram vlákno.');
         } catch (e) {
-            showToast('Vlákno otváram; zadanie skopíruj z detailu behu.', null, 'warn');
+            showToast('Vlákno otváram; zadanie skopíruj z detailu behu.', null, 'warn');
         }
         if (j.thread) window.location.href = '/console/' + j.thread;
     } finally {

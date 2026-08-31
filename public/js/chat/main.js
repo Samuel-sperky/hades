@@ -30,7 +30,7 @@
 /* Jediný import behu. Cyklus `main → run → render → main` je tým reálny a je to
    presne ten prípad, pre ktorý je hoistovanie vyššie povinné: `render.js` na
    svojom vrchole importuje tento modul, ktorý sa v tej chvíli ešte vyhodnocuje. */
-import { wireRun } from './run.js';
+import { bootModelSelect, wireRun } from './run.js';
 /* Zvyšok plochy. Do 25. 8. 2026 tu bol len `run.js` a ostatných sedem modulov
    vlny 3 sa na stránku NENAČÍTALO VÔBEC — blade má jediný `<script type="module">`
    a ten vedie sem, takže modul bez importu odtiaľto je mŕtvy kód. Nález finálneho
@@ -714,6 +714,7 @@ export function boot() {
 
     bootThreads();
     bootBranches();
+    bootModelSelect();
     bootAttach();
     bootVoice();
     bootAgents();

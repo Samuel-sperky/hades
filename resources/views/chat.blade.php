@@ -151,6 +151,25 @@
                         <option value="graph">Graf</option>
                         <option value="orchestrator">Orchestrátor</option>
                     </select>
+                    {{-- MODEL (kontrakt 28. 8. 2026, H5). Ide tou istou cestou ako
+                         profil: `RunController` prijíma `model` na KAŽDÝ ťah, takže
+                         je to vlastnosť ťahu a nie nastavenie plochy — jeden krok
+                         sa dá pustiť na malom modeli a ďalší na veľkom.
+
+                         Zoznam plní server (`GET /api/console/models`), nie tento
+                         markup: modely sa v Ollame pridávajú a odoberajú a zoznam
+                         zadrôtovaný v Blade by o týždeň ponúkal model, ktorý na
+                         stroji nie je. Prázdna hodnota znamená „default z configu",
+                         rovnako ako u profilu.
+
+                         Voľba sa ZÁMERNE nepamätá medzi načítaniami: profil sa tiež
+                         nepamätá a model uložený z minulej session by sa ticho
+                         nasadil na vlákno iného poskytovateľa. Server je posledné
+                         slovo — neznámy model odmietne. --}}
+                    <label id="chat-model-label" class="sr-only" for="chat-model">Model</label>
+                    <select id="chat-model" aria-labelledby="chat-model-label">
+                        <option value="">Predvolený model</option>
+                    </select>
                     {{-- Stav behu (sekundy, krok, tokeny) — plní vlna 3.
                          `aria-live` tu ZÁMERNE nie je: hodnota sa mení každú
                          sekundu a čítačka by tikala do rečí. Hotový ťah ohlási

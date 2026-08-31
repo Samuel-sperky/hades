@@ -32,10 +32,17 @@ export const DESC = -1;
 /**
  * Vykreslí tabuľku do kontejnera.
  *
- * `columns`: [{ key, label, kind?, sortable?, width?, cell? }]
+ * `columns`: [{ key, label, kind?, sortable?, width?, cell?, titleFrom? }]
  *   kind `num` zarovná vpravo a nasadí mono + tabulárne číslice (stĺpce čísel
  *   musia stáť pod sebou, inak sa nedajú porovnať očami).
  *   `cell(row)` vracia HTML jednej celly; keď chýba, berie sa `row[key]`.
+ *   `titleFrom(row)` vracia PLNÝ text pre `title` na `<td>`.
+ *
+ * PREČO `titleFrom` a nie dopisovanie `title` po kresbe: cely sa režú
+ * (`text-overflow: ellipsis`), a **rez, ktorý sa nepriznáva, je lož** — celý
+ * text musí byť dosiahnuteľný. Volajúci si ho dovtedy musel dopísať ťahom po
+ * hotovej tabuľke, čo je druhý prechod nad tým istým DOM a ľahko sa zabudne
+ * pri novom stĺpci. Deklarácia pri stĺpci sa zabudnúť nedá.
  *
  * `opts`: { rows, sortKey, sortDir, onSort(key), onOpen(row), openId, idKey,
  *           empty, caption }
@@ -88,7 +95,15 @@ export function renderTable(container, columns, opts) {
         h += '<tr class="rec-row' + (open ? ' open' : '') + '" data-rec="' + esc(id) + '"'
             + (open ? ' aria-current="true"' : '') + '>';
         for (const c of columns) {
-            h += '<td' + (c.kind === 'num' ? ' class="num"' : '') + '>'
+            /* `title` sa nekreslí, keď je prázdny alebo keď sa rovná obsahu cely:
+               atribút, ktorý zopakuje to, čo je vidieť, len pridá tooltip bez
+               informácie — a na dotyku ho aj tak nikto neuvidí. */
+            let title = '';
+            if (typeof c.titleFrom === 'function') {
+                const t = c.titleFrom(r);
+                if (t != null && String(t) !== '') title = ' title="' + esc(String(t)) + '"';
+            }
+            h += '<td' + (c.kind === 'num' ? ' class="num"' : '') + title + '>'
                 + (c.cell ? c.cell(r) : esc(r[c.key] == null ? '' : String(r[c.key])))
                 + '</td>';
         }

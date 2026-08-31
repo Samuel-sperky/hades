@@ -24,6 +24,28 @@ let openRec = null;
    dokumentu — presne to, čo si už raz zaplatila paleta Ctrl-K. */
 let returnFocus = null;
 
+/* Spätné volania „panel sa zavrel", podľa menného priestoru.
+   PREČO to tu je: obrazovka musí po zavretí zhasnúť `aria-current` na riadku,
+   ktorý bol otvorený — inak tabuľka tvrdí, že je otvorený záznam, ktorý nie je.
+   Panel sa pritom zatvára TROMI cestami (krížik, Esc, `dropRecPanel()` pri
+   prepnutí obrazovky), takže bez notifikácie musela obrazovka sledovať triedu
+   panelu `MutationObserver`om — to funguje, ale je to sledovanie DÔSLEDKU
+   namiesto ohlásenia UDALOSTI, a ďalší panel by si ten observer musel napísať
+   znova. */
+const closeHooks = new Map();
+
+/** Zaregistruje `fn` pre menný priestor; druhá registrácia prvú prepíše. */
+export function onRecPanelClose(ns, fn) {
+    if (typeof fn === 'function') closeHooks.set(ns, fn);
+}
+
+function fireClose(ns) {
+    const fn = ns && closeHooks.get(ns);
+    if (!fn) return;
+    // Chyba v obrazovke nesmie zabiť zatváranie panelu.
+    try { fn(); } catch (e) { /* obrazovka si to nesie sama */ }
+}
+
 export function recOpenId(ns) {
     return openRec && openRec.ns === ns ? openRec.id : null;
 }
@@ -62,8 +84,10 @@ export function closeRecPanel() {
     const panel = $('rec-panel');
     if (!panel) return;
     const key = openRec && openRec.urlKey;
+    const ns = openRec && openRec.ns;
     panel.classList.add('hidden');
     openRec = null;
+    fireClose(ns);
     if (key) writeUrl({ [key]: null }, 'replace');
     const back = returnFocus;
     returnFocus = null;
@@ -73,9 +97,11 @@ export function closeRecPanel() {
 /** Zatvorí panel BEZ zápisu do adresy — pri prepnutí obrazovky. */
 export function dropRecPanel() {
     const panel = $('rec-panel');
+    const ns = openRec && openRec.ns;
     if (panel) panel.classList.add('hidden');
     openRec = null;
     returnFocus = null;
+    fireClose(ns);
 }
 
 export function wireRecPanel() {

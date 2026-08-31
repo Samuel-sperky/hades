@@ -394,6 +394,40 @@ function childFrame(run, frame) {
    Kostra plochy (`main.js`) len OHLASUJE zámer človeka; vykonáva ho tento modul.
    --------------------------------------------------------------------------- */
 
+/* Zoznam modelov plní SERVER (`GET /api/console/models`), nie markup: modely sa
+   v Ollame pridávajú a odoberajú, takže zadrôtovaný zoznam by o týždeň ponúkal
+   model, ktorý na stroji nie je.
+
+   Zlyhanie je TICHÉ a je to zámer: prepínač modelu je pohodlie a bez neho ide
+   beh na default z configu. Toast pri načítaní plochy by hlásil poruchu veci,
+   ktorú človek ani nechcel použiť.
+
+   Prvá voľba („Predvolený model") sa NEMAŽE — je to jediná cesta späť
+   k defaultu servera po tom, čo si človek model raz vybral. */
+export async function bootModelSelect() {
+    const sel = document.getElementById('chat-model');
+    if (!sel) return;
+    let data;
+    try {
+        const res = await fetch('/api/console/models');
+        if (!res.ok) return;
+        data = await res.json();
+    } catch (e) { return; }
+    const models = Array.isArray(data && data.models) ? data.models : [];
+    if (!models.length) return;
+    for (const m of models) {
+        if (!m || !m.id) continue;
+        const o = document.createElement('option');
+        o.value = String(m.id);
+        /* Poskytovateľ patrí do popisku len keď ich je viac než jeden — inak je
+           to na každej položke to isté slovo a v úzkom composeri zaberá miesto,
+           ktoré potrebuje meno modelu. */
+        const many = new Set(models.map((x) => x && x.provider).filter(Boolean)).size > 1;
+        o.textContent = String(m.label || m.id) + (many && m.provider ? ' · ' + m.provider : '');
+        sel.appendChild(o);
+    }
+}
+
 export function wireRun() {
     document.addEventListener('chat:ready', (event) => { openInitial(event.detail?.thread || ''); });
     document.addEventListener('chat:submit', (event) => { submit(event.detail?.text || ''); });
@@ -604,6 +638,13 @@ export async function submit(text) {
     const body = { thread: thread.uuid, message };
 
     if (profile) body.profile = profile;
+
+    /* MODEL ide s ťahom z toho istého dôvodu ako profil (H5): `RunController`
+       ho prijíma na každý ťah, takže výber v composeri je vlastnosť ĎALŠIEHO
+       ťahu — jeden krok sa dá pustiť na malom modeli a ďalší na veľkom.
+       Prázdna hodnota sa NEPOSIELA: server vtedy vezme default z configu. */
+    const model = document.getElementById('chat-model')?.value || '';
+    if (model) body.model = model;
 
     client.enqueue(body);
 

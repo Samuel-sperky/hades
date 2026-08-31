@@ -5429,9 +5429,11 @@ button.danger.armed {
 
    Prečo `flex-wrap` a nie `.dtl-head { display: contents }`: viď komentár pri
    .dtl-head. A prečo `:has(> .dtl-head)` a nie `.dtl-card`: to isté meno karty
-   nosia Runy (`.dtl-card.run-card`), ktoré majú `.run-head` a zvislý obsah —
-   riadkový wrap by im rozobral rozloženie. Selektor sa preto pýta na hlavičku
-   rozhodnutia, nie na obrazovku. */
+   nosili Runy (`.dtl-card.run-card`) a riadkový wrap by im rozobral rozloženie.
+   Runy prešli 28. 8. 2026 na tabuľku (`.rec-table`) a `.run-card` už neexistuje,
+   takže dnes je selektor OBRANOU, nie rozhraním medzi dvoma obrazovkami —
+   nezužuj ho na `.dtl-card`: karta s hlavičkou je stále jediná, ktorá riadkový
+   wrap chce, a ďalšia obrazovka s kartami sa toho mena chytí znova. */
 .dtl-card:has(> .dtl-head) {
     flex-direction: row;
     flex-wrap: wrap;
@@ -5720,23 +5722,6 @@ button, input, select {
     margin-bottom: var(--sp-1);
 }
 
-/* Prepínač detailu. `margin-left: auto` ho drží na konci hlavičky; cieľ má 32 px,
-   nie 24 — WCAG 2.5.8 je minimum, nie odporúčanie, a v časovej osi sa naň klikne
-   často. Ikona `arrow_downward` v subsete fontu NIE JE, takže je to prevrátená
-   `arrow_upward` — ten istý trik, aký používa konzola. */
-.run-toggle {
-    margin-left: auto;
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; height: 32px;
-    background: none; border: none; border-radius: var(--r-sm);
-    color: var(--muted);
-    cursor: pointer;
-}
-
-.run-toggle .ic { font-size: var(--icon-xs); transform: rotate(180deg); }
-.run-toggle[aria-expanded="true"] .ic { transform: none; }
-.run-toggle:hover { background: var(--accent-softer); color: var(--text); }
-
 .run-when, .run-model, .run-profile {
     color: var(--muted);
     font-size: var(--fs-data);
@@ -5834,10 +5819,14 @@ button, input, select {
 }
 
 /* Toto ZÁMERNE zostáva na 11px a bez vlastnej prokládky: je to popisok stĺpca
-   (kto ťah povedal), nie dáta, a `.dtl-card.run-card` je <article>, nie
-   <button> — riadkovanie sem teda dedičnosť z `body` donesie a deklarovať ho
-   znova by len posunulo pixely bez zisku. R7 žiadal rozšíriť stĺpec, nie
-   zväčšiť písmo. */
+   (kto ťah povedal), nie dáta. Riadkovanie sem donesie dedičnosť a deklarovať ho
+   znova by len posunulo pixely bez zisku. R7 žiadal rozšíriť stĺpec, nie zväčšiť
+   písmo.
+
+   Pôvodné zdôvodnenie sa opieralo o to, že `.dtl-card.run-card` je <article> a
+   nie <button>; tá karta od 28. 8. 2026 neexistuje (Runy sú tabuľka) a kroky
+   behu žijú v `#rec-panel`. Dedičnosť platí ďalej — panel je <aside>, tiež nie
+   form control —, takže rozhodnutie sa nemení, len jeho dôvod. */
 .run-step-who {
     color: var(--muted);
     font-family: var(--mono);
