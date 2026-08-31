@@ -136,13 +136,25 @@ body[data-artifact="off"] #chat-app { --chat-artifact-w: 0px; }
 #chat-threads,
 #chat-artifact {
     position: relative;
-    display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
     background: var(--panel);
 }
+
+/* `display` stojí v `:not([hidden])` z toho istého dôvodu ako u `.ct-acts`,
+   `.cs-box`, `.cb-bar` a `.cf-bar` (bod 2 nižšie): `applyPanel()` v
+   `chat/main.js` zatvára panel ATRIBÚTOM `hidden`, a `[hidden] { display: none }`
+   z UA stylesheetu prebije KAŽDÉ autorské `display` bez ohľadu na špecificitu —
+   teda aj naopak: autorské `display: flex` na skupine vyššie ten atribút
+   ignorovalo. Zaplatené 31. 8. 2026: pod 900 px je panel `position: fixed`
+   prekryv, takže zatvorený panel zostal celý na obrazovke (zmerané pri 375 px:
+   `hidden` = true a pritom `display: flex`, `left: 0`, `width: 320`) a hlavička
+   sa kreslila nad jeho vrchom — `elementFromPoint` vracal na 23 tlačidlách
+   panela `HEADER.ca-head` alebo riadok pod nimi. */
+#chat-threads:not([hidden]),
+#chat-artifact:not([hidden]) { display: flex; }
 
 #chat-threads { border-right: 1px solid var(--border); }
 #chat-artifact { border-left: 1px solid var(--border); }
@@ -332,7 +344,23 @@ body.cp-dragging {
 }
 
 /* Prázdny stav. `margin: auto` ho drží v optickom strede toku, kým v ňom nie je
-   nič iné; keď vlna 3 pridá prvú bublinu, tento blok už z DOM zmizne. */
+   nič iné; keď vlna 3 pridá prvú bublinu, tento blok už z DOM zmizne.
+
+   ÚMYSELNÁ VÝNIMKA ZO SLOVNÍKA PRÁZDNYCH STAVOV (31. 8. 2026). `mind.css` má
+   `.empty` / `.empty--hero`, ale táto plocha ich NEPOUŽIJE a je to rozhodnutie,
+   nie opomenutie:
+     · `.empty--hero` je zámerne `text-align: left` a `align-items: flex-start`,
+       kým toto je jediná plocha, kde prázdny stav stojí v OPTICKOM STREDE
+       obrazovky so značkou nad textom — a značka odskočená vľavo pri centrovanom
+       texte je horšia než vlastný komponent;
+     · `.empty--hero` nemá v celej appke ani jeden call-site (grep nad
+       `public/js/` a `resources/views/`: 0), takže by sa tu nezjednocovalo
+       s ničím — žila by len pre `console.css`;
+     · pravidlá nižšie sú ID (1-0-0), teda nad každým `.empty--hero` (0-2-0);
+       pridanie tried z JS by dalo POLOVIČNÝ stav (`display: flex` a `padding: 0`
+       by prešli, `text-align: center` z ID by zostal). To je regresia, nie krok.
+   Keď sa `.empty--hero` raz stane skutočným slovníkom appky, presúva sa tento
+   komponent CELÝ vrátane rozhodnutia o centrovaní — nie po jednej triede. */
 #chat-empty {
     margin: auto;
     max-width: 46ch;
@@ -416,9 +444,19 @@ body.cp-dragging {
     max-height: 40vh;
     padding: 4px 2px;
     border: 0;
+    /* Radius je 0 ZÁMERNE a nie je to chýbajúci token: rám aj oblé rohy nesie
+       `.cc-row` okolo poľa, takže druhý radius vnútri by kreslil obdĺžnik v
+       obdĺžniku. Token by tu bol presnejšie pomenovaná nula. */
     border-radius: 0;
     background: transparent;
     resize: none;
+    /* Font a stupeň sa VYPISUJÚ, hoci hodnota je tá istá, akú textarea zdedila
+       (zmerané pred aj po: Geist, 14 px). Bez týchto dvoch riadkov ich držal len
+       bare `textarea` reset v mind.css — a `appearance: auto` na textarea síce
+       nič nekazí (nemá čo rozbaľovať, na rozdiel od `<select>`), ale jediné pole
+       tejto plochy nemá visieť na tom, že cudzí súbor reset nezmení. */
+    font-family: var(--font);
+    font-size: var(--fs-base);
     line-height: var(--lh-base);
     overflow-y: auto;
 }
@@ -530,13 +568,17 @@ body.cp-dragging {
 /* Riadok mena a ceny nad bublinou odpovede (`render.js`); zvyšok kresby
    kopírovania je v mind.css.
 
-   POZOR — dnes je to pravidlo INERTNÉ a zmerané: `.cm-who` je obyčajný
-   `<span>` (`render.js:264`) a `chat.css` mu nikde nedáva `display: flex`,
-   takže `margin-left: auto` sa použije ako 0. Na `/console` to funguje, lebo
-   tam je `.who` flexový. Ponechané zámerne: keď `.cm-who` flexovým bude,
-   tlačidlo si odskočí doprava samo — a zmazať pravidlo by ten zámer stratilo.
-   Overené 26. 8. 2026, že to tak bolo AJ PRED zjednotením kresby, takže to nie
-   je jeho vedľajší efekt. */
+   TOTO PRAVIDLO BOLO DO 31. 8. 2026 INERTNÉ a jeho vtedajší komentár to
+   priznával: `.cm-who` bol obyčajný `<span>` (`render.js`) a `chat.css` mu nikde
+   nedával `display: flex`, takže `margin-left: auto` sa použil ako 0 (na
+   `/console` to fungovalo, lebo tam je `.who` flexový). Bolo ponechané so
+   zámerom „keď `.cm-who` flexovým bude, tlačidlo si odskočí doprava samo" —
+   a v sekcii 8 kresby plochy nižšie sa to stalo. Od tej chvíle je pravidlo ŽIVÉ.
+
+   Cena vedľa mena (`.cm-cost`) má `margin-left: auto` z toho istého dôvodu, takže
+   v riadku s oboma odskočí doprava tá, ktorá je v DOM prvá, a druhá si sadne
+   vedľa nej. Keď to bude prekážať, rieši sa to poradím v `render.js`, nie druhým
+   `auto` — dva `auto` v jednom rade si šírku rozdelia. */
 .cm-who .copy-btn { margin-left: auto; }
 
 /* ---------- zvýraznenie syntaxe ----------
@@ -894,8 +936,11 @@ body.cp-dragging {
 
    Toto pravidlo riesi LEN citatelnost: polozka dedi farbu textu ako kazdy iny
    ovladac a `ct-del` nesie danger rolu. Kresba menu (povrch, ram, hustota,
-   stavy) je otvoreny bod — dorobit ju znamena navrhnut komponent, nie opravit
-   chybu, a to patri do samostatneho zadania. */
+   stavy) bola vtedy oznacena za otvoreny bod pre samostatne zadanie —
+   TO ZADANIE JE SPLNENE 31. 8. 2026 a kresba je v sekcii 5 nizsie. Tieto tri
+   pravidla tam ZAMERNE nesplynuli: nesu FARBU (nalez kontrastneho overenia)
+   a stoja na mieste, kde ten nalez vznikol; sekcia 5 dopisuje povrch, ram
+   a hustotu a farbu nedeklaruje, takze sa neprebijaju. */
 .ct-act-btn {
     color: var(--text);
     text-decoration: none;
@@ -903,8 +948,1838 @@ body.cp-dragging {
 .ct-act-btn:hover { color: var(--accent-ink); }
 .ct-act-btn.ct-del { color: var(--danger); }
 /* `#chat-export` v hlavicke je tiez <a> bez pravidla — ten isty nalez, ine miesto.
-   Zmerane: 1,98:1 na tmavej teme. Kresbu ikonoveho tlacidla hlavicky uz nesie
-   `.ch-right :is(a, button)` nizsie; chybala len farba. */
+   Zmerane: 1,98:1 na tmavej teme.
+
+   POZOR: tu stalo, ze „kresbu ikonoveho tlacidla hlavicky uz nesie
+   `.ch-right :is(a, button)` nizsie". To pravidlo NEEXISTOVALO — grep nad
+   `chat.css` mal 0 zasahov a `#chat-read` vedla tohto odkazu nesl bare `button`
+   z mind.css (panelova vyplň + 1 px ram), kym prepinace panelov vedla neho maju
+   vyplň potlacenu. Hlavicka teda hovorila dvoma jazykmi. Od 31. 8. 2026 to
+   pravidlo naozaj existuje (sekcia 2 kresby plochy nizsie) a nesie povrch, ram
+   aj farbu — tato dvojica riadkov je vedla neho nadbytocna, ale ponechana je
+   zamerne: je 0-1-0, teda slabsia, takze nic neprebija, a je to jediny zapis
+   toho nalezu na miste, kde vznikol. */
 .ct-head-act { color: var(--text); text-decoration: none; }
 .ct-head-act:hover { color: var(--accent-ink); }
 
+
+/* ===========================================================================
+   KRESBA PLOCHY /chat  (31. 8. 2026)
+   ===========================================================================
+   Do tejto vlny mal `chat.css` 97 pravidiel proti 844 v `mind.css` na tej istej
+   stránke — a to nebolo rozdelenie práce, ale diera. Skrupina JE ostylovaná
+   (`#chat-threads`, `#chat-artifact`, `#chat-composer` nesú panel a 1 px rám),
+   ale to, ČO JE V NEJ, kresbu nemalo: ZMERANÉ nad živým CSSOM (harness
+   `scratchpad/w9/audit.js`) — **137 tried, ktoré markup `/chat` používa, nemalo
+   pravidlo v žiadnom z dvoch stylesheetov tejto stránky**. Riadok vlákna bol
+   surový ohraničený div s VYCENTROVANÝM textom (`justify-content: center`
+   z bare `button` v mind.css), tri natívne `<select>` boli BIELE na tmavej téme
+   a bublina odpovede nemala ani papier, ani odstup.
+
+   Jazyk sa tu NEVYMÝŠĽA. Zdroj pravdy je `docs/BRAND-HADES.md` a tokeny
+   v `mind.css`; každá hodnota nižšie je token. Kánon akcentu platí: amethyst
+   (`--accent*`) nesie hover, fokus, aktívny stav a primárnu akciu, zlatá je
+   vyhradená značke a jadru vedomia — v tomto bloku sa `--gold` nevyskytuje ani
+   raz.
+
+   ŠTYRI VECI, KTORÉ SA TU DAJÚ POKAZIŤ A SÚ ZAPLATENÉ:
+
+   1. `.ct-head`, `.ct-more`, `.ct-body` a `.ct-icon` majú V TEJTO APPKE DVOCH
+      PRODUCENTOV s rôznym významom: panel vlákien (`chat/threads.js`) a kartu
+      nástroja v toku (`chat/render.js`, `.ct` > `.ct-head`). Preto je KAŽDÉ
+      pravidlo tejto štvorice scopované rodičom — `:is(.ct-row, .ct-proj) >`
+      pre panel, `.ct >` / `.ct-body` pre kartu. Holé `.ct-head` by nasadilo
+      kresbu riadka panela na hlavičku karty nástroja a naopak.
+
+   2. `hidden` je ATRIBÚT, nie trieda: `[hidden] { display: none }` je pravidlo
+      UA stylesheetu, takže KAŽDÉ autorské `display` ho prebije bez ohľadu na
+      špecificitu. `.ct-acts`, `.cf-bar`, `.cb-bar` a `.cs-box` sa v pokoji
+      skrývajú práve týmto atribútom, preto ich `display` stojí v pravidle
+      `:not([hidden])`. `.hidden` (trieda, `!important` v mind.css) tento problém
+      nemá — `#chat-to-bottom` a `.ct-body` ju používajú a nechávam ich tak.
+
+   3. Fokusový prsteň si tu NEPÍŠEME (nesie ho jedno globálne `:focus-visible`
+      v mind.css). Per-komponentné `:focus-visible` je nižšie len tam, kde nesie
+      NIEČO INÉ než prsteň — konkrétne odkrytie skrytej akcie riadka, čo je
+      viditeľnosť, nie indikátor fokusu.
+
+   4. Bare `button` v mind.css dáva `justify-content: center` a `--panel-solid`
+      výplň. V zozname na čítanie je vycentrovaný titulok chyba a výplň na každom
+      riadku šum — obe sa preto v tomto bloku vypisujú nahlas. Bare `button` je
+      0-0-1, takže na to stačí trieda; `button:hover` je 0-1-1, takže hover sa
+      musí prebiť selektorom aspoň tej istej sily (`chat.css` je druhý v poradí).
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1 · NATÍVNE OVLÁDAČE — `<select>` a obálka `.csel`
+   ---------------------------------------------------------------------------
+   ZMERANÉ PRED: `#chat-model`, `#chat-profile` aj `select.ct-move-sel` mali
+   `appearance: auto`, `background: rgb(255,255,255)` — BIELE na tmavej téme —,
+   `border-radius: 0` a `font-size: 13.3333px`, teda default prehliadača bez
+   jediného tokenu. Na tmavej téme (a tá je default) je to jasná plocha uprostred
+   tmavej hlavičky.
+
+   Prečo je `appearance: none` v pravidle scopovanom na `#chat-app` a nie na
+   triedach jednotlivých selectov: obálku `.csel` nasádza `chat/selects.js` až za
+   behu, takže select, ktorý sa niekde vytvorí bez nej, by zostal biely. Jedna
+   kresba pre všetky selecty plochy je preto silnejšia než tri rolové pravidlá,
+   ktoré sa rozídu pri štvrtom selecte. Hover je v TOM ISTOM scope (`#chat-app
+   select:hover`, 1-1-1) — keby bol na `.csel > select:hover` (0-1-2), prebila by
+   ho základná deklarácia a hover by nefungoval.
+
+   Striešku kreslí `.csel-caret` (inline SVG zo sady, vkládá ho `selects.js`), nie
+   `background-image` s data-URI: SVG v data-URI nesie farbu NATVRDO, čo je raw
+   hodnota mimo `:root` a hlavne by sa pri prepnutí témy nezmenila. Miesto pre ňu
+   sa REZERVUJE VŽDY, aj keď obálka chýba — prázdny padding vpravo je lacnejší než
+   text pod strieškou.
+
+   `pointer-events: none` na strieške je POVINNÉ: bez neho zožerie klik, ktorý
+   ponuku otvára.
+
+   `option` sa vypisuje tiež. Rozbalený zoznam kreslí prehliadač a `color-scheme`
+   naň nedosiahne — bez tohto riadku by bol text ponuky čierny na `--panel-solid`. */
+.csel {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+}
+
+#chat-app select {
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    min-height: var(--control-h);
+    /* Vpravo je miesto pre striešku: pol kroku + jej 14 px kresba. */
+    padding: var(--sp-0) calc(var(--sp-0h) + var(--icon-2xs) + var(--sp-0)) var(--sp-0) var(--sp-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--field-bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: var(--fs-small);
+    line-height: var(--lh-control);
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+#chat-app select:hover { border-color: var(--border-accent); color: var(--accent-ink); }
+#chat-app select:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+#chat-app select option { background: var(--panel-solid); color: var(--text); }
+
+.csel-caret {
+    position: absolute;
+    right: var(--sp-0h);
+    display: inline-flex;
+    /* Bez toho zožerie klik, ktorý ponuku otvára. */
+    pointer-events: none;
+    color: var(--muted);
+}
+
+.csel-caret .ic { font-size: var(--icon-2xs); }
+.csel:hover .csel-caret { color: var(--accent-ink); }
+
+/* ---------------------------------------------------------------------------
+   2 · IKONOVÉ AKCIE V HLAVIČKE KONVERZÁCIE
+   ---------------------------------------------------------------------------
+   Komentár na konci tohto súboru sľuboval pravidlo `.ch-right :is(a, button)`,
+   ktoré NIKDY NEEXISTOVALO (grep: 0 zásahov) — `#chat-read` a `#chat-export` tak
+   nesli bare `button` z mind.css, teda `--panel-solid` výplň a 1 px rám, kým
+   `#chat-threads-toggle` a `#chat-artifact-toggle` vedľa nich majú výplň potlačenú
+   vlastným pravidlom. Hlavička teda hovorila dvoma jazykmi. Toto je ten jeden.
+
+   `:not([hidden])` je nutné: `#chat-export` je v pokoji skrytý atribútom a
+   autorské `display` by ho odkrylo (viď bod 2 v hlavičke bloku).
+
+   `#chat-read` je prepínač a `aria-pressed` na ňom už je — bez viditeľného
+   zapnutého stavu je čítací režim neviditeľný presne v okamihu, keď oko sedí
+   v toku. Amethyst, nie zlatá (kánon akcentu). */
+.ch-right :is(a, button):not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-0h);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.ch-right :is(a, button):hover {
+    background: var(--accent-hover-wash);
+    border-color: var(--border-accent);
+    color: var(--accent-ink);
+}
+
+#chat-read[aria-pressed="true"] {
+    background: var(--accent-softer);
+    border-color: var(--border-accent);
+    color: var(--accent-ink);
+}
+
+/* ---------------------------------------------------------------------------
+   3 · PANEL VLÁKIEN — SEKCIE
+   ---------------------------------------------------------------------------
+   Eyebrow je MIKRO CHRÓM, presne ako `.rail-eyebrow` na `/`: mono, `--fs-micro`,
+   uppercase, `--muted`. `h3` v mind.css už je micro-label, ale na
+   `--fs-caption` (11 px) a s `margin-top: var(--sp-3)` — v hlavičke sekcie, ktorá
+   je flexový rad, je ten margin cudzí prvok. Rozhodnutie 13 platí: dátový text
+   plochy stúpol na 13 px (`--fs-data` nižšie na `.ct-ttl`), chróm sa NEPOHOL a
+   zostáva mikro. Merač, ktorý zdvihne oboje, nemeria nič. */
+.ct-sec { margin-bottom: var(--sp-2); }
+.ct-sec:last-child { margin-bottom: 0; }
+
+.ct-sec-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    min-height: 24px;
+    padding: 0 var(--sp-0) var(--sp-0);
+}
+
+.ct-sec-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: var(--fs-micro);
+    line-height: var(--lh-micro);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Akcia v hlavičke sekcie („Nový projekt", „Zrušiť hľadanie"). Kresbu nesie
+   `.ct-act` nižšie — tu sa mení len rozmer: je to chróm vedľa eyebrow, nie
+   ovládač v riadku. Na dotyku sa vracia na 44 px v mediálnom bloku. */
+.ct-sec-act {
+    flex: none;
+    width: 24px;
+    min-height: 24px;
+}
+
+.ct-sec-act .ic { font-size: var(--icon-2xs); }
+
+/* ---------------------------------------------------------------------------
+   4 · PANEL VLÁKIEN — RIADOK
+   ---------------------------------------------------------------------------
+   Je to ZOZNAM NA ČÍTANIE, nie mřížka kariet: papier, rám ani tieň riadok
+   nedostane, pretože 94 kariet nad sebou v 268 px paneli je 94 rámov a ani jeden
+   z nich nenesie informáciu. Nesie ju TITULOK vľavo a ČAS ako tichý chróm vpravo.
+
+   Titulok VĽAVO je oprava, nie preferencia: bare `button` v mind.css má
+   `justify-content: center`, takže `.ct-open` centroval titulok aj čas — v zozname,
+   ktorý sa skenuje očami zhora dolu, je vycentrovaný text chyba. `text-align`
+   a `justify-content` sa preto vypisujú nahlas.
+
+   Aktívne vlákno nesie AMETHYSTOVÝ stav (výplň `--accent-softer` + rám
+   `--border-accent` + tinta `--accent-ink` na titulku). Poradie pravidiel je
+   nosné: `[aria-current="true"]` (0-2-0) stojí ZA `:hover` (0-2-0), takže hover
+   nad aktívnym riadkom aktívny stav neprebije. */
+:is(.ct-row, .ct-proj) > .ct-head {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+}
+
+.ct-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: var(--sp-1);
+    min-height: var(--field-h);
+    padding: var(--sp-0h) var(--sp-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    text-align: left;
+    font-weight: var(--fw-regular);
+}
+
+.ct-open:hover { background: var(--hover-fill); border-color: var(--border); }
+
+.ct-open[aria-current="true"] {
+    background: var(--accent-softer);
+    border-color: var(--border-accent);
+}
+
+.ct-open[aria-current="true"] .ct-ttl {
+    color: var(--accent-ink);
+    font-weight: var(--fw-medium);
+}
+
+/* Titulok je hlavný identifikátor riadka, teda DATA (rozhodnutie 13, 13 px).
+   Rez sa PRIZNÁVA: `title` na tlačidle nesie plný text (kreslí ho threads.js),
+   takže výpustka nie je stratou. */
+.ct-ttl {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
+    color: var(--text);
+}
+
+/* Čas je CHRÓM: mono (aby čísla neposkakovali medzi riadkami), mikro, utlmený.
+   `flex: none` a `nowrap` sú podmienka — bez nich sa čas zalomí pod titulok a
+   riadok narastie o druhý riadok textu. */
+.ct-when {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: var(--lh-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* Ikona zložky a počet vlákien v nej. Počet je mono — je to číslo zo servera. */
+.ct-ico {
+    flex: none;
+    font-size: var(--icon-xs);
+    color: var(--muted);
+    align-self: center;
+}
+
+.ct-count {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+/* Odznak („pripnuté", „archív", meno projektu, počet zásahov). Obrys, nie výplň:
+   výplň by v riadku súťažila s aktívnym stavom, ktorý výplň už používa. */
+.ct-chip {
+    flex: none;
+    display: inline-block;
+    padding: 0 var(--sp-0h);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    font-size: var(--fs-micro);
+    line-height: 1.6;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* Telo rozbalenej zložky. Odsadenie nesie ĽAVÁ LINKA, nie `margin-left`: linka
+   ukazuje, kam vnorené riadky patria, a pri prázdnej zložke zostane viditeľná. */
+.ct-proj-body {
+    margin: 2px 0 var(--sp-0h) var(--sp-1);
+    padding-left: var(--sp-1);
+    border-left: 1px solid var(--border);
+}
+
+/* ---------------------------------------------------------------------------
+   5 · PANEL VLÁKIEN — AKCIE RIADKA
+   ---------------------------------------------------------------------------
+   Ikonová akcia riadka (`⋯`) sa OBJAVUJE NA HOVER A FOKUS a NIKDY NEPOSKAKUJE
+   LAYOUTOM: miesto je rezervované vždy a mení sa len `opacity`. `display: none`
+   alebo `visibility` by riadok pri prejazde myšou posunuli.
+
+   Odkrytie na `:focus-within` je jediná per-komponentná fokusová vec v tomto
+   súbore a je legitímna — nesie VIDITEĽNOSŤ, nie indikátor fokusu; prsteň
+   naďalej nesie globálne `:focus-visible` z mind.css (bod 3 v hlavičke bloku).
+   `[aria-expanded="true"]` drží akciu odkrytú, kým je blok otvorený — inak by
+   zmizla pod kurzorom, ktorý sa presunul do bloku, ktorý sama otvorila.
+
+   TICHÁ VERZIA: mení sa jediná vlastnosť `opacity` a cieľový stav je plne
+   viditeľná akcia, takže plošná podlaha `prefers-reduced-motion` v mind.css
+   (`transition-duration: .01ms`) dá zmysluplný OKAMŽITÝ ekvivalent — akcia je
+   tam hneď a celá, nie v polovici prechodu.
+
+   Na dotyku hover neexistuje, takže `@media (hover: none)` akciu odkrýva
+   natrvalo — inak sa k premenovaniu a exportu nedá dostať vôbec. */
+.ct-act {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--field-h);
+    min-height: var(--field-h);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--muted);
+}
+
+.ct-act:hover {
+    background: var(--accent-hover-wash);
+    border-color: var(--border-accent);
+    color: var(--accent-ink);
+}
+
+.ct-act .ic { font-size: var(--icon-xs); }
+
+.ct-more-act {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+
+:is(.ct-row, .ct-proj):hover > .ct-head > .ct-more-act,
+:is(.ct-row, .ct-proj):focus-within > .ct-head > .ct-more-act,
+.ct-more-act[aria-expanded="true"] { opacity: 1; }
+
+@media (hover: none) {
+    .ct-more-act { opacity: 1; }
+}
+
+/* Blok akcií je INLINE pod riadkom (dôvod je v `actsToggle()` — panel má
+   `overflow: hidden` a plávajúca ponuka by sa o tú hranu zrezala). Druhý papier
+   je preto `--surface-2`, teda deklarovaná rola vnoreného povrchu, a nie druhý
+   odtieň panelu.
+
+   `display` stojí v `:not([hidden])`, pretože blok sa skrýva ATRIBÚTOM (bod 2). */
+.ct-acts:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-0);
+    align-items: center;
+    margin: 2px 0 var(--sp-0h);
+    padding: var(--sp-0h);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+}
+
+/* Položka bloku akcií. Farbu a `text-decoration` už nesie `.ct-act-btn` na konci
+   tohto súboru (nález kontrastného overenia z 28. 8. 2026 — bez nej mal
+   `<a class="ct-export">` východiskovú farbu prehliadača); TU pribúda kresba,
+   ktorá tam bola vedome vynechaná ako „samostatné zadanie". Toto je to zadanie. */
+.ct-act-btn {
+    flex: none;
+    min-height: var(--control-h);
+    padding: var(--sp-0) var(--sp-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--panel);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-regular);
+    line-height: var(--lh-control);
+}
+
+.ct-act-btn:hover { background: var(--accent-hover-wash); border-color: var(--border-accent); }
+
+/* Nevratná akcia. V pokoji je to obyčajná položka s dangerovou tintou (rám ani
+   výplň — zoznam štyroch akcií, z ktorých jedna svieti, číta oko ako výstrahu
+   pred kliknutím, nie po ňom); NAOSTRENÁ nesie plnú dangerovú kresbu. Triedu
+   `.armed` prepína `armedButton()` a jej kresbu má mind.css, tu je len farba
+   role. */
+.ct-act-btn.ct-del:hover {
+    border-color: var(--danger-border-hover);
+    background: var(--danger-soft);
+    color: var(--danger-ink);
+}
+
+/* Export je jediná položka bloku, ktorá NIE JE `<button>` (je to `<a download>`,
+   aby meno súboru zložil server — viď `exportLink()`). Bez tohto pravidla je to
+   `display: inline`, takže `min-height` z `.ct-act-btn` sa IGNORUJE a odkaz je
+   v rade tlačidiel nižší než ostatné. Bare `button` v mind.css dáva
+   `display: inline-flex` len tlačidlám, na `<a>` nedosiahne — a doplniť
+   `display` do `.ct-act-btn` by ho nasadilo aj tam, kde je nadbytočný. */
+.ct-export {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+/* Presun do zložky. `<label>` je obal `<select>`u, takže sám nemá čo kresliť —
+   len drží select v rade a nesmie ho nechať vytiecť z 268 px panela. */
+.ct-move {
+    flex: 1 1 100%;
+    min-width: 0;
+    display: flex;
+}
+
+.ct-move .csel { width: 100%; }
+.ct-move-sel { width: 100%; }
+
+/* ---------------------------------------------------------------------------
+   6 · PANEL VLÁKIEN — DROBNÉ PRVKY A FORMULÁR
+   ---------------------------------------------------------------------------
+   `.ct-note` je veta v paneli („Načítava sa…", „Zložka je prázdna"). `p` má
+   v mind.css `--fs-base` (14 px), čo je v 268 px paneli väčšie než titulky
+   riadkov nad ňou — veta o stave nemá byť najväčší text v zozname. */
+.ct-note {
+    margin: 0 0 var(--sp-0h);
+    padding-inline: var(--sp-1);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--muted);
+}
+
+/* Inline formulár (premenovanie, nový projekt). Rad, ktorý sa zalomí — dve
+   tlačidlá pod polom sú v 268 px paneli lepšie než pole široké na tri znaky. */
+.ct-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-0);
+    margin-bottom: var(--sp-0h);
+}
+
+.ct-input {
+    flex: 1 1 100%;
+    min-width: 0;
+    min-height: var(--field-h);
+    padding: var(--sp-0) var(--sp-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--field-bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: var(--fs-small);
+}
+
+/* ---------------------------------------------------------------------------
+   7 · HĽADANIE V HISTÓRII
+   ---------------------------------------------------------------------------
+   Sekcia výsledkov je tá istá `.ct-sec`, takže eyebrow a odstupy prichádzajú
+   odtiaľ. Vlastné sú tri veci: riadok počtov, lišta filtrov a zásah. */
+.ct-counts {
+    margin: 0 0 var(--sp-0h);
+    padding-inline: var(--sp-1);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.ct-filters,
+.ct-facets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-0);
+    margin-bottom: var(--sp-0h);
+    padding-inline: var(--sp-0);
+}
+
+/* Pole dátumu a výber role. `select.ct-filter` kresbu berie zo `#chat-app select`
+   vyššie (jedna kresba pre všetky selecty plochy), takže tu zostáva len `input`. */
+input.ct-filter {
+    flex: 1 1 46%;
+    min-width: 0;
+    min-height: var(--control-h);
+    padding: var(--sp-0) var(--sp-0h);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--field-bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: var(--fs-small);
+}
+
+select.ct-filter { flex: 1 1 46%; }
+
+/* Zrušenie zúženia a skupina zásahov sú OBE pilulka, pretože obe zúženie MENÍ.
+   Zapnutá skupina nesie amethystový stav cez `aria-pressed` — je to zapnuté
+   tlačidlo, nie iná farba textu. */
+.ct-chip-off,
+.ct-facet {
+    flex: none;
+    max-width: 100%;
+    min-height: var(--control-h);
+    padding: var(--sp-0) var(--sp-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    background: var(--panel);
+    color: var(--text-secondary);
+    font-size: var(--fs-micro);
+    line-height: var(--lh-micro);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ct-chip-off:hover,
+.ct-facet:hover { border-color: var(--border-accent); color: var(--accent-ink); background: var(--accent-hover-wash); }
+
+.ct-facet[aria-pressed="true"] {
+    border-color: var(--border-accent);
+    background: var(--accent-softer);
+    color: var(--accent-ink);
+}
+
+/* Jeden zásah. Je to `<button>`, teda blok textu, ktorý sa dá kliknúť — preto
+   `flex-direction: column` a zalomený text: útržok je celá veta, nie popisok.
+   `text-align: left` a `justify-content: flex-start` znova prebíjajú bare
+   `button` (bod 4 v hlavičke bloku). */
+.ct-hit {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 2px;
+    width: 100%;
+    margin-bottom: var(--sp-0);
+    padding: var(--sp-0h) var(--sp-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    text-align: left;
+    font-weight: var(--fw-regular);
+}
+
+.ct-hit:hover { background: var(--hover-fill); border-color: var(--border); }
+
+.ct-hit-top {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-0h);
+    width: 100%;
+}
+
+.ct-hit-ttl {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-data);
+    line-height: var(--lh-data);
+    color: var(--text);
+}
+
+.ct-hit-who {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+}
+
+/* Útržok. Server ho už skrátil (60 znakov pred zásahom, 140 za ním), takže tu
+   sa NEREŽE — dve linky sú presne to, čo server poslal. */
+.ct-snip {
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+/* „Zobraziť viac" pod zásahmi. Scopované na `.ct-find`, pretože `.ct-more` je
+   AJ tlačidlo „rozbaliť" v karte nástroja (bod 1 v hlavičke bloku). */
+.ct-find .ct-more {
+    width: 100%;
+    min-height: var(--control-h);
+    border: 1px dashed var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--accent-ink);
+    font-size: var(--fs-small);
+}
+
+.ct-find .ct-more:hover { border-style: solid; border-color: var(--border-accent); background: var(--accent-hover-wash); }
+
+/* ---------------------------------------------------------------------------
+   8 · TOK SPRÁV — BUBLINY
+   ---------------------------------------------------------------------------
+   Miera riadka je `--stream-w` a nesie ju KAŽDÁ položka toku, nie `#chat-stream`:
+   tok je `display: flex; flex-direction: column`, takže položka bez vlastného
+   `max-width` sa roztiahne na celú šírku okna a próza by na 1920 px mala 150
+   znakov na riadok.
+
+   TYPOGRAFIA BUBLINY JE V `:where(.cm-bubble)`, a to je podmienka, nie ozdoba.
+   `.md-body` (čítací režim, mind.css) je 0-1-0 a `chat.css` sa načítava DRUHÝ,
+   takže holé `.cm-bubble { font-size }` by čítací režim ZABILO — jeho `font-size`,
+   `line-height` a `max-width` sú presne to, čo režim robí. `:where()` je 0-0-0,
+   takže `.md-body` vyhrá; `:is()` by tu bolo chybou (bralo by najsilnejší
+   argument).
+
+   Rola sa líši POVRCHOM, nie zarovnaním. Obe strany dialógu zostávajú vľavo:
+   riadok mena je vľavo a próza odpovede tiež (72 ch od ľavej hrany), takže
+   zarovnanie doprava by rozbilo jedinú os, po ktorej oko ide dolu. */
+.cm {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    max-width: var(--stream-w);
+    margin-inline: auto;
+    /* Kotva pre `.cb-edit` — ceruzka nad bublinou používateľa. */
+    position: relative;
+}
+
+/* Riadok mena je CHRÓM a odteraz je FLEXOVÝ. Pravidlo `.cm-who .copy-btn
+   { margin-left: auto }` vyššie v tomto súbore bolo do 31. 8. 2026 inertné
+   a jeho komentár to priznával („keď `.cm-who` flexovým bude, tlačidlo si
+   odskočí doprava samo") — týmto riadkom sa to stalo. Komentár vyššie je
+   prepísaný, aby netvrdil, že pravidlo nič nerobí. */
+.cm-who {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-0h);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: var(--lh-micro);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+}
+
+/* Model a cena sú DATA v riadku chrómu: mono, ale bez uppercase — meno modelu
+   („qwen3:8b") ani cena nie sú menovka a kapitálky z nich robia skratku. */
+.cm-model,
+.cm-cost {
+    text-transform: none;
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.cm-cost { margin-left: auto; }
+
+:where(.cm-bubble) {
+    padding: var(--sp-1) var(--sp-2h);
+    border-radius: var(--r-lg);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--fs-base);
+    line-height: var(--lh-prose);
+    overflow-wrap: anywhere;
+}
+
+/* To, čo napísal človek, je CITÁCIA vlastného zadania — amethystová výplň
+   a obrys, teda ten istý jazyk ako aktívne vlákno v paneli. */
+.cm-user .cm-bubble {
+    border: 1px solid var(--border-accent);
+    background: var(--accent-softer);
+}
+
+/* Odpoveď je DOKUMENT, nie karta: bez papiera a bez vodorovného odsadenia, aby
+   próza začínala na tej istej osi ako riadok mena nad ňou a aby blok kódu vnútri
+   nemal dve vnútorné odsadenia.
+
+   Toto pravidlo je zároveň odpoveď na požiadavku agenta `chat-js` (bod 1): pri
+   zapnutom čítacom režime nesie kontejner `.md-body`, ktorá dáva
+   `padding: var(--sp-3)` a `color: var(--text-secondary)` — hodnoty čítačky
+   V KARTE dokumentu, nie v bubline. `.cm-assistant .cm-bubble` je 0-2-0, teda
+   ich prebije, a `color: inherit` vráti odpoveď na farbu, ktorou hovorí zvyšok
+   konverzácie. `font-size`, `line-height` ani `max-width` sa tu ZÁMERNE
+   nedeklarujú — tie z `.md-body` sú POINTOU režimu. */
+.cm-assistant .cm-bubble {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+}
+
+/* Systémová veta Hadesa (nie odpoveď, nie chyba): tichý ohraničený blok. */
+.cm-system .cm-bubble {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+}
+
+/* Čakanie na prvý token. Tri bodky, ktoré DÝCHAJÚ — je to jediná animácia
+   v toku a nesie stav „model píše", nie ozdobu.
+
+   ZÁKLADNÝ STAV JE PLNÝ, animácia ho len utlmuje. Preto plošná podlaha
+   `prefers-reduced-motion` (`animation-duration: .01ms`) dá zmysluplný
+   ekvivalent sama: bez `fill-mode` sa bodka vráti na základnú hodnotu, teda na
+   plne viditeľnú. Explicitný tichý blok nižšie to PRIPÍNA — keby bodka neskôr
+   dostala inú pomenovanú animáciu, tichý režim by ju aj tak nenechal v polovici
+   (ten istý vzor a dôvod ako `.empty.empty-loading .load-mark` v mind.css). */
+.cm-wait .cm-bubble {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    border: 1px solid var(--border);
+    background: transparent;
+}
+
+.cm-dots {
+    display: inline-flex;
+    gap: var(--sp-0);
+    flex: none;
+}
+
+.cm-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    animation: cm-breathe var(--dur-pulse) var(--ease-pulse) infinite;
+}
+
+.cm-dot:nth-child(2) { animation-delay: calc(var(--dur-pulse) / 6); }
+.cm-dot:nth-child(3) { animation-delay: calc(var(--dur-pulse) / 3); }
+
+.cm-wait-note {
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--muted);
+}
+
+@keyframes cm-breathe {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* Tichá verzia: bodky STOJA a sú plne viditeľné — „model píše" sa v tichom
+       režime hlási vetou `.cm-wait-note`, nie pohybom. `!important` je povinné,
+       lebo plošná podlaha píše `animation-*` s `!important` a `!important`
+       deklarácie súťažia ŠPECIFICITOU: `.cm-dot` (0-1-0) prebíja `*` (0-0-0). */
+    .cm-dot { animation: none !important; opacity: 1 !important; }
+}
+
+/* Ceruzka „upraviť a odpovedať znovu" na bubline používateľa (`branches.js` ju
+   vkládá DO `.cm-user`). Ten istý vzor ako `⋯` v paneli: miesto sa nerezervuje
+   v toku, prvok je vybraný z toku `position: absolute`, takže bublina neposkočí
+   ani vtedy, keď ceruzka pribudne až po dobehnutí `paintEdit()`. */
+.cb-edit {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-h);
+    min-height: var(--control-h);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+
+.cm-user:hover .cb-edit,
+.cm-user:focus-within .cb-edit { opacity: 1; }
+
+.cb-edit:hover { border-color: var(--border-accent); background: var(--accent-hover-wash); color: var(--accent-ink); }
+.cb-edit .ic { font-size: var(--icon-2xs); }
+
+@media (hover: none) {
+    .cb-edit { opacity: 1; }
+}
+
+/* ---------------------------------------------------------------------------
+   9 · KARTA NÁSTROJA (`.ct` z `chat/render.js`)
+   ---------------------------------------------------------------------------
+   POZOR: `.ct-head`, `.ct-body`, `.ct-more` a `.ct-icon` sú tu INÉ VECI než
+   v paneli vlákien (bod 1 v hlavičke bloku). Každý selektor je preto scopovaný
+   `.ct >` alebo `.ct-body`.
+
+   Stav nesie ĽAVÁ LINKA, nie výplň karty: v toku môže stáť päť kariet za sebou
+   a päť farebných výplní by prekričalo odpoveď, o ktorej hovoria. Farby sú
+   `--run-*`, teda tie isté role, akými hlási stav behu obrazovka Runy na `/`. */
+.ct {
+    width: 100%;
+    max-width: var(--stream-w);
+    margin-inline: auto;
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--card-bg);
+    overflow: hidden;
+}
+
+.ct.is-running { border-left-color: var(--run-running); }
+.ct.is-waiting { border-left-color: var(--run-waiting); }
+.ct.is-denied { border-left-color: var(--run-failed); }
+/* Zápisový nástroj je ten, ktorý prejde bránou — akcent, pretože o ňom rozhoduje
+   človek. */
+.ct.is-write { border-left-color: var(--border-accent); }
+
+.ct > .ct-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--sp-0h);
+    min-height: var(--control-h);
+    padding: var(--sp-0) var(--sp-2h);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    text-align: left;
+    font-weight: var(--fw-regular);
+}
+
+.ct > .ct-head:hover { background: var(--hover-fill); }
+
+/* Trojuholník z `border`ov — žiadna ikona zo sady na to nie je a `currentColor`
+   drží farbu bez raw hodnoty. Otočenie nesie `aria-expanded` na hlavičke, teda
+   ten istý atribút, ktorý o stave hovorí čítačke. */
+.ct-caret {
+    flex: none;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid currentColor;
+    color: var(--muted);
+    transition: transform var(--dur-fast) var(--ease);
+}
+
+.ct > .ct-head[aria-expanded="true"] .ct-caret { transform: rotate(90deg); }
+
+.ct-icon {
+    flex: none;
+    font-size: var(--icon-xs);
+    color: var(--muted);
+}
+
+.ct-name {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-data);
+    letter-spacing: var(--ls-mono);
+    color: var(--text);
+}
+
+.ct-args {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.ct-state {
+    flex: none;
+    font-size: var(--fs-micro);
+    line-height: var(--lh-micro);
+    color: var(--muted);
+}
+
+.ct.is-waiting .ct-state { color: var(--run-waiting); }
+.ct.is-denied .ct-state { color: var(--danger-ink); }
+
+.ct-body {
+    padding: 0 var(--sp-2h) var(--sp-1);
+    border-top: 1px solid var(--line-soft);
+}
+
+/* Výsledok nástroja je STROJOVÝ text: mono, mikro, zalomený. `.diff` mu dokreslí
+   smer zmeny (jedna implementácia, `shared/gate.js`). */
+.ct-result {
+    margin: var(--sp-1) 0 0;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: var(--lh-data);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+}
+
+/* Rez, ktorý sa PRIZNÁVA: pod zrezaným výsledkom stojí `.ct-more` („rozbaliť"),
+   ktoré ho odkryje — bez neho by výpustka tvrdila, že tam nič nie je. */
+.ct-result.clamped {
+    max-height: 12em;
+    overflow: hidden;
+}
+
+.ct-body .ct-more {
+    min-height: var(--control-h);
+    margin-top: var(--sp-0);
+    padding: var(--sp-0) var(--sp-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--accent-ink);
+    font-size: var(--fs-micro);
+}
+
+.ct-body .ct-more:hover { border-color: var(--border-accent); background: var(--accent-hover-wash); }
+
+/* ---------------------------------------------------------------------------
+   10 · BRÁNA ZÁPISU (`.cg`)
+   ---------------------------------------------------------------------------
+   Toto je jediné miesto celej plochy, kde beh ČAKÁ NA ČLOVEKA — dvojfázová
+   brána je podstata behu, nie slušnosť (viď CLAUDE.md). Karta preto ako jediná
+   v toku nesie akcentový rám a akcentovú výplň: nemá sa dať prejsť očami.
+   Zlatá tu nie je a byť nesmie — je vyhradená značke a jadru vedomia. */
+.cg {
+    width: 100%;
+    max-width: var(--stream-w);
+    margin-inline: auto;
+    padding: var(--sp-2h);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-md);
+    background: var(--accent-softer);
+}
+
+.cg-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-0h);
+}
+
+.cg-icon { flex: none; font-size: var(--icon-xs); color: var(--accent-ink); }
+
+.cg-name {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-data);
+    letter-spacing: var(--ls-mono);
+    color: var(--text);
+}
+
+.cg-args {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    color: var(--muted);
+}
+
+/* Otázka je jediná veta, ktorú musí človek prečítať celú — teda `--fs-base`
+   a próza, nie mikro chróm. */
+.cg-ask {
+    margin: var(--sp-1) 0;
+    font-size: var(--fs-base);
+    line-height: var(--lh-prose);
+    color: var(--text);
+}
+
+/* Náhľad zmeny. Vlastný skrol so stropom: nameraný priemer diffu je 442 B, ale
+   zápis celého súboru sa do karty nevojde a bez stropu by potvrdzovacie
+   tlačidlá odskrolovali pod okraj — presne tam, kde ich človek hľadá. */
+.cg-preview {
+    margin: 0 0 var(--sp-1);
+    padding: var(--sp-0h);
+    max-height: 16em;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--panel-solid);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: var(--lh-data);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+}
+
+.cg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-0);
+}
+
+/* Kresbu tlačidiel nesie bare `button` a `.primary` z mind.css — druhá varianta
+   tlačidla tu nevzniká. Vlastná je len `kbd` v ňom: klávesa je súčasť tlačidla,
+   takže nesmie mať vlastné panelové pozadie, ktoré by na akcentovej výplni
+   svietilo. */
+.cg-btn kbd {
+    margin-left: var(--sp-0);
+    background: transparent;
+    border-color: currentColor;
+    color: inherit;
+    opacity: .75;
+}
+
+/* Rozhodnuté. Karta ustúpi — je to záznam, nie výzva. */
+.cg.is-decided {
+    border-color: var(--border);
+    background: var(--surface-2);
+}
+
+.cg-done {
+    margin: var(--sp-1) 0 0;
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--muted);
+}
+
+.cg.is-allowed .cg-done { color: var(--success-ink); }
+.cg.is-denied .cg-done { color: var(--danger-ink); }
+
+/* ---------------------------------------------------------------------------
+   11 · PODAGENT V TOKU (`.cn`) A STROM AGENTOV (`.cs`)
+   ---------------------------------------------------------------------------
+   Podagent je VNORENÝ BEH, takže jeho karta nesie ľavú linku a odsadenie — je to
+   to isté odsadenie, aké nesie telo rozbalenej zložky v paneli. Stav nesie farba
+   linky (`--run-*`), nie výplň. */
+.cn {
+    width: 100%;
+    max-width: var(--stream-w);
+    margin-inline: auto;
+    padding-left: var(--sp-2h);
+    border-left: 2px solid var(--border-accent);
+}
+
+.cn.is-closed { border-left-color: var(--border); }
+.cn.is-waiting { border-left-color: var(--run-waiting); }
+
+.cn-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-0h);
+}
+
+.cn-icon { flex: none; font-size: var(--icon-xs); color: var(--muted); align-self: center; }
+
+.cn-title {
+    flex: none;
+    font-size: var(--fs-data);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+}
+
+.cn-meta,
+.cn-foot {
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.cn-meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-foot { margin: var(--sp-0) 0 0; }
+
+.cn-task {
+    margin: var(--sp-0) 0;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--text-secondary);
+}
+
+.cn-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+/* ---- pás stromu agentov nad composerom ----
+   `display` je v `:not([hidden])`, pretože pás sa skrýva ATRIBÚTOM (bod 2).
+   Strop výšky je podmienka: pri ôsmich podagentoch by pás vytlačil tok správ
+   z obrazovky, a to je plocha, na ktorú sa človek pozerá. */
+.cs-box:not([hidden]) {
+    display: block;
+    flex: none;
+    max-height: 38vh;
+    overflow-y: auto;
+    padding: var(--sp-1) var(--sp-2);
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+}
+
+.cs-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    max-width: var(--stream-w);
+    margin-inline: auto;
+}
+
+.cs-toggle {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--sp-0h);
+    padding: var(--sp-0) var(--sp-0h);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    text-align: left;
+}
+
+.cs-toggle:hover { background: var(--hover-fill); border-color: var(--border); }
+.cs-toggle .ic { flex: none; font-size: var(--icon-xs); color: var(--muted); }
+
+.cs-title { font-size: var(--fs-data); color: var(--text); }
+
+.cs-count,
+.cs-lbl,
+.cs-sub {
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.cs-decide { flex: none; }
+
+.cs-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0h);
+    max-width: var(--stream-w);
+    margin: var(--sp-1) auto 0;
+    padding: 0;
+}
+
+/* Uzol stromu. Strom je ZOZNAM, nie SVG (viď `nodeRow()`), takže hĺbku nesie
+   odsadenie a príslušnosť ľavá linka. Šesť stavov, šesť rolí z `--run-*` — nová
+   farba tu nevzniká. */
+.cs-node {
+    padding-left: var(--sp-1);
+    border-left: 2px solid var(--border);
+}
+
+.cs-node.is-child { margin-left: var(--sp-2); }
+.cs-node.is-running { border-left-color: var(--run-running); }
+.cs-node.is-waiting { border-left-color: var(--run-waiting); }
+.cs-node.is-done { border-left-color: var(--run-done); }
+.cs-node.is-failed,
+.cs-node.is-max_steps { border-left-color: var(--run-failed); }
+.cs-node.is-aborted { border-left-color: var(--run-aborted); }
+
+.cs-top {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-0h);
+}
+
+.cs-icon,
+.cs-ask-icon { flex: none; font-size: var(--icon-2xs); color: var(--muted); align-self: center; }
+
+.cs-name {
+    flex: none;
+    font-size: var(--fs-data);
+    font-weight: var(--fw-semibold);
+    color: var(--text);
+}
+
+.cs-state {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-micro);
+    color: var(--muted);
+}
+
+.cs-node.is-waiting .cs-state { color: var(--run-waiting); }
+.cs-node.is-failed .cs-state,
+.cs-node.is-max_steps .cs-state { color: var(--danger-ink); }
+
+.cs-task {
+    margin: var(--sp-0) 0;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--text-secondary);
+}
+
+.cs-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--sp-0h);
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+/* Hodnota v riadku je DATA, popisok vedľa nej chróm — preto sa líšia tintou,
+   nie veľkosťou: dva rôzne stupne v jednom mono riadku by rozhodili účiaru. */
+.cs-val { color: var(--text); }
+
+.cs-stop {
+    margin: var(--sp-0) 0 0;
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--warn-ink);
+}
+
+.cs-legend {
+    max-width: var(--stream-w);
+    margin: var(--sp-1) auto 0;
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    color: var(--muted);
+}
+
+/* Náhľad zápisu, o ktorý uzol žiada. `<details>`, teda natívne rozbalenie —
+   kresba je preto len povrch a `summary` ako rad. */
+.cs-ask {
+    margin-top: var(--sp-0);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+}
+
+.cs-ask > summary {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-0h);
+    padding: var(--sp-0) var(--sp-0h);
+    cursor: pointer;
+    font-size: var(--fs-small);
+    color: var(--text);
+}
+
+.cs-ask > summary:hover { color: var(--accent-ink); }
+
+.cs-ask-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-ask-state { flex: none; font-family: var(--mono); font-size: var(--fs-micro); color: var(--muted); }
+
+.cs-preview {
+    margin: 0;
+    padding: var(--sp-0h);
+    max-height: 14em;
+    overflow: auto;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    line-height: var(--lh-data);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   12 · PORADIE ZADANÍ (`.cq`) A PÁS VETIEV (`.cb`)
+   --------------------------------------------------------------------------- */
+.cq {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: var(--stream-w);
+    margin: 0 auto var(--sp-0h);
+    padding: 0;
+}
+
+.cq-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-0h);
+    padding: var(--sp-0) var(--sp-0h);
+    border: 1px dashed var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    font-size: var(--fs-small);
+}
+
+.cq-pos,
+.cq-state {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.cq-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+.cq-cancel { flex: none; }
+
+/* Composer, kým vo vlákne ČAKÁ nedorozhodnutý zápis (`.is-parked` prepína
+   `render.js`). Beh v tej chvíli stojí na človeku a `RunController` ďalšiu správu
+   ODMIETNE, takže composer musí povedať, že písať sa teraz nemá — a povedať to
+   tým istým jazykom ako karta brány v toku, teda akcentom, nie dangerom
+   (nič sa nepokazilo, len sa čaká).
+
+   Horný rim, nie výplň: výplň by prekryla pole, do ktorého sa píše ďalšia správa
+   hneď po rozhodnutí, a poskočil by aj `#chat-to-bottom` nad ním. Vypnuté
+   tlačidlo Poslať drží JS (`disabled`), toto je jeho viditeľný dôvod. */
+#chat-composer.is-parked { border-top-color: var(--border-accent); }
+#chat-composer.is-parked .cc-row { border-color: var(--border-accent); }
+
+/* ---- pás vetiev medzi hlavičkou a tokom ----
+   `display` v `:not([hidden])` (bod 2). Pás je vodorovný rad, ktorý sa zalomí:
+   pri šiestich vetvách je druhý riadok lepší než vodorovný skrol, do ktorého sa
+   na dotyku nedá trafiť. */
+.cb-bar:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-0);
+    flex: none;
+    padding: var(--sp-0h) var(--sp-2);
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
+.cb-lbl {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    text-transform: uppercase;
+    letter-spacing: var(--ls-mono-caps);
+    color: var(--muted);
+}
+
+.cb-pill {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-0);
+    max-width: 14rem;
+    min-height: var(--control-h);
+    padding: var(--sp-0) var(--sp-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r-pill);
+    background: var(--panel);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-regular);
+}
+
+.cb-pill:hover { border-color: var(--border-accent); background: var(--accent-hover-wash); color: var(--accent-ink); }
+
+.cb-pill.on {
+    border-color: var(--border-accent);
+    background: var(--accent-softer);
+    color: var(--accent-ink);
+}
+
+.cb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cb-n {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.cb-pill.on .cb-n { color: var(--accent-ink); }
+
+/* Zmazanie vetvy je nevratná akcia na dva kliky (`.armed` kreslí mind.css).
+   V pokoji je tichá — tlačidlo, ktoré svieti pred kliknutím, prekričí pás,
+   v ktorom je prepínanie vetiev tá častá vec. */
+.cb-drop {
+    flex: none;
+    min-height: var(--control-h);
+    padding: var(--sp-0) var(--sp-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--danger-ink);
+    font-size: var(--fs-small);
+}
+
+.cb-drop:hover { border-color: var(--danger-border-hover); background: var(--danger-soft); }
+
+/* Hlásenie pásu. Celý riadok pre seba (`flex-basis: 100%`) — vedľa piluliek by
+   ich pri dlhšej vete vytlačilo do tretieho radu. */
+.cb-msg {
+    flex: 1 1 100%;
+    margin: var(--sp-0) 0 0;
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--text-secondary);
+}
+
+/* ---- editor pôvodnej správy (namiesto bubliny) ---- */
+.cb-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0h);
+    padding: var(--sp-1);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--r-lg);
+    background: var(--accent-softer);
+}
+
+.cb-ta {
+    min-height: 4.5em;
+    padding: var(--sp-0h);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--field-bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: var(--fs-base);
+    line-height: var(--lh-base);
+    resize: vertical;
+}
+
+.cb-form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-0);
+}
+
+.cb-go { flex: none; background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.cb-go:hover { background: var(--accent-600); border-color: var(--accent-600); }
+.cb-cancel { flex: none; }
+
+.cb-form-note {
+    margin: 0;
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   13 · PRÍLOHY (`.cf`)
+   ---------------------------------------------------------------------------
+   Pás stojí NAD riadkom vstupu vnútri composera, takže si nesmie brať jeho
+   šírku ani jeho odsadenie — `max-width: var(--stream-w)` a `margin-inline: auto`
+   ho zarovnajú s poľom, do ktorého človek píše.
+
+   `display` v `:not([hidden])` (bod 2): plocha bez príloh nemá ani prázdny
+   kontejner (viď `ensureBar()`), takže autorské `display` by odkrylo prázdny pás
+   s rámom. */
+.cf-bar:not([hidden]) {
+    display: block;
+    max-width: var(--stream-w);
+    margin: 0 auto var(--sp-0h);
+}
+
+.cf-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-0);
+    margin: 0;
+    padding: 0;
+}
+
+.cf-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-0h);
+    max-width: 18rem;
+    padding: var(--sp-0) var(--sp-0h);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+}
+
+/* Nahrávanie a odosielanie sú DVE rôzne „počkaj": čip, ktorý sa nahráva, ešte
+   nie je prílohou (nemá uuid), čip pri odosielaní už áno a len sa nedá odobrať.
+   Preto priehľadnosť z rolového tokenu a nie dve rôzne hodnoty. */
+.cf-item.is-loading,
+.cf-item.is-sending { opacity: var(--disabled-opacity); }
+
+.cf-icon { flex: none; font-size: var(--icon-xs); color: var(--muted); }
+
+.cf-thumb {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-sm);
+    object-fit: cover;
+}
+
+.cf-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cf-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--text);
+}
+
+.cf-meta {
+    font-family: var(--mono);
+    font-size: var(--fs-micro);
+    letter-spacing: var(--ls-mono);
+    color: var(--muted);
+}
+
+.cf-drop {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-height: 24px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--muted);
+}
+
+.cf-drop:hover { border-color: var(--danger-border-hover); background: var(--danger-soft); color: var(--danger-ink); }
+.cf-drop .ic { font-size: var(--icon-2xs); }
+
+.cf-hint {
+    margin: var(--sp-0) 0 0;
+    font-size: var(--fs-micro);
+    line-height: var(--lh-micro);
+    color: var(--muted);
+}
+
+/* Hlásenie o prílohe (odmietnutý typ, prekročený strop). Vlastná kresba tu NIE
+   JE — nesie ju `.ct-err`, keď JS pridá tú triedu; dovtedy je to aspoň dangerová
+   tinta a nie veta k nerozoznaniu od nápovedy pod ňou. */
+.cf-note {
+    margin: var(--sp-0) 0 0;
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    color: var(--danger-ink);
+}
+
+/* Priloženie súboru sedí V RIADKU vstupu naľavo od textu, teda je to ovládač
+   poľa a nie akcia nad správou — kresba je preto tichá, ako `⋯` v paneli. */
+.cf-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-h);
+    min-height: var(--control-h);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--muted);
+}
+
+.cf-btn:hover { border-color: var(--border-accent); background: var(--accent-hover-wash); color: var(--accent-ink); }
+
+/* Ťahanie súboru nad konverzáciu. Prekryv je AKCENTOVÝ OBRYS zvnútra, nie
+   výplň: pod ním musí zostať vidieť, do čoho sa súbor pustí. `inset` box-shadow
+   layout neposúva, takže tok pri prejazde neposkočí. */
+#chat-main.is-dropping {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: var(--accent-hover-wash);
+}
+
+/* ---------------------------------------------------------------------------
+   14 · DIKTOVANIE (`.cv`)
+   ---------------------------------------------------------------------------
+   NAHRÁVANIE JE STAV, NIE ANIMÁCIA PRE EFEKT. Stav nesie tlačidlo (dangerová
+   výplň, rám a tinta) a bodka (plná dangerová farba s prstencom); dýchanie je
+   len to, čo hovorí „práve teraz", a keď ho človek nechce, stav je čitateľný aj
+   bez neho.
+
+   `--danger`, nie `--accent`: amethyst nesie interaktívny stav (hover, fokus,
+   aktívny prvok) a beží ho na tejto ploche desiatky. Nahrávanie zvuku je jediná
+   vec, ktorú treba VYPNÚŤ, a to je iná rola než „toto je aktívne".
+
+   TICHÁ VERZIA je v bloku nižšie a je to zmysluplný okamžitý ekvivalent:
+   bodka STOJÍ, je plne viditeľná a nesie prstenec, takže „nahrávam" je vidieť
+   bez pohybu. `animation: none` bez toho prstenca by nechalo bodku vyzerať ako
+   v pokoji. */
+.cv-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-0h);
+    min-height: var(--control-h);
+    padding: var(--sp-0) var(--sp-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--muted);
+    font-size: var(--fs-small);
+}
+
+.cv-btn:hover { border-color: var(--border-accent); background: var(--accent-hover-wash); color: var(--accent-ink); }
+
+.cv-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--r-pill);
+    background: currentColor;
+}
+
+.cv-lbl { white-space: nowrap; }
+
+.cv-btn.is-on {
+    border-color: var(--danger-border);
+    background: var(--danger-soft);
+    /* `--danger-ink`, nie `--danger`: základná hodnota dáva na paneli 4,38:1,
+       teda pod AA pre text (ten istý dôvod, aký má `#chat-stop` vyššie). */
+    color: var(--danger-ink);
+}
+
+.cv-btn.is-on .cv-dot {
+    background: var(--danger);
+    animation: cv-live var(--dur-pulse) var(--ease-pulse) infinite;
+}
+
+@keyframes cv-live {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* `!important` je povinné: plošná podlaha píše `animation-*` s `!important`
+       a `!important` deklarácie súťažia ŠPECIFICITOU — `.cv-btn.is-on .cv-dot`
+       (0-3-0) prebíja `*` (0-0-0). */
+    .cv-btn.is-on .cv-dot {
+        animation: none !important;
+        opacity: 1 !important;
+        box-shadow: 0 0 0 3px var(--danger-soft);
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   15 · KLÁVESY POD VSTUPOM (`.hint-keys`) A LIŠTA BLOKU KÓDU (`.cb-bar` NIE JE
+        LIŠTA BLOKU KÓDU — pozri poznámku)
+   ---------------------------------------------------------------------------
+   `.hint-keys` mala do dnes JEDINÉ pravidlo v celej appke — `display: none` pod
+   900 px. Kresbu teda nemala žiadnu a nápoveda bola jeden nezalomený rad, ktorý
+   sa v úzkom composeri rozpadal na tri riadky bez zoskupenia. Obal je preto
+   `inline` skupina, ktorá sa neláme vnútri seba: klávesa a jej slovo patria
+   k sebe.
+
+   POZNÁMKA K ZADANIU: `.cb-bar` NIE JE lišta bloku kódu. Zadanie ju tak menuje,
+   ale producent je `chat/branches.js` (`ensureBar()`, `#chat-branchbar`) — je to
+   pás VETIEV vlákna a jeho kresba je v bode 12. Lištu bloku kódu a kopírovania
+   kreslí `mind.css` (jedna kresba pre `/`, `/console` aj `/chat`) a `chat.css`
+   k nej NEPRIDÁVA nič — duplikát by bol druhá pravda o tom istom prvku. */
+.hint-keys { white-space: nowrap; }
+
+#chat-hint kbd { margin-inline: 1px; }
+
+/* Obal záložiek artefaktu. Bez `display: flex` je to obyčajný blok, v ktorom
+   `.ca-pane` s `min-width: 0` nemá od koho tú nulu zdediť, takže dlhá cesta
+   k súboru v paneli rozšíri obsah nad šírku panela. */
+.ca-tabs-box {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   16 · ZALOMENIE — DOTYK A ÚZKA PLOCHA
+   ---------------------------------------------------------------------------
+   Blok pri 900 px vyššie zostáva nezmenený (panely na prekryv, scrim, skrytie
+   `.hint-keys`). Toto je to, čo pribudlo s kresbou.
+
+   CIEĽ 44 px NA DOTYKU. Zmerané pred zmenou pri 375 px: `.ct-open` 34 px,
+   `.ct-act` 36 px, `.ct-act-btn` 34 px, `.ct-move-sel` 34 px, `#chat-send` 32 px
+   — teda KAŽDÝ ovládač plochy pod cieľom. Zdvíha sa `min-height` a šírka
+   ikonových tlačidiel, nie `padding`: padding by v 268 px paneli ubral text.
+
+   Prečo v `@media (max-width: 900px)` a nie v `@media (hover: none)`: pod 900 px
+   sú panely prekryv na celú výšku, teda plocha sa OVLÁDA prstom bez ohľadu na to,
+   čo prehliadač o hoveri tvrdí (desktop v úzkom okne sa tým nepokazí — 44 px
+   cieľ sa myšou trafí tiež). */
+@media (max-width: 900px) {
+    .ct-open,
+    .ct-act-btn,
+    .ct-input,
+    .ct-hit,
+    .cb-pill,
+    .cb-drop,
+    .ct-chip-off,
+    .ct-facet,
+    .ct-find .ct-more,
+    #chat-app select { min-height: 44px; }
+
+    /* Vrch panela vlákien: znak je odkaz na / a `+ Nové vlákno` je hlavná akcia
+       plochy. Zmerané 31. 8. 2026 pri 375 px: `#chat-home` mal 46 × 38 px, teda
+       pod dotykovým cieľom na výšku. Šírku nedvíham — znak je 46 px široký a to
+       stačí; chýbala len výška. */
+    .cp-top a,
+    .cp-top button { min-height: 44px; }
+
+    .ct-act,
+    .cf-btn,
+    #chat-send,
+    #chat-stop,
+    .ch-right :is(a, button):not([hidden]) { width: 44px; min-height: 44px; }
+
+    /* Diktovanie si drží text (je to jediné tlačidlo composera so slovom), takže
+       šírku určuje obsah — je preto v skupine výšok vyššie a NIE v skupine
+       ikonových tlačidiel. Zapísať ho do oboch a šírku vrátiť na `auto` by bola
+       dvojitá deklarácia „selektor + vlastnosť" s inou hodnotou, teda presne to,
+       čo detektor `w4dup` hľadá. */
+    .cv-btn { min-height: 44px; }
+
+    /* Prepínače panelov sú v `.ch-left` aj v `.ch-right`, takže ich zdvíha
+       vlastný selektor (1-0-0) — skupinové pravidlo nad ním by `.ch-left`
+       minulo. */
+    #chat-threads-toggle,
+    #chat-artifact-toggle,
+    #chat-artifact-close { width: 44px; min-height: 44px; }
+
+    .ct-sec-act { width: 44px; min-height: 44px; }
+    .ct-sec-act .ic { font-size: var(--icon-xs); }
+
+    /* „Nové vlákno" a paleta. Oba potrebujú ID/silnejší selektor: `#chat-new`
+       kreslí `.cp-top button` (0-1-1) a paletu `#cmdk-trigger` v mind.css
+       (1-0-0), takže skupinové pravidlo nad nimi by prehralo. `#cmdk-trigger`
+       v tomto súbore neuniká na `/` — `chat.css` sa načítava len na `/chat`. */
+    #chat-new,
+    #cmdk-trigger { min-height: 44px; }
+
+    /* HLAVIČKA SA ZALOMÍ. Zmerané pred zmenou pri 375 px:
+       `document.body.scrollWidth` 461 proti 375 px viewportu — hlavička nesie
+       osem ovládačov (prepínač panela, titulok, paleta, profil, model, stav
+       behu, čítanie, artefakt) a v jednom rade sa nezmestia ani po zúžení
+       selectov. Druhý rad je lepší než vodorovné pretečenie celej stránky:
+       pretečenie posunie AJ tok správ, teda plochu, na ktorú sa človek pozerá.
+       Skrytie ovládača by bola strata funkcie, nie kresba. */
+    #chat-header { flex-wrap: wrap; }
+
+    .ch-right {
+        flex: 1 1 100%;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        /* Menšia medzera drží druhý rad na JEDNOM riadku. Zmerané pri 375 px:
+           s `--sp-1` (8 px) vyšla hlavička na 169 px (tri rady), s `--sp-0`
+           a stropom selectov nižšie na 100 px (dva rady). */
+        gap: var(--sp-0);
+    }
+
+    /* Selecty v zalomenom rade dostanú zvyšok šírky a musia sa dať zúžiť —
+       bez `min-width: 0` na obálke ich `<select>` drží na šírke najdlhšej
+       položky ponuky. Strop je zmeraný, nie vybraný: 44 (paleta) + 2 × 104
+       (selecty) + 2 × 44 (čítanie, artefakt) + 4 × 4 (medzery) = 356 px sa do
+       363 px obsahu hlavičky ešte vojde, o krok viac už nie. */
+    .ch-right .csel { flex: 0 1 auto; min-width: 0; }
+    /* `#chat-app` v selektore JE NUTNÉ a je to zaplatené meraním: základ vyššie
+       je `#chat-app select` (1-0-1), takže `.ch-right .csel > select` (0-2-1) by
+       jeho `max-width: 100%` NEPREBIL — `#chat-model` zostal 133 px namiesto
+       96 a hlavička na troch radoch. */
+    #chat-app .ch-right select { max-width: 6rem; }
+
+    /* Prázdny stav behu je NULOVEJ ŠÍRKY, ale ako flexová položka si vezme dve
+       medzery. Zmerané: bez tohto riadku vyšel druhý rad na 344 px proti 343 px
+       dostupným, takže prepínač artefaktu spadol na TRETÍ rad — kvôli 1 px.
+       Keď beh začne, span obsah dostane a vráti sa (a vtedy je druhý rad
+       správny, pretože nesie údaj). */
+    #chat-run-stats:empty { display: none; }
+
+    /* Pole hľadania a pole správy sú posledné dva ovládače pod 44 px (zmerané
+       34 a 29 px). Obe majú rám na RODIČOVI (`.cp-find`, `.cc-row`), takže
+       samotný cieľ je menší než to, čo oko vidí ako políčko — a prst mieri na
+       políčko. `#chat-prompt` má v základe `min-height: 0`, pretože výšku riadi
+       `autoGrowPrompt()` podľa obsahu; `min-height` mu nebráni rásť, len mu dá
+       podlahu, takže autoGrow zostáva nedotknutý. */
+    #chat-search,
+    #chat-prompt { min-height: 44px; }
+
+    /* Blok akcií riadka je v 268 px paneli STĹPEC, nie rad: štyri položky vedľa
+       seba dostali zmerane po ~100 px a pretekali panel (zmerané pred zmenou:
+       `document.body.scrollWidth` 461 proti 375 px viewportu). */
+    .ct-acts:not([hidden]) { flex-direction: column; align-items: stretch; }
+    .ct-act-btn { flex: none; width: 100%; text-align: center; }
+
+    /* Karta nástroja a brána strácajú vodorovné odsadenie, ktoré na 375 px
+       nemá čo oddeľovať. */
+    .ct > .ct-head { padding-inline: var(--sp-1); }
+    .ct-body { padding-inline: var(--sp-1); }
+    .cg { padding: var(--sp-1); }
+    .cs-box:not([hidden]) { padding-inline: var(--sp-1); }
+    .cb-bar:not([hidden]) { padding-inline: var(--sp-1); }
+}

@@ -35,7 +35,21 @@
     <meta name="console-thread" content="{{ request()->route('uuid') ?? '' }}">
     {{-- Charón, nie „Chat": beh je jeden pre všetky tri vstupy, takže meno pre
          človeka musí byť jedno. `/console` už tento titulok má; „Chat" bolo
-         pomenovanie plochy, nie tej veci, ktorá na nej hovorí. --}}
+         pomenovanie plochy, nie tej veci, ktorá na nej hovorí.
+
+         `og:title` nižšie hovorí to isté a je to podmienka, nie kozmetika: do
+         31. 8. 2026 tu stálo „Hades — Chat", takže `<title>` a náhľad odkazu
+         volali tú istú plochu dvoma menami — a náhľad je práve to, čo človek
+         vidí prv, než stránku otvorí.
+
+         Runtime `document.title` prepisuje `setTitle()` v public/js/chat/main.js
+         na názov vlákna a to je ZÁMER — vlákno je adresa, ktorú si človek hľadá
+         medzi kartami. Jeho FALLBACK bol do 31. 8. 2026 rozchod (`|| 'Chat'`,
+         teda „Hades — Chat" pri prázdnom vlákne) a je ZAPLATENÝ: fallback
+         v `setTitle()` aj `setTitle('Charón')` v run.js pri prázdnom vlákne dnes
+         hovoria to isté meno ako tento riadok. Zmerané po oprave: `document.title`
+         = „Hades — Charón". Tri miesta, jedno meno — keď meníš jedno, prejdi
+         všetky tri. --}}
     <title>Hades — Charón</title>
     {{-- POZOR: tri hodnoty palety sú tu NATVRDO, pretože data-URI je samostatný
          dokument a CSS premenné z mind.css nečíta:
@@ -48,7 +62,7 @@
     <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Hades — Chat">
+    <meta property="og:title" content="Hades — Charón">
     <meta property="og:description" content="Hierarchical Associative Data Embedding System">
     <meta property="og:image" content="/brand/hades-og.png">
     {{-- Tie isté self-hosted fonty ako graf a konzola. Google Fonts CDN je
@@ -135,7 +149,16 @@
                             aria-label="Vlákna" aria-expanded="true" aria-controls="chat-threads">
                         <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 8 7 h 12 M 8 12 h 12 M 8 17 h 12"/><path d="M 4.2 7 h 0.01 M 4.2 12 h 0.01 M 4.2 17 h 0.01"/></svg>
                     </button>
-                    <h1 id="chat-title">Chat</h1>
+                    {{-- „Charón", nie „Chat" — to isté meno ako `<title>` a `og:title`
+                         (manuál §9). Toto je hodnota pred prvým vláknom a jediná, ktorú
+                         vidí prvé vykreslenie aj crawler.
+
+                         Tu stála poznámka, že `setTitle()` v public/js/chat/main.js má
+                         fallback `|| 'Chat'` a tento nadpis po dobehnutí JS prepíše na
+                         staré meno. Je ZAPLATENÁ (31. 8. 2026): fallback aj vetva
+                         prázdneho vlákna v run.js hovoria „Charón". Statický text
+                         a runtime text sa teda už nerozchádzajú. --}}
+                    <h1 id="chat-title">Charón</h1>
                 </div>
                 <div class="ch-right">
                     {{-- Profil nástrojov pre ĎALŠÍ beh. Bez tohto ovládača bol
@@ -220,9 +243,11 @@
 
             <form id="chat-composer" autocomplete="off">
                 {{-- Späť na spodok — ukáže sa len keď človek odskroluje nahor.
-                     Ikona `arrow_downward` v subsete NIE JE (zmerané: 252 px
-                     namiesto 18 px, teda by sa vykreslila ako text), preto je to
-                     `arrow_upward` prevrátená v CSS. --}}
+                     Kresba je `arrow-down` z public/js/shared/icons.js, teda šípka
+                     nakreslená dolu. Tu stálo, že `arrow_downward` v ikonovom subsete
+                     nie je a preto je to prevrátená `arrow_upward` — to platilo pre
+                     ikonový FONT, ktorý je od 28. 8. 2026 preč, a `.ms.flip` s ním.
+                     Nevracaj CSS prevrátenie: v sade je vlastný tvar. --}}
                 <button type="button" id="chat-to-bottom" class="hidden" title="Na spodok" aria-label="Skočiť na spodok">
                     <svg class="ic" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M 12 4.4 v 15"/><path d="M 18.2 13.2 L 12 19.4 L 5.8 13.2"/></svg>
                 </button>
@@ -239,11 +264,24 @@
                 </div>
                 {{-- Klávesová časť je obalená v `.hint-keys`, aby sa na úzkom okne
                      dala skryť SAMOSTATNE — skryť celú nápovedu znamená skryť aj
-                     poslednú stopu po skratkách. --}}
+                     poslednú stopu po skratkách.
+
+                     PORADIE JE PODĽA ROZSAHU, nie podľa dôležitosti: najprv čo robí
+                     pole pod nápovedou (Enter, Shift+Enter), potom beh (Esc), potom
+                     plocha (Ctrl+N, Ctrl+B) a nakoniec paleta, ktorá dosiahne na
+                     všetko. To isté poradie má `#composer-hint` na `/console`.
+
+                     Ctrl+K tu do 31. 8. 2026 chýbalo, hoci paleta je odteraz hlavný
+                     vstup na navigáciu a akcie (public/js/chat/palette.js, `keydown`
+                     na dokumente). Nápoveda je JEDINÝ statický zdroj tejto vety —
+                     dopisovať ju z JS by znamenalo druhý zdroj, ktorý sa rozíde.
+                     Pod 900 px sa `.hint-keys` skrývajú, a to je zámer politiky
+                     v chat.css: kombinácie na dotyku nemajú význam a `#cmdk-trigger`
+                     si tam mind.css schová aj vlastnú `kbd`. --}}
                 <p id="chat-hint">
                     <span class="hint-keys"><kbd>Enter</kbd> pošle · <kbd>Shift</kbd>+<kbd>Enter</kbd> nový riadok · </span>
                     <span class="hint-keys"><kbd>Esc</kbd> zastaví beh · <kbd>Ctrl</kbd>+<kbd>N</kbd> nové vlákno · </span>
-                    <kbd>Ctrl</kbd>+<kbd>B</kbd> vlákna
+                    <kbd>Ctrl</kbd>+<kbd>B</kbd> vlákna<span class="hint-keys"> · <kbd>Ctrl</kbd>+<kbd>K</kbd> paleta</span>
                 </p>
             </form>
 

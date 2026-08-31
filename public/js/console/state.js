@@ -18,6 +18,21 @@ export const C = {
     models: [],          // čo je reálne stiahnuté (ak backend zoznam vie dať)
     defaultModel: '',    // model z configu — na ňom beží vlákno, ktoré si vlastný nevybralo
 
+    /* Profil nástrojov pre ĎALŠÍ beh, nastavený človekom v palete (Ctrl+K).
+       `null` = klient profil nevyberá a server si vezme `hades.console.profile`.
+
+       Prečo „pre ďalší beh" a nie „pre vlákno": `POST /api/console/run` profil
+       prijíma a perzistuje ho na vlákno, ale `POST /api/console/decide` ho má
+       `prohibited` — o profile sa rozhoduje PRI SPUSTENÍ behu, inak by sa sada
+       toolov dala vymeniť medzi vyžiadaním povolenia a jeho vykonaním. Táto
+       hodnota preto tečie výhradne do tela `startRun()`; `resumeDecision()` ju
+       nesmie vidieť ani omylom.
+
+       Prečo sa nedá zistiť aktívny profil: rámec `start` ho nenesie a payload
+       vlákna tiež nie, takže „nič nevybrané" znamená „server rozhodne" a klient
+       to nepredstiera. */
+    profile: null,
+
     // Kým init nedobehne, konzola neprijíma ťahy: vlákna a zoznam modelov ešte
     // len tečú a `openThread()` na konci štartu prekresľuje celý tok. Bez tejto
     // brány sa dala odoslať správa, ktorú init o 100 ms zmazal zo obrazovky —

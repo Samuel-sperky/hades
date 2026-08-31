@@ -1428,11 +1428,31 @@ button.close:active { background: var(--accent-soft); }
    Obvod prstenca je 2π × 8,64 = 54,29 — keď zmeníš polomer znaku, prepočítaj aj
    dasharray, inak sa obtiahnutie zastaví v polovici alebo skočí.
 
+   JEDNA hodnota stačí na všetky nosiče znaku, aj keď sa kreslia v rôznej veľkosti
+   (24 px v hlavičkách, 44 px v prázdnych stavoch). `stroke-dasharray` aj
+   `transform-origin` sa v SVG merajú v UŽÍVATEĽSKÝCH jednotkách viewBoxu, nie
+   v obrazovkových px, a všetkých päť nosičov má `viewBox="0 0 24 24"` s `r="8.64"`.
+   Zmerané 31. 8. 2026: `getTotalLength()` dá na 24 px aj 44 px znaku rovnakých
+   53,94 (Chrome aproximuje kružnicu bezierom, preto nie presných 54,29), kým
+   `getBoundingClientRect().width` sa líši 17,28 vs 31,68 px. Druhá hodnota
+   dasharray by teda nebola presnejšia, ale rozbitá.
+
+   Nosičov je päť a znak sa má zrodiť na KAŽDEJ ploche: `#brand-core` (/),
+   `#back-to-graph` a `.empty-sigil` (/console — druhý kreslí `console/render.js`,
+   preto trieda a nie id), `#chat-home` a `.ce-mark` (/chat). Do 31. 8. 2026 tu
+   stáli len prvé dva, takže /chat dával `animationName: none` a znak tam
+   nevznikal — hoci markup triedy `bc-ring`/`bc-core` už niesol. Keď pridáš šiesty
+   nosič, pridaj ho do OBOCH zoznamov nižšie aj do podlahy `prefers-reduced-motion`;
+   selektor bez podlahy je znak, ktorý sa človeku s vypnutým pohybom nikdy nedokreslí.
+
    Trvanie obtiahnutia je --dur-chart-draw, ten istý token, aký nesú segmenty
    donutu: je to jeden pohyb „čiara sa kreslí" na dvoch miestach, a kým to boli
    dve čísla 760 ms, čakalo sa len na to, ktoré z nich sa zmení samo. */
 #brand-core .bc-ring,
-#back-to-graph .bc-ring {
+#back-to-graph .bc-ring,
+.empty-sigil .bc-ring,
+#chat-home .bc-ring,
+.ce-mark .bc-ring {
     stroke-dasharray: 54.29;
     stroke-dashoffset: 54.29;
     /* od 12 hodín, nie od 3 — inak znak vzniká zboku */
@@ -1441,7 +1461,10 @@ button.close:active { background: var(--accent-soft); }
     animation: bc-draw var(--dur-chart-draw) var(--ease) 100ms 1 both;
 }
 #brand-core .bc-core,
-#back-to-graph .bc-core {
+#back-to-graph .bc-core,
+.empty-sigil .bc-core,
+#chat-home .bc-core,
+.ce-mark .bc-core {
     transform-origin: 12px 12px;
     animation: bc-core-in 460ms var(--ease) 620ms 1 both;
 }
@@ -1456,9 +1479,12 @@ button.close:active { background: var(--accent-soft); }
 }
 /* Bez pohybu je znak rovno hotový — nie neviditeľný. */
 @media (prefers-reduced-motion: reduce) {
-    #brand-core .bc-ring, #back-to-graph .bc-ring,
-    #brand-core .bc-core, #back-to-graph .bc-core { animation: none; }
-    #brand-core .bc-ring, #back-to-graph .bc-ring { stroke-dashoffset: 0; }
+    #brand-core .bc-ring, #back-to-graph .bc-ring, .empty-sigil .bc-ring,
+    #chat-home .bc-ring, .ce-mark .bc-ring,
+    #brand-core .bc-core, #back-to-graph .bc-core, .empty-sigil .bc-core,
+    #chat-home .bc-core, .ce-mark .bc-core { animation: none; }
+    #brand-core .bc-ring, #back-to-graph .bc-ring, .empty-sigil .bc-ring,
+    #chat-home .bc-ring, .ce-mark .bc-ring { stroke-dashoffset: 0; }
 }
 
 @keyframes core-pulse {
@@ -2702,8 +2728,15 @@ pre.code code {
    ďalšia varianta tlačidla tu nevzniká. Prepisuje sa len to, čo tlačidlo
    dostáva od okolia: 32 px z bare `button` je v riadku hlavičky priveľa
    a verzálka s trackingom sa dedí z riadka mena. Fokusový prsteň dáva
-   globálne `:focus-visible` — vlastný tu zámerne nie je. */
-.copy-btn {
+   globálne `:focus-visible` — vlastný tu zámerne nie je.
+
+   `.read-btn` (tlačidlo „Čítať" v tom istom riadku mena) berie TÚ ISTÚ kresbu.
+   Dovtedy ju nosilo tak, že si k sebe pripísalo `class="copy-btn read-btn"` —
+   meno triedy teda lhalo o akcii. Zmerané na `.read-btn` samotnom: min-height
+   32 px, padding 8px 12px, font-size 13 px, teda bare `button`, nie táto
+   varianta. `:is()` a nie `:where()`: oba argumenty sú jedna trieda, takže
+   špecificita je v oboch prípadoch 0-1-0 a oslabovať tu netreba nič. */
+:is(.copy-btn, .read-btn) {
     min-height: 24px;
     padding: 2px 8px;
     font-size: var(--fs-micro);
@@ -3319,6 +3352,23 @@ body.ambient #toasts {
 /* V Knižnici pás obaľuje `#library-filter` a odstup k zoznamu už dáva
    `#library-body { gap }`. Vlastný margin by sa k nemu pripočítal. */
 #library-filter > .dtl-filter { margin-bottom: 0; }
+/* Denník má odteraz filtračné RADY vnútri `#journal-filter`, takže sa spodná
+   medzera platila dvakrát — raz posledný `.dtl-filter`, raz kontejner, ktorý
+   je v tom istom zdieľanom pravidle vyššie. Zmerané pri 1440×900: viditeľná
+   medzera od posledného čipu k `#journal-list` bola 36 px (bez uložených
+   filtrov) / 33 px (s nimi), po vynulovaní 20 px — čo je pôvodná vzdialenosť
+   (16 px `--sp-2` + line-box čipu). `:has()` a nie holé `#journal-filter`:
+   keď rady raz nebudú, kontejner si svoju medzeru musí vziať zase sám.
+
+   DRUHÝ SELEKTOR NIE JE OPAKOVANIE. Nad 901 px medzeru nedáva zdieľané pravidlo
+   vyššie, ale `#screen-dennik > #journal-filter { margin-bottom: var(--section-gap) }`
+   v bloku `@media (min-width: 901px)` — a to sú DVE id, teda 2-0-0, čo holé
+   `#journal-filter:has(...)` (1-1-0) neprebije. Že si toho nikto nevšimol, je
+   zásluha zhody hodnôt: `--section-gap` aj `--sp-2` sú dnes 16 px, takže obe
+   cesty merajú tú istú medzeru. Zmerané: s jediným selektorom zostávala medzera
+   od posledného čipu k zoznamu 36 px aj po „oprave". */
+#journal-filter:has(.dtl-filter),
+#screen-dennik > #journal-filter:has(.dtl-filter) { margin-bottom: 0; }
 /* počet záznamov v chipe — z filtra sa tým stane aj malá štatistika */
 .chip-n {
     margin-left: var(--sp-0h);
@@ -4129,7 +4179,19 @@ body[data-screen="graf"] #screens { display: none; }
 .lib-area h2 {
     display: flex; align-items: center; gap: var(--sp-1);
 }
-.lib-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+/* `display` MUSÍ byť deklarovaný. Bodka niesla `width/height` bez neho, takže
+   mimo flexového rodiča bola `display: inline` a rozmer sa ZAHODIL — zmerané
+   {display:"inline", w:0, h:17}. V `.lib-area h2` to prežilo len preto, že ten
+   nadpis je flex (potomok flexu sa blokifikuje), a ten producent 31. 8. 2026
+   zmizol: bodka dnes stojí v cele `.rec-table td` a v hlavičke `#rec-panel`,
+   ktoré flex nie sú. Prípadné budúce flexové použitie sa tým nemení — tam sa
+   `inline-block` blokifikuje na `block` presne ako predtým `inline`.
+   `vertical-align` posadí bodku na optický stred riadka písma, nie na účiaru. */
+.lib-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    display: inline-block;
+    vertical-align: -1px;
+}
 .lib-count { font-family: var(--mono); font-size: var(--fs-data); line-height: var(--lh-data); color: var(--muted); font-weight: 400; }
 .lib-skills {
     display: grid;
@@ -4228,6 +4290,16 @@ body[data-screen="graf"] #screens { display: none; }
 .li-wrap:hover .pack-btn,
 .pack-btn:focus-visible,
 .pack-btn.in-pack { opacity: 1; }
+/* Druhý nosič „čo tlačidlo odkryje": RIADOK TABUĽKY. `.li-wrap` je obal karty
+   zoznamu a v `.rec-table` neexistuje, takže v stĺpci „Rozhovor" Knižnice bolo
+   tlačidlo myšou TRVALE neviditeľné (zmerané: opacity 0 aj pri :focus-within
+   riadka). Klávesnica ho videla cez `.pack-btn:focus-visible` a dotyk cez
+   `@media (hover: none)` nižšie — chýbala len myš. `:focus-within` je tu preto,
+   že fokus môže sedieť na inom prvku riadka a tlačidlo má byť vtedy vidieť
+   rovnako ako pri hoveri. Špecificita je zhodná s `.li-wrap:hover` (0-2-0),
+   takže ani jeden nosič neprebíja druhý. */
+.rec-row:hover .pack-btn,
+.rec-row:focus-within .pack-btn { opacity: 1; }
 /* W3b: --accent-ink (6,4:1), nie --accent-600 — ten dával nad --accent-softer 2,5–3,3:1 */
 .pack-btn:hover { background: var(--accent-softer); color: var(--accent-ink); }
 
@@ -4374,6 +4446,23 @@ label.check.dir-check.off { opacity: .5; }
     font-size: var(--fs-base); line-height: var(--lh-prose);
 }
 .dir-preview.md-body > * { max-width: none; margin-inline: 0; }
+
+/* TELO PANELU NIE JE PRILEPENÝ STĹPEC. `#rec-panel` prevzalo kresbu náhľadu
+   (rovnaký markup `.dir-preview.md-body`), a s ňou aj `max-height: 60vh` +
+   `overflow-y: auto` — teda skrolovaciu plochu VNÚTRI skrolovacej plochy.
+   Zmerané pri 1440×900 na reálnej smernici: vnútorný box `clientHeight` 540
+   (= 60vh), `scrollHeight` 4725, kým panel sám neskroloval vôbec
+   (scrollHeight = clientHeight = 814), takže 274 px výšky panelu nemal kto
+   využiť. Vodorovné odsadenie sa rušÍ z toho istého dôvodu: `#rec-panel` už
+   vlastný padding má a `var(--sp-2) var(--sp-3)` z náhľadu bolo druhé.
+   Hák `.dir-panel-md` je v markupe práve preto, aby sa oprava netrafila aj do
+   ľavého náhľadu, kde je `max-height: 60vh` správne. Špecificita 1-2-0 prebíja
+   `.dir-preview.md-body` (0-2-0). */
+#rec-panel-body .dir-panel-md.md-body {
+    max-height: none;
+    overflow: visible;
+    padding: var(--sp-1) 0;
+}
 
 /* Uložené smernice */
 .dir-saved {
@@ -4987,8 +5076,22 @@ button.hero-action:hover { border-color: var(--accent); }
 /* Period / area filter chips row (reuses .chip; this just gives it air) */
 
 /* ---------------------------------------------------------------------------
-   KONTROLA QUEUE (.queue*) — verify/review list, keyboard-driven (j/k/Enter/v/r)
-   --------------------------------------------------------------------------- */
+   KONTROLA (.queue*) — pôvodná KARTOVÁ fronta, dnes už len stĺpec akcií
+   ---------------------------------------------------------------------------
+   POZOR, tento nadpis dlho lhal: fronta Kontroly prešla 31. 8. 2026 na
+   `.rec-table` a zoznam kariet už nekreslí NIKTO. Bez producenta (grep nad
+   `public/js` a `resources/views` = 0 zásahov) sú `.queue`, `.queue-item*`,
+   `.queue-body`, `.queue-meta` a `.queue-text` vrátane ich zmienok v zdieľaných
+   zoznamoch `--card-pad` a `--measure-prose` nižšie.
+   ŽIVÉ zostáva `.queue-actions` a `.act-verify` / `.act-resolve` / `.act-skip`:
+   stĺpec akcií tabuľky ich používa ZÁMERNE znovu, aby vznikla jedna kresba
+   troch akcií, nie druhá.
+   Mŕtve pravidlá sa v tejto vlne NEMAŽÚ — štyri z tých miest sú popretkávané so
+   živými selektormi v zdieľaných zoznamoch (tá istá situácia ako `.dtl-*` po
+   prechode Rozhodnutí) a plošné mazanie by tam trafilo funkčný kód. Je to
+   samostatná úloha; kým nepríde, platí tento nadpis.
+   Kresba klávesového kurzora žije pri `.rec-row.selected`, nie tu — riadok
+   tabuľky ľavý border nemá, takže `.queue-item.selected` sa preň nedal použiť. */
 /* Fluidná mriežka — fronta je krátka, ale karta je text + 3 akcie: v jednom stĺpci
    na 2560 zostalo ~1800px prázdna. Poradie j/k ide po DOM = po riadkoch mriežky.
    520px je nižšie než u Denníka: text fronty sa ZALAMUJE (2 riadky), takže stĺpec
@@ -5119,6 +5222,12 @@ button.danger.armed {
     font-size: var(--fs-caption);
     color: var(--text);
 }
+/* Sekcia Hygieny stojí POD pásom skratiek a `.kbd-hints` nesie len `margin-top`,
+   takže odstup si musí vziať sama. Bol to inline štýl v `kontrola.js`
+   (`style="margin-top:var(--gutter)"`) — hodnota patrí sem, aby ju hustota
+   menila na jednom mieste. Kým inline štýl v JS ostáva, prebíja toto pravidlo
+   TOU ISTOU hodnotou; ide o pripravené miesto, nie o zmenu kresby. */
+#kontrola-hygiene { margin-top: var(--gutter); }
 
 /* ---------------------------------------------------------------------------
    RAIL BADGE COUNT — #dest-kontrola .count (review-queue size on the nav dest)
@@ -6276,6 +6385,14 @@ button, input, select {
     white-space: nowrap;
 }
 
+/* Bodka oblasti stojí PRED textom — v cele stĺpca Oblasť aj v hlavičke detailu.
+   V `.lib-area h2` odstup dával `gap`, ale ten producent zmizol a ani cela, ani
+   telo panelu flexový kontejner nie sú. Scopovane a nie v základe `.lib-dot`:
+   v budúcom flexovom rade by odstup dával `gap` a tento margin by sa k nemu
+   pripočítal. */
+.rec-table td .lib-dot,
+#rec-panel-body .lib-dot { margin-right: var(--sp-0h); }
+
 /* Číselné stĺpce vpravo, mono a tabulárne — inak sa čísla nedajú porovnať
    očami, hoci stoja pod sebou. */
 .rec-table :is(th, td).num {
@@ -6289,6 +6406,24 @@ button, input, select {
 .rec-row { cursor: pointer; transition: background var(--dur-fast) var(--ease); }
 .rec-row:hover { background: var(--accent-hover-wash); }
 .rec-row:focus-visible { background: var(--accent-focus-wash); }
+/* KLÁVESOVÝ KURZOR fronty Kontroly (j/k) je iný stav než „otvorené v paneli"
+   (`aria-current`): fronta sa dá prechádzať aj so zavretým panelom, a výber sa
+   presúva aj myšou (`mousedown` bez fokusu) a prežíva prekreslenie tabuľky —
+   takže `:focus-visible` sám ho neunesie (zmerané: riadok s `.selected` a bez
+   fokusu bol vizuálne identický s bežným, `background: rgba(0,0,0,0)`,
+   `box-shadow: none`).
+   Kresba musí byť ODLÍŠITEĽNÁ od `aria-current`, ktorý nesie akcentový pruh
+   vľavo — preto tu len podfarbenie a vnútorný obrys, bez pruhu. Vzor je pôvodné
+   `.queue-item.selected`, len bez `border-left-color` (riadok tabuľky ľavý
+   border nemá).
+   Selektor je zámerne 0-3-0, teda silnejší než `.rec-row:hover` (0-2-0): hover
+   nad INÝM riadkom nesmie kurzor prebiť. `aria-current` (0-2-0) je slabší, takže
+   otvorený a zároveň vybraný riadok vyzerá ako vybraný — a to je správne
+   poradie, kurzor je to, čo sa hýbe. */
+.rec-table .rec-row.selected {
+    background: var(--accent-softer);
+    box-shadow: inset 0 0 0 1px var(--border-accent);
+}
 /* Otvorený riadok nesie stav v `aria-current`, takže CSS ho číta ODTIAĽ —
    jeden nosič stavu a je aj v strome prístupnosti. Trieda `.open` zostáva pre
    prípad, že by riadok mal byť zvýraznený bez toho, aby bol „aktuálny". */
@@ -6434,6 +6569,17 @@ button, input, select {
 
     /* span-2 potrebuje aspoň 2 stĺpce; v jednostĺpcovom rade by pretekal. */
     .dash-card.span-2 { grid-column: auto; }
+
+    /* Kontrola má z ôsmich tabuliek najviac stĺpcov (7) a najdlhší identifikátor.
+       Zmerané pri viewporte 769 px (obsah 609 px): `col-label` dostal 108 px,
+       teda ~15 znakov, hoci `title` cely nesie 127–136 znakov. Nič nepreteká ani
+       sa neláme — je to čitateľnosť, nie rozpad, preto to patrí do bloku „úzke
+       okno" a nie k mobilu. Typ a Pôvod nesú z tejto tabuľky najmenej (typ je aj
+       v paneli, pôvod je odznak) a ich šírky (9 % + 10 %) pripadnú `col-label`,
+       ktorý je jediný bez inline šírky.
+       Scopované na `#kontrola-list`: `.col-origin` majú aj Knižnica a
+       Rozhodnutia, kde tento tlak na šírku nie je zmeraný. */
+    #kontrola-list .rec-table :is(th, td):is(.col-type, .col-origin) { display: none; }
 }
 
 /* ===========================================================================
@@ -6592,10 +6738,32 @@ button, input, select {
        a trvanie. Nič sa nestráca — celý záznam otvára ten istý pravý panel.
 
        Adresované TRIEDOU stĺpca, nie `:nth-child`: poradie stĺpcov sa medzi
-       obrazovkami líši a index by bol väzba, ktorá sa ticho rozíde. */
-    .rec-table :is(th, td):is(.col-model, .col-tool_profile, .col-tokens_out, .col-origin) {
+       obrazovkami líši a index by bol väzba, ktorá sa ticho rozíde.
+
+       31. 8. 2026 pribudli tabuľky Knižnice, Kontroly a Smernice a s nimi ďalšie
+       kľúče. Zoznam je JEDEN, pretože kľúč znamená na každej obrazovke to isté;
+       čo sa medzi obrazovkami rozchádza, stojí nižšie ako scopované pravidlo.
+         `col-path` (Smernica) — pri 375 px si Súbor a Smernica delili presne
+           156 px z 311 px, teda hlavný identifikátor mal polovicu, hoci cesta je
+           v paneli aj v `title` (zmerané).
+         `col-tags`, `col-certainty` (Knižnica, Kontrola) — značky a istota sú
+           KONTEXT, nie identifikátor riadka.
+         `col-type`, `col-created_at` (Kontrola) — typ je aj v paneli, čas nesie
+           na telefóne najmenej.
+       Nič sa nestráca: celý záznam vrátane všetkých týchto polí otvára ten istý
+       pravý panel. */
+    .rec-table :is(th, td):is(.col-model, .col-tool_profile, .col-tokens_out,
+                              .col-origin, .col-path, .col-tags, .col-certainty,
+                              .col-type, .col-created_at) {
         display: none;
     }
+
+    /* Oblasť sa NEDÁ skryť plošne: Knižnici zostáva po skrytí značiek a istoty
+       len Playbook / Oblasť / Vek / Rozhovor a farebná bodka oblasti je tam
+       najrýchlejšie čitateľný rozlišovač. Kontrola má naopak stĺpec akcií, ktorý
+       si berie 172 px z 311 px (nižšie), takže tri textové stĺpce by tam mali po
+       ~46 px. Preto je to jediný kľúč adresovaný per obrazovku. */
+    #kontrola-list .rec-table :is(th, td).col-area { display: none; }
 
     /* ŠÍRKY SA MUSIA VYNULOVAŤ, inak skrytie stĺpcov nepomôže. `renderTable()`
        píše `width` INLINE na `<th>` (z definície stĺpca), takže percentá z
@@ -6608,6 +6776,26 @@ button, input, select {
        bez neho. S `width: auto` a `table-layout: fixed` rozdelí prehliadač
        šírku rovnomerne medzi VIDITEĽNÉ stĺpce. */
     .rec-table :is(th, td) { width: auto !important; }
+
+    /* STĹPEC AKCIÍ ŠÍRKU VRÁTIŤ MUSÍ: `width: auto` mu vyššie dal rovnaký diel
+       ako textovým stĺpcom (zmerané pri 375 px: cela `col-akcie` client 52 /
+       scroll 82, teda odseknutá a tri tlačidlá po 32 px sa stlačili). Z JS to
+       obísť nejde — inline `width` prebíja pravidlo bez `!important`, a `auto`
+       vyššie `!important` má.
+
+       Šírka je zmeraná na OZBROJENOM stave, nie na troch ikonách. To je ten istý
+       dôvod, prečo je desktopová šírka 11,5 rem a nie „podľa ikon": `.act-skip`
+       sa po prvom kliku mení na `width: auto` s textom „Preskočiť?".
+       Namerané obsahové šírky `.queue-actions`: v pokoji 104 px (32+32+32 + dve
+       medzery po 4), ozbrojene 154,5 px (32+32+82). S paddingom cely 2 × 8 px to
+       je 120 px, resp. 170,5 px — preto 10,75 rem (172 px) a NIE 7,5 rem (120 px),
+       ktoré by potvrdzovací text odseklo o 50 px presne v okamihu, keď ho človek
+       musí prečítať.
+       `rem` a nie percento: obsah stĺpca nerastie, je to tri tlačidlá.
+
+       Poradie ZA pravidlom `width: auto !important` je nutné — obe majú
+       `!important` a rovnakú špecificitu, takže vyhráva to neskoršie. */
+    .rec-table :is(th, td).col-akcie { width: 10.75rem !important; }
 }
 
 /* „Viac" je piaty stĺpec spodnej lišty a NIKDE INDE neexistuje. Skrýva ho CSS

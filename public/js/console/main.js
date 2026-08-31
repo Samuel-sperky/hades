@@ -31,6 +31,12 @@ import { wireRun } from './run.js';
 import { wireComposer, paintSend } from './composer.js';
 import { wireSlash, closePalette } from './slash.js';
 import { wireModels, paintModels } from './models.js';
+import { emptyBox, errorBox } from './empty.js';
+import { wirePalette } from './palette.js';
+import { wireReader } from './reader.js';
+import {
+    clearThreadFilter, renderThreadFilters, setThreadQuery, threadFilter, threadPass,
+} from './threadfilter.js';
 import { iconSwap } from '../shared/icons.js';
 import { iconSvg } from '../shared/icons.js';
 
@@ -51,21 +57,22 @@ function applyTheme() {
    počas načítania bol prázdny, pri nula vláknach tiež a chyba fetchu skončila len
    v toku správ, takže zoznam ticho ukazoval staré dáta ako čerstvé. */
 let listState = 'loading';   // 'loading' | 'ready' | 'error'
-let listFilter = '';
 
 /* Rozpísané premenovanie musí prežiť prekreslenie: `loadThreads()` beží po každom
    ťahu a bez uloženej rozpísanej hodnoty by titulok zmizol uprostred písania. */
 let renaming = null;         // { uuid, value, focused }
 
-/** Porovnanie bez diakritiky — kto hľadá „zaznam", má nájsť aj „záznam". */
-function fold(text) {
-    return String(text ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-}
-
-function matchesFilter(t) {
-    if (listFilter === '') return true;
-
-    return fold(t.title || 'Nové vlákno').includes(fold(listFilter));
+/* Lišta filtrov je PRVÝM DIEŤAŤOM `#thread-list`, nie samostatným pásom medzi
+   `.rail-find` a zoznamom — a je to obmedzenie, nie voľba: samostatný pás by
+   potreboval vlastné `padding` a `border-bottom` v `console.css`, ktorý tento
+   agent nevlastní, a inline štýly si appka zakázala. Cena je pomenovaná: lišta
+   skroluje so zoznamom. `#thread-filters` s `position: sticky` v `console.css`
+   je správna oprava a je nahlásená v reporte. */
+function filterBar(list) {
+    const bar = el('div');
+    bar.id = 'thread-filters';
+    list.append(bar);
+    renderThreadFilters(bar, C.threads, renderThreadList);
 }
 
 /** Riadky v bočnom paneli. Titulok je prvá veta človeka, nie výmysel modelu. */
@@ -82,21 +89,31 @@ export function renderThreadList() {
         return;
     }
 
-    // Chyba NEZAHADZUJE riadky, ktoré už v paneli sú: staré vlákna sú stále
-    // platné odkazy a zahodiť ich kvôli jednej neúspešnej obnove by bolo horšie
-    // než priznať, že zoznam je starý.
-    if (listState === 'error') list.append(errorNote());
+    filterBar(list);
+
+    /* CHYBA MÁ DVE PODOBY A ROZDIEL JE VECNÝ, nie kozmetický:
+
+       · zoznam je prázdny → zlyhala PLOCHA, takže `.empty--error` s vlastným
+         predmetom („Zoznam vlákien sa nepodarilo načítať") a jednou akciou;
+       · zoznam už riadky má → zlyhala len OBNOVA. Riadky sa NEZAHADZUJÚ (staré
+         vlákna sú stále platné odkazy) a `.empty` nad nimi by bola lož: plocha
+         obsah má. Vtedy je to jednoriadkové priznanie, že zoznam je starý —
+         presne tá „akcia bez viditeľnej zmeny", ktorú manuál §8 posiela inline
+         k pôvodu. Sú to teda dva stavy jedného slovníka, nie dva slovníky. */
+    if (listState === 'error' && C.threads.length) list.append(staleNote());
 
     if (!C.threads.length) {
-        if (listState !== 'error') list.append(emptyNote());
+        list.append(listState === 'error'
+            ? errorBox('zoznam vlákien', () => loadThreads())
+            : emptyNote());
 
         return;
     }
 
-    const rows = C.threads.filter(matchesFilter);
+    const rows = C.threads.filter(threadPass);
 
     if (!rows.length) {
-        list.append(el('p', 'rail-msg', `Hľadaniu „${listFilter}" nezodpovedá žiadne vlákno.`));
+        list.append(filterEmptyNote());
 
         return;
     }
@@ -232,7 +249,7 @@ export async function deleteThread(uuid) {
     C.stats = null;
     C.step = null;
 
-    const next = C.threads.find(matchesFilter) || C.threads[0];
+    const next = C.threads.find(threadPass) || C.threads[0];
 
     if (next) {
         await openThread(next.uuid);
@@ -367,20 +384,59 @@ function skeletonRows() {
     return box;
 }
 
-/** Prázdny stav hovorí, čo robiť ďalej — tak ako všade inde v appke. */
+/* Prázdny stav UČÍ: čo to je · prečo je prázdne · JEDNA akcia. Slovník je
+   spoločný pre celú appku (`.empty` + `.empty .title` + `.empty .hint` +
+   `.empty .empty-act` v `mind.css`); tento súbor si ho už neskladá sám. */
 function emptyNote() {
-    const box = el('div', 'rail-empty');
-    box.append(el('p', 'rail-msg', 'Zatiaľ žiadne vlákna.'));
-    box.append(el('p', 'rail-msg', 'Napíš úlohu dole — vlákno vznikne samo. Alebo ho začni tlačidlom „Nové vlákno".'));
-
-    return box;
+    return emptyBox({
+        icon: 'send',
+        title: 'Zatiaľ žiadne vlákna',
+        hint: 'Napíš úlohu dole — vlákno vznikne samo.',
+        action: { label: 'Nové vlákno', on: () => newThread() },
+    });
 }
 
-function errorNote() {
-    const box = el('div', 'rail-error');
-    box.append(el('p', 'rail-msg', 'Zoznam vlákien sa nepodarilo načítať.'));
+/* Prázdno spôsobené FILTROM, nie neexistenciou dát. `.empty--filter` vlastnú
+   kresbu zámerne nemá (manuál §8: prázdny stav si nevymýšľa novú farbu), takže
+   sa od základu líši textom a svojou jednou akciou.
 
-    const retry = el('button', 'rail-retry', 'Skúsiť znovu');
+   Text priznáva, KTORÝ filter to spôsobil — pri zapnutom čipe modelu je „nič
+   nenájdené" bez tej informácie hádanka: hľadané slovo v paneli vidieť, zapnutý
+   čip po odskrolovaní zoznamu nie. */
+function filterEmptyNote() {
+    const f = threadFilter();
+    const bits = [];
+
+    if (f.q !== '') bits.push(`hľadanému „${f.q}"`);
+    if (f.model !== '') bits.push('zapnutému filtru modelu');
+
+    return emptyBox({
+        mod: 'filter',
+        icon: 'magnifier-off',
+        title: 'Filtru nezodpovedá žiadne vlákno',
+        hint: `Žiadne z ${C.threads.length} vlákien nezodpovedá ${bits.join(' a ')}.`,
+        action: {
+            label: 'Zrušiť filter',
+            on: () => {
+                clearThreadFilter();
+                const find = $('#thread-find');
+                if (find) find.value = '';
+                renderThreadList();
+                find?.focus();
+            },
+        },
+    });
+}
+
+/* Neúspešná OBNOVA nad zoznamom, ktorý riadky má. Nie `.empty` — plocha obsah
+   má; je to jednoriadkové priznanie so svojou jednou akciou.
+   `.rail-error` / `.rail-msg` / `.rail-retry` sú kresby, ktoré `console.css` už
+   nesie, takže sa tu nič nové nezavádza. */
+function staleNote() {
+    const box = el('div', 'rail-error');
+    box.append(el('p', 'rail-msg', 'Zoznam vlákien sa nepodarilo obnoviť — dole je posledný známy stav.'));
+
+    const retry = el('button', 'rail-retry', 'Skúsiť znova');
     retry.type = 'button';
     retry.addEventListener('click', () => loadThreads());
     box.append(retry);
@@ -506,7 +562,7 @@ function wireShell() {
     // Hľadanie je čisto klientské nad už načítanými riadkami: `/api/console/threads`
     // vracia najviac 100 vlákien, takže druhý okruh na server by tu nič nepridal.
     $('#thread-find')?.addEventListener('input', (event) => {
-        listFilter = event.target.value.trim();
+        setThreadQuery(event.target.value);
         renderThreadList();
     });
 
@@ -517,7 +573,7 @@ function wireShell() {
         // dobehlo na dokument a zastavilo rozbehnutý beh.
         event.stopPropagation();
         event.target.value = '';
-        listFilter = '';
+        setThreadQuery('');
         renderThreadList();
     });
 
@@ -571,6 +627,8 @@ async function init() {
     wireSlash();
     wireComposer();
     wireRun();
+    wirePalette();
+    wireReader();
     closePalette();
 
     const fromUrl = document.querySelector('meta[name="console-thread"]')?.content || '';

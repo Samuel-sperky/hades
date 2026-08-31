@@ -51,6 +51,10 @@ import { iconSvg } from '../shared/icons.js';
 import {
     announce, clearEmpty, isFollowing, live, scrollToBottom, streamHost, toolList,
 } from './main.js';
+/* Čítací režim. Kontejner markdownu dostáva triedu `md-body` (kresba je
+   v mind.css) UŽ PRI STAVANÍ bubliny — odpoveď, ktorá pribudne počas zapnutého
+   režimu, je tak čitateľná od prvého tokenu a nie až pri ďalšom prepnutí. */
+import { mdClass } from './read.js';
 
 /* Koľko riadkov výsledku sa vidí bez rozbalenia. Šesť je jeden „odsek" — dosť
    na to, aby bolo vidno, či nástroj našiel to, čo mal. */
@@ -235,6 +239,28 @@ export function pushNotice(text) {
     return appendBlock(box);
 }
 
+/**
+ * Zlyhanie v toku konverzácie.
+ *
+ * PREČO BUBLINA A NIE TOAST — a prečo to spĺňa manuál §8, hoci tam pri zlyhaní
+ * stojí „toast". Dôvod, ktorý manuál pre toast uvádza, je „musí prežiť
+ * prekreslenie a niesť dôvod". Táto bublina prežíva viac: nezmizne po štyroch
+ * sekundách, ostáva v histórii ťahu na mieste, kde zlyhanie nastalo, a nesie celú
+ * vetu vrátane HTTP stavu. Zlyhanie behu navyše NIE JE „udalosť mimo obrazovky" —
+ * je to udalosť konverzácie, teda presne to, o čom tok je. Toast by tú istú vetu
+ * povedal druhýkrát a na horšom mieste.
+ *
+ * Variant je pritom nasadený: `.cm.cm-error` má v `chat.css` `--danger-ink` na
+ * menovke aj bubline, teda tú istú rolu, akú nesie `showToast(…, 'error')`.
+ *
+ * ČO TU CHÝBALO A JE TO DOPLNENÉ 31. 8. 2026: viditeľnosť. `appendBlock()`
+ * doskroluje len keď tok SLEDUJE spodok (`isFollowing()`), takže chyba
+ * ohlásená v okamihu, keď je človek odskrolovaný v histórii, pribudla POD
+ * okrajom a nebolo ju vidieť — a práve to je ten prípad „mimo obrazovky", pre
+ * ktorý manuál toast žiada. Chyba preto skroluje VŽDY a ohlási sa aj čítačke
+ * (`#chat-announce` nesie jednu vetu o behu; `#chat-stream` je `aria-live`
+ * oblasť, ale s `aria-busy` počas streamu, kedy z nej čítačka nič nedostane).
+ */
 export function pushError(text) {
     const box = el('div', 'cm cm-error');
 
@@ -244,7 +270,15 @@ export function pushError(text) {
     box.append(el('span', 'cm-who', 'Chyba'));
     box.append(el('div', 'cm-bubble', text));
 
-    return appendBlock(box);
+    const node = appendBlock(box);
+
+    // Poradie je zámerné: najprv oznam pre čítačku, potom skrol. `announce()`
+    // prepisuje jednu vetu, takže by ju hlásenie o dobehnutí ťahu prebilo — a to
+    // je správne až POTOM, čo je chyba na obrazovke.
+    announce(text);
+    scrollToBottom();
+
+    return node;
 }
 
 /** Hotová odpoveď (obnova histórie) — markdown naraz, bez streamovania. */
@@ -277,7 +311,7 @@ function assistantShell(meta = {}) {
     if (cost !== '') who.append(el('span', 'cm-cost', cost));
 
     box.append(who);
-    box.append(el('div', 'cm-bubble cm-md'));
+    box.append(el('div', mdClass()));
 
     return box;
 }

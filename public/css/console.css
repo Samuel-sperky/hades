@@ -179,6 +179,44 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 
 .rail-find .ic { font-size: var(--icon-xs); }
 
+/* Lišta filtrov a uložených kombinácií. Kreslí ju `threadfilter.js` a musí
+   dnes žiť ako PRVÉ DIEŤA `#thread-list`, nie ako samostatný pás medzi
+   `.rail-find` a zoznamom — inline štýly si appka zakázala a bez tohto
+   pravidla by pás nemal ani padding, ani spodnú linku.
+   Následok, ktorý to pravidlo rieši, je zmeraný: `#thread-list` má pri 94
+   vláknach `scrollHeight` 5471 px proti `clientHeight` 790 px, takže lišta
+   pri `position: static` odskrolovala z dohľadu — pri `scrollTop` 1500 mala
+   top −1500 px. So `sticky` stojí na +8 px pri `scrollTop` 0, 400, 1200
+   aj 4000; skok je 0 px.
+   Pozadie MUSÍ byť nepriehľadné — `--panel` je papier panelu; bez neho
+   presvitajú riadky vlákien pod lištou. `z-index: 1` ju drží nad nimi,
+   `--panel` je zároveň jediný povrch nesúci sklo panelu, takže lišta ostane
+   súčasťou slidera priehľadnosti a nevypadne z neho na iný papier (zmerané:
+   rgba(19,27,26,0.92), teda sklo panelu, nie nepriehľadná náhrada).
+   `padding`/`border-bottom` sú tie isté hodnoty ako `.rail-find` vyššie:
+   je to druhý pás toho istého hlavičkového rytmu, nie nový komponent.
+
+   `margin-inline` JE ZÁPORNÝ A JE TO JEDINÝ MARGIN, KTORÝ TU NIEČO ROBÍ.
+   `#thread-list` má `padding: var(--sp-1)`, takže lišta by bez neho stála
+   8 px od hrán a pri skrolovaní by pod ňou po oboch stranách presvitali
+   riadky vlákien — zmerané A/B nad tým istým DOM: bez neho `left: 8 px`
+   a šírka 243 px, s ním `left: 0` a šírka 259 px = celá skrolovacia plocha.
+   Zvislé záporné marginy tu NIE SÚ, hoci by sa zdali potrebné: skúšal som ich
+   a sú INERTNÉ. Lepivý rámec je v tomto prípade content box (`top: 0` teda
+   znamená +8 px, nie 0), takže lišta na +8 px stojí v pokoji aj v prilepení
+   a žiaden 8px skok, ktorý by margin mal vykryť, nevzniká. A `-8 px` hore
+   s `+8 px` dole sa navzájom vyrušia: prvý riadok vlákna bol s nimi aj bez
+   nich na 169 px. Deklarácia, ktorá nič nemení, je len ďalšia lož v súbore. */
+#thread-filters {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin-inline: calc(var(--sp-1) * -1);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
 #thread-find {
     flex: 1;
     min-width: 0;
@@ -312,7 +350,13 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     line-height: 1.5;
 }
 
-.rail-empty { padding: var(--sp-1) 6px; }
+/* `.rail-empty` tu bolo do 31. 8. 2026 a je zmazané, nie presunuté: prázdny
+   zoznam vlákien kreslí `emptyNote()` v `console/main.js` zo spoločného
+   slovníka `.empty`, takže tá trieda nemá ani jedného producenta (grep nad
+   `public/js` a `resources/views` dá jediný zásah — zmienku v komentári
+   `console/empty.js`). `.rail-msg`, `.rail-error` a `.rail-retry` nižšie
+   ZOSTÁVAJÚ živé, kreslí nimi `staleNote()` neúspešnú obnovu nad neprázdnym
+   zoznamom — to nie je prázdny stav a slovník `.empty` na to nesedí. */
 
 .rail-error {
     margin-bottom: var(--sp-1);
@@ -483,8 +527,8 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 
 /* `.empty-state` tu ZÁMERNE NIE JE. Bolo, a o 176 riadkov nižšie si dávalo
    `max-width: 600px` — kto čítal túto skupinu, uveril 820. Prázdny stav má
-   vlastnú, užšiu mieru čítania a drží si ju v jedinom bloku `.empty-state`
-   v sekcii „prázdny stav". */
+   vlastnú, užšiu mieru čítania a drží si ju v jedinom bloku
+   `.console-body :is(.empty-state, .empty--hero)` v sekcii „prázdny stav". */
 .tool-call,
 .perm-card,
 .agent-run { max-width: var(--stream-w); margin-left: auto; margin-right: auto; }
@@ -550,6 +594,32 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     font-family: var(--mono);
     font-size: var(--fs-micro);
     color: var(--muted);
+}
+
+/* CENA ODPOVEDE MALA DO 31. 8. 2026 NULA PRAVIDIEL a dedila kresbu chrómu.
+   `.msg .who` je eyebrow rad: `uppercase` + `letter-spacing: .04em`. Pre ROLU
+   („Charón") je to správne, pre hodnotu, ktorú má človek prečítať, nie —
+   zmerané sa text „172 tok · 8,1 tok/s" vykreslil ako „172 TOK · 8,1 TOK/S"
+   v Geiste s `letter-spacing: 0,44px`, teda jednotka kričala a číslice neboli
+   tabulárne mono. Susedný `.who-model` presne tie tri veci vypína; toto je
+   ten istý zásah pre druhú meta hodnotu radu.
+
+   PREČO NIE JEDEN ZOZNAM S `.who-model`: líšia sa vo veľkosti a je to rolový
+   rozdiel, nie nedôslednosť. Meno modelu je identifikátor, teda chróm na
+   `--fs-micro`; cena je DÁTOVÁ hodnota. Veľkosť preto berie od `#run-stats`
+   nižšie (`--mono` + `--fs-caption`) — je to tá istá cena tej istej plochy,
+   len v hlavičke namiesto pri odpovedi, a dve veľkosti pre jeden obsah by
+   boli dve pravdy. `--fs-caption` je zároveň veľkosť, ktorú `.who-cost` dedil
+   doteraz, takže sa meria len to, čo sa naozaj malo zmeniť.
+
+   `color` sa nedeklaruje: `--muted` prichádza z `.msg .who` a je správne
+   (zmerané rgb(138,155,152)). `font-variant-numeric: tabular-nums` sa tiež
+   dedí (zmerané), preto tu druhýkrát nestojí. */
+.who-cost {
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: var(--mono);
+    font-size: var(--fs-caption);
 }
 
 .msg.user .bubble {
@@ -661,8 +731,24 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 }
 
 /* Riadok mena a ceny je na každej ploche inak pomenovaný, takže tento jeden
-   selektor zostáva tu; zvyšok kresby kopírovania je v mind.css. */
-.msg .who .copy-btn { margin-left: auto; }
+   selektor zostáva tu; zvyšok kresby kopírovania je v mind.css.
+
+   `:first-of-type` NIE JE poistka do budúcnosti, je to oprava dneška. V riadku
+   mena stoja odteraz DVE tlačidlá (Kopírovať a Čítať) a `margin-left: auto` na
+   oboch si voľné miesto flex ROZDELÍ, nezhrnie: zmerané 31. 8. 2026 dostalo
+   každé `margin-left: 243,5px`, takže medzi tlačidlami zostala diera 249 px
+   a „Čítať" odplávalo samo na pravý okraj. Auto smie mať len PRVÉ z nich.
+
+   `:first-of-type` sa počíta podľa TYPU prvku, nie podľa triedy — obe sú
+   `<button>` a pred nimi stoja len `<span>`-y (rola, `.who-model`,
+   `.who-cost`), takže prvé tlačidlo je Kopírovať. Keby do riadka pribudlo
+   tlačidlo, ktoré nie je ani `.copy-btn`, ani `.read-btn`, prestane platiť
+   auto úplne (nič sa neposunie doprava) — to je hlasné zlyhanie, nie tiché.
+
+   `.read-btn` je v zozname preto, že `mind.css` má prepnúť kresbu na
+   `:is(.copy-btn, .read-btn)` a `.copy-btn` sa tlačidlu „Čítať" potom
+   z markupu odoberie; dovtedy ho trafí oboma triedami. */
+.msg .who > :is(.copy-btn, .read-btn):first-of-type { margin-left: auto; }
 
 .help-list { margin: 8px 0; padding-left: 20px; }
 .help-list li { margin-bottom: 4px; }
@@ -670,23 +756,39 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 
 /* ---------- prázdny stav ---------- */
 
-/* TRETÍ NÁZOV JEDNÉHO DRUHU OBSAHU (nález D11) — a zostáva tu vedome, nie
-   nedopatrením. Základ prázdneho stavu je `.empty` v mind.css (tichý stred: flex
-   kolóna, `text-align: center`, `--muted`) a hero podobu tam už nesie
-   modifikátor `.empty.empty-network`. Tento blok má byť tretí prípad tej istej
-   rodiny, teda `.empty` + hero modifikátor.
-   Prečo sa to nestalo pri tomto zlúčení: triedu skladá JS, nie CSS —
-   `public/js/console/render.js:59` (`el('div', 'empty-state')`) a dva
-   `querySelector('.empty-state')` na r. 143 a 167. Bez tej jednej riadky by
-   `.empty--hero` bolo pravidlo, ktoré nič netrafí, a prázdny stav konzoly by
-   ostal bez kresby — to je horšie než tretí názov.
-   Čo bude treba pri prepnutí zmerať (základ NIE JE bez následkov): `.empty` dáva
-   `text-align: center` a `.empty p { font-size: var(--fs-small) }`, takže
-   odstavec aj zoznam schopností (`.empty-can` nižšie — vedome NIE prázdny stav,
-   je to zoznam toho, čo konzola vie) potrebujú vlastný prepis, inak sa
-   vycentrujú a zdrobnia. `color: --text-secondary` tu je zdvih oproti `--muted`
-   základu a je zámerný — je to prvá vec, ktorú človek na obrazovke vidí. */
-.empty-state {
+/* SLOVNÍK JE ODTERAZ PRIPOJENÝ, ALE STARÉ MENO EŠTE NEODIŠLO — a to je
+   zámerné, nie nedopatrenie. Základ prázdneho stavu je `.empty` v mind.css
+   (tichý stred: flex kolóna, `text-align: center`, `--muted`) a hero podobu
+   nesie `.empty--hero`. Uvítací stav konzoly je tretí prípad tej istej rodiny.
+
+   Prečo je v selektore OBOJE: triedu skladá JS, nie CSS —
+   `public/js/console/render.js` (`el('div', 'empty-state')`) a dva
+   `querySelector('.empty-state')`. Kým sa tá jedna riadka neprepne na
+   `el('div', 'empty empty--hero')`, pravidlo len na `.empty--hero` by nič
+   netrafilo a uvítací stav konzoly by ostal bez kresby. `:is(.empty-state,
+   .empty--hero)` platí PRED prepnutím aj PO ňom, takže JS zmena je bezpečná
+   sama a nemusí prísť naraz s touto. Keď prepnutie nastane, `.empty-state`
+   z tohto zoznamu odíde.
+
+   ŠPECIFICITU NESIE `.console-body`, NIE PORADIE SÚBOROV (0-2-0 proti 0-1-0
+   základu `.empty` aj modifikátora `.empty--hero`). `mind.css` sa načítava
+   prvý, takže holý zoznam tried by vyhral len vďaka poradiu — a to je presne
+   tá závislosť, ktorá sa ticho rozíde. Sekcia toku správ nižšie robí to isté
+   a z toho istého dôvodu.
+
+   ŠTYRI VECI, KTORÉ ZÁKLAD NEDÁ a sú tu preto vypísané — všetky zmerané
+   31. 8. 2026 simulovaným prepnutím tried nad tým istým DOM (bez nich by
+   prepnutie bolo regresia, nie zlúčenie):
+     · `margin-top: 10vh` — hero nemá odsadenie zhora vôbec (zmerané 90 px → 0),
+       takže uvítanie by sedelo na hrane hlavičky;
+     · `color: --text-secondary` — základ dáva `--muted`
+       (zmerané rgb(195,209,206) → rgb(138,155,152)); je to zdvih a je zámerný,
+       je to prvá vec, ktorú človek na obrazovke vidí;
+     · `line-height: 1.6` — základ nedáva žiadnu (zmerané 22,4 px → 21 px);
+     · `max-width: 600px` — `.empty--hero` má `--measure-prose`
+       (zmerané 600 px → 668,3 px). Užšia miera zostáva rozhodnutím TEJTO
+       plochy: prázdny stav konzoly je štyri krátke riadky, nie próza. */
+.console-body :is(.empty-state, .empty--hero) {
     /* Jediná pravda o šírke prázdneho stavu. `auto` po stranách dávala do
        21. 8. 2026 skupina `.tool-call, .perm-card, .empty-state` v sekcii toku
        správ — teraz je centrovanie tu, pri hodnote, ktorú centruje. */
@@ -697,20 +799,33 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     line-height: 1.6;
 }
 
-.empty-state h2 {
+/* `<h2>` dnes, `<p class="title">` po prepnutí — preto oboje. `:is(h2, .title)`
+   je 0-1-0 (berie najsilnejší argument, teda triedu), celý selektor 0-3-0,
+   takže prebije `.empty .title` (0-2-0) z mind.css. Bez toho by nadpis spadol
+   na `--fs-title` (16 px) a bez triedy až na default `h2` — zmerané pri
+   simulovanom prepnutí: 20 px → 21 px, `font-weight` 500 → 700 (bold `h2`)
+   a farba z `--text` na `--muted`. */
+.console-body :is(.empty-state, .empty--hero) :is(h2, .title) {
     margin: 0 0 10px;
     font-size: var(--fs-display);
     font-weight: 500;
     color: var(--text);
 }
 
-.empty-can {
+/* Zoznam schopností — vedome NIE prázdny stav, je to zoznam toho, čo konzola
+   vie. `align-self: stretch` je NUTNÝ, nie kozmetický: po prepnutí je rodič
+   flex kolóna s `align-items: flex-start`, takže `<ul>` sa scvrkne na obsah —
+   zmerané 600 px → 449 px, teda text riadkov by sa lámal skôr než papier
+   dovolí. Pri dnešnom `display: block` rodiča je `align-self` bez účinku,
+   takže deklarácia je pred prepnutím inertná (zmerané: 600 px oboje). */
+.console-body .empty-can {
+    align-self: stretch;
     margin: var(--sp-2) 0 0;
     padding: 0;
     list-style: none;
 }
 
-.empty-can li {
+.console-body .empty-can li {
     display: flex;
     align-items: flex-start;
     gap: 10px;
@@ -719,7 +834,11 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     color: var(--muted);
 }
 
-.empty-can .ic { font-size: var(--icon-sm); color: var(--accent-ink); }
+/* `.console-body` tu nie je pre istotu, ale proti poradiu: `.empty .ic`
+   v mind.css je tiež 0-2-0 a dáva `--icon-empty` (28 px) + `opacity: .5`.
+   Holý `.empty-can .ic` by vyhral len tým, že `console.css` je druhý.
+   0-3-0 to rozhodne bez ohľadu na poradie. */
+.console-body .empty-can .ic { font-size: var(--icon-sm); color: var(--accent-ink); }
 
 /* ---------- karta nástroja ---------- */
 
@@ -822,6 +941,15 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 .tool-call.waiting .tool-state { color: var(--warn-ink); }   /* --warn dal na svetlej 3,00:1 */
 .tool-call.error .tool-state { color: var(--danger-ink); }   /* --danger dal na svetlej 4,12:1 */
 .tool-call.denied .tool-state { color: var(--muted); }
+
+/* `.tool-call.done` PRAVIDLO NEMÁ A NEMÁ HO DOSTAŤ. Je to jediná trieda, ktorá
+   po audite 31. 8. 2026 zostala na `/console` v DOM bez vlastného pravidla —
+   a je to správne, nie opomenutie: „hotovo" je POKOJOVÝ stav karty a základná
+   kresba `.tool-state` (`--muted`, mono, `--fs-caption`) je práve tá, ktorou má
+   hovoriť. Vlastnú farbu si berie len to, čo sa od pokoja odlišuje: `running`,
+   `waiting`, `error`, `denied`. Trieda existuje pre JS — `tools.js` ju pridáva
+   a pri chybe odoberá, teda je to stavová značka, nie kresliaci hák.
+   Asercia, ktorá hľadá pravidlo `.tool-call.done`, nič nenájde a MÁ nenájsť. */
 
 @keyframes tool-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 

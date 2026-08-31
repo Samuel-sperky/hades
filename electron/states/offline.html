@@ -149,7 +149,13 @@
             border-radius: 10px;
             padding: 11px 22px;
             cursor: pointer;
-            transition: background .15s ease;
+            /* Rebrík §3: hover / farba / malý stav = `--dur-fast` (150 ms) a krivka
+               príchodu `--ease`. Doslovné hodnoty, lebo tokeny sem nedosiahnu —
+               ten istý dôvod ako pri krivke pulzu vyššie. Do 31. 8. 2026 tu stálo
+               `.15s ease`: správne trvanie, ale ryzé `ease` je jedna z cudzích
+               kriviek, ktoré §3 menuje (a manuál presne tento zápis uvádza ako
+               nález na `charon.css:257`). */
+            transition: background 150ms cubic-bezier(.22, .61, .36, 1);
         }
 
         .retry:hover { background: var(--accent-hover); }
@@ -181,6 +187,33 @@
             margin: 16px 0 0;
             font-size: 13px;
             color: var(--fg-dim);
+        }
+
+        /* ── Plošná podlaha pohybu (tichá verzia) ────────────────────────────────
+           Tá istá podlaha, akú nesie public/css/mind.css — musí byť skopírovaná
+           TU, pretože tento dokument sa zobrazuje, KEĎ SERVER NEBEŽÍ, takže žiadny
+           stylesheet z public/ sa nenačíta a podlaha odtiaľ sem nedosiahne.
+           Bez nej nemal `.retry` tichú verziu vôbec (zmerané: transition-duration
+           0,15 s v OBOCH režimoch prefers-reduced-motion).
+
+           Trvanie padá na .01 ms, nie na `none`: prechod farby pozadia pri hoveri
+           má byť OKAMŽITÝ EKVIVALENT — farba sa stále zmení, len bez cesty — a
+           `transitionend` naďalej príde.
+
+           Gate `no-preference` nad `core-pulse` vyššie zostáva a nie je to
+           duplikát: podlaha rieši trvanie, gate nesie ZÁKLADNÝ STAV, teda že
+           tichá verzia jadra je hotový znak (scale 1, opacity 1), nie fáza cyklu,
+           v ktorej ho podlaha zastihla. Nová animácia v tomto dokumente potrebuje
+           oboje. */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                animation-delay: 0s !important;
+                transition-duration: .01ms !important;
+                transition-delay: 0s !important;
+                scroll-behavior: auto !important;
+            }
         }
     </style>
 </head>

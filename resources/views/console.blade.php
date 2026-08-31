@@ -146,6 +146,16 @@
                     {{-- Ctrl+N žil len v `title` tlačidla „Nové vlákno", teda v tooltipe,
                          ktorý sa na klávesnici ani na dotyku nezobrazí. Handler je
                          v public/js/console/main.js (`keydown`, `n` + Ctrl/Cmd). --}}
+                    {{-- Ctrl+K (paleta príkazov) tu ZÁMERNE NIE JE, hoci `/chat` ho
+                         v `#chat-hint` má: na tejto ploche vetu „· Ctrl+K paleta"
+                         dopisuje `mountHint()` v public/js/console/palette.js do
+                         POSLEDNÉHO `.hint-keys` za behu. Zmerané 31. 8. 2026 pri
+                         1400 px: keď je aj tu, nápoveda hlási „… Ctrl+K paleta ·
+                         Ctrl+K paleta". Dva zdroje jednej vety — a ten druhý nevlastní
+                         tento sprint, takže statický zostáva prázdny.
+                         Správne konečné miesto je TENTO riadok (nápoveda je statický
+                         text plochy, ako na `/chat`) a `mountHint()` má zmiznúť; kým
+                         sa tak nestane, NEPRIDÁVAJ to sem. --}}
                     <kbd>/</kbd> príkazy<span class="hint-keys"> · <kbd>Esc</kbd> zastaví beh · <kbd>Ctrl</kbd>+<kbd>N</kbd> nové vlákno</span>
                 </p>
                 {{-- Paleta slash príkazov. Zoznam žije v public/js/console/slash.js;

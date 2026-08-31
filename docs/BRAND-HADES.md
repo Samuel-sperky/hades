@@ -125,7 +125,7 @@ satelit na r 46, jadro 8,5) **už neplatí** — je vymenená, nie doplnená.
 | Prvok | Polomer | Hrúbka | Poznámka |
 |---|---|---|---|
 | Vlásková hranica | 47 | 1,0 | neprerušená, opacity 0,55 — len rám deja |
-| Stupnica | 43–47 | 1,0 | **12 delení po 30°**; v prerušení mlčí, opacity 0,45 |
+| Stupnica | 43–47 | 1,0 | **12 delení po 30°**, kreslených **11** — dvanáste padne do prerušenia a mlčí; opacity 0,45 |
 | **Nosný prstenec** | **36** | **9** | hmota znaku, **prerušená 34°** v smere 52°. **Totožná s mini kánonom.** |
 | Hrana | 30 → 18 | 1,6 | od satelitu k jadru, v smere 52°, opacity 0,75 |
 | Satelit | 5,5 | 2,5 | jeden uzol, **prstenec, nie disk**, v prerušení **na** nosnom prstenci |
@@ -160,7 +160,17 @@ naraz** — inak sa vráti presne ten rozchod, ktorý toto pravidlo rieši.
 
 ### Jeden zdroj geometrie
 
-**Geometria znaku bola 28. 8. 2026 zapísaná 16× v repe; dnes je z toho 14 miest pod generátorom a lockupy pribudli ako 17. a 18. miesto, ktoré generátor nemal.** Zoznam nižšie je stav PRED zjednotením a číta sa ako inventár, nie ako TODO.
+**Geometria znaku bola 28. 8. 2026 zapísaná 16× v repe.** Zoznam nižšie je stav PRED
+zjednotením a číta sa ako inventár, nie ako TODO.
+
+**Zmerané 31. 8. 2026 z `main()` generátora:** pod generátorom je dnes **13 zápisov** —
+master, mono, **oba lockupy**, `hades-favicon.svg`, data-URI v troch blade, obe `.ico`,
+`apple-touch-icon.png`, topbar a offline — a k nim `tools/brand/DERIVED.md`. Ručným
+zdrojom geometrie zostáva **jediný súbor**, `hades-sigil-mini.svg`. Dve veci, ktoré tu
+do 31. 8. 2026 stáli inak: **lockupy už mimo generátora nie sú** (`build_lockups()`
+v nich vymieňa skupinu `.sig`, wordmark nechá stáť), a pribudol jeden generovaný zápis,
+ktorý tabuľka nemá vôbec — **`public/brand/hades-favicon.svg`** (kompozícia mini na
+atramentovom disku, zdroj data-URI).
 Manuál tu do 27. 8. 2026 tvrdil „osemkrát" — bolo to podhlásené, pretože počítalo
 len web a Python a nevidelo Electron chrome, offline stav a **CSS prekresbu**
 načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora znaku:
@@ -171,18 +181,18 @@ načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora 
 | 2 | `public/brand/hades-sigil.svg` | **kánon master**: hranica 47 / 12 delení / nosný prstenec 36–9 prerušený 34° / hrana / satelit 5,5 / obežnica 22 / jadro 15 — **GENEROVANÝ z mini, ručne needituj** |
 | 3 | `public/brand/hades-sigil-mono.svg` | master znovu, jednofarebne (`currentColor`) |
 | 4 | `resources/views/mind.blade.php:16` | data-URI faviconu: disk r 50 `#0e1413`, prstenec r 36/9 `#c4a2f5`, jadro r 15 `#d8b878` |
-| 5 | `resources/views/console.blade.php:20` | to isté, **bajt na bajt** (md5 `c0ebff62…`) |
+| 5 | `resources/views/console.blade.php:20` | to isté, **bajt na bajt** — zmerané 31. 8. 2026 `grep -o "data:image/svg+xml,[^\"]*" resources/views/*.blade.php \| md5sum` (tri rovnaké súčty). Hash `c0ebff62…`, ktorý tu stál, sa **nereprodukuje** ani z riadku, ani z href, ani zo samotného SVG — konkrétna hodnota sa preto neuvádza, uvádza sa spôsob overenia |
 | 6 | `resources/views/chat.blade.php:47` | to isté, **bajt na bajt** |
 | 7 | `resources/views/mind.blade.php:128–129` | viewBox 24: `r 8.64` / `stroke 2.16` / jadro `r 3.6`; `fill="currentColor"`; triedy `bc-ring` / `bc-core` |
 | 8 | `resources/views/console.blade.php:54–55` | tie isté tri čísla; `fill="var(--brand-gold)"`; triedy **sú** |
-| 9 | `resources/views/chat.blade.php:94–95` | tie isté tri čísla; `stroke="var(--accent)"`; triedy **sú** (doplnené 31. 8. 2026), ale animácia je inertná — CSS ich tu nečíta |
-| 10 | `resources/views/chat.blade.php:211–212` | tie isté tri čísla, v `.ce-mark`; triedy **sú**, animácia rovnako inertná |
+| 9 | `resources/views/chat.blade.php:94–95` | tie isté tri čísla; `stroke="var(--accent)"`; triedy **sú** a animácia zrodu je od 31. 8. 2026 **živá** (viď nižšie) |
+| 10 | `resources/views/chat.blade.php:211–212` | tie isté tri čísla, v `.ce-mark`; triedy **sú**, animácia zrodu rovnako živá |
 | 11 | `public/js/console/render.js` → `.empty-sigil` (`ring` / `core`) | tie isté tri čísla, skladané `setAttribute`om v JS |
 | 12 | `public/css/mind.css` → `#brand-core .bc-ring` a `@keyframes bc-draw` | `stroke-dasharray: 54.29` = 2π × 8,64 — **derivát polomeru zapísaný ako konštanta**, na troch riadkoch (`dasharray`, `dashoffset`, `from` v keyframe) |
 | 13 | `public/css/mind.css` → `.empty.empty-loading .load-mark` (+ `::after`) | znak **prekreslený CSS boxmi**, a v **iných proporciách**: 26 px box, `border: 2px` (obrys 0,077 boxu, kánon 0,09), jadro 8 px (0,154 boxu, kánon 0,15), stredný polomer prstenca 0,46 boxu proti kánonickým 0,36 |
-| 14 | `electron/assets/build-icon.py:17–35` | **už NIE je zápis geometrie**: zástupca, `runpy.run_path()` volá `tools/brand/build-mark.py`. Do 27. 8. 2026 tu boli hardcoded RGB tuply a prstenec ako anulus r 40,5 mínus r 31,5 — dnes v súbore nie je ani jedno číslo znaku |
-| 15 | `electron/chrome/topbar.html:162–169` | viewBox 100, r 36/9 + r 15, `var(--accent)` / `var(--gold)` — **generované medzi `ZNAK` markermi** |
-| 16 | `electron/states/offline.html:71–77` + `:189–194` | viewBox 100, `r 36` v markupe, `stroke-width: 9` a jadro `r 15` v `<style>`; navyše **vlastná kópia `core-pulse`** — a jej krivka NIE JE `ease-in-out`, ale `cubic-bezier(.4, 0, .6, 1)` napísaná doslova (tá istá hodnota ako `--ease-pulse`; tokeny do tohto dokumentu nedosiahnu). Oba bloky sú **generované** medzi `ZNAK-STYLE` / `ZNAK` markermi |
+| 14 | `electron/assets/build-icon.py` (celý súbor je 35 riadkov) | **už NIE je zápis geometrie**: zástupca, `runpy.run_path()` volá `tools/brand/build-mark.py`. Do 27. 8. 2026 tu boli hardcoded RGB tuply a prstenec ako anulus r 40,5 mínus r 31,5 — dnes v súbore **nie je ani jedno kreslené číslo**; r 40,5 / 31,5 v ňom ešte stoja, ale len v docstringu, ako veta o tom, čo odtiaľ odišlo |
+| 15 | `electron/chrome/topbar.html` → medzi `ZNAK` markermi | viewBox 100, r 36/9 + r 15, `var(--accent)` / `var(--gold)` — **generované** |
+| 16 | `electron/states/offline.html` → medzi `ZNAK-STYLE` a `ZNAK` markermi | viewBox 100; `r 36` **a jadro `r 15` v markupe**, v `<style>` je `stroke-width: 9` a výplň jadra (zmerané 31. 8. 2026 — manuál tu tvrdil, že `r 15` je v `<style>`, nie je). Navyše **vlastná kópia `core-pulse`** — a jej krivka NIE JE `ease-in-out`, ale `cubic-bezier(.4, 0, .6, 1)` napísaná doslova (tá istá hodnota ako `--ease-pulse`; tokeny do tohto dokumentu nedosiahnu) |
 | — | `public/favicon.ico` | binárka, **dnes ju vydáva `build-mark.py`** (`build_icos()`) |
 | — | `electron/assets/hades.ico` | binárka, ten istý generátor a **tie isté bajty** — nie z #14 |
 
@@ -190,8 +200,17 @@ načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora 
 selektorové, nie riadkové** (od 31. 8. 2026). Riadkové čísla do stylesheetov, ktoré
 sa aktívne prepisujú, zhnijú do týždňa — presne tak sa stalo, že #12 ukazovalo na
 blok `core-shadow` a #13 do prázdna. Selektor prežije vloženie riadka nad seba
-a `grep` ho nájde; číslo riadka nerobí ani jedno. Riadkové čísla zostávajú len tam,
-kde odkazujú na Blade a Electron, teda na súbory bez priebežného prepisovania.
+a `grep` ho nájde; číslo riadka nerobí ani jedno.
+
+**Od 31. 8. 2026 to platí aj pre Electron** — predpoklad „súbory bez priebežného
+prepisovania" tam neobstál: `topbar.html` mal blok znaku na riadkoch 162–169
+a v ten istý deň mu nad znak pribudla vlastná podlaha `prefers-reduced-motion`,
+ktorá ho posunula o ~30 riadkov nižšie (zmerané; nové číslo sa tu zámerne
+nepíše, zhnilo by rovnako). Electron sa preto adresuje **markermi**
+(`ZNAK`, `ZNAK-STYLE`), ktoré do súboru píše ten istý generátor a ktoré sa
+posunutím riadkov nepokazia. Riadkové čísla zostávajú len pri Blade — tam sú
+overené (favicon 16 / 20 / 47, inline znak 128–129, 54–55, 94–95, 211–212;
+zmerané 31. 8. 2026, všetkých sedem sedí).
 
 Tri veci, ktoré z tabuľky treba vedieť predtým, než sa to začne zlievať:
 
@@ -212,18 +231,24 @@ Tri veci, ktoré z tabuľky treba vedieť predtým, než sa to začne zlievať:
   nekryje** — tichú verziu si musí napísať sám, a robí to gate `no-preference`
   (základný stav jadra je hotový znak, nie zamrznutá spodná fáza dýchania).
 
-**[cieľ V2] Jeden generátor, šesť výstupov.** Zdroj je `hades-sigil-mini.svg`
-(mini) a `hades-sigil.svg` (master). Generátor musí vydať:
+**Jeden generátor, šesť výstupov — stav zmeraný 31. 8. 2026.** Zdroj je
+`hades-sigil-mini.svg` (mini) a z neho vydaný `hades-sigil.svg` (master).
 
-1. SVG assety v `public/brand/`,
-2. data-URI faviconu pre všetky tri `<head>`,
-3. inline `<svg>` znaku pre Blade (viewBox 24, s triedami `bc-ring` / `bc-core`),
-4. `public/favicon.ico` **a** `electron/assets/hades.ico`,
-5. hodnotu CSS `stroke-dasharray` (dnes `54.29`) a tri čísla `.load-mark`,
-6. znak pre Electron chrome a offline stav.
+| # | Výstup | Stav |
+|---|---|---|
+| 1 | SVG assety v `public/brand/` (master, mono, oba lockupy, `hades-favicon.svg`) | **vydáva** |
+| 2 | data-URI faviconu pre všetky tri `<head>` | **vydáva** (`patch_blade_icons()` prepíše jediný riadok `<link rel="icon">`) |
+| 3 | inline `<svg>` znaku pre Blade (viewBox 24, triedy `bc-ring` / `bc-core`) | **nezapisuje** — `blade_inline_svg()` blok len **vypíše do `DERIVED.md`** |
+| 4 | `public/favicon.ico` **a** `electron/assets/hades.ico` | **vydáva**, a oba sú bajt na bajt zhodné (zmerané: md5 `761e7afa…` na oboch) |
+| 5 | `stroke-dasharray` (dnes `54.29` = 2π × 8,64, v CSS na troch miestach) a tri čísla `.load-mark` | **nezapisuje** — čísla idú do `DERIVED.md` |
+| 6 | znak pre Electron chrome a offline stav | **vydáva** (medzi markermi) |
 
-Keď niektorý z tých šiestich vypadne, sedemnásty zápis pribudne znova — už sa to
-stalo šesťnásťkrát. **Vlastníctvo:** `public/favicon.ico` je koreň pre web,
+Štyri zo šiestich teda generátor vlastní a dve (**3 a 5**) len **dokumentuje**
+v `tools/brand/DERIVED.md`. Je to zámerné rozdelenie vlastníctva — generátor nesmie
+zapisovať do `mind.css` ani do markupu blade, ktoré vlastní niekto iný — ale nemení
+to riziko: **kým sú 3 a 5 ručný prepis podľa tabuľky, môžu driftnúť.** Keď vypadne
+ktorýkoľvek z tých šiestich, sedemnásty zápis pribudne znova — už sa to stalo
+šesťnásťkrát. **Vlastníctvo:** `public/favicon.ico` je koreň pre web,
 `electron/assets/hades.ico` pre desktop, a oba vydáva ten istý generátor.
 
 ### Kde znak je a kde má byť
@@ -244,19 +269,34 @@ karty, ani do toastu, ani k nadpisu sekcie.
 
 | Výskyt | Rola | Znak | Animuje sa |
 |---|---|---|---|
-| rail `/` (`mind.blade.php:130`) | pulz behu | ✅ | ✅ `bc-draw` + `core-pulse` |
-| hlavička `/console` (`console.blade.php:55`) | pulz behu | ✅ | ✅ |
-| prázdny stav `/console` (`console/render.js` → `.empty-sigil`) | prázdny stav | ✅ | ✅ |
-| načítavanie (`.empty-loading .load-mark`) | načítavanie | ✅ | ✅ dýchanie |
-| Electron topbar (`electron/chrome/topbar.html:162`) | desktop okno | ✅ | ❌ |
-| Electron offline (`electron/states/offline.html:189`) | desktop okno | ✅ | ✅ vlastná kópia |
-| hlavička `/chat` (`chat.blade.php:94`) | pulz behu | ✅ | ❌ triedy `bc-ring`/`bc-core` **už sú**, ale `mind.css` ich číta len pod `#brand-core` / `#back-to-graph` |
-| prázdny stav `/chat` (`chat.blade.php:211`) | prázdny stav | ✅ | ❌ to isté |
+Animačný stĺpec je **zmeraný 31. 8. 2026** z CSSOM (`animation` deklarácie
+v `mind.css`, čítané z disku): `bc-draw` a `bc-core-in` majú **päť** selektorov
+(`#brand-core`, `#back-to-graph`, `.empty-sigil`, `#chat-home`, `.ce-mark` — každý
+so svojím `.bc-ring` / `.bc-core`), zatiaľ čo `core-pulse` má **jediný: `#brand-core`**.
+
+| Výskyt | Rola | Znak | Animuje sa |
+|---|---|---|---|
+| rail `/` (`mind.blade.php:128`) | pulz behu | ✅ | ✅ `bc-draw` + `bc-core-in` + **`core-pulse` (jediné miesto)** |
+| hlavička `/console` (`console.blade.php:55`) | pulz behu | ✅ | ✅ **len zrod** (`bc-draw` + `bc-core-in`), `core-pulse` tu nie je |
+| prázdny stav `/console` (`console/render.js` → `.empty-sigil`) | prázdny stav | ✅ | ✅ zrod |
+| načítavanie (`.empty-loading .load-mark`) | načítavanie | ✅ | ✅ dýchanie (`load-breathe`) |
+| Electron topbar (`topbar.html`, medzi `ZNAK` markermi) | desktop okno | ✅ | ❌ |
+| Electron offline (`offline.html`, medzi `ZNAK` markermi) | desktop okno | ✅ | ✅ vlastná kópia `core-pulse` |
+| hlavička `/chat` (`chat.blade.php:94`) | pulz behu | ✅ | ✅ **zrod je od 31. 8. 2026 živý** — selektor rozšírený na `#chat-home`; `core-pulse` ani tu nie je |
+| prázdny stav `/chat` (`chat.blade.php:211`) | prázdny stav | ✅ | ✅ zrod (`.ce-mark`) |
 | prázdny dok nad grafom (`charon.js` → `renderEmpty()`) | prázdny stav | ❌ **znak vôbec nie je** | — |
+
+**Rola „pulz behu" je tým pádom len v raile.** Dve hlavičky, ktoré ju v tabuľke
+majú napísanú, kreslia znak, obtiahnu ho pri načítaní a tým to končí — dýchanie
+`bdie / spí` nenesú, pretože `core-pulse` je zúžený na `#brand-core`. Buď sa im tá
+rola priradí v CSS, alebo sa im v tomto zozname prepíše na to, čo naozaj nesú
+(identita plochy s odkazom domov). **Nepridávaj kvôli tomu piatu rolu** — zoznam
+štyroch rolí je uzavretý a jeho zmena je prepis vety nad ním.
 
 **[cieľ V2]** všetkých deväť výskytov má znak a animáciu z jedného generátora —
 nič nad tento zoznam. (`.avatar` tu do 31. 8. 2026 stál ako desiaty výskyt; trieda
-v repe **neexistuje**, patrila mŕtvemu chatu nad grafom — viď §9.)
+v repe **neexistuje** — potvrdené 31. 8. 2026, `grep` nad `public/css`, `public/js`
+a `resources/views` dáva nula zásahov — patrila mŕtvemu chatu nad grafom, viď §9.)
 
 ### Wordmark
 
@@ -285,9 +325,17 @@ medzera v lockupe — tak sa nedá pomýliť).
 
 ### Dve verzie
 
-- **Master** (`hades-sigil.svg`) — od 32 px vyššie: deck, hero, tlač, OG.
-- **Mini** (`hades-sigil-mini.svg`) — pod 24 px: favicon, rail, hlavička Charóna.
+**Hranica je 64 px a je JEDNA** — tá istá, akú menuje „Pravidlo redukcie" vyššie.
+Tento odsek tu do 31. 8. 2026 hovoril „master od 32 px, mini pod 24 px", teda tri
+čísla na jednu hranicu a medzera 24–64 px bez pravidla. Platí pravidlo redukcie:
+
+- **Master** (`hades-sigil.svg`) — **od 64 px**: deck, hero, tlač, OG, lockupy.
+- **Mini** (`hades-sigil-mini.svg`) — **pod 64 px**: favicon, rail, hlavička Charóna.
   Dva prvky: prstenec r 36 / hrúbka 9 a zlaté jadro r 15. Nič viac.
+  **Jedna menovaná výnimka, zmeraná v generátore:** `.ico` a `apple-touch-icon` kreslí
+  `raster()` z **mini** — `.ico` v siedmich veľkostiach (16 / 24 / 32 / 48 / 64 / 128 /
+  256 px) a `apple-touch-icon` v 180 px, teda aj vysoko nad hranicou — z technického dôvodu z pravidla redukcie (raster skládá
+  prstenec dvoma diskami a prerušenie vyjadriť nedokáže).
   (Zoznam tu do 31. 8. 2026 menoval aj „avatar" — v appke žiadny nie je.)
 
 Overené renderom v oboch témach na 180 / 64 / 32 / 24 / 16 px. Master pod 32 px
@@ -325,12 +373,16 @@ Toto je druhé pravidlo a je záväznejšie než prvé, pretože jeho porušenie
 vidieť. **Tichý režim smie odobrať pohyb, nikdy nie obsah, čas na prečítanie ani
 spätnú väzbu.**
 
-Nameraná porucha, ktorá to pravidlo vynútila (sonda C, `toasts.js:22–24`, `:38`,
-`:67`, `:68`): pod `prefers-reduced-motion` sa v šiestich call-site prepisuje
-**doba zobrazenia** toastu — 5 200 ms, 6 000 ms a 2 500 ms na **0 ms**. Toast sa
-teda pridá do DOM a v tom istom rámci sa začne odstraňovať, takže človek
-s preferenciou **nikdy neprečíta „Naučil som sa: …"** ani ponuku „Vrátiť". Skrátiť
-sa smie výhradne 200 ms odchodový prechod.
+Nameraná porucha, ktorá to pravidlo vynútila (sonda C, `public/js/mind/toasts.js`):
+pod `prefers-reduced-motion` sa prepisovala **doba zobrazenia** toastu — 5 200 ms,
+6 000 ms a 2 500 ms na **0 ms**. Toast sa teda pridal do DOM a v tom istom rámci sa
+začal odstraňovať, takže človek s preferenciou **nikdy neprečítal „Naučil som sa: …"**
+ani ponuku „Vrátiť". Skrátiť sa smie výhradne 200 ms odchodový prechod.
+
+**Opravené 28. 8. 2026 a zmerané 31. 8. 2026:** v `toasts.js` visí
+`reducedMotionActive()` už len na tom 200 ms odchode (dvakrát), kým doby zobrazenia
+5 200 / 6 000 / 2 500 ms sú na preferencii nezávislé konštanty. Pravidlo zostáva
+napísané, pretože je to trvalá hranica, nie záznam o jednej oprave.
 
 Bez pohybu má človek **menej** signálu, že sa niečo objavilo, nie viac — takže
 doba zobrazenia má byť v tichom režime rovnaká alebo **dlhšia**, nikdy kratšia.
@@ -349,42 +401,52 @@ doba zobrazenia má byť v tichom režime rovnaká alebo **dlhšia**, nikdy krat
 | `--dur-pulse` | **1,4 s** | perióda **neurčitého čakania** |
 | `--ease` | `cubic-bezier(.22,.61,.36,1)` | príchod a transformácia |
 | `--ease-in` | `cubic-bezier(.4,0,1,1)` | odchod |
-| `--ease-pulse` **[cieľ V2]** | `cubic-bezier(.4,0,.6,1)` | **slučka** — pulz, dýchanie, blikanie |
+| `--ease-pulse` | `cubic-bezier(.4,0,.6,1)` | **slučka** — pulz, dýchanie, blikanie |
 
-**`--ease-pulse` je nový token a nie je to kozmetika.** `--ease` je príchodová
-krivka: spomaľuje na konci. Na nekonečnej slučke to znamená, že animácia dobehne
-pomaly a potom **skočí** na začiatok — kulhá. Slučka potrebuje symetrickú krivku.
-Zavedením tohto tokenu zmizne aj **všetkých päť cudzích kriviek** v repe: 4× ryzé
-`ease-in-out` (`console.css:349`, `:574`, `:798`, `charon.css:208`) a jedno `ease`
-(`charon.css:257`, kde je navyše natvrdo `.15s` — presne hodnota `--dur-fast`).
-Manuál tu do 27. 8. 2026 tvrdil „`ease-in-out` sa objavuje 5×"; nameraných je **4**
-a piata cudzia krivka je to `ease`.
+**`--ease-pulse` nie je kozmetika a od 28. 8. 2026 už nie je cieľ — žije.** `--ease` je
+príchodová krivka: spomaľuje na konci. Na nekonečnej slučke to znamená, že animácia
+dobehne pomaly a potom **skočí** na začiatok — kulhá. Slučka potrebuje symetrickú
+krivku. Zmerané 31. 8. 2026: token je definovaný v `:root` v `mind.css` a číta ho
+**osem** slučiek (`core-pulse`, `load-breathe`, `hades-shimmer`, `sync-pulse`,
+`sk-pulse`, `think-blink`, `tool-pulse`, `charon-blink`), a **cudzia krivka v repe
+nezostala ani jedna** — dotaz na `animation`/`transition` s ryzým `ease` alebo
+`ease-in-out` v štyroch stylesheetoch dáva **0 zásahov** (bolo 4× `ease-in-out`
+a jedno `ease` s natvrdo napísaným `.15s`).
 
-**„Neurčité čakanie" má JEDNU periódu a to je `--dur-pulse`.** Dnes ich má štyri:
-1,4 s cez token (`hades-shimmer`, `load-breathe`, `sync-pulse`), **1,4 s napísané
-rukou** (`sk-pulse`, `console.css:349` — tá istá hodnota, iný zápis), **1,2 s**
-(`think-blink` `console.css:574`, `charon-blink` `charon.css:208`) a **1,1 s**
-(`tool-pulse` `console.css:798`). **[cieľ V2]** jedna perióda, jedna krivka.
+Pozor pri zápise: v `console.css` a `charon.css` sú tie animácie napísané
+**longhandom** (`animation-name` / `-duration` / `-timing-function`), nie shorthandom,
+a komentár pri nich hovorí prečo — `animation: x 1.4s infinite var(--ease-pulse)`
+je pri výpočte hodnoty **celý neplatný**. Nezlievaj ich do shorthandu; a merač
+deklarácií to musí vedieť, inak jednu animáciu spočíta trikrát (viď tabuľku nižšie).
 
-**Grafové trvania sa povyšujú na tokeny [cieľ V2]** — nie preto, aby sa schovali,
-ale preto, že jedno z nich už dnes žije na **dvoch** miestach a raz sa rozíde:
+**„Neurčité čakanie" má JEDNU periódu a to je `--dur-pulse`** — a od 28. 8. 2026
+to už aj platí. Zmerané 31. 8. 2026: `hades-shimmer`, `load-breathe`, `sync-pulse`,
+`sk-pulse`, `think-blink`, `tool-pulse` aj `charon-blink` berú trvanie z
+`var(--dur-pulse)`; ručné 1,4 s, dve 1,2 s ani 1,1 s v repe nie sú.
 
-| Token | Hodnota | Kde |
+**Grafové trvania sú tokeny** (od 28. 8. 2026, do vtedy [cieľ V2]) — dôvod bol, že
+760 ms žilo na dvoch miestach a raz by sa rozišlo. Zmerané 31. 8. 2026, päť
+volajúcich a žiadny druhý zápis:
+
+| Token | Hodnota | Kto ho číta |
 |---|---|---|
-| `--dur-chart-draw` | 760 ms | `bc-draw` (`mind.css:1238`) **a** `.seg-draw` donutu (`:2669`) — **tá istá hodnota, dva zápisy** |
-| `--dur-chart-curve` | 900 ms | `.line-draw` (`mind.css:2672`) |
-| `--dur-chart-reveal` | 720 ms | `.heat-grid.heat-reveal` (`mind.css:2687`) |
+| `--dur-chart-draw` | 760 ms | `bc-draw` (zrod znaku) **a** `transition: stroke-dasharray` segmentu donutu |
+| `--dur-chart-curve` | 900 ms | `transition: stroke-dashoffset` krivky rastu **a** `.flow-ribbons` |
+| `--dur-chart-reveal` | 720 ms | `.heat-grid.heat-reveal` **a** `.scatter-dots` |
 
 Zostávajú **číslom v komponente** a majú pri sebe komentár: `520 ms + 240 ms`
 oneskorenie (`.chart-fade`), `760 ms` oneskorenie (`.chart-fade-late`),
 `460 ms + 620 ms` (`bc-core-in`), `90 ms` stupňovanie segmentov a `4 s` dýchanie
 jadra. Sú to jednorazové dramaturgie, nie stupne rebríka.
 
-**Kompozitné tokeny `--transition-base` a `--transition-slow` sa mažú [cieľ V2]** —
-majú **nula** používateľov (zmerané). `--transition-fast` má štyri
-(`mind.css:5209`, `console.css:1089`, `chat.css:170`, `:403`) a prepisujú sa na
-párový zápis `var(--dur-fast) var(--ease)`, ktorý má v repe prevahu 82 : 4. Dôvod
-nie je počet, ale to, že kompozit **skrýva, ktorú krivku si dostal**.
+**Kompozitné tokeny `--transition-base` a `--transition-slow` sú ZMAZANÉ** (28. 8.
+2026; zmerané 31. 8. 2026: v `mind.css` po nich zostal len komentár na mieste, kde
+stáli). `--transition-fast` **v `:root` zostáva, ale nemá už ani jedného volajúceho** —
+dotaz na `var(--transition-` nad `public/css/` a `public/js/` dáva **0 zásahov**, teda
+aj tie štyri, ktoré tu boli menované, sú prepísané na párový zápis
+`var(--dur-fast) var(--ease)`. Dôvod prepisu nebol počet, ale to, že kompozit
+**skrýva, ktorú krivku si dostal**. Že token bez volajúceho v súbore zostal, je
+zaznamenané pri jeho definícii — nie opomenutie.
 
 ### Katalóg pohybu
 
@@ -395,7 +457,7 @@ nie je počet, ale to, že kompozit **skrýva, ktorú krivku si dostal**.
 | Načítavanie (`load-breathe`) | znak dýcha mierkou | `--dur-pulse` | informáciu — „pracuje sa" |
 | Skeleton (`hades-shimmer`) | jeden sweep cez plochu | `--dur-pulse` | informáciu — skeleton žije |
 | Obrazovka | `rise-fade` pri prepnutí | `--dur-base` | prepnutie |
-| Panel (`#dock`, `#node-panel`) | vstup zo svojej strany | `--dur-slow` | **informáciu** — z ktorej strany prišel |
+| Panel (`#dock` zľava, `#node-panel` a `#rec-panel` zprava) | vstup zo svojej strany | `--dur-slow` | **informáciu** — z ktorej strany prišel |
 | Donut istoty | segmenty od dvanástky, stupňovane po 90 ms | 760 ms | poradie čítania |
 | Krivka rastu | čiara sa obtiahne zľava, plocha a bodka dobehnú | 900 ms | poradie čítania |
 | Heatmapa | odkrytie zľava (od najstaršieho týždňa) | 720 ms | poradie čítania |
@@ -403,20 +465,24 @@ nie je počet, ale to, že kompozit **skrýva, ktorú krivku si dostal**.
 | Beh je živý (`sync-pulse`) | pulz bodky stavu | `--dur-pulse` | **informáciu** |
 | Správa v Charónovi | `msg-in` — len pri živom pribudnutí | `--dur-base` | **informáciu** |
 
-**Jeden `@keyframes` nesie šesť významov a je to opak pravidla „jeden kanál, jeden
-význam":** `rise-fade` (`mind.css:2004`) používajú `.toast`, `#help-card`,
-`#md-card`, `#hint`, `.screen.active` a `#cmdk-card`, všetkých šesť s
-`var(--dur-base) var(--ease)` a **ani jeden** nemá pomenovanú tichú verziu.
-Nerozdeľuje sa to na šesť animácií — rozdeľuje sa to tak, že sa dva výskyty
-**škrtnú** (viď nižšie).
+**Jeden `@keyframes` nesie PÄŤ významov a je to opak pravidla „jeden kanál, jeden
+význam":** `rise-fade` v `mind.css` používajú `.toast`, `#help-card`, `#md-card`,
+`.screen.active` a `#cmdk-card`, všetkých päť s `var(--dur-base) var(--ease)`
+a **ani jeden** nemá pomenovanú tichú verziu. Šiestym volajúcim tu bol `#hint`
+(onboarding karta) — zmerané 31. 8. 2026: **`#hint` v repe už neexistuje vôbec**
+(nula zásahov v `mind.css` aj v `mind.blade.php`), takže výskyt neubral škrt, ale
+zmiznutie komponentu. Nerozdeľuje sa to na päť animácií — rozdeľuje sa to tak, že
+sa výskyty **škrtnú** (viď nižšie).
 
-**Kandidáti na škrt (rozhodnutie 6 — dekorácia, nie informácia):**
+**Kandidáti na škrt (rozhodnutie 6 — dekorácia, nie informácia) — oba stále otvorené,
+zmerané 31. 8. 2026:**
 
-- **fade-in scrimu** pod `#help-overlay` (`mind.css:2146`) a `#md-overlay` (`:2194`)
-  — karta nad ním už robí `rise-fade`. Jedna udalosť, dva pohyby.
-- **`.screen.active { animation: rise-fade }`** (`mind.css:3415`) — prekresľuje
-  **celý** obsah obrazovky pri každom prepnutí, hoci zmenu už hlási aktívny stav
-  v raile aj nový `<h1>`. Je to jediný pohyb v appke nad celým obsahom obrazovky.
+- **fade-in scrimu** pod `#help-overlay` a `#md-overlay` (obe `animation: fade-in
+  var(--dur-base) var(--ease)`) — karta nad ním už robí `rise-fade`. Jedna udalosť,
+  dva pohyby.
+- **`.screen.active { animation: rise-fade }`** — prekresľuje **celý** obsah obrazovky
+  pri každom prepnutí, hoci zmenu už hlási aktívny stav v raile aj nový `<h1>`. Je to
+  jediný pohyb v appke nad celým obsahom obrazovky.
 
 Tri pasce, na ktorých to inak vyzerá zle:
 
@@ -433,53 +499,71 @@ Tri pasce, na ktorých to inak vyzerá zle:
 Rozhodnutie 7: plátno zostáva, dolaďujú sa **prechody**. Sú to presne štyri
 a každý má svoju tichú verziu **hneď tu**, nie ako doplnok.
 
-**1 · Zanorenie (`go()`) — jedna udalosť, jedna rýchlosť.**
-Dnes beží na dvoch rýchlostiach naraz: kamera plachtí 550 ms s `easeInOut`
-(`sim.js:476`), ale pretmavenie kontextu je **skok o jeden rámec** — `ent.dim`
-dostane v `computeLayout()` diskrétnu hodnotu `DIM_CTX = 0,34` (`layout.js:112`,
-`:819`) a nikde sa neinterpoluje. Cieľ: `ent.dim` sa interpoluje tým istým
-časovačom, `--dur-base` (180 ms) — **kratšie než kamera zámerne**, fokus má byť
-čitateľný skôr, než kamera dosadne.
-*Tichá verzia:* `dim` aj kamera sadnú v jednom rámci (teda dnešný stav)
-**a fokusová skupina dostane trvalý obrys**, ktorý nezhasne. Ukazuje sa výsledok
-filtra, nie cesta k nemu. Nie `animation: none` — bez obrysu by človek nevedel,
-čo je fokus a čo kontext.
+**Stav zmeraný 31. 8. 2026: hotové sú 1, 3 a 4; otvorený zostáva 2.**
 
-**2 · Hľadanie uzla — jedno plachtenie namiesto skoku a plachtenia.**
-Dnes `screens.js:235` priradí `S.cam.k = Math.max(S.cam.k, 1.1)` **pred** tweenom,
-takže tween začína z už preskočenej hodnoty; a nájdený uzol nedostane **žiadny**
-vlastný znak. Cieľ: podlaha zoomu ide do **cieľa** tweenu, nie pred neho, a nájdený
-uzol dostane prstenec s **konštantnou** alfou, ktorý lineárne vyhasne za
-2 × `--dur-ambient` (800 ms). Nie dnešný `sin()` blikot.
+**1 · Zanorenie (`go()`) — jedna udalosť, jedna rýchlosť. HOTOVÉ.**
+Porucha bola, že to bežalo na dvoch rýchlostiach naraz: kamera plachtila 550 ms
+(`S._camTween` v `sim.js`, `dur: 0.55`), ale pretmavenie kontextu bolo **skok
+o jeden rámec** — `ent.dim` dostal v `computeLayout()` diskrétnu hodnotu
+`DIM_CTX = 0,34` (`layout.js`) a nikde sa neinterpoloval. Zmerané dnes: kamera drží
+tých istých 550 ms a `render.js` má **`S._dimTween`** — blok „PLYNULÉ ZANORENIE",
+ktorý fázu pretmavenia počíta pre každý rámec. Tichá verzia je tiež v kóde:
+`if (reducedMotionActive()) S.dim = targetDim` (skok do cieľa) a `quietFocusRing`
+(**trvalý obrys** fokusovej skupiny mimo úrovne `map`).
+*Tichá verzia:* `dim` aj kamera sadnú v jednom rámci **a fokusová skupina dostane
+trvalý obrys**, ktorý nezhasne. Ukazuje sa výsledok filtra, nie cesta k nemu. Nie
+`animation: none` — bez obrysu by človek nevedel, čo je fokus a čo kontext.
+
+**2 · Hľadanie uzla — jedno plachtenie namiesto skoku a plachtenia. OTVORENÉ.**
+Zmerané 31. 8. 2026, nezmenené: `focusFound()` v `screens.js` priradí
+`S.cam.k = Math.max(S.cam.k, 1.1)` **pred** `focusNode()`, takže tween začína z už
+preskočenej hodnoty; a nájdený uzol nedostane **žiadny** vlastný znak — `focusFound()`
+volá `focusNode()` a `selectNode()`, `flash` nenastavuje ani jeden. Cieľ: podlaha
+zoomu ide do **cieľa** tweenu, nie pred neho, a nájdený uzol dostane prstenec
+s **konštantnou** alfou, ktorý lineárne vyhasne za 2 × `--dur-ambient` (800 ms).
+Poznámka k formulácii: `sin()` blikot, proti ktorému sa to tu písalo, **v `render.js`
+už nie je** (viď „Kde je manuál a kód dnes rozdielny") — prstenec by teda nešiel
+proti blikotu, ale na prázdne miesto.
 *Tichá verzia:* kamera skočí na finálny záber a prstenec sa nakreslí a **drží** ~2 s
 bez oscilácie, potom zmizne skokom. Prstenec je tu **náhradou** za pohyb, takže
 v tichom režime musí byť výraznejší, nie slabší.
 
-**3 · Prílet uzla cez WS — hýbe sa nový uzol, nie sieť.**
-Dnes `ws.js:57–77` na jeden nový uzol zavolá `buildSim()` + `kickSim()`, čo zdvihne
-alphu simulácie na 0,35 nad **2 765 uzlami a 8 703 hranami** (usadená hodnota pred
-tým bola 0,004), a k tomu spustí `birthScale`, expandujúci prstenec, `spawnPulse`
-od jadra, `emitFlows`, `blip()` a toast — **sedem súčasných pohybov na jednu
-udalosť**. Cieľ: nechať tri, ktoré nesú informáciu (`birthScale`, prstenec zrodu,
-toast). `spawnPulse` a `emitFlows` hovoria to isté, čo už povedal prstenec.
+**3 · Prílet uzla cez WS — hýbe sa nový uzol, nie sieť. HOTOVÉ.**
+Porucha bola, že `handlePulse('node.created')` v `ws.js` spustil na jednu udalosť
+`birthScale`, expandujúci prstenec, `spawnPulse` od jadra, `emitFlows`, `blip()`
+a toast — **sedem súčasných pohybov** — plus `buildSim()` + `kickSim()`, ktoré
+zdvihli alphu simulácie na 0,35 nad 2 765 uzlami a 8 703 hranami (usadená hodnota
+pred tým bola 0,004). Zmerané dnes: zostali **tri** nositelia informácie
+(`birthScale` ~0,5 s, prstenec zrodu ~0,6 s, toast); `spawnPulse`, `emitFlows`
+a bezpodmienečný `flash` sú z tej cesty von a komentár v `ws.js` menuje každý
+z nich aj s dôvodom. `kickSim()` zostal — je to fyzika, nie prechod.
 *Tichá verzia:* uzol sa nakreslí rovno v plnom polomere na finálnej pozícii,
 dostane trvalý prstenec na ~2 s a toast, ktorý **zostane celý svoj čas** (viď
-pravidlo hore). Žiadny prílet, žiadne toky — ale ani žiadne ticho.
+pravidlo hore). Žiadny prílet, žiadne toky — ale ani žiadne ticho. (V kóde je to
+vetva `if (reducedMotionActive()) { n.flash = 1; S._settleFrames = … }` — prstenec
+s konštantnou alfou plus dosť rámcov na to, aby mal v čom vyhasnúť. Preferencia sa
+tam čita **živo**, pretože zrod prichádza z WS, teda vždy až po načítaní stránky.)
 **Pozor na hranicu rozhodnutia 7:** znížiť alphu `kickSim()` je zmena **fyziky**,
 nie prechodu. Patrí to pod samostatné schválenie, nie do vlny prechodov.
 
-**4 · Toast — oprava, nie nový pohyb.** Viď „Pohyb nesmie zhasnúť informáciu".
+**4 · Toast — oprava, nie nový pohyb. HOTOVÉ** (28. 8. 2026, zmerané 31. 8. 2026).
+Viď „Pohyb nesmie zhasnúť informáciu".
 *Tichá verzia:* toast sa objaví okamžite (bez `rise-fade`), stojí **rovnako dlho**
 ako inak, zmizne okamžite (bez slide-out). To je presná definícia „zmysluplného
 okamžitého ekvivalentu" z rozhodnutia 8.
 
 ### Mŕtvy pohyb sa maže, nie komentuje
 
-`S._morph` (morph pozícií medzi úrovňami) je **mŕtvy kód**: nikde sa nenastavuje na
-nenull hodnotu (`render.js:59`, `:84`, `:1723` a `sim.js:497` ho len nulujú), takže
-blok `render.js:1712–1727` sa **nikdy nevykoná**. Napriek tomu ho `anim.js:114`
-a `state.js:100` opisujú ako živý — komentár, ktorý lže, je horší než chýbajúci.
-**[cieľ V2]** blok aj oba komentáre von.
+`S._morph` (morph pozícií medzi úrovňami) bol **mŕtvy kód**: nikde sa nenastavoval na
+nenull hodnotu, len sa nuloval na štyroch miestach, takže jeho blok v `render.js` sa
+**nikdy nevykonal** — a `anim.js` so `state.js` ho pritom opisovali ako živý. Komentár,
+ktorý lže, je horší než chýbajúci.
+
+**Zmazané 28. 8. 2026, zmerané 31. 8. 2026:** `grep -rn '_morph' public/js/mind/` dáva
+už len **dva** zásahy a oba sú náhrobky, nie kód — veta v `render.js`, že plynulé
+zanorenie (pohyb 1) **nie je vzkriesený `S._morph`**, pretože ten interpoloval pozície,
+čím popieral, že `go()` je filter. Tá veta zostáva; je to jediný spôsob, ako sa
+nezavedie znova.
 
 ### Tichá verzia je záväzná — a nie je to „vypnuté"
 
@@ -487,45 +571,72 @@ Rozhodnutie 8: **každá animácia má tichú verziu pre `prefers-reduced-motion
 „vypnuté", ale zmysluplný okamžitý ekvivalent.** Reduced motion nie je „nič sa
 nestane" — stav sa zachová textom, ikonou, obrysom, fokusom alebo oznámením.
 
-Merané 27. 8. 2026 (sonda C, nezávisle potvrdzuje číslo 64):
+**Znovu merané 31. 8. 2026** (metóda nižšie; čísla sonda C z 27. 8. — 104 deklarácií,
+16 `@keyframes`, 79 živých pohybov, 11 pomenovaných tichých verzií, 64 krytých len
+podlahou — **už neplatia a nie sú s dnešnými porovnateľné**, viď poznámku pod tabuľkou):
 
 | | Počet |
 |---|---|
-| deklarácií `transition` / `animation` v štyroch stylesheetoch | **104** |
-| `@keyframes` (všetkých 16 má volajúceho) | **16** |
-| živých animácií | **22** |
-| živých prechodov | **57** |
-| **živých pohybov celkom** | **79** |
-| pohybov s **pomenovanou** tichou verziou v CSS | 11 |
-| pohybov s tichou verziou v **JS** (`charts.js`) | 4 |
-| **pohybov, ktorých jedinou tichou verziou je plošné pravidlo** | **64** |
+| deklarácií `transition` / `animation` v štyroch stylesheetoch | **123** (mind 85 · console 28 · charon 8 · chat 2) |
+| z toho **vnútri** `@media (prefers-reduced-motion: reduce)` | **16** |
+| deklarácií mimo tichého bloku (živých alebo modifikátorov) | **107** |
+| `@keyframes` | **17** (mind 12 · console 4 · charon 1 · chat 0) |
+| `@keyframes` bez volajúceho | **0** |
+| **pomenovaných tichých pravidiel v CSS** (bez plošnej podlahy) | **13** nad 12 skupinami komponentov |
+| stráží tichej verzie v **JS** (`charts.js`) | **3** (heatmapa; segmenty donutu; krivka + oba `chart-fade`) |
+| pohybov, ktorých jedinou tichou verziou je **plošná podlaha** | **zvyšok** — stále veľká väčšina |
 
-Odpočet od 104 na 79, aby sa dal zopakovať: −14 deklarácií je vnútri
-`@media prefers-reduced-motion`, −10 sú modifikátory (`transition-duration`,
-`transition-delay`, `animation-play-state`, 7× `animation-delay` na `nth-child`),
-−1 je `transition: none`.
+**Metóda (aby sa dala zopakovať a aby bolo jasné, čo číslo znamená):** štyri
+stylesheety sa načítajú **z disku** (`fetch('/css/<x>.css')`), naparsujú do
+`new CSSStyleSheet()` + `replaceSync()` — teda skutočným CSSOM, nie regexom — a rekurzia
+počíta v každom `CSSStyleRule` deklarácie, ktoré začínajú na `transition` alebo
+`animation`. **Kalibrácia z oboch strán je povinná** a bez nej to nemeria nič: na
+syntetickom CSS s presne 3 pohybovými deklaráciami, 1 `@keyframes` a 1 tichým blokom
+musí harness vrátiť práve tie čísla, a pravidlo s `color` sa počítať nesmie. Prvá
+verzia tohto merača vrátila **nuly na všetkom** a vyzeralo to ako čistý repozitár:
+v modernom Chrome má **`CSSStyleRule` tiež `cssRules`** (vnorené pravidlá), takže
+podmienka „má `cssRules` → je to skupina" preskočila každé jedno pravidlo v súbore.
+Rozlišuj podľa `constructor.name`, nie podľa prítomnosti `cssRules`.
 
-Pomenované tiché verzie, ktoré **existujú** (úplný zoznam, aby sa nehľadali znova):
-`mind.css:1257` (kryje `bc-draw` aj `bc-core-in`), `:2705` (`load-breathe`),
-`:4128` (`hades-shimmer` — `display: none` na sweepe, teda pokojná plocha),
-`:4786` (`sync-pulse`); `console.css:506` (`msg-in`), `:592` (`think-blink`),
-`:593` (`sk-pulse`), `:594` (`.tr-acts`), `:595` (`tool-pulse`);
-`charon.css:220` (`charon-blink`). V JS: `charts.js:257` (`heat-reveal`),
-`:370` (`seg-draw`), `:465` (`line-draw` + `chart-fade` + `chart-fade-late`).
+**Prečo sa 123 a 104 nedajú odčítať:** medzitým sa slučkové animácie v `console.css`
+a `charon.css` prepísali zo shorthandu na **longhand trojice** (`animation-name` +
+`-duration` + `-timing-function`, kvôli `--ease-pulse`), takže tá istá jedna animácia
+dnes stojí tri deklarácie namiesto jednej. Rast čísla je zápis, nie nový pohyb.
 
-**`charon.css:220` je pritom presne zakázaný vzor:** `.charon-dot { animation: none }`
-nechá tri bodky na `opacity: .4`, takže indikátor „model píše" stratí rozdiel medzi
-pokojom a behom. **[cieľ V2]** bodky v plnej farbe + text stavu.
+Pomenované tiché verzie, ktoré **existujú** — **selektorový** zoznam (riadkové čísla
+tu boli do 31. 8. 2026 a **všetkých trinásť ukazovalo mimo**):
+
+- `mind.css`: znak (`#brand-core`, `#back-to-graph`, `.empty-sigil`, `#chat-home`,
+  `.ce-mark` × `.bc-ring` / `.bc-core` — dve pravidlá: `animation: none`
+  a `stroke-dashoffset: 0`), `.empty.empty-loading .load-mark`, `.skel::after`
+  (`display: none`, teda pokojná plocha — nie zastavený sweep),
+  `.status-dot[data-status="running"]`, `.inline-ok`, `.scatter-dots, .flow-ribbons`;
+- `console.css`: `.msg.is-new` / `.tool-call.is-new` / `.notice.is-new`, `.think-dot`,
+  `.sk-row`, `.tr-acts`, `.tool-call.running .tool-state`;
+- `charon.css`: `.charon-dot`;
+- `chat.css`: **žiadne** (a nemá čo krýť — má 2 pohybové deklarácie).
+
+**`.charon-dot` bol pritom presne zakázaný vzor a je OPRAVENÝ** (zmerané 31. 8. 2026):
+pravidlo je dnes `.charon-dot { animation: none; opacity: 1 }` a vetu o stave nesie
+`.charon-note` vedľa bodiek. Samotné `animation: none` nechávalo tri bodky na
+`opacity: .4`, takže indikátor „model píše" stratil rozdiel medzi pokojom a behom.
 
 #### Plošné pravidlo je PODLAHA, nie strop
 
-`public/css/mind.css:2852–2861` je `*, *::before, *::after { animation-duration:
-.01ms !important; … }`. `mind.css` sa načítava prvý na všetkých troch plochách,
-takže pokrýva aj `console.css`, `chat.css` a `charon.css`.
+V `public/css/mind.css` stojí `@media (prefers-reduced-motion: reduce)` blok
+s pravidlom `*, *::before, *::after { animation-duration: .01ms !important;
+animation-iteration-count: 1 !important; animation-delay: 0s !important;
+transition-duration: .01ms !important; transition-delay: 0s !important;
+scroll-behavior: auto !important; }` — **päť pohybových deklarácií plus
+`scroll-behavior`**, zmerané v CSSOM 31. 8. 2026. `mind.css` sa načítava prvý na
+všetkých troch plochách, takže podlaha pokrýva aj `console.css`, `chat.css`
+a `charon.css`.
 
-> Manuál tu do 27. 8. 2026 ukazoval na `mind.css:2728–2736`. Na tých riadkoch dnes
-> stojí pravidlo o `min-height` prázdnych stavov. Kto opravoval podľa manuálu,
-> otvoril nesprávne miesto — preto je tu číslo overené v CSSOM, nie odhad.
+> **Toto miesto sa adresuje selektorom, nie riadkom, a je to zaplatená lekcia.**
+> Manuál tu do 27. 8. 2026 ukazoval na `mind.css:2728–2736` (tam medzitým bolo
+> pravidlo o `min-height` prázdnych stavov), potom na `:2852–2861` — a k 31. 8. 2026
+> je pravidlo **opäť inde**. Riadkové číslo do tohto súboru neprežije ani týždeň;
+> `grep -n 'prefers-reduced-motion' public/css/mind.css` nájde blok vždy.
 
 **To pravidlo zostáva a `!important` sa z neho neodstraňuje.** Jeho odstránenie by
 zhodilo pravidlo na špecificitu 0-0-0 bez `!important`, teda by prehralo
@@ -572,9 +683,11 @@ Príklady zmysluplných okamžitých ekvivalentov:
    ktorý v `cssText` hľadá `*, *::before`, ju nenájde a ohlási, že chýba. Je tam.
 2. **Parser nad textom CSS treba kalibrovať proti CSSOM v oboch smeroch.** Sonda C
    mala regex, ktorý nepustil dvojsegmentový longhand (`animation-play-state`),
-   a ticho stratila 2 deklarácie. A naopak: Chrome zahodí
-   `input[type="range"]::-moz-range-thumb` (`mind.css:1631`), takže parser bude mať
-   **vždy o 1 prechodové pravidlo viac** než CSSOM — a je to správne.
+   a ticho stratila 2 deklarácie. A naopak: Chrome zahodí pravidlá pre
+   `::-moz-range-thumb`, takže textový parser bude mať **vždy o 1 prechodové pravidlo
+   viac** než CSSOM — a je to správne. Zmerané 31. 8. 2026: `-moz-range-thumb` je
+   v `mind.css` na **4 miestach**, z toho **1** nesie `transition`, a v CSSOM je
+   takých pravidiel **0**.
 3. **Tweeny na plátne sa v tomto prostredí po rámcoch merať NEDAJÚ.** Skrytá
    Browser pane netiká `rAF` (zmerané: 0 rámcov za 500 ms) a škrtí `setTimeout` na
    ~1 Hz. Merať sa dajú **stavové hodnoty** (`S._camTween.dur`, `S._simAlpha`,
@@ -583,31 +696,46 @@ Príklady zmysluplných okamžitých ekvivalentov:
 
 #### Kde je manuál a kód dnes rozdielny
 
-Pomenovaný blok (`mind.css:1255–1258`) vypína **len zrod** (`bc-draw`,
-`bc-core-in`); **dýchanie (`core-pulse`) zastavuje až plošné pravidlo.** Plošné
-pravidlo je teda pre dýchanie znaku **nosné**, nie kozmetické — keby padlo, znak by
-dýchal aj v tichom režime.
+Pomenovaný blok znaku vypína **len zrod** (`bc-draw`, `bc-core-in`); **dýchanie
+(`core-pulse`) zastavuje až plošné pravidlo.** Zmerané 31. 8. 2026 a stále platí:
+tichý blok menuje `.bc-ring` a `.bc-core` (dnes už na piatich rodičoch), ale
+`core-pulse` visí na **`#brand-core`**, ktorý v tom bloku nie je. Plošné pravidlo je
+teda pre dýchanie znaku **nosné**, nie kozmetické — keby padlo, znak by dýchal aj
+v tichom režime.
 
-`render.js:891–900` kreslí `glowA` s `Math.sin(S._clock * 6 + n.id)` **bez** stráže
-na reduced motion, a komentár na `:892` to priznáva. Tichý variant pulzu teda dnes
-nie je statický: prstenec ~0,83 s osciluje na ~0,955 Hz, hoci `anim.js:13` sľubuje
-„statické zvýraznenie". Susedný riadok `:872` stráž **má**. **[cieľ V2]** konštantná
-alfa (viď pohyb 2 vyššie).
+**`sin()` blikot v `render.js` je zmazaný** (28. 8. 2026, zmerané 31. 8. 2026).
+Manuál tu tvrdil, že `glowA` počíta `Math.sin(S._clock * 6 + n.id)` bez stráže na
+reduced motion a že prstenec preto osciluje aj v tichom režime. Dnes je `glowA`
+priamo `n.flash` — teda **konštantná alfa, ktorá lineárne vyhasína** (−0,02 na rámec,
+~830 ms), presne to, čo si pohyb 2 vyššie žiada, a komentár na tom mieste starý
+stav priznáva.
 
-Poznámka k JS strane, ktorú CSS nevidí: `charts.js:74`, `anim.js`, `toasts.js`
-a `sim.js` (`pump()`) riešia tichý režim **tak, že triedu vôbec nepridajú**, nie
-tak, že by ju CSS prebíjalo. To je správne poradie a nemení sa. Dve výnimky, ktoré
-sú „vypnuté" bez náhrady: `emitFlows()` (`anim.js:136`) len `return` — recall
-nedá žiadnu statickú spätnú väzbu, že zasiahol susedov; `maybeSynapse()`
-(`anim.js:119`) tiež — tam je ticho správne, je to ambient.
+Poznámka k JS strane, ktorú CSS nevidí: `charts.js`, `anim.js`, `toasts.js`
+a `sim.js` (`pump()`) riešia tichý režim **tak, že triedu alebo pohyb vôbec
+nepridajú**, nie tak, že by ich CSS prebíjalo. To je správne poradie a nemení sa.
+Dve výnimky, ktoré sú „vypnuté" bez náhrady: **`emitFlows()`** v `anim.js` len
+`return` — recall nedá žiadnu statickú spätnú väzbu, že zasiahol susedov;
+**`maybeSynapse()`** tiež — tam je ticho správne, je to ambient.
 
-Preferenciu treba čítať **aj po zmene nastavenia** (`MediaQueryList` event
-`change`). `sim.js:225–235` to robí a exportuje `reducedMotionActive()`;
-`charts.js:74` a `state.js:118` (`REDUCED_MOTION`) čítajú **raz pri načítaní**,
-takže preferencia prepnutá za behu utíši plátno, ale nie grafy a nie toasty.
-**[cieľ V2]** — s tým, že u `charts.js` sa zaplatí dopyt na `matchMedia` pri každom
-vykreslení (komentár na `:74` ten kompromis obhajuje pri 365 bunkách heatmapy):
-**merať pred, nie po.**
+**Preferencia sa dnes čita ŽIVO na všetkých troch miestach** (zmerané 31. 8. 2026) —
+tento odsek tvrdil opak a bola to najzávažnejšia neplatnosť v §3, pretože z nej
+vyplýval [cieľ V2], ktorý už niekto splnil:
+
+- **`state.js` je jediný zdroj pravdy.** Konštanta `REDUCED_MOTION` (čítaná raz pri
+  vyhodnotení modulu) je **zmazaná**; namiesto nej drží `state.js` živý stav
+  s odberom `change` na `MediaQueryList` a exportuje hoistovanú
+  `reducedMotionActive()`. Nemôže to byť arrow v `const` — cez cyklus
+  `render ↔ panels ↔ controls` by sa nepretiahla.
+- **`sim.js`** si vlastný odber ponechal, ale **už len pre vedľajší účinok**
+  (nakopnutie pumpy); hodnotu nevlastní.
+- **`charts.js`** má vlastnú živú premennú s tým istým odberom `change`, a komentár
+  pri nej nesie meranie, ktoré rozhodlo: `matchMedia().matches` v slučke stojí
+  0,82 µs na volanie, cachovaná konštanta aj živá premenná 0,0003 ms / 365 čítaní —
+  živá premenná je teda **rovnako lacná ako konštanta**, nie kompromis. Merač bol
+  kalibrovaný známym drahým prípadom (`getComputedStyle`, 260× viac), takže nevracal
+  nuly. Zásada „merať pred, nie po" tu bola dodržaná.
+
+Dôsledok: preferencia prepnutá **za behu** dnes utíši plátno, grafy aj toasty.
 
 ---
 

@@ -1,10 +1,43 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeDetail } from '../screens.js';
+import { renderSavedFilters } from '../table.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, getJson, prettyLabel, renderEmpty, renderError, renderFilterEmpty } from '../util.js';
 import { iconMarkup } from '../../shared/icons.js';
 
-// Denník — časová os zoskupená po dňoch, s filtrom podľa projektu
+/* Denník — časová os zoskupená po dňoch, s filtrami.
+   ============================================================================
+   DENNÍK ZOSTÁVA KARTOVÝ a je to potvrdené rozhodnutie, nie rozpracovanosť:
+   `table.js` to má napísané v hlavičke („Denník tabuľku NEDOSTÁVA") a je to
+   naratívna os — dôležité je *čo sa stalo*, nie porovnanie stĺpcov. Z `table.js`
+   si berie LEN `renderSavedFilters()`, teda mechaniku uložených filtrov, nie
+   kresbu tabuľky.
+
+   OSI FILTRA SÚ ŠTYRI A DELIA SA NA DVE POLOVICE:
+
+     · projekt  — SERVEROVÁ os (`?project=<kľúč skupiny>`), počty zo servera nad
+                  celým korpusom
+     · obdobie  — klientska os nad načítaným oknom
+     · zdroj    — klientska os nad načítaným oknom (`session` / `digest`)
+
+   Klientske osi existujú preto, že `/api/journal` iné parametre než `project`
+   a `limit` neprijíma (`JournalController::index` → `$request->only`), takže
+   preosiať sa dajú len záznamy, ktoré už tu sú.
+
+   A PRÁVE TU JE PASCA, ktorú si táto obrazovka raz už zaplatila (nález M6):
+   čip s počtom vypočítaným z 50 načítaných záznamov sľubuje číslo nad celým
+   denníkom, ktoré zoznam nedá. Preto počet na čipe **nekreslíme vždy, ale len
+   keď je dokázateľne pravdivý** — a dôkaz je jeden z troch:
+
+     1. okno je celé (`journalRecords.length >= journalFiltered`), teda nad
+        aktuálnym serverovým filtrom už nič ďalšie neexistuje;
+     2. obdobie je celé v okne (`periodStart(p) > windowOldest()`): keď je
+        najstarší načítaný záznam STARŠÍ než začiatok obdobia, okno obsahuje
+        každý záznam toho obdobia — a potom je exaktný aj počet po zdroji;
+     3. os je „všetko × celý denník", čo je presne `filtered_total` zo servera.
+
+   Kde dôkaz nie je, počet sa nekreslí. Radšej nič než lož.
+   ============================================================================ */
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
     'júla', 'augusta', 'septembra', 'októbra', 'novembra', 'decembra'];
 
@@ -14,6 +47,12 @@ export let journalRecords = [];
 // server — a AI, ktorá čítala serverové počty, tretie. Počítanie je údaj, nie kresba.
 export let journalGroups = [];
 export let journalTotal = 0;
+/* `filtered_total` = počet záznamov PO serverovom filtri, nad celou tabuľkou.
+   Denník ho posiela (na rozdiel od `/api/runs`, kde sú `counts` nad celou tabuľkou
+   BEZ filtrov a „N z M" by pri filtri bola lož) — namerané 31. 8. 2026:
+   bez filtra 151/151, `?project=ai-mind` 151/0, `?project=#bez-projektu` 151/54.
+   Preto Denník počet priznať MÔŽE a robí to v pätičke zoznamu. */
+export let journalFiltered = 0;
 /* Filter projektu žije v URL pod kľúčom `dep` (slovník §6). Číta sa TU, pri
    načítaní modulu — teda ešte pred prvým renderom, aby odkaz otvoril Denník už
    s nasadeným filtrom a nie až o jedno prekreslenie neskôr.
@@ -41,6 +80,101 @@ registerUrlApply('dennik', (url) => {
 // Preto zbalený rad: najčastejšie projekty + „viac".
 export let journalChipsOpen = false;
 export const JOURNAL_CHIPS_TOP = 8;
+
+/* ---------------------------------------------------------------------------
+   KLIENTSKE OSI: obdobie a zdroj
+
+   V ADRESE NIE SÚ a je to zámer. Slovník kľúčov v `urlstate.js` má pre Denník
+   jediný kľúč `dep` (projekt) a dopisovať doň ďalšie dva by bola zmena súboru,
+   ktorý táto obrazovka nevlastní. Ten istý dôvod a to isté riešenie má triedenie
+   v `rozhodnutia.js` (kľúč pre `sortKey` v slovníku nie je). Trvalosť nesú
+   ULOŽENÉ FILTRE, nie adresa.
+
+   `days` je počet dní VRÁTANE dneška, takže `7 dní` je dnes a šesť dní dozadu —
+   nie „pred 168 hodinami". Hranica je lokálna polnoc, ten istý idióm ako
+   `dayLabel()`; inak by sa „Dnes" o pol jednej v noci líšilo od hlavičky dňa.
+   --------------------------------------------------------------------------- */
+export const JOURNAL_PERIODS = [
+    { key: 'all', label: 'Celý denník', days: null },
+    { key: 'd0', label: 'Dnes', days: 1 },
+    { key: 'd7', label: '7 dní', days: 7 },
+    { key: 'd30', label: '30 dní', days: 30 },
+];
+export const JOURNAL_SOURCES = [
+    { key: 'all', label: 'Všetko' },
+    // `session` je automatický záznam z práce, `digest` týždenný súhrn —
+    // tie isté dva zdroje, ktoré vyberá `DennikScreen::SOURCES`.
+    { key: 'session', label: 'Práca' },
+    { key: 'digest', label: 'Súhrny' },
+];
+
+export let journalPeriod = 'all';
+export let journalSource = 'all';
+
+function midnightOf(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** Začiatok obdobia (ms). `all` je `-Infinity`, aby porovnania nepotrebovali vetvu. */
+export function periodStart(key) {
+    const p = JOURNAL_PERIODS.find((x) => x.key === key);
+    if (!p || p.days == null) return -Infinity;
+    return midnightOf(new Date()) - (p.days - 1) * 86400000;
+}
+
+/* Najstarší NAČÍTANÝ záznam. Server radí zostupne, takže by stačil posledný
+   prvok — hľadá sa však minimum, pretože na tomto čísle stojí dôkaz pravdivosti
+   počtov a nemá visieť na poradí, ktoré posiela niekto iný. */
+function windowOldest() {
+    let min = Infinity;
+    for (const r of journalRecords) {
+        const t = new Date(r.created_at).getTime();
+        if (t < min) min = t;
+    }
+    return min;
+}
+
+/** Okno obsahuje všetko, čo serverový filter vybral — potom je každý počet exaktný. */
+function windowComplete() {
+    return journalRecords.length >= journalFiltered;
+}
+
+/**
+ * Je počet nad daným obdobím dokázateľne pravdivý?
+ *
+ * `periodStart(p) > windowOldest()` znamená, že okno siaha ZA začiatok obdobia,
+ * teda v ňom nechýba ani jeden záznam toho obdobia. Pre `all` sa to redukuje na
+ * `windowComplete()`, lebo `-Infinity` nie je väčšie než nič.
+ */
+function periodSure(key) {
+    return windowComplete() || periodStart(key) > windowOldest();
+}
+
+function matchSource(r, src) { return src === 'all' || r.source === src; }
+function matchPeriod(r, per) { return per === 'all' || new Date(r.created_at).getTime() >= periodStart(per); }
+
+/**
+ * Počet pre čip a dôkaz, či sa smie zobraziť.
+ *
+ * Kombinácia „všetko × celý denník" je `filtered_total` zo servera, teda počet
+ * nad celou tabuľkou — nie nad oknom. Ostatné sa počítajú z okna a nesú `sure`
+ * podľa toho, či okno to obdobie dokázateľne pokrýva.
+ */
+function chipStat(src, per) {
+    if (src === 'all' && per === 'all') return { n: journalFiltered, sure: true };
+    let n = 0;
+    for (const r of journalRecords) if (matchSource(r, src) && matchPeriod(r, per)) n++;
+    return { n: n, sure: periodSure(per) };
+}
+
+/** Záznamy po klientskych osiach — jediný zdroj pravdy pre zoznam aj pre pätičku. */
+export function visibleJournalRecords() {
+    return journalRecords.filter((r) => matchSource(r, journalSource) && matchPeriod(r, journalPeriod));
+}
+
+function clientFilterOn() {
+    return journalSource !== 'all' || journalPeriod !== 'all';
+}
 
 export function dayLabel(iso) {
     const d = new Date(iso);
@@ -73,6 +207,11 @@ export async function renderJournal() {
         journalRecords = data.records || [];
         journalGroups = data.project_groups || [];
         journalTotal = data.total || 0;
+        /* `?? total` a nie `|| 0`: `filtered_total` môže byť legitímna NULA
+           (filter, ktorý nič nezachytil) a `|| 0` by ju nerozlíšil od chýbajúceho
+           kľúča. Keď kľúč chýba (staršia odpoveď), padá sa na `total` — teda na
+           stav pred filtrami, nie na nulu, ktorá by hlásila prázdny denník. */
+        journalFiltered = data.filtered_total ?? journalTotal;
 
         // Aktívny filter, ktorý v skupinách zo servera už nie je (posledný záznam
         // projektu sa premenoval), by zamkol prázdnu obrazovku — zruš ho a načítaj
@@ -105,6 +244,22 @@ export async function renderJournal() {
    AI dvanásť uzlov so strojovými menami. Sentinel je tu už len na porovnanie. */
 export const JOURNAL_NO_PROJECT = '#bez-projektu';
 
+/* Rad čipov jednej klientskej osi. Počet sa kreslí LEN keď je dokázateľne
+   pravdivý (`chipStat().sure`) — to je celá obrana proti nálezu M6 a je
+   zapísaná v hlavičke súboru. */
+function axisChips(items, activeKey, attr, statFor) {
+    return items.map((it) => {
+        const on = activeKey === it.key;
+        const st = statFor(it.key);
+        return '<button type="button" class="chip' + (on ? ' active' : '') + '"'
+            + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
+            + ' data-' + attr + '="' + esc(it.key) + '">'
+            + esc(it.label)
+            + (st.sure ? '<span class="chip-n">' + st.n + '</span>' : '')
+            + '</button>';
+    }).join('');
+}
+
 export function renderJournalFilter() {
     const wrap = $('journal-filter');
     // Poradie aj počty sú zo servera (podľa počtu záznamov v CELOM denníku), takže
@@ -121,7 +276,7 @@ export function renderJournalFilter() {
        LEN farba, takže čítačka o filtri nevie nič. Vzor je `runy.js` (chip()) —
        ten istý atribút, nie druhý mechanizmus. `.chip-more` ho NEMÁ: rozbaľovač
        nie je filter a svoj stav hovorí popiskom („+3 viac" / „menej"). */
-    wrap.innerHTML = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '"'
+    const projectRow = '<button type="button" class="chip' + (journalProject ? '' : ' active') + '"'
         + ' aria-pressed="' + (journalProject ? 'false' : 'true') + '" data-project="">'
         + 'Všetky<span class="chip-n">' + journalTotal + '</span></button>'
         + shown.map((g) =>
@@ -134,8 +289,37 @@ export function renderJournalFilter() {
         + (hiddenCount ? '<button type="button" class="chip chip-more" id="journal-chips-more">'
             + (journalChipsOpen ? 'menej' : '+' + hiddenCount + ' viac') + '</button>' : '');
 
+    /* Rady stoja v OBALE, nie ako priami potomkovia `#journal-filter`. Ten je
+       v CSS sám flexový rad (`#journal-filter, .dtl-filter { display:flex }`),
+       takže tri `.dtl-filter` deti by sa uložili VEDĽA seba a zabalili až pri
+       nedostatku šírky. Jedno dieťa je jeden flexový prvok a rady sa v ňom
+       skládajú pod seba — a funguje to aj keby `#journal-filter` flexovým radom
+       prestal byť. Obal je zámerne bez triedy: nemá kresbu, len blokový kontext.
+
+       Vzor troch radov aj triedy sú Rozhodnutia / Runy / Kontrola
+       (`<div class="dtl-filter">` na rad), takže tu nevzniká nový slovník. */
+    wrap.innerHTML = '<div>'
+        + '<div class="dtl-filter">' + projectRow + '</div>'
+        + '<div class="dtl-filter">' + axisChips(JOURNAL_PERIODS, journalPeriod, 'period',
+            (k) => chipStat(journalSource, k)) + '</div>'
+        + '<div class="dtl-filter">' + axisChips(JOURNAL_SOURCES, journalSource, 'source',
+            (k) => chipStat(k, journalPeriod)) + '</div>'
+        + '<div id="journal-saved"></div>'
+        + '</div>';
+
+    renderJournalSaved();
+
     const more = $('journal-chips-more');
     if (more) more.onclick = () => { journalChipsOpen = !journalChipsOpen; renderJournalFilter(); };
+
+    /* Klientske osi neplatia serverový dopyt, takže sa nerefetchuje — len sa
+       prekreslí lišta (počty ostatných osí sa filtrom menia) a zoznam. */
+    wrap.querySelectorAll('.chip[data-period]').forEach((chip) => {
+        chip.onclick = () => { journalPeriod = chip.dataset.period; renderJournalFilter(); renderJournalList(); };
+    });
+    wrap.querySelectorAll('.chip[data-source]').forEach((chip) => {
+        chip.onclick = () => { journalSource = chip.dataset.source; renderJournalFilter(); renderJournalList(); };
+    });
 
     wrap.querySelectorAll('.chip[data-project]').forEach((chip) => {
         chip.onclick = () => {
@@ -176,20 +360,133 @@ export function setJournalProject(key) {
     renderJournal();
 }
 
+/* ---------------------------------------------------------------------------
+   ULOŽENÉ FILTRE
+
+   Mechanika je `table.js` (`renderSavedFilters`), menný priestor `dennik`, teda
+   `localStorage['hades.filters.dennik']`. Nie DB: filter je pohľad na dáta, nie
+   dáta — a Denník má okrem plochy človeka aj plochu AI (`mind_journal`), ktorá
+   o cudzích pohľadoch nemá čo vedieť.
+
+   MENO SI FILTER SKLADÁ Z VLASTNÉHO OBSAHU. Natívny `prompt()` by bol jediné
+   modálne okno v celej appke; navyše meno z obsahu („AI-mind · Súhrny · 7 dní")
+   je o týždeň presnejšie než meno napísané rukou. Rovnaké meno prepíše staré,
+   takže uloženie je idempotentné (to rieši `saveFilter`).
+
+   Ukladajú sa VŠETKY TRI osi vrátane serverovej: projekt je to, čo filter robí
+   užitočným, a `applyJournalFilter()` vie, že jeho zmena znamená nový dopyt.
+   --------------------------------------------------------------------------- */
+function journalFilterName() {
+    const parts = [];
+    if (journalProject) {
+        const g = journalGroups.find((x) => x.key === journalProject);
+        parts.push(g ? g.label : journalProject);
+    }
+    if (journalSource !== 'all') {
+        const s = JOURNAL_SOURCES.find((x) => x.key === journalSource);
+        if (s) parts.push(s.label);
+    }
+    if (journalPeriod !== 'all') {
+        const p = JOURNAL_PERIODS.find((x) => x.key === journalPeriod);
+        if (p) parts.push(p.label);
+    }
+    return parts.join(' · ');
+}
+
+export function renderJournalSaved() {
+    const box = $('journal-saved');
+    if (!box) return;
+    renderSavedFilters(box, 'dennik', {
+        current: () => {
+            const name = journalFilterName();
+            // Prázdne meno = žiadny aktívny filter. `renderSavedFilters` vtedy
+            // tlačidlo „Uložiť" nekreslí — uložiť „všetko" nemá zmysel.
+            return name ? { name: name, state: { project: journalProject, source: journalSource, period: journalPeriod } } : null;
+        },
+        onApply: (st) => applyJournalFilter(st),
+    });
+    /* Trieda radu sa nasadzuje LEN keď je v boxe tlačidlo — inak by prázdna
+       lišta platila `margin-bottom` radu a medzi filtrom a zoznamom by ostala
+       diera. Ten istý riadok má `rozhodnutia.js` a z toho istého dôvodu. */
+    box.classList.toggle('dtl-filter', !!box.querySelector('button'));
+}
+
+/**
+ * Nasadí uložený filter. Neznáme hodnoty sa zahodia na `all`: v úložisku môže
+ * ležať filter z čias, keď os mala iné kľúče, a „neznáme = žiadne" je jediný
+ * stav, ktorý nič nezamkne.
+ *
+ * Projekt sa mení cez `setJournalProject()`, teda NOVÝM DOPYTOM — klientske osi
+ * sa nasadia pred ním, aby prekreslenie po odpovedi videlo už celý stav a zoznam
+ * sa nekreslil dvakrát s rôznym obsahom.
+ */
+export function applyJournalFilter(st) {
+    const s = st || {};
+    journalPeriod = JOURNAL_PERIODS.some((p) => p.key === s.period) ? s.period : 'all';
+    journalSource = JOURNAL_SOURCES.some((p) => p.key === s.source) ? s.source : 'all';
+    const project = s.project || null;
+    if (project !== journalProject) { setJournalProject(project); return; }
+    renderJournalFilter();
+    renderJournalList();
+}
+
+/* ---------------------------------------------------------------------------
+   PÄTIČKA ZOZNAMU — priznanie počtu, a prečo tu NIE JE „Ďalších 50"
+
+   „Ďalších 50" sa NEKRESLÍ, pretože ho `/api/journal` neumožňuje a namerané to
+   je (31. 8. 2026): `DennikScreen::MAX_LIMIT` je 50 a `data()` limit zviera
+   (`min(limit, 50)`), takže `?limit=200` vráti presne 50 záznamov. Offset ani
+   `page` ten endpoint nemá a `JournalController` prepúšťa len `project`
+   a `limit`. Tlačidlo by teda kliklo a nič by sa nestalo — a to je horšie než
+   jeho absencia. Tlačidlo bude mať čo robiť až keď serializér dostane okno
+   (offset), a dovtedy pätička hovorí, kde okno končí.
+
+   Počet sa priznáva, keď je pravdivý:
+     · `filtered_total` zo servera je pravda vždy (počet po serverovom filtri
+       nad celou tabuľkou), takže bez klientskej osi je „50 z 151" presné;
+     · s klientskou osou nad NEÚPLNÝM oknom celkový počet NEPOZNÁME, takže sa
+       netvrdí — pätička vtedy povie, aké je okno a aký je denník.
+   --------------------------------------------------------------------------- */
+export function journalFooterText(shown) {
+    // Zobrazená množina je dokázateľne celá: buď je celé okno, alebo obdobie
+    // leží celé v okne (a potom v ňom nechýba ani jeden záznam).
+    const complete = windowComplete() || (clientFilterOn() && periodSure(journalPeriod));
+    if (complete) return shown === 1 ? '1 záznam' : 'všetkých ' + shown;
+    if (!clientFilterOn()) return shown + ' z ' + journalFiltered + ' · viac denník neposiela';
+    return shown + ' z okna ' + journalRecords.length + ' najnovších · denník má ' + journalFiltered;
+}
+
+function renderJournalFooter(list, shown) {
+    const wrap = document.createElement('div');
+    wrap.className = 'rec-more';
+    const n = document.createElement('span');
+    n.className = 'rec-more-n';
+    n.textContent = journalFooterText(shown);
+    wrap.appendChild(n);
+    list.appendChild(wrap);
+}
+
 export function renderJournalList() {
     const list = $('journal-list');
+    const visible = visibleJournalRecords();
 
-    if (!journalRecords.length) {
+    if (!visible.length) {
         /* Dve rôzne správy, dva rôzne stavy. „Filter to skryl" má vlastnú rolu
            (`.empty--filter`) a JEDNU akciu, ktorá filter naozaj zruší.
 
            Tlačidlo je tu legitímne, nie ozdobné: filter, ktorý v skupinách zo
            servera už nie je, zhodila `renderJournal()` vyššie a načítala znovu —
            takže ak sme sa dostali sem, `journalProject` je PLATNÁ skupina, ktorá
-           dáta naozaj skrýva. */
-        if (journalProject) {
-            renderFilterEmpty(list, 'Žiadne záznamy pre tento projekt',
-                'Zruš filter a uvidíš celý denník.', () => setJournalProject(null));
+           dáta naozaj skrýva. To isté platí pre klientske osi: prázdno za nimi
+           znamená, že v načítanom okne také záznamy naozaj nie sú.
+
+           Jedna akcia ruší VŠETKY TRI osi. Dve tlačidlá („zruš projekt", „zruš
+           obdobie") by pýtali od človeka, aby uhádol, ktorá os ho zamkla — a pri
+           prázdnom zozname na to nemá z čoho prísť. */
+        if (journalProject || clientFilterOn()) {
+            renderFilterEmpty(list, 'Žiadne záznamy pre tento filter',
+                'Zruš filter a uvidíš celý denník.',
+                () => applyJournalFilter({ project: null, source: 'all', period: 'all' }));
         } else {
             renderEmpty(list, 'receipt', 'Zatiaľ žiadne záznamy',
                 'Pribudnú, keď si Hades zapamätá prvý poznatok.');
@@ -197,8 +494,9 @@ export function renderJournalList() {
         return;
     }
 
-    // Filtruje a radí server; obrazovka záznamy len zoskupí po dňoch.
-    const sorted = journalRecords;
+    // Radí server a serverovú os filtruje server; obrazovka nasadí klientske osi
+    // (`visibleJournalRecords()` vyššie) a záznamy zoskupí po dňoch.
+    const sorted = visible;
 
     // Dni sú štruktúra (zostávajú v jednom stĺpci pod sebou); záznamy VNÚTRI dňa
     // idú do fluidnej mriežky (.rec-grid), takže na širokom okne sa šírka vyplní
@@ -260,4 +558,7 @@ export function renderJournalList() {
         el.onclick = () => openNodeDetail({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
     });
     bindPackButtons(list);
+    /* Pätička ide AŽ SEM, po `innerHTML` a po napojení — `innerHTML` by ju inak
+       zmazal a `appendChild` pred ním by zmizol bez chyby. */
+    renderJournalFooter(list, sorted.length);
 }

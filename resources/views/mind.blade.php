@@ -7,7 +7,10 @@
          non-GET fetchu (ValidateCsrfToken, §3.5 docs/BEZPECNOST.md). --}}
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Hades — Vedomie</title>
-    {{-- Favicon = súosé kruhy značky (tmavý papier / tealový prstenec / zlaté jadro).
+    {{-- Favicon = súosé kruhy značky (tmavý papier / amethystový prstenec / zlaté jadro).
+         („tealový" tu stálo do 31. 8. 2026 — teal odišiel 19. 8. 2026 a je to dnes
+         farba oblasti *Vývoj & kód*, nie akcentu; nasledujúci odsek toho istého
+         komentára pritom hovoril „amethystový" správne.)
          Predtým to bol zlatý disk s tenkým prstencom na 40 % alfy — pri 16 px prstenec
          zmizol a v karte ostala len zlatá škvrna bez identity. Teraz: nepriehľadný
          tmavý podklad (čitateľné na svetlej aj tmavej liste prehliadača), plný
@@ -19,9 +22,15 @@
     <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
     {{-- Náhľad odkazu (appka je tunelovaná cez ngrok, takže sa reálne zdieľa).
-         Cesta je relatívna zámerne: ngrok doména sa mení, absolútna by zastarala. --}}
+         Cesta je relatívna zámerne: ngrok doména sa mení, absolútna by zastarala.
+
+         `og:title` = `<title>`, znak po znaku. Do 31. 8. 2026 tu stálo len
+         „Hades", teda náhľad odkazu volal túto plochu inak než karta prehliadača
+         a zároveň porušoval formát titulkov z manuálu (§9: `Hades — <obsah>`,
+         značka prvá). Značka bez obsahu nie je titulok plochy — appka má tri
+         plochy a všetky by sa v náhľade menovali rovnako. --}}
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Hades">
+    <meta property="og:title" content="Hades — Vedomie">
     <meta property="og:description" content="Hierarchical Associative Data Embedding System">
     <meta property="og:image" content="/brand/hades-og.png">
     {{-- Fonty sú self-hosted v public/fonts/ (@font-face na začiatku mind.css).

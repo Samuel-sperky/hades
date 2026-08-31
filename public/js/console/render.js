@@ -18,6 +18,7 @@ import { writeAsk } from '../shared/gate.js';
 import { equipCopy as sharedEquipCopy } from '../shared/copy.js';
 import { costLabel, runNote } from '../shared/runstate.js';
 import { historyCard, permissionCard } from './tools.js';
+import { equipReader } from './reader.js';
 import { iconSvg } from '../shared/icons.js';
 
 /* Koľko pixelov nad spodkom sa ešte považuje za „stojím na spodku". Menej než
@@ -301,6 +302,13 @@ const answerText = new WeakMap();
  */
 function equipCopy(box) {
     sharedEquipCopy(box, () => answerText.get(box), announce);
+    /* ČÍTACÍ REŽIM. Až za `sharedEquipCopy()`, a to je podmienka: ten sa proti
+       dvojitému nasadeniu chráni prítomnosťou `.copy-btn` v riadku mena, a keďže
+       tlačidlo „Čítať" tú kresbu zdieľa (v `mind.css` je to jediná kresba
+       „malé tlačidlo v riadku mena"), vložené pred ním by kopírovanie ticho
+       zrušilo. Text čítačky sa berie tým istým `read()` ako schránka — surový
+       markdown, nie `innerText` bubliny. */
+    equipReader(box, () => answerText.get(box));
 }
 
 /* Dopísaná bublina ťahu. Až tu, nie pri vzniku: počas streamu sa bublina

@@ -9,7 +9,7 @@
    Čo tu je a prečo práve tu:
      · `renderTable()` — kresba, triedenie a výber riadka
      · `moreRow()` — „ďalších N" (G3: nie stránkovanie, nie infinite scroll)
-     · `savedFilters()` — uložené kombinácie filtrov (G2)
+     · re-export uložených filtrov (G2) — mechanika žije v `shared/filters.js`
 
    Denník tabuľku NEDOSTÁVA a je to rozhodnutie: je to naratívna os dňa, kde
    dôležité je *čo sa stalo*, nie porovnanie stĺpcov. Karty tam zostávajú.
@@ -134,6 +134,17 @@ export function renderTable(container, columns, opts) {
             };
             tr.onclick = open;
             tr.onkeydown = (e) => {
+                /* SÚ TO SKRATKY RIADKA, NIE TABUĽKY. Bez `e.target !== tr` sa
+                   `preventDefault()` vypálil na každom Enteri/medzerníku, ktorý
+                   sa v riadku stal — teda aj na `<button>` v cele, ktorému tým
+                   zhltol klávesovú aktiváciu a namiesto jeho akcie otvoril
+                   panel. Kontrola aj Rozhodnutia to obchádzali `stopPropagation`
+                   na každom tlačidle; obchádzka funguje, ale zabudne sa pri
+                   novom tlačidle a chyba je tichá. Strážca je tu, aby ju
+                   obrazovky nemuseli písať.
+                   `e.target !== tr` (nie `!tr.contains(...)`): keď je fokus na
+                   riadku, cieľom JE riadok; čokoľvek iné je prvok v ňom. */
+                if (e.target !== tr) return;
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
             };
         });
@@ -204,100 +215,21 @@ export function moreRow(container, shown, total, onMore) {
 }
 
 /* ---------------------------------------------------------------------------
-   ULOŽENÉ FILTRE (G2)
+   ULOŽENÉ FILTRE (G2) — MECHANIKA JE ODTERAZ V `public/js/shared/filters.js`
 
-   Žijú v `localStorage` a NIE v databáze, a je to rozhodnutie: filter je
-   pohľad na dáta, nie dáta. Do DB by pribudla tabuľka, migrácia a druhá plocha
-   pre AI, ktorá o cudzích pohľadoch nemá čo vedieť.
+   Presunuté 31. 8. 2026, pretože konzola si tie isté štyri funkcie napísala
+   druhýkrát (`public/js/console/threadfilter.js`): importovať ich odtiaľto
+   nemôže, `table.js` ťahá `mind/util.js` a s ním celý graf vrátane d3, ktoré
+   na `/console` ani `/chat` nie je načítané.
 
-   Kľúč je `hades.filters.<ns>` — menný priestor je obrazovka, takže Runy a
-   Rozhodnutia si nevidia do filtrov. Uloženie je bezpečné aj keď je úložisko
-   zamknuté (privátne okno): funkcie vtedy len nič neurobia, appka beží ďalej.
+   Tu zostáva len RE-EXPORT, a to zámerne: `screens/runy.js`,
+   `screens/rozhodnutia.js` a `screens/dennik.js` importujú `renderSavedFilters`
+   z `../table.js`, takže presun bez re-exportu by bol zmena v troch cudzích
+   súboroch za nulový funkčný zisk. Re-export je ŽIVÁ VÄZBA na to isté
+   binding, nie kópia — druhá implementácia tým nevzniká.
+
+   Nový volajúci na `/` môže siahnuť priamo do `shared/filters.js`; volajúci
+   mimo `/` MUSÍ, inak si stiahne graf.
    --------------------------------------------------------------------------- */
 
-const FKEY = (ns) => 'hades.filters.' + ns;
-
-export function loadSavedFilters(ns) {
-    try {
-        const raw = localStorage.getItem(FKEY(ns));
-        const list = raw ? JSON.parse(raw) : [];
-        return Array.isArray(list) ? list : [];
-    } catch (e) { return []; }
-}
-
-/** Uloží pod menom; rovnaké meno PREPÍŠE (dva „posledný týždeň" sú pasca). */
-export function saveFilter(ns, name, state) {
-    const list = loadSavedFilters(ns).filter((f) => f.name !== name);
-    list.push({ name: name, state: state });
-    try { localStorage.setItem(FKEY(ns), JSON.stringify(list.slice(-12))); } catch (e) { /* nevadí */ }
-    return list;
-}
-
-export function removeFilter(ns, name) {
-    const list = loadSavedFilters(ns).filter((f) => f.name !== name);
-    try { localStorage.setItem(FKEY(ns), JSON.stringify(list)); } catch (e) { /* nevadí */ }
-    return list;
-}
-
-/**
- * Vykreslí lištu uložených filtrov. `onApply(state)` nasadí, `onSave()` vráti
- * aktuálny stav na uloženie (alebo `null`, keď nie je čo uložiť).
- */
-export function renderSavedFilters(container, ns, opts) {
-    if (!container) return;
-    const o = opts || {};
-    const list = loadSavedFilters(ns);
-    container.innerHTML = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'rec-saved';
-
-    for (const f of list) {
-        const chip = document.createElement('span');
-        chip.className = 'rec-saved-chip';
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'rec-saved-apply';
-        b.textContent = f.name;
-        b.onclick = () => o.onApply && o.onApply(f.state);
-        const x = document.createElement('button');
-        x.type = 'button';
-        x.className = 'rec-saved-del';
-        x.setAttribute('aria-label', 'Zmazať filter ' + f.name);
-        x.innerHTML = iconMarkup('x');
-        x.onclick = () => {
-            removeFilter(ns, f.name);
-            renderSavedFilters(container, ns, o);
-        };
-        chip.appendChild(b);
-        chip.appendChild(x);
-        wrap.appendChild(chip);
-    }
-
-    /* Tlačidlo „Uložiť filter" je vidieť LEN keď je čo uložiť. Bez toho by
-       ponúkalo uloženie prázdneho filtra, teda „všetko" — čo je stav bez filtra
-       a uložiť sa nedá zmysluplne.
-
-       MENO SI FILTER NESIE SÁM, nedáva ho dialóg. `current()` vracia
-       `{ name, state }`, kde meno je poskladané z aktívnych filtrov („beží ·
-       qwen3:8b"). Natívny `prompt()` by bol jediné modálne okno v celej appke,
-       na dotyku je nepríjemný a v niektorých prehliadačoch sa dá zablokovať —
-       a hlavne: meno vymyslené z obsahu je presnejšie než meno napísané rukou
-       o týždeň neskôr. Rovnaké meno prepíše staré, takže „uložiť" je
-       idempotentné. */
-    const cur = o.current && o.current();
-    if (cur && cur.name) {
-        const add = document.createElement('button');
-        add.type = 'button';
-        add.className = 'rec-saved-add';
-        const exists = list.some((f) => f.name === cur.name);
-        add.textContent = exists ? 'Filter je uložený' : 'Uložiť: ' + cur.name;
-        add.disabled = exists;
-        add.onclick = () => {
-            saveFilter(ns, cur.name, cur.state);
-            renderSavedFilters(container, ns, o);
-        };
-        wrap.appendChild(add);
-    }
-
-    container.appendChild(wrap);
-}
+export { loadSavedFilters, removeFilter, renderSavedFilters, saveFilter } from '../shared/filters.js';

@@ -3,49 +3,87 @@ import { clearLocal } from '../filters.js';
 import { setRailBadge } from '../rail.js';
 import { openNodeDetail, openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
+import { closeRecPanel, onRecPanelClose, openRecPanel, recOpenId } from '../recpanel.js';
 import { S } from '../state.js';
+import { ASC, DESC, moreRow, renderTable, sortRows } from '../table.js';
 import { showToast, showUndoToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
-import { $, busy, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo, typeName } from '../util.js';
-import { iconMarkup } from '../../shared/icons.js';
-import { iconSwap } from '../../shared/icons.js';
+import { $, busy, deferSkeleton, esc, getJson, plainBlock, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo, typeName } from '../util.js';
+import { iconMarkup, iconSwap } from '../../shared/icons.js';
 
 /* ---------- obrazovka Kontrola (/api/review/queue) — verify/review fronta ----------
-   Fronta needs_review uzlov (.queue*), klávesnica j/k/Enter/v/r/Delete (len na
-   tejto obrazovke, viď setupShortcuts). Akcie: Overiť (verify), Vyriešiť
-   (resolve-review), Preskočiť (lokálne, s undo). Rail badge cez setRailBadge.
+   Fronta needs_review uzlov, klávesnica j/k/Enter/v/r/Delete (len na tejto
+   obrazovke, viď setupShortcuts). Akcie: Overiť (verify), Vyriešiť
+   (resolve-review), Preskočiť (lokálne, s undo), Delete (zmazať uzol).
+   Rail badge cez setRailBadge.
+
+   TABUĽKA (`table.js`) + PRAVÝ PANEL (`recpanel.js`) od 31. 8. 2026, predtým
+   mriežka kariet `.queue*`. Je to VEDOMÉ RIZIKO a treba ho pomenovať, nie
+   zamlčať: Runy a Rozhodnutia sú archívy, kde človek POROVNÁVA stĺpce, kým
+   Kontrola je FRONTA NA ROZHODOVANIE, kde sa každý riadok čítá sám za seba.
+   Tabuľka pre porovnávanie vyhráva, pre čítanie jedného riadka prehráva: kartu
+   nesie dvojriadkový zalomený text (`-webkit-line-clamp: 2`, ~72 znakov na
+   riadok), cela tabuľky je JEDNORIADKOVÁ s výpustkou. Pri prechode sa teda
+   časť kontextu z plochy stráca a nesie ju `title` na cele a panel.
+
+   Čo z toho vyplýva pre návrh, a čo sa preto NESMIE zmeniť:
+
+   1. AKCIE ZOSTÁVAJÚ V RIADKU (stĺpec `_act`). Fronta, ktorej rozhodnutie
+      vyžaduje najprv otvoriť panel, je horšia než karta — pri stovke uzlov je
+      to stovka otvorení. Panel je na kontext, nie na akciu.
+   2. STĹPEC `label` NESIE AJ POPIS („label — popis"), presne ako karta. Label
+      stojí prvý, takže výpustka odsekáva popis, nie identifikátor riadka; celý
+      text nesie `titleFrom`.
+   3. PRVÝ STĹPEC JE ISTOTA, nie čas. Vo fronte na rozhodovanie je „pasca"
+      dôvod, prečo riadok otvoriť, a `created_at` len poradie v ktorom prišiel.
 
    FILTRE SÚ SERVEROVÉ a to je celý dôvod, prečo tu vôbec sú. Fronta má strop na
    jednu stránku (`KontrolaScreen::DEFAULT_LIMIT`), takže filtrovať načítanú
    stovku v prehliadači by znamenalo prehľadávať práve tú časť fronty, ktorú už
    aj tak vidno — a zvyšok by ostal neviditeľný ďalej. Osi filtra (`counts`,
    `areas`) počíta server nad CELOU frontou, nie nad stránkou, takže čipy hovoria
-   o práci, ktorá čaká, nie o tej, ktorá sa zmestila. */
+   o práci, ktorá čaká, nie o tej, ktorá sa zmestila.
+
+   TRIEDENIE JE KLIENTSKE a je to priznaný kompromis, nie omyl: `/api/review/queue`
+   radí `created_at DESC` a `sort`/`dir` parameter nemá. Tabuľka teda radí OKNO,
+   ktoré prišlo — „prvá pasca" je prvá pasca zo stovky najnovších, nie z celej
+   fronty. Nie je to však slepá ulica: istota, typ aj oblasť sa filtrujú NA
+   SERVERI, takže „ukáž pasce" sa dá povedať čipom a vtedy je zoradenie nad
+   celou množinou (kým `matching <= shown`, čo hlási `moreRow`). Serverový
+   `sort` je zmena mimo tohto súboru. */
 
 /* Strop jednej stránky. Musí sedieť s `KontrolaScreen::DEFAULT_LIMIT` — je to
-   to isté číslo na dvoch stranách drôtu a nesie ho aj popisok „Načítať ďalších". */
+   to isté číslo na dvoch stranách drôtu a nesie ho aj popisok „Ďalších N". */
 const KONTROLA_PAGE = 100;
 
 /* Tvrdý strop servera (`KontrolaScreen::MAX_LIMIT`). Nad ním sa `limit` orezáva,
-   takže tlačidlo „Načítať ďalších" by od tohto miesta nespravilo nič — a tlačidlo,
+   takže tlačidlo „Ďalších N" by od tohto miesta nespravilo nič — a tlačidlo,
    ktoré nič nespraví, je horšie než žiadne. Poznámka to preto povie slovom. */
 const KONTROLA_MAX = 500;
 
 /* Boot z URL (slovník §6): `kot` typ · `koc` istota · `koa` oblasť · `kol` strop ·
-   `q` hľadanie. Číta sa pri načítaní modulu, teda pred prvým dopytom — odkaz tak
-   pošle na server rovno ten filter, ktorý v ňom stojí, a nie dvojicu dopytov.
+   `koo` otvorený uzol v paneli · `q` hľadanie. Číta sa pri načítaní modulu, teda
+   pred prvým dopytom — odkaz tak pošle na server rovno ten filter, ktorý v ňom
+   stojí, a nie dvojicu dopytov.
 
    `q` je spoločný kľúč a jeho význam určuje `s`, preto podmienka na obrazovku.
    Hodnoty sa NEVALIDUJÚ proti zoznamu typov ani oblastí: to robí server svojou
    odpoveďou a `pruneKontrolaFilters()` nad ňou. Druhá kópia zoznamu tu by sa raz
-   rozišla s tou serverovou a filter by sa zhodil za zlý dôvod. */
+   rozišla s tou serverovou a filter by sa zhodil za zlý dôvod.
+
+   POZOR — `koo` V SLOVNÍKU `urlstate.js` EŠTE NIE JE. Ten súbor nie je vlastníctvom
+   tejto vlny a `writeUrl()` neznámy kľúč ticho zahodí (`if (!e) continue`), takže
+   panel dnes funguje, ale ADRESU NENESIE. Kód je napísaný tak, aby sa to zapnulo
+   pridaním jedného riadka do `DICT` — nič tu sa pri tom nemení. Dovtedy sa
+   `urlValue('koo')` vracia null a `readUrl().koo` je undefined, čo je presne
+   „panel je zavretý". */
 const BOOT_MINE = readUrl().s === 'kontrola';
 const bootKey = (k) => (BOOT_MINE ? urlValue(k) : null) || '';
 
 /* Strop je jediná os s číselnou doménou, takže ju treba ohradiť tu: `kol` z cudzej
    ruky môže byť `999999` a jediné, čo by sa stalo, je najväčšia stránka, akú
    server dovolí. Násobky 100 od 100 do KONTROLA_MAX — presne to, čo vie vyrobiť
-   tlačidlo „Načítať ďalších". */
+   tlačidlo „Ďalších N". */
 function clampKontrolaLimit(value) {
     const raw = parseInt(value == null ? '' : String(value), 10);
     if (!Number.isFinite(raw)) return KONTROLA_PAGE;
@@ -62,27 +100,43 @@ export const kontrolaState = {
     matching: 0, shown: 0, limit: clampKontrolaLimit(bootKey('kol')),
     counts: {}, areas: [],
     f: { type: bootKey('kot'), certainty: bootKey('koc'), area: bootKey('koa'), q: bootKey('q') },
+    /* Východzie triedenie je to, v ktorom fronta prišla zo servera
+       (`created_at DESC`). Keby sa líšilo, prvé vykreslenie by riadky preusporiadalo
+       bez toho, aby o to niekto požiadal — a `moreRow` by dopĺňal do stredu. */
+    sortKey: 'created_at', sortDir: DESC,
+    /* `open` NIE JE stav panelu, je to JEDNORAZOVÉ prianie z adresy („otvor mi
+       tento uzol"), ktoré `applyKontrolaOpenWish()` spotrebuje a zahodí. Stav
+       panelu vlastní `recpanel.js` (`recOpenId('kontrola')`), pretože zavrieť sa
+       dá aj jeho krížikom a Escom, o ktorých táto obrazovka nevie nič. */
+    open: bootKey('koo') || null,
 };
 
 /* Späť / Dopredu: adresa je vstup, fronta sa jej podriadi. Strop sa berie tou
    istou ohradou ako pri boote — kľúč z histórie nemá väčšie práva než kľúč
    z odkazu. Pole hľadania prekresľuje `ensureKontrolaShell()` z `f.q`, takže mu
-   stačí stav. */
+   stačí stav.
+
+   Keď sa zmenil LEN `koo`, nový dopyt netreba: otvorenie panelu je poloha
+   čitateľa, nie filter (rovnako ako `ruo` v Runoch). */
 registerUrlApply('kontrola', (url) => {
     if (url.s !== 'kontrola') return;
     const f = kontrolaState.f;
     const next = { type: url.kot || '', certainty: url.koc || '', area: url.koa || '', q: url.q || '' };
     const nextLimit = clampKontrolaLimit(url.kol);
+    const nextOpen = url.koo || null;
     const same = next.type === f.type && next.certainty === f.certainty
         && next.area === f.area && next.q === f.q && nextLimit === kontrolaState.limit;
-    if (same) return;
+    if (same && String(nextOpen) === String(recOpenId('kontrola'))) return;
     kontrolaState.f = next;
     kontrolaState.limit = nextLimit;
+    kontrolaState.open = nextOpen;
     /* Toolbar sa prestavuje len pri zmene OSÍ (inak by zmizlo pole, do ktorého sa
        práve píše), takže po Späť v ňom zostane starý výraz — dosaď ho ručne. */
     const qEl = $('kontrola-q');
     if (qEl) qEl.value = next.q;
-    if (document.body.dataset.screen === 'kontrola') renderKontrola(true);
+    if (document.body.dataset.screen !== 'kontrola') return;
+    if (!same) { renderKontrola(true); return; }
+    applyKontrolaOpenWish();
 });
 
 // Poradové číslo dotazu — hľadanie je debouncované, ale nie serializované, takže
@@ -123,7 +177,11 @@ function kontrolaQuery() {
    to dve veci: `kontrolaQuery()` vyššie skládá `?type=&certainty=&area=&q=&limit=`
    pre `/api/review/queue` a nesie `limit` VŽDY, pretože endpoint ho potrebuje.
    Tu ide do adresy `kot/koc/koa/kol/q` a `kol` sa pri predvolenej stránke
-   VYNECHÁVA. Ani jedno z toho nie je preklad druhého. */
+   VYNECHÁVA. Ani jedno z toho nie je preklad druhého.
+
+   `koo` tu ZÁMERNE nie je: ten píše a maže `recpanel.js` pri otvorení a zavretí
+   panelu. Keby ho písala aj obrazovka, zavretý panel by si pri najbližšom
+   prekreslení vrátil svoj kľúč do adresy. */
 function syncKontrolaUrl() {
     const f = kontrolaState.f;
     writeUrl({
@@ -135,7 +193,7 @@ function syncKontrolaUrl() {
     }, 'replace');
 }
 
-/* `soft` = prekreslenie vyvolané filtrom alebo tlačidlom „Načítať ďalších".
+/* `soft` = prekreslenie vyvolané filtrom alebo tlačidlom „Ďalších N".
    Toolbar vtedy ostáva stáť: je v ňom <input>, do ktorého sa práve píše, a
    načítavacia značka cez celé telo obrazovky by ho aj s kurzorom vyhodila. */
 export async function renderKontrola(soft) {
@@ -145,12 +203,12 @@ export async function renderKontrola(soft) {
     const list = $('kontrola-list');
     /* SOFT prekreslenie nechá starý obsah STÁŤ a povie to len `aria-busy`.
        Skeleton (ani dýchajúci znak) tu byť nesmie: `soft` je filtrovanie a
-       „Načítať ďalších" nad UŽ VYKRESLENÝM zoznamom, takže kostra by zmazala
-       presne to, čo má človek pred očami — to je regresia, nie zlepšenie.
-       Prvé načítanie kostru dostane, a v tvare zoznamu. */
+       „Ďalších N" nad UŽ VYKRESLENOU tabuľkou, takže kostra by zmazala presne
+       to, čo má človek pred očami — to je regresia, nie zlepšenie.
+       Prvé načítanie kostru dostane, a v tvare tabuľky. */
     const softList = soft && list ? list : null;
     if (softList) softList.setAttribute('aria-busy', 'true');
-    const cancelSkeleton = softList ? null : deferSkeleton(body, 'list');
+    const cancelSkeleton = softList ? null : deferSkeleton(body, 'table');
     try {
         const d = await getJson('/api/review/queue' + kontrolaQuery());
         if (cancelSkeleton) cancelSkeleton();
@@ -172,6 +230,12 @@ export async function renderKontrola(soft) {
         if (d.limit) kontrolaState.limit = d.limit;
         // Zapnutý filter bez čipu je pasca — a pozná sa až z novej osi, teda tu.
         if (pruneKontrolaFilters()) { renderKontrola(true); return; }
+        /* Panel otvorený na uzle, ktorý v novej odpovedi nie je (overil ho niekto
+           iný, filter ho odrezal), je tá istá pasca ako filter bez dát: panel by
+           tvrdil niečo, čo v tabuľke nie je vidieť. Zatvára sa cez
+           `closeRecPanel()`, aby z adresy odišiel aj `koo`. */
+        const openId = recOpenId('kontrola');
+        if (openId != null && !hasKontrolaItem(openId)) closeRecPanel();
         /* Až tu je filter orezaný o osi, ktoré v odpovedi nemajú čip, takže do
            adresy ide pravda, ktorou sa obrazovka naozaj riadi. Keby URL vynucovala
            filter NAD prune logikou, `?kot=<neexistujuci-typ>` by nechal obrazovku
@@ -180,12 +244,15 @@ export async function renderKontrola(soft) {
 
            `f.q` sa nepruneuje vôbec (výraz bez zásahu je legitímny stav), takže
            ide do adresy tak, ako ho človek napísal. Strop je zámerne v URL: bez
-           neho by odkaz na 300 položiek otvoril stovku a tlačidlo „Načítať
-           ďalších" by človek klikal odznova. */
+           neho by odkaz na 300 položiek otvoril stovku a tlačidlo „Ďalších N"
+           by človek klikal odznova. */
         syncKontrolaUrl();
         kontrolaState.idx = 0;
         // pri `soft` je fokus tam, kde ho človek nechal (čip alebo hľadanie) — nebrať ho
         rerenderKontrola(!soft && canTakeKontrolaFocus());
+        // Prianie z adresy sa spotrebuje AŽ PO vykreslení tabuľky: bez riadkov sa
+        // nedá povedať, či ten uzol vo fronte vôbec je.
+        applyKontrolaOpenWish();
         // Hygiena sa dotiahne AŽ POTOM a raz za načítanie stránky: je to prechod
         // celou sieťou (uzly + hrany), nie dopyt, takže by inak fronta čakala na
         // niečo, čo s ňou nesúvisí. Filtrovanie fronty ju nespúšťa znovu.
@@ -204,6 +271,10 @@ export async function renderKontrola(soft) {
     }
 }
 
+function hasKontrolaItem(id) {
+    return kontrolaState.items.some((n) => String(n.id) === String(id));
+}
+
 /* Prvé vykreslenie fronty označilo prvú položku vizuálne, ale fokus prehliadača tam
    nebol, kým človek nestlačil j/k — Tab preto začínal odznova od hlavičky a čítač
    obrazovky o výbere nevedel. Fokus si ale nemôžeme vziať vždy: `/api/review/queue`
@@ -218,46 +289,78 @@ function canTakeKontrolaFocus() {
 }
 
 /* moveFocus=true — prekreslenie po AKCII (overiť / vyriešiť / preskočiť / zmazať).
-   innerHTML vymení celý zoznam, takže fokus by inak zostal na <body> presne v tom
-   okamihu, keď človek pokračuje v práci s frontou. */
+   `renderTable()` vymení celý `innerHTML`, takže fokus by inak zostal na <body>
+   presne v tom okamihu, keď človek pokračuje v práci s frontou. */
 export function rerenderKontrola(moveFocus) {
     const body = $('kontrola-body');
     if (!body) return;
     setRailBadge('kontrola', kontrolaState.total);
     ensureKontrolaShell(body);
     syncKontrolaFilter();
-    // Musí to byť TU, nie za zoznamom: pri prázdnej fronte sa nižšie vracia
+    // Musí to byť TU, nie za tabuľkou: pri prázdnej fronte sa nižšie vracia
     // skoro, a sekcia hygieny by po prestavbe shellu zostala prázdna práve vtedy,
     // keď je jediné, čo obrazovka ešte má čo povedať.
     renderHygiena();
     const list = $('kontrola-list');
+    const hints = $('kontrola-hints');
     const items = kontrolaState.items;
     if (!items.length) {
+        /* Pás klávesových skratiek nad prázdnou frontou by učil ovládanie niečoho,
+           čo tam nie je. Skrýva ho `.hidden` (`display: none !important`), nie
+           inline `style` — rozmer ani viditeľnosť napísané v JS sú pre CSSOM
+           neviditeľné a žiadna asercia ich nenájde. */
+        if (hints) hints.classList.add('hidden');
         /* Prázdno POD filtrom je iná veta než prázdna fronta — a musí ísť do
-           zoznamu, nie cez celé telo: keby zmizol toolbar, filter, ktorý všetko
+           tabuľky, nie cez celé telo: keby zmizol toolbar, filter, ktorý všetko
            odrezal, by sa nedal zrušiť ničím okrem prechodu na inú obrazovku.
-           Odteraz to nie je len iná veta, ale aj iná rola (`.empty--filter`) a
-           jedna akcia. Tlačidlo naozaj niečo urobí: `pruneKontrolaFilters()`
-           vyššie zhodilo osi, ktoré v novej odpovedi nemajú čip, takže filter,
-           ktorý prežil, je platný — a `f.q` sa nepruneuje vôbec. */
+           `renderTable()` má vlastný `empty`, ale ten vie povedať jednu vetu bez
+           akcie — tu sú dve príčiny prázdna a každá má vlastnú vetu aj akciu. */
         if (kontrolaFiltersActive()) {
             renderFilterEmpty(list, 'Filtru nevyhovuje ani jeden uzol',
-                'Zruš filter a uvidíš celú frontu.', clearKontrolaFilters);
+                'Zruš filter a uvidíš celú frontu.', clearKontrolaFilters);
         } else {
             renderEmpty(list, 'check-list', 'Fronta na overenie je prázdna',
                 'Nové poznatky sem prídu po ďalšej session.');
         }
         return;
     }
+    if (hints) hints.classList.remove('hidden');
     kontrolaState.idx = Math.max(0, Math.min(kontrolaState.idx, items.length - 1));
-    list.innerHTML = '<div class="queue">'
-        + items.map((n, i) => queueItemHtml(n, i)).join('')
-        + '</div>' + kontrolaHintsHtml();
+
+    /* PORADIE `items` JE PORADIE RIADKOV a musí ním zostať. `kontrolaState.idx`
+       je index do `items` a čítajú ho klávesy j/k/v/r/Delete v `shortcuts.js`
+       (`items[idx]`), takže keby tabuľka kreslila inak zoradenú kópiu, „v" by
+       overilo iný uzol, než na ktorý sa človek pozerá. Preto sa triedi POLE
+       SAMOTNÉ, nie jeho kópia pre kresbu. `sortRows` je stabilný, takže
+       opakovaný render s tým istým kľúčom poradie nemení. */
+    const cols = kontrolaColumns();
+    kontrolaState.items = sortRows(items, kontrolaState.sortKey, kontrolaState.sortDir, cols);
+
+    renderTable(list, cols, {
+        rows: kontrolaState.items,
+        sortKey: kontrolaState.sortKey,
+        sortDir: kontrolaState.sortDir,
+        onSort: sortKontrola,
+        onOpen: openKontrolaPanel,
+        openId: recOpenId('kontrola'),
+        idKey: 'id',
+        caption: 'Fronta na overenie',
+    });
+    renderKontrolaMore(list);
     wireKontrola(list);
+    watchKontrolaPanelClose();
+    /* Klávesový kurzor sa musí obnoviť po KAŽDOM prekreslení, nie len po akcii:
+       `renderTable()` stavia riadky nanovo, takže `.selected` z predchádzajúcej
+       kresby s nimi zmizne — a `idx` by ukazoval na riadok, ktorý nie je označený.
+       Predchodca (`queueItemHtml`) si triedu písal priamo do markupu; spoločná
+       tabuľka o cudzej triede vedieť nemá, tak sa dopisuje tu. Fokus a scroll sa
+       pri tom ale NEBERÚ (to je `markKontrolaSelected(true)`): pri filtrovaní je
+       fokus v poli hľadania a scroll patrí človeku. */
     if (moveFocus) markKontrolaSelected(true);
+    else paintKontrolaCursor();
 }
 
-/* Toolbar a zoznam sú dva samostatné bloky, nie jeden innerHTML. Hľadanie je
+/* Toolbar a tabuľka sú dva samostatné bloky, nie jeden innerHTML. Hľadanie je
    <input> a každé prekreslenie fronty (overiť, vyriešiť, preskočiť, nová
    odpoveď) by ho aj s kurzorom vymenilo za nový prázdny.
 
@@ -276,7 +379,11 @@ function ensureKontrolaShell(body) {
     const sig = kontrolaAxisSignature();
     if ($('kontrola-list') && kontrolaAxisSig === sig) return;
     kontrolaAxisSig = sig;
-    /* Hygiena je tretí blok tej istej obrazovky a stojí POD frontou: fronta je
+    /* Pás skratiek je odteraz v SHELLI, nie v tele tabuľky: `renderTable()`
+       prepisuje `innerHTML` kontejnera, takže by ho zmazalo každé prekreslenie
+       a musel by sa dokresľovať ťahom po hotovej tabuľke.
+
+       Hygiena je tretí blok tej istej obrazovky a stojí POD frontou: fronta je
        práca, hygiena je stav. `aria-live` je tu preto, že obsah dobehne sám
        (meranie beží sekundy) — bez neho by čítačka o výsledku nevedela.
 
@@ -284,13 +391,37 @@ function ensureKontrolaShell(body) {
        margin-top, ale nie margin-bottom, takže karta by sa nalepila na pás
        skratiek. Patrí to do `mind.css` ako
        `#kontrola-hygiene { margin-top: var(--gutter) }` a presúva sa to jedným
-       riadkom. Zostalo to tu, pretože `mind.css` v čase tejto opravy rozpracovala
-       paralelná session a dvaja pisatelia do jedného súboru sa ticho prepíšu. */
+       riadkom. Zostalo to tu, pretože `mind.css` nie je vlastníctvom tejto vlny
+       a dvaja pisatelia do jedného súboru sa ticho prepíšu. */
     body.innerHTML = '<div id="kontrola-filter"></div><div id="kontrola-list"></div>'
+        + '<div id="kontrola-hints">' + kontrolaHintsHtml() + '</div>'
         + '<div class="dash-card" id="kontrola-hygiene" style="margin-top:var(--gutter)"'
         + ' aria-live="polite"></div>';
     $('kontrola-filter').innerHTML = kontrolaFilterHtml();
     wireKontrolaFilter();
+    wireKontrolaEnterGuard($('kontrola-list'));
+}
+
+/* ENTER SA NESMIE DOSTAŤ NA WINDOW. `shortcuts.js` má pre `Enter` na tejto
+   obrazovke `openNodeDetail()` a jeho listener je na window, takže bez zastavenia
+   by klávesnica otvorila prekrytie uzla a myš pravý panel — dve pravdy o jednej
+   akcii.
+
+   Je to `addEventListener` na KONTEJNERI, a preto sa vešia práve tu, v jedinom
+   mieste, kde ten kontejner vzniká. `#kontrola-list` prekreslenie PREŽIJE (mení
+   sa len jeho `innerHTML`), takže volanie z `wireKontrola()` by pri každej akcii
+   pridalo ďalší listener — po dvadsiatich overeniach dvadsať kópií tej istej
+   obsluhy.
+
+   BEZ `preventDefault`: `renderTable()` si ho na riadku robí sám a nad tlačidlami
+   akcií Enter patrí tlačidlu. Ostatné klávesy (j/k/v/r/Delete) prejsť MUSIA —
+   obsluhuje ich `shortcuts.js` na window a fokus je pri práci s frontou práve
+   tu, v tabuľke. */
+function wireKontrolaEnterGuard(list) {
+    if (!list) return;
+    list.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') e.stopPropagation();
+    });
 }
 
 /* Filtračný čip hovorí tým istým jazykom ako v Denníku a v Rozhodnutiach:
@@ -343,26 +474,25 @@ function kontrolaFilterHtml() {
                 'data-kf="area" data-val="' + esc(a.slug) + '"', a.count)).join(''));
     }
 
-    /* Posledný rad je hľadanie + to, čo obrazovka o sebe priznáva: koľko z fronty
-       je naozaj na nej a čím sa dá dotiahnuť zvyšok.
+    /* Posledný rad je hľadanie. Priznanie počtu a tlačidlo ďalšej stránky sa
+       odtiaľ 31. 8. 2026 PRESUNULI pod tabuľku do `moreRow()` (`table.js`) —
+       jeden jazyk s Runami a Rozhodnutiami. Nechať ich aj tu by znamenalo dve
+       tlačidlá „ďalej" a dve rôzne vety o tom istom počte.
 
        Rozmery sú inline a obe čísla sú nutnosť: základný štýl vstupov je
-       `width:100%`, takže bez `width:auto` pole vytlačí poznámku aj tlačidlo
-       z riadku — a bez `flex-grow:0` (teda `flex:0 1`) narastie cez celý riadok
-       a poznámku pritlačí na okraj obrazovky. `type="search"` zámerne NIE: dal by
-       polu natívny modrý krížik, ktorý s akcentom nemá nič spoločné, a `#library-search`
-       ho tiež nemá. */
+       `width:100%`, takže bez `width:auto` pole vytlačí zvyšok riadku — a bez
+       `flex:0 1` narastie cez celý riadok. `type="search"` zámerne NIE: dal by
+       polu natívny modrý krížik, ktorý s akcentom nemá nič spoločné, a
+       `#library-search` ho tiež nemá. */
     rows.push('<input id="kontrola-q" value="' + esc(f.q) + '"'
         + ' placeholder="Hľadať vo fronte…" autocomplete="off" aria-label="Hľadať vo fronte"'
-        + ' maxlength="200">'
-        + '<span class="chip-more" id="kontrola-note" aria-live="polite"></span>'
-        + '<button type="button" id="kontrola-more" class="chip hidden"></button>');
+        + ' maxlength="200">');
 
     return rows.map((r) => '<div class="dtl-filter">' + r + '</div>').join('');
 }
 
-/* Čo sa mení bez prestavby toolbaru: aktívny čip, veta o strope a tlačidlo
-   ďalšej stránky. Preto sú to triedy a textContent, nie nový innerHTML. */
+/* Čo sa mení bez prestavby toolbaru: aktívny čip. Preto sú to triedy a atribúty,
+   nie nový innerHTML. */
 function syncKontrolaFilter() {
     const wrap = $('kontrola-filter');
     if (!wrap) return;
@@ -371,18 +501,6 @@ function syncKontrolaFilter() {
         el.classList.toggle('active', on);
         el.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    const note = $('kontrola-note');
-    if (note) note.textContent = kontrolaNoteText();
-    const more = $('kontrola-more');
-    if (more) {
-        // Zvyšok počítame zo `shown` (čo prišlo zo servera), nie z `items.length`:
-        // preskočenie je lokálne a zmenšuje zoznam bez toho, aby na serveri
-        // pribudlo čo dotiahnuť.
-        const rest = kontrolaState.matching - kontrolaState.shown;
-        const capped = kontrolaState.shown >= KONTROLA_MAX;
-        more.classList.toggle('hidden', rest <= 0 || capped);
-        if (rest > 0 && !capped) more.textContent = 'Načítať ďalších ' + Math.min(KONTROLA_PAGE, rest);
-    }
 }
 
 /* Filter, ktorý po novom načítaní nemá vo svojej osi čip, je pasca: rady sa
@@ -407,15 +525,55 @@ function pruneKontrolaFilters() {
     return changed;
 }
 
-function kontrolaNoteText() {
-    const shown = kontrolaState.items.length;
-    const m = kontrolaState.matching;
-    if (m > shown) {
-        return 'Zobrazených ' + shown + ' zo ' + m
-            + (kontrolaState.shown >= KONTROLA_MAX ? ' — ďalej už len filtrom' : '');
+/* „Ďalších N" (G3) pod tabuľkou. Celok je `matching` — počet uzlov, ktoré
+   vyhovujú FILTRU bez stropu, teda serverové číslo, nie dopočet z `items.length`.
+   Práve preto sa tu smie kresliť: `moreRow()` mlčí, keď celok nie je známy, a tu
+   známy je vždy (bez filtra je `matching` z definície `total`).
+
+   Nad tvrdým stropom servera (500) sa tlačidlo NEKRESLÍ — nemohlo by priniesť
+   ďalší riadok. Zostáva veta, ktorá to priznáva; „ticho" by na tom mieste
+   znamenalo, že zoznam skončil, a to nie je pravda. */
+function renderKontrolaMore(list) {
+    if (!list) return;
+    /* ZVYŠOK SA POČÍTA ZO `shown` (čo prišlo zo servera), NIE z `items.length`:
+       preskočenie je lokálne a zmenšuje zoznam bez toho, aby na serveri pribudlo
+       čo dotiahnuť. Keby tu stálo `items.length`, tri preskočenia by vyrobili
+       tlačidlo „Ďalších 3", ktoré by tie isté tri uzly priniesli späť. */
+    const rest = kontrolaState.matching - kontrolaState.shown;
+
+    if (rest <= 0) {
+        /* Server nemá čo pridať, takže sa kreslí len PRIZNANIE POČTU — a to musí
+           hovoriť o tom, čo je na ploche, teda `items.length`. Po lokálnom
+           preskočení je riadkov menej než server poslal (zmerané: 3 riadky,
+           `shown` 4) a „všetkých 4" nad tromi riadkami je lož o jeden.
+           `onMore` sa v tejto vetve nikdy nevyvolá — `moreRow` tlačidlo kreslí
+           len keď `shown < total`. */
+        const n = kontrolaState.items.length;
+        moreRow(list, n, n, () => {});
+        return;
     }
-    if (kontrolaFiltersActive()) return 'Filtru vyhovuje ' + shown + ' zo ' + kontrolaState.total;
-    return '';
+
+    if (kontrolaState.shown >= KONTROLA_MAX) {
+        /* Nad tvrdým stropom servera by tlačidlo nemohlo priniesť ďalší riadok
+           a tlačidlo, ktoré nič nespraví, je horšie než žiadne (to isté pravidlo
+           má `renderMore()` v Runoch). Ticho by tu ale znamenalo, že zoznam
+           skončil — a to nie je pravda, preto veta. Kresba je `.rec-more` /
+           `.rec-more-n`, teda tá istá, akú by nasadil `moreRow`. */
+        const wrap = document.createElement('div');
+        wrap.className = 'rec-more';
+        const n = document.createElement('span');
+        n.className = 'rec-more-n';
+        n.textContent = 'Zobrazených ' + kontrolaState.items.length + ' zo '
+            + kontrolaState.matching + ' — ďalej už len filtrom';
+        wrap.appendChild(n);
+        list.appendChild(wrap);
+        return;
+    }
+
+    moreRow(list, kontrolaState.shown, kontrolaState.matching, () => {
+        kontrolaState.limit = Math.min(KONTROLA_MAX, kontrolaState.limit + KONTROLA_PAGE);
+        renderKontrola(true);
+    });
 }
 
 function wireKontrolaFilter() {
@@ -445,33 +603,184 @@ function wireKontrolaFilter() {
             }, 220);
         };
     }
-    const more = $('kontrola-more');
-    if (more) {
-        more.onclick = () => { kontrolaState.limit += KONTROLA_PAGE; renderKontrola(true); };
-    }
 }
 
-export function queueItemHtml(n, i) {
-    // description je markdown (rovnaký zdroj ako snippety v Denníku a Knižnici), takže
-    // bez plainText tu svietilo „**Čo:** …". Zlepenie riadkov robí plainText tiež,
-    // pôvodné .replace(/\s+/g,' ') je v ňom obsiahnuté.
-    const desc = plainText(n.description);
-    return '<div class="queue-item' + (i === kontrolaState.idx ? ' selected' : '') + '"'
-        + ' data-id="' + n.id + '" data-idx="' + i + '" tabindex="-1">'
-        + '<div class="queue-body">'
-        + '<div class="queue-meta">'
-        + '<span>' + esc(typeName(n.type)) + '</span>'
-        + originBadge(n.origin) + certBadge(n.certainty)
-        + (n.created_at ? '<span>' + esc(timeAgo(n.created_at)) + '</span>' : '')
-        + '</div>'
-        + '<div class="queue-text"><strong>' + esc(plainInline(n.label)) + '</strong>'
-        + (desc ? ' — ' + esc(desc) : '') + '</div>'
-        + '</div>'
-        + '<div class="queue-actions">'
+/* ---------- stĺpce ----------
+
+   Poradie: Istota · Poznatok · Typ · Oblasť · Pôvod · Kedy · Akcie.
+
+   ISTOTA STOJÍ PRVÁ a je to jediný rozdiel od Runov, ktorý nesie význam:
+   v archíve behov je prvý stĺpec Stav („čo sa s tým stalo"), vo fronte na
+   rozhodovanie je prvý stĺpec dôvod, prečo riadok otvoriť. „Pasca" je práca,
+   „hypotéza" je práca inej váhy a „bez istoty" je práca tretej váhy.
+
+   POZNATOK je hlavný identifikátor riadka a jediný stĺpec bez `width` — pri
+   `table-layout: fixed` mu tak pripadne celý zvyšok šírky.
+
+   ŠÍRKY SÚ V PERCENTÁCH všade, kde obsah rastie s oknom, a v `rem` len tam, kde
+   nerastie (stĺpec akcií nesú tri tlačidlá po 32 px). Dôvod je zaplatený
+   v Runoch: pri samých `rem` dal súčet 656 px a v 502 px širokom obsahu zostalo
+   na hlavný identifikátor 0 px. `min(7.5rem, 22%)` je pasca tiež — percento
+   vnútri `min()` prehliadač v `table-layout: fixed` ZAHODÍ.
+
+   `sortValue` je tam, kde sa ZOBRAZENÁ hodnota porovnať nedá. V tejto tabuľke
+   to je väčšina stĺpcov a každý z iného dôvodu — viď komentáre pri nich.
+
+   EXPORTOVANÉ ZÁMERNE, hoci ich nikto neimportuje: kľúč triedenia stĺpca Istota
+   je poradie váhy, ktoré sa na živých dátach nemusí dať zmerať (dnes je celá
+   fronta „bez istoty", takže obe smery kliku dajú tú istú kresbu). Merací harness
+   si preto vezme TÚTO definíciu a preženie ňou vlastné riadky — nie kópiu formuly,
+   ktorá by po zmene kódu merala samu seba. */
+export function kontrolaColumns() {
+    return [
+        {
+            key: 'certainty', label: 'Istota', width: '11%',
+            cell: (n) => certBadge(n.certainty || 'bez'),
+            /* Poradie VÁHY, nie abecedy ani surového kľúča. Abecedne by vyšlo
+               „hypoteza, overene, pasca" a po slovensky „Bez istoty, Hypotéza,
+               Overené, Pasca" — ani jedno nie je poradie, v akom sa fronta
+               rozhoduje. Prvým klikom sa má ukázať to najnaliehavejšie, preto je
+               `pasca` index 0 a smer prvého kliku je ASC (viď `sortKontrola`). */
+            sortValue: (n) => {
+                const i = CERT_ORDER.indexOf(n.certainty || 'bez');
+                return i < 0 ? CERT_ORDER.length : i;
+            },
+        },
+        {
+            key: 'label', label: 'Poznatok',
+            /* Cela nesie LABEL + POPIS, presne ako karta pred prechodom na
+               tabuľku. Label je prvý, takže výpustka odsekáva popis a nikdy
+               identifikátor riadka; `<b>` ho oddelí aj vtedy, keď je popis dlhý.
+
+               `plainText` na popis a `plainInline` na label: oba prichádzajú
+               z markdownu (ten istý zdroj ako snippety v Denníku), takže bez toho
+               by v tabuľke svietilo „**Čo:** …". `plainText` navyše zlepí riadky,
+               čo je pre jednoriadkovú celu podmienka, nie kozmetika. */
+            cell: (n) => {
+                const desc = plainText(n.description);
+                return '<b>' + esc(plainInline(n.label)) + '</b>'
+                    + (desc ? ' — ' + esc(desc) : '');
+            },
+            /* Radí sa podľa TOHO, ČO JE VIDIEŤ: surový label nesie `backticky`
+               a `**`, takže by sa tie riadky zoradili inde, než kam ich oko na
+               obrazovke čaká. Popis do kľúča nepatrí — radí sa podľa poznatku. */
+            sortValue: (n) => plainInline(n.label || ''),
+            /* REZ SA PRIZNÁVA. Cela je `overflow: hidden` s výpustkou a reže sa
+               takmer vždy (popis má stovky znakov), takže bez `title` by sa
+               kontext nedal prečítať bez otvorenia panelu — a to je práve to,
+               čo z tabuľky vo fronte robí horšiu plochu než karta. */
+            titleFrom: (n) => {
+                const desc = plainText(n.description);
+                return plainInline(n.label || '') + (desc ? ' — ' + desc : '');
+            },
+        },
+        {
+            key: 'type', label: 'Typ', width: '9%',
+            cell: (n) => esc(typeName(n.type)),
+            /* Radí sa podľa SLOVENSKÉHO názvu, nie surového kľúča: `memory`,
+               `project`, `skill` je iné poradie než „poznatok, projekt, skill",
+               a človek radí podľa toho, čo číta. `localeCompare('sk')` v
+               `sortRows` je tu podmienka — bez neho by „Č" skončilo za „Z". */
+            sortValue: (n) => typeName(n.type),
+        },
+        {
+            key: 'area', label: 'Oblasť', width: '14%',
+            /* Názov oblasti dáva SERVER (kľúč `area` v `KontrolaScreen::rows()`).
+               Dopočítať ho z grafového payloadu (`S.areas`) by znamenalo, že
+               obrazovka závisí od toho, či je graf načítaný — chyba, ktorú si
+               Rozhodnutia už raz zaplatili.
+
+               Bez oblasti je pomlčka, ale `sortValue` sa nedopĺňa: `sortRows`
+               posiela prázdne hodnoty vždy na konec, pretože „nič" nie je
+               najmenšia hodnota. Pomlčka ako `sortValue` by ich zaradila medzi
+               oblasti (za „Obchod", pred „Osobné"). */
+            cell: (n) => (n.area ? esc(n.area) : '—'),
+            titleFrom: (n) => n.area || '',
+        },
+        {
+            key: 'origin', label: 'Pôvod', width: '10%',
+            /* Ten istý odznak ako na Dnes, v Denníku a v Rozhodnutiach — pôvod je
+               jedna vec a má v celej appke jednu kresbu. `sortValue` netreba:
+               surové kľúče (`brain` / `session`) majú to isté abecedné poradie
+               ako zobrazené slová („playbook" / „session"), takže druhá kópia
+               menoslovia by tu vznikla pre nulový rozdiel. */
+            cell: (n) => originBadge(n.origin),
+        },
+        {
+            key: 'created_at', label: 'Kedy', width: '8%',
+            cell: (n) => {
+                const when = timeAgo(n.created_at);
+                if (!when) return '—';
+                return '<span title="' + esc(whenTitle(n.created_at)) + '">' + esc(when) + '</span>';
+            },
+            /* ISO zo servera nesie OFFSET (`+02:00` v lete, `+01:00` v zime),
+               takže jeho abecedné poradie nie je chronologické na hranici času.
+               Normalizácia na UTC dá pevný tvar rovnakej dĺžky, kde abecedné
+               poradie chronologické JE — a to je dôvod, prečo tento stĺpec
+               nemusí byť `num`. Zobrazené „pred 3 d" je text bez dátumu. */
+            sortValue: (n) => (n.created_at ? new Date(n.created_at).toISOString() : null),
+        },
+        {
+            /* AKCIE ZOSTÁVAJÚ V RIADKU. Fronta, v ktorej treba na rozhodnutie
+               najprv otvoriť panel, je pri stovke uzlov stovka otvorení — to je
+               horšie než karta, ktorú tabuľka nahradila. Panel je na kontext.
+
+               Šírka je v `rem`, nie v percentách: obsah cely sú tri tlačidlá
+               s pevnými 32 px a percento by ich pri úzkom okne odseklo. Dorovnaná
+               je na OZBROJENÝ stav („Preskočiť?"), nie na tri ikony — pri šírke
+               podľa ikon sa ozbrojené tlačidlo do cely nevojde (to isté meranie
+               ako pri koši v Rozhodnutiach).
+
+               `sortable: false`: stĺpec bez hodnoty sa zoradiť nedá a `aria-sort`
+               by na ňom bol stav, ktorý neexistuje. */
+            key: 'akcie', label: 'Akcie', sortable: false, width: '11.5rem',
+            cell: () => actionsCellHtml(),
+        },
+    ];
+}
+
+/* Poradie váhy pre stĺpec Istota. Je to konštanta pri stĺpci, nie odvodenina
+   z `CERT_META` — poradie kľúčov v objekte je poradie kresby odznakov, nie
+   poradie naliehavosti, a spoliehať sa na iteráciu objektu by bola väzba, ktorá
+   sa ticho rozíde. */
+const CERT_ORDER = ['pasca', 'hypoteza', 'bez', 'overene'];
+
+function actionsCellHtml() {
+    return '<div class="queue-actions">'
         + '<button type="button" class="act-verify" data-act="verify" title="Overiť (v)" aria-label="Overiť">' + iconMarkup('shield-check') + '</button>'
         + '<button type="button" class="act-resolve" data-act="resolve" title="Vyriešiť (r)" aria-label="Vyriešiť">' + iconMarkup('check-double') + '</button>'
-        + '<button type="button" class="act-skip" data-act="skip" title="Preskočiť" aria-label="Preskočiť">' + iconMarkup('skip') + '</button>'
-        + '</div></div>';
+        + '<button type="button" class="act-skip" data-act="skip" title="Preskočiť (Delete zmaže uzol)" aria-label="Preskočiť">' + iconMarkup('skip') + '</button>'
+        + '</div>';
+}
+
+/* Presný čas do `title` stĺpca Kedy. Relatívny čas („pred 3 d") je v tabuľke
+   čitateľnejší, ale sám neodpovie na otázku „ktorý deň to bolo". Deň sa tu
+   dopočítava z `created_at` v zóne prehliadača a je to slovo, nie údaj —
+   `/api/review/queue` kľúč `day` (na rozdiel od `/api/runs`) neposiela. */
+function whenTitle(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleString('sk', {
+        day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+}
+
+/* Prvý klik na stĺpec nasadí smer, ktorý má pre stĺpec zmysel: čas od
+   najnovšieho (zostupne), slová od A (vzostupne) a ISTOTA OD NAJNALIEHAVEJŠEJ
+   (vzostupne v poradí váhy — `pasca` je index 0). Druhý klik obracia.
+   Triedenie do adresy neide — slovník `urlstate.js` pre ňu kľúč nemá. */
+function sortKontrola(key) {
+    if (kontrolaState.sortKey === key) {
+        kontrolaState.sortDir = kontrolaState.sortDir === ASC ? DESC : ASC;
+    } else {
+        kontrolaState.sortKey = key;
+        kontrolaState.sortDir = key === 'created_at' ? DESC : ASC;
+    }
+    rerenderKontrola(false);
+    /* Prekreslenie zahodilo `<th>` aj s tlačidlom, na ktoré človek práve klikol,
+       takže fokus by spadol na `<body>` a Tab by začal od začiatku dokumentu.
+       Vraciame ho na to isté tlačidlo v novej kresbe (vzor `rozhodnutia.js`). */
+    const again = document.querySelector('#kontrola-list .rec-sort[data-sort="' + key + '"]');
+    if (again) again.focus();
 }
 
 export function kontrolaHintsHtml() {
@@ -483,6 +792,7 @@ export function kontrolaHintsHtml() {
         + kh(['v'], 'overiť')
         + kh(['r'], 'vyriešiť')
         + kh(['Del'], 'zmazať uzol')
+        + kh(['Esc'], 'zavrieť detail')
         + '</div>';
 }
 
@@ -491,74 +801,79 @@ export function kontrolaNodeRef(id) {
     return n ? { id: n.id, label: n.label, type: n.type, area_id: n.area_id } : { id };
 }
 
+/* Tlačidlo akcie v riadku. Adresuje sa `data-rec` (to píše `renderTable`), nie
+   vlastným `data-id` — riadok tabuľky má jeden identifikátor a druhý atribút
+   s tou istou hodnotou by bol miesto, kde sa dá rozísť. */
 export function kontrolaBtn(id, act) {
-    return document.querySelector('#kontrola-body .queue-item[data-id="' + id + '"] .act-' + act);
+    return document.querySelector('#kontrola-list .rec-row[data-rec="' + id + '"] .act-' + act);
 }
 
-export function wireKontrola(body) {
-    body.querySelectorAll('.queue-item').forEach((item) => {
-        const id = +item.dataset.id;
-        const idx = +item.dataset.idx;
-        item.addEventListener('mousedown', () => { kontrolaState.idx = idx; markKontrolaSelected(); });
+export function wireKontrola(list) {
+    /* Obsluha akcií riadka. Enter pre celú tabuľku zastavuje
+       `wireKontrolaEnterGuard()` na kontejneri (vešia sa raz, viď tam).
+
+       KLÁVESOVÁ AKTIVÁCIA TLAČIDLA SA MUSÍ ZASTAVIŤ NA TLAČIDLE. `renderTable()`
+       vešia na `<tr>` obsluhu Enter/Space, ktorá volá `preventDefault()` BEZ
+       kontroly cieľa — takže Enter nad „Overiť" by natívny klik potlačil a namiesto
+       overenia by otvoril panel. Zastavenie na tlačidle spraví, že sa obsluha
+       riadka nespustí vôbec; natívna aktivácia `stopPropagation` prežije. To isté
+       robí `rozhodnutia.js` pri koši. */
+    const stopKeys = (e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); };
+
+    list.querySelectorAll('.rec-row[data-rec]').forEach((tr, i) => {
+        const id = +tr.dataset.rec;
         /* Fokus a `idx` musia byť jedna vec. Riadok nesie tri <button>-y s normálnym
            tabindexom, takže Tab-om sa dá stáť na tlačidlách tretej položky — kým `idx`
            ostával na nule, lebo ten sa menil len cez j/k a mousedown. Kláves `v` potom
            overil PRVÚ položku: ticho a na nesprávnom uzle. `focusin` bublá, takže jeden
-           listener na riadku pokryje aj jeho tlačidlá; položky sa pri každom prekreslení
-           tvoria nanovo, takže sa listenery nevrstvia. */
-        item.addEventListener('focusin', () => {
-            if (kontrolaState.idx === idx) return;
-            kontrolaState.idx = idx;
+           listener na riadku pokryje aj jeho tlačidlá. */
+        tr.addEventListener('mousedown', () => { kontrolaState.idx = i; markKontrolaSelected(); });
+        tr.addEventListener('focusin', () => {
+            if (kontrolaState.idx === i) return;
+            kontrolaState.idx = i;
             // bez `true`: fokus už je tam, kam ho človek dal — dorovnáva sa len výber
             markKontrolaSelected();
         });
-        /* Detail sa otvára NA MIESTE (nález A4). Do 24. 8. 2026 tu bolo
-           `openNodeFromAnywhere()`, teda `setScreen('graf')` — človek rozhodujúci
-           frontu prišiel o obrazovku, o výber aj o klávesovú frontu, a to pri
-           akcii, ktorú v rade robí desiatky krát. `openNodeDetail()` je ten istý
-           idióm ako v Knižnici a v Denníku; skok na Graf je sekundárna akcia
-           v pätičke overlayu. Hygiena nižšie zostáva na `openNodeFromAnywhere` —
-           tam sa uzol OPRAVUJE (premenovanie, presun do oblasti), a to je panel
-           v Grafe, nie čítačka markdownu. */
-        const bodyEl = item.querySelector('.queue-body');
-        if (bodyEl) bodyEl.onclick = () => { kontrolaState.idx = idx; openNodeDetail(kontrolaNodeRef(id)); };
-        /* `Enter` musí robiť to isté, čo klik. `shortcuts.js:145` má pre `Enter`
-           na tejto obrazovke `openNodeFromAnywhere()` a jeho listener je na
-           window, takže bez zastavenia by klávesnica skákala na Graf a myš
-           otvárala overlay — dve pravdy o jednej akcii. Zastavené je to tu,
-           rovnakým chvatom, aký nižšie používa čip Hygieny. Keď sa `shortcuts.js`
-           uvolní, má sa to zlúčiť s ním — akcia je jedna funkcia, takže sa
-           nemôžu rozísť.
 
-           Zastavuje sa Enter aj nad tlačidlami akcií, ale BEZ `preventDefault`:
-           tam Enter patrí tlačidlu a doteraz ho `shortcuts.js` bral aj s
-           `preventDefault()`, takže Enter nad „Overiť" neoveril — otvoril detail
-           cudzou cestou. Natívna aktivácia tlačidla prežije stopPropagation. */
-        item.onkeydown = (e) => {
-            if (e.key !== 'Enter') return;
-            e.stopPropagation();
-            if (e.target !== item) return;
-            e.preventDefault();
-            kontrolaState.idx = idx;
-            openNodeDetail(kontrolaNodeRef(id));
-        };
-        const v = item.querySelector('.act-verify');
-        if (v) v.onclick = (e) => { e.stopPropagation(); kontrolaVerify(id); };
-        const r = item.querySelector('.act-resolve');
-        if (r) r.onclick = (e) => { e.stopPropagation(); kontrolaResolve(id); };
-        const s = item.querySelector('.act-skip');
-        if (s) s.onclick = (e) => { e.stopPropagation(); armKontrolaAction(s, id, 'skip'); };
+        /* Riadok pod tlačidlom otvára panel (`renderTable` vešia `onclick` na
+           `<tr>`), takže bez zastavenia by jediný klik rozhodoval AJ otváral. */
+        const v = tr.querySelector('.act-verify');
+        if (v) {
+            v.onclick = (e) => { e.stopPropagation(); kontrolaState.idx = i; kontrolaVerify(id); };
+            v.onkeydown = stopKeys;
+        }
+        const r = tr.querySelector('.act-resolve');
+        if (r) {
+            r.onclick = (e) => { e.stopPropagation(); kontrolaState.idx = i; kontrolaResolve(id); };
+            r.onkeydown = stopKeys;
+        }
+        const s = tr.querySelector('.act-skip');
+        if (s) {
+            s.onclick = (e) => { e.stopPropagation(); kontrolaState.idx = i; armKontrolaAction(s, id, 'skip'); };
+            s.onkeydown = stopKeys;
+        }
     });
 }
 
-/* focus=true presunie aj skutočný fokus prehliadača na zvolenú položku (.queue-item
-   má preto tabindex="-1"). Bez toho zostal fokus po každej akcii na <body>: klávesy
-   j/k/v/r fungovali (listener je na window), ale čítač obrazovky ani prstenec fokusu
-   nemali čo sledovať a Tab začínal odznova od hlavičky. */
+/* focus=true presunie aj skutočný fokus prehliadača na zvolený riadok
+   (`renderTable` dáva každému `<tr>` `tabIndex = 0`). Bez toho zostal fokus po
+   každej akcii na <body>: klávesy j/k/v/r fungovali (listener je na window), ale
+   čítač obrazovky ani prstenec fokusu nemali čo sledovať a Tab začínal odznova.
+
+   Trieda `.selected` nesie KLÁVESOVÝ KURZOR a je to iný stav než `aria-current`
+   (ten nesie „tento riadok je otvorený v paneli") — j/k prechádza frontou aj
+   vtedy, keď panel nie je otvorený vôbec. Kresbu `.rec-row.selected` v
+   `mind.css` treba doplniť; dnes ju nesie len `:focus-visible`, čo je viditeľné
+   po klávese, ale nie po myšacom presune výberu. */
+function paintKontrolaCursor() {
+    const rows = document.querySelectorAll('#kontrola-list .rec-row');
+    rows.forEach((el, i) => el.classList.toggle('selected', i === kontrolaState.idx));
+    return rows;
+}
+
 export function markKontrolaSelected(focus) {
-    const items = document.querySelectorAll('#kontrola-body .queue-item');
-    items.forEach((el, i) => el.classList.toggle('selected', i === kontrolaState.idx));
-    const cur = items[kontrolaState.idx];
+    const rows = paintKontrolaCursor();
+    const cur = rows[kontrolaState.idx];
     if (!cur) return;
     if (focus) cur.focus({ preventScroll: true });
     cur.scrollIntoView({ block: 'nearest' });
@@ -593,6 +908,10 @@ export function removeKontrolaItem(id, serverTotal) {
         : kontrolaState.total;
     kontrolaState.shown = Math.max(kontrolaState.items.length, kontrolaState.shown - 1);
     if (kontrolaState.idx > i) kontrolaState.idx--;
+    /* Rozhodnutý uzol nesmie zostať otvorený v paneli: detail by ukazoval záznam,
+       ktorý vo fronte už nie je, a `koo` v adrese by ho po obnovení hľadal. */
+    const openId = recOpenId('kontrola');
+    if (openId != null && String(openId) === String(id)) closeRecPanel();
     rerenderKontrola(true);
 }
 
@@ -607,6 +926,8 @@ export async function kontrolaVerify(id) {
             /* Bez výhrady sa NEHLÁSI NIČ (kontrakt J2): riadok z frontu zmizne
                a počítadlo klesne, takže tá zmena JE potvrdenie. Toast „Overené"
                nad prázdnym miestom, kde riadok bol, hovoril to isté dvakrát.
+               Preto tu nie je ani `inlineOk()` — ten je pre akciu, ktorá plochu
+               NEZMENÍ, a rozhodnutie vo fronte ju mení vždy.
                S výhradou toast ZOSTÁVA — tú v prekreslení nevidno a je to jediná
                cesta, ako sa k nej človek dostane. `warn` a nie `success`: uzol
                je overený, ale niečo si ešte žiada pozornosť. */
@@ -653,7 +974,11 @@ export function armKontrolaAction(btn, id, kind) {
     const ic = btn.querySelector('svg.ic');
     if (ic) ic.remove();
     btn.dataset.armKind = kind;
-    btn.textContent = kind === 'delete' ? 'Zmazať uzol?' : 'Preskočiť?';
+    /* Otázka je KRÁTKA („Zmazať?", nie „Zmazať uzol?"): cela tabuľky je
+       `overflow: hidden` s výpustkou, takže dlhšia otázka sa odsekne — a odseknuté
+       potvrdenie je horšie než žiadne. Ten istý dôvod ako pri koši v Rozhodnutiach.
+       Rozlíšenie oboch stavov nesie práve tento text, takže sa nesmú zliať. */
+    btn.textContent = kind === 'delete' ? 'Zmazať?' : 'Preskočiť?';
     btn._disarm = setTimeout(() => { if (btn.isConnected) disarmKontrolaBtn(btn); }, 3000);
 }
 
@@ -664,6 +989,8 @@ export function kontrolaSkip(id) {
     if (kontrolaState.idx > i || kontrolaState.idx >= kontrolaState.items.length) {
         kontrolaState.idx = Math.max(0, kontrolaState.idx - (kontrolaState.idx > i ? 1 : 0));
     }
+    const openId = recOpenId('kontrola');
+    if (openId != null && String(openId) === String(id)) closeRecPanel();
     rerenderKontrola(true);
     // preskočenie je len lokálne (uzol ostáva v serverovej fronte) → total badge nemeníme
     showUndoToast('Preskočené', () => {
@@ -706,6 +1033,173 @@ export async function kontrolaDelete(id) {
     }
 }
 
+/* ---------- detail v pravom paneli (G6) ----------
+
+   Panel nesie CELÝ popis, značky a zdroj — teda presne to, čo sa do
+   jednoriadkovej cely nezmestilo. AKCIE V ŇOM ZÁMERNE NIE SÚ: rozhoduje sa
+   z riadka (stĺpec Akcie), pretože fronta, ktorá si na každé rozhodnutie
+   vyžiada otvorenie panelu, je pri stovke uzlov stovka otvorení. Panel je
+   miesto, kde si človek prečíta, ČO ide rozhodnúť; rozhodne tam, kde stojí.
+
+   `updateRecPanel()` sa NEVOLÁ a je to zámer: nič sa nedopočítava zo servera.
+   Popis, značky, oblasť aj zdroj prišli v tom istom riadku ako tabuľka
+   (`Node::toApi()`), takže druhé kreslenie by prepísalo to isté HTML. */
+function openKontrolaPanel(n) {
+    if (!n) return;
+    /* Druhý klik na otvorený riadok zatvára. Panel má vlastný krížik aj Esc,
+       takže to nie je jediná cesta von — ale riadok nesie `aria-current="true"`,
+       takže je to cesta, ktorú človek na tom mieste hľadá. */
+    const openId = recOpenId('kontrola');
+    if (openId != null && String(openId) === String(n.id)) {
+        closeRecPanel();
+        markOpenKontrolaRow();
+        return;
+    }
+    openRecPanel({
+        ns: 'kontrola',
+        id: n.id,
+        urlKey: 'koo',
+        title: kontrolaPanelTitle(n),
+        html: kontrolaDetailHtml(n),
+    });
+    wireKontrolaPanel();
+    markOpenKontrolaRow();
+    watchKontrolaPanelClose();
+}
+
+/* Meno panelu je KRÁTKY label. Nadpis panelu je jednoriadkový s výpustkou
+   (`.dock-head h2`), takže dlhý label sa odseká aj tak — ale v polovici slova.
+   Rez na hranici slova je čitateľnejší a celý label stojí hneď pod nadpisom,
+   takže sa rezom nič nestráca. Vzor je `decTitle()` v Rozhodnutiach. */
+function kontrolaPanelTitle(n) {
+    const s = plainInline(n.label || '');
+    if (!s) return 'Uzol #' + n.id;
+    if (s.length <= 72) return s;
+    const cut = s.slice(0, 72);
+    const sp = cut.lastIndexOf(' ');
+    return (sp > 40 ? cut.slice(0, sp) : cut).trim() + '…';
+}
+
+function kontrolaDetailHtml(n) {
+    /* `plainBlock` na popis, nie `plainText`: `.rec-final` má
+       `white-space: pre-wrap`, takže odseky sú v ňom nositeľom štruktúry — a to
+       je celý dôvod, prečo panel existuje. `.rec-final` je z rodiny detailu
+       záznamu, nie „finálna odpoveď"; je to jediná existujúca kresba pre tichý
+       viacodsekový text a nová trieda v CSS podľa zadania vzniknúť nemá. */
+    const desc = plainBlock(n.description || '');
+    const tags = Array.isArray(n.tags) ? n.tags : [];
+
+    let h = '<p>' + certBadge(n.certainty || 'bez') + ' ' + originBadge(n.origin)
+        + ' <span class="meta-chip">' + esc(typeName(n.type)) + '</span>'
+        + (n.area ? ' <span class="tag">' + esc(n.area) + '</span>' : '')
+        + (n.created_at ? ' <span class="meta-chip" title="' + esc(whenTitle(n.created_at)) + '">'
+            + esc(timeAgo(n.created_at)) + '</span>' : '')
+        + '</p>';
+
+    h += '<h3>Poznatok</h3><p>' + esc(plainInline(n.label || '')) + '</p>';
+    // Nadpis „Popis" má LEN uzol, ktorý popis naozaj nesie. Prázdna sekcia by
+    // tvrdila, že popis zapísaný je a len ho nevidno — a „uzol bez popisu" je
+    // pritom vlastná trieda nálezu Hygieny.
+    if (desc) h += '<h3>Popis</h3><div class="rec-final">' + esc(desc) + '</div>';
+    if (tags.length) {
+        h += '<h3>Značky</h3><p>'
+            + tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join(' ') + '</p>';
+    }
+    if (n.source_file) {
+        // Pri `origin=brain` je zrkadlo v `.md` zdroj pravdy, takže cesta k nemu
+        // je informácia, nie technický detail.
+        h += '<h3>Zdroj</h3><p><span class="tag muted">' + esc(n.source_file) + '</span></p>';
+    }
+    /* Dve cesty k uzlu, dva rôzne úmysly — a je to ten istý rozdiel, aký si
+       obrazovka už raz pomenovala pri Hygiene. „Prečítať" je čítačka markdownu
+       na mieste (`openNodeDetail`, prekrytie nad touto obrazovkou, fronta
+       zostáva). „Opraviť" je premenovanie alebo presun do oblasti, a to je panel
+       v Grafe (`openNodeFromAnywhere`, prepne obrazovku). */
+    h += '<h3>Uzol #' + n.id + '</h3><p>'
+        + '<button type="button" class="chip ko-read" data-node="' + n.id + '">'
+        + iconMarkup('book') + 'Prečítať celý uzol</button> '
+        + '<button type="button" class="chip ko-fix" data-node="' + n.id + '">'
+        + iconMarkup('hub') + 'Opraviť v grafe</button>'
+        + '</p>';
+    return h;
+}
+
+/* Akcie panelu sa vešajú až po vykreslení: `openRecPanel` berie hotové HTML
+   a o fronte nevie nič — je to spoločný panel s Runami a Rozhodnutiami a vedieť
+   to ani nemá. */
+function wireKontrolaPanel() {
+    const box = $('rec-panel-body');
+    if (!box) return;
+    const read = box.querySelector('.ko-read');
+    if (read) read.onclick = () => openNodeDetail(kontrolaNodeRef(+read.dataset.node));
+    const fix = box.querySelector('.ko-fix');
+    if (fix) fix.onclick = () => openNodeFromAnywhere(kontrolaNodeRef(+fix.dataset.node));
+}
+
+/* Otvorený riadok nesie stav v `aria-current` (odtiaľ ho číta aj CSS), takže sa
+   po otvorení a po zavretí panelu musí prepnúť. NIE prekreslením tabuľky:
+   `renderTable()` prepíše `innerHTML`, takže by kliknutý riadok zmizol z DOM —
+   a `recpanel.js` si pri otvorení odložil `document.activeElement`, aby po
+   zavretí vrátil fokus. Odložený odpojený `<tr>` má `isConnected === false`,
+   takže by sa fokus po Esc nevrátil nikam. Dva atribúty na riadok sú to isté
+   za nulovú cenu. */
+function markOpenKontrolaRow() {
+    const open = recOpenId('kontrola');
+    document.querySelectorAll('#kontrola-list .rec-row').forEach((tr) => {
+        const on = open != null && tr.dataset.rec === String(open);
+        tr.classList.toggle('open', on);
+        if (on) tr.setAttribute('aria-current', 'true');
+        else tr.removeAttribute('aria-current');
+    });
+}
+
+/* Panel sa zatvára TROMI cestami, o ktorých táto obrazovka nevie: jeho krížik,
+   Esc obslúžený v `recpanel.js` a `dropRecPanel()` pri prepnutí obrazovky. Bez
+   ohlásenia by po Escu zostal riadok s `aria-current="true"` a s akcentovým
+   pruhom — čítačka aj oko by tvrdili, že detail je otvorený, hoci nie je.
+
+   Sledovať DÔSLEDOK (`MutationObserver` nad triedou panelu) je chyba, ktorú
+   tento repo už raz zaplatil: nechytá tretiu cestu a ďalší panel si observer
+   musí napísať znova. Preto `onRecPanelClose()`.
+
+   Registruje sa RAZ: druhá registrácia by prvú prepísala (`Map` podľa menného
+   priestoru), takže opakované volanie nič nepokazí — ale zbytočne. */
+let kontrolaCloseWired = false;
+
+function watchKontrolaPanelClose() {
+    if (kontrolaCloseWired) return;
+    kontrolaCloseWired = true;
+    onRecPanelClose('kontrola', () => {
+        // Prepnutie obrazovky panel tiež zatvára; vtedy tabuľka Kontroly na
+        // obrazovke nie je a jej prekreslenie by bolo práca do prázdna.
+        if (document.body.dataset.screen !== 'kontrola') return;
+        markOpenKontrolaRow();
+    });
+}
+
+/* Spotrebovanie priania z adresy. Beží po každom vykreslení tabuľky a po
+   Späť/Dopredu; `kontrolaState.open` sa hneď nuluje, aby prianie platilo RAZ.
+   Bez toho by kliknutie na filtračný čip po zavretí panelu panel znova otvorilo —
+   stav by mal dvoch vlastníkov a vyhral by ten zastaraný.
+
+   Keď uzol z adresy vo fronte nie je, kľúč odchádza: adresa nemá sľubovať
+   otvorený detail, ktorý sa neotvoril. */
+function applyKontrolaOpenWish() {
+    const want = kontrolaState.open;
+    kontrolaState.open = null;
+    const cur = recOpenId('kontrola');
+    if (!want) {
+        // Späť na adresu bez `koo`: panel má zmiznúť. `closeRecPanel()` počas
+        // aplikovania histórie do adresy nezapíše (stráž `applying` v urlstate).
+        if (cur != null) { closeRecPanel(); markOpenKontrolaRow(); }
+        return;
+    }
+    if (String(cur) === String(want)) return;
+    const row = kontrolaState.items.find((n) => String(n.id) === String(want));
+    if (row) { openKontrolaPanel(row); return; }
+    writeUrl({ koo: null }, 'replace');
+}
+
 /* ---------- sekcia Hygiena (/api/hygiene) — nález A3 ------------------------
    Odpad v pamäti videla doteraz LEN AI: `mind_hygiene` existoval, ale grep nad
    `public/js/mind/` a `mind.blade.php` nedal ani jeden zásah. Sekcia sedí na
@@ -718,7 +1212,9 @@ export async function kontrolaDelete(id) {
 
    NIČ SA TU NEMAŽE. Recall odpad označí a zaradí za čisté uzly; oprava je
    premenovanie alebo presun uzla, takže klik na uzol vedie do jeho detailu —
-   existujúcou cestou (`openNodeFromAnywhere`), nie novým zápisovým endpointom. */
+   existujúcou cestou (`openNodeFromAnywhere`), nie novým zápisovým endpointom.
+   Prechod fronty na tabuľku na tom nemení nič: sekcia zostáva kartová, pretože
+   nález nie je záznam v rade, ale meranie s barom. */
 
 /* Popisky tried odpadu. Sú tu, a nie v serializéri, podľa pravidla dvojitej
    plochy: počty a skupiny sú dáta, POPISKY sú slová. Plocha AI dostáva kľúč

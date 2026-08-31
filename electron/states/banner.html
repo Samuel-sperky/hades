@@ -83,6 +83,25 @@
         }
         .text b { font-weight: 600; }
         .text span { color: var(--fg-dim); }
+
+        /* ── Plošná podlaha pohybu (tichá verzia) ────────────────────────────────
+           Kópia podlahy z public/css/mind.css. Tento dokument mind.css nenačítava,
+           takže podlaha odtiaľ ho nekryje. Pás dnes nemá ani jeden `transition`,
+           takže podlaha nemení NIČ merateľné (`.dot` má tichú verziu z gate
+           `no-preference` vyššie a ten je silnejší — animácia sa vôbec nenasadí).
+           Je tu preto, aby prvý `transition`, ktorý sem niekto dopíše, mal tichú
+           verziu od prvého dňa; presne tak sa `.retry` v offline.html dostal do
+           stavu, kde pohyb bežal aj pri vypnutom pohybe. */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                animation-delay: 0s !important;
+                transition-duration: .01ms !important;
+                transition-delay: 0s !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 </head>
 <body>

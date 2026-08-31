@@ -568,6 +568,13 @@ export async function sendTurn(text) {
         const model = $('#model-select')?.value;
         if (model) body.model = model;
 
+        /* Profil nástrojov ide LEN sem — do spustenia behu. `RunController::run`
+           ho prijme (`in:` nad kľúčmi `ToolRegistry::PROFILES`), nastaví registru
+           a perzistuje na vlákno, takže obnova zaparkovaného zápisu ho čítá zo
+           servera. Do `/decide` sa nesmie dostať (`prohibited`) a nedostane:
+           `resumeAfterDecision()` telo skládá sám a `C.profile` nečítá. */
+        if (C.profile) body.profile = C.profile;
+
         await client.startRun(body);
     } finally {
         C.sending = false;

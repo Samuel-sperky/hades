@@ -44,6 +44,14 @@ import { live, narrow, setPanel, syncPanelsToUrl } from './main.js';
    z `mind/`, takže `/chat` ním nestiahne graf. Debounce filtrov (220 ms) drží
    on sám — odtiaľto sa nedebouncuje druhý raz. */
 import { urlValue, writeUrl } from '../mind/urlstate.js';
+/* Slovník prázdnych stavov (`.empty` / `--error` / `--filter`). Kresba je
+   v `mind.css`, ktorý sa na `/chat` načítava prvý; `./empty.js` skládá len
+   markup, ktorý tá kresba pozná. `mind/util.js` sa importovať NEDÁ — ťahá celý
+   graf, viď hlavička `empty.js`. */
+import { emptyBlock, errorBlock, filterBlock } from './empty.js';
+/* Obálka natívneho `<select>` so strieškou. Kresbu nesie `chat.css`; tu ide
+   o štruktúru, ktorú `appearance: none` potrebuje a `select::after` nedá. */
+import { dressSelect } from './selects.js';
 import { iconMarkup, iconSvg } from '../shared/icons.js';
 
 /* ---------------------------------------------------------------------------
@@ -259,6 +267,44 @@ export function supportsThreadFlags() {
 }
 
 /* ---------------------------------------------------------------------------
+   ČO SI SMIE PREČÍTAŤ NIEKTO INÝ
+
+   `T` je súkromný a má zostať — panel je jediný, kto ho mení. Paleta Ctrl+K ale
+   potrebuje TIE ISTÉ vlákna a projekty, a keby si ich načítala vlastným fetchom,
+   plocha by mala dva zoznamy toho istého a jeden z nich by bol po každom
+   premenovaní zastaraný.
+
+   Preto snímka, nie referencia: `slice()` vráti nové pole, takže volajúci ho
+   nemôže preradiť ani doplniť a stav panela zostane jeho. Riadky sú tie isté
+   objekty (kopírovať ich hlboko by bola cena za nič) — čítať ich smie, meniť
+   nie.
+   --------------------------------------------------------------------------- */
+
+/** @returns {Array<object>} vlákna tak, ako ich má panel. Nikdy `null`. */
+export function threadsSnapshot() {
+    return T.threads.slice();
+}
+
+/** @returns {Array<object>} projekty vrátane archivovaných (tie nesú `archived`). */
+export function projectsSnapshot() {
+    return T.projects.slice();
+}
+
+/**
+ * Ohlási, že keš je nová.
+ *
+ * Paleta môže byť otvorená prv, než dobehne `bootThreads()` (Ctrl+K je rýchlejší
+ * než dva fetchy), a bez tejto udalosti by v nej stálo „Nič sa nenašlo" nad
+ * zoznamom, ktorý o sekundu existuje. Udalosť, nie priame volanie: panel nemá
+ * vedieť, že paleta existuje — tá istá úvaha ako `chat:submit` v `main.js`.
+ */
+function announceCache() {
+    document.dispatchEvent(new CustomEvent('chat:threads-loaded', {
+        detail: { threads: T.threads.length, projects: T.projects.length },
+    }));
+}
+
+/* ---------------------------------------------------------------------------
    NAČÍTANIE
    --------------------------------------------------------------------------- */
 
@@ -280,6 +326,7 @@ export async function loadThreads() {
     T.threadsState = 'ready';
     T.threadsError = '';
     paint();
+    announceCache();
 }
 
 export async function loadProjects() {
@@ -300,6 +347,7 @@ export async function loadProjects() {
     T.projectsState = 'ready';
     T.projectsError = '';
     paint();
+    announceCache();
 }
 
 /**
@@ -745,12 +793,30 @@ function projectsSection() {
         paint();
     }));
 
-    if (T.projectsError) box.append(errorNote(T.projectsError, T.projectsState === 'error' ? loadProjects : null));
-
     const shelves = T.projects.filter((p) => !p.archived);
 
+    /* CHYBA MÁ DVA TVARY a rozhoduje o nich to, či je čo stratiť.
+       Keď v zozname UŽ NIEČO JE, hlásenie ide VEDĽA riadkov (`errorNote`) —
+       stará odpoveď je stále platný odkaz a jedna neúspešná obnova z nej
+       neplatnú nerobí. Keď je zoznam prázdny, zlyhala celá PLOCHA sekcie a
+       patrí jej `.empty--error` s predmetom a jednou akciou; „Žiadny projekt"
+       by tam bola lož (projekty môžu existovať, len sa nepriniesli). */
+    if (T.projectsError) {
+        if (!shelves.length) {
+            box.append(errorBlock('projekty', T.projectsState === 'error' ? loadProjects : null, T.projectsError));
+
+            return box;
+        }
+
+        box.append(errorNote(T.projectsError, T.projectsState === 'error' ? loadProjects : null));
+    }
+
     if (!shelves.length && T.projectsState === 'ready') {
-        box.append(note('Žiadny projekt. Zložka je miesto, kam sa vlákna dajú odložiť podľa témy.'));
+        box.append(emptyBlock(
+            'box',
+            'Žiadny projekt',
+            'Zložka je miesto, kam sa vlákna dajú odložiť podľa témy.',
+        ));
 
         return box;
     }
@@ -763,15 +829,31 @@ function projectsSection() {
 function threadsSection() {
     const box = section('Vlákna');
 
-    // Jedno hlásenie, nie dve: zlyhané načítanie a zlyhaná akcia píšu do toho
-    // istého poľa a „Skúsiť znova" má zmysel len pri načítaní.
-    if (T.threadsError) box.append(errorNote(T.threadsError, T.threadsState === 'error' ? loadThreads : null));
-    if (T.threadsState === 'loading' && !T.threads.length) box.append(note('Vlákna sa načítavajú…'));
-
     const rows = supportsThreadFlags() ? T.threads.filter((row) => !row.archived) : T.threads;
 
+    // Jedno hlásenie, nie dve: zlyhané načítanie a zlyhaná akcia píšu do toho
+    // istého poľa a „Skúsiť znova" má zmysel len pri načítaní. Tvar sa volí ako
+    // pri projektoch — prázdny zoznam znamená, že zlyhala celá plocha sekcie.
+    if (T.threadsError) {
+        if (!rows.length) {
+            box.append(errorBlock('vlákna', T.threadsState === 'error' ? loadThreads : null, T.threadsError));
+
+            return box;
+        }
+
+        box.append(errorNote(T.threadsError, T.threadsState === 'error' ? loadThreads : null));
+    }
+
+    if (T.threadsState === 'loading' && !T.threads.length) box.append(note('Vlákna sa načítavajú…'));
+
     if (!rows.length) {
-        if (T.threadsState === 'ready') box.append(note('Žiadne vlákna. Začni ich tlačidlom Nové vlákno.'));
+        if (T.threadsState === 'ready') {
+            box.append(emptyBlock(
+                'send',
+                'Žiadne vlákna',
+                'Konverzácia vznikne prvou správou — začni ju tlačidlom Nové vlákno.',
+            ));
+        }
 
         return box;
     }
@@ -958,9 +1040,41 @@ function threadActs(row, inProject) {
  * z krátkeho zoznamu, teda presne to, na čo `<select>` je — a nepotrebuje
  * vlastné pozicovanie ani zachytávanie kliku mimo, ktoré by sa v paneli
  * s `overflow: hidden` aj tak zrezalo.
+ *
+ * OBAL SA KRESLÍ HNEĎ, `<select>` AŽ PRI ROZBALENÍ. Zmerané 31. 8. 2026: 94
+ * riadkov vlákien znamenalo **94 natívnych `<select>`** v dokumente, hoci blok
+ * akcií je `hidden` a človek vidí najviac jeden. Nie je to len cena za DOM —
+ * každý z nich bol vlastný ovládač, ktorý si prehliadač musí ostylovať, a pri
+ * 94 kusoch je to 94 miest, kde sa kresba môže rozísť. Prázdny `<label>` by
+ * bola diera v layoute, preto obal ostáva a plní sa v `fillProjectPicker()`.
  */
 function projectPicker(row, inProject) {
     const wrap = el('label', 'ct-move');
+
+    /* Argumenty sú v datasete, nie v closure: blok akcií sa rozbaľuje
+       `actsToggle()`, teda prvkom, ktorý o riadku nič nevie. Closure by sa musela
+       držať v mape podľa uuid — a to je druhý stav vedľa DOM, ktorý sa pri
+       prekreslení panela rozíde. */
+    wrap.dataset.thread = row.uuid;
+    wrap.dataset.inProject = inProject || '';
+
+    return wrap;
+}
+
+/**
+ * Doplní `<select>` do obalu, ktorý ho ešte nemá. Idempotentné.
+ *
+ * Volá to `actsToggle()` pri rozbalení. Zoznam projektov sa čítá v tom okamihu,
+ * teda je vždy aktuálny — eager verzia ho zamrazila do stavu pri poslednom
+ * prekreslení panela.
+ *
+ * @returns {HTMLSelectElement|null} nový `<select>`, alebo `null` keď už bol
+ */
+export function fillProjectPicker(wrap) {
+    if (!wrap || wrap.querySelector('select')) return null;
+
+    const row = { uuid: wrap.dataset.thread || '' };
+    const inProject = wrap.dataset.inProject || '';
     const select = el('select', 'ct-move-sel');
 
     select.setAttribute('aria-label', 'Zaradiť vlákno do projektu');
@@ -992,8 +1106,12 @@ function projectPicker(row, inProject) {
     });
 
     wrap.append(select);
+    /* Obálka so strieškou. Robí sa TU a nie v CSS, pretože `appearance: none`
+       zmaže natívnu striešku a `select::after` sa nevykreslí — dôvod je celý
+       v hlavičke `./selects.js`. */
+    dressSelect(select);
 
-    return wrap;
+    return select;
 }
 
 /* ---------- výsledky hľadania ---------- */
@@ -1003,8 +1121,11 @@ function searchView() {
 
     box.append(searchHead());
 
+    /* Hľadanie nemá čo „nechať v zozname" — výsledok je celý obsah tejto sekcie,
+       takže zlyhanie je vždy zlyhanie PLOCHY. Predmet je „históriu", nie
+       „hľadanie": nenačítalo sa to, v čom sa hľadá. */
     if (T.search.state === 'error') {
-        box.append(errorNote(T.search.error, runSearch));
+        box.append(errorBlock('históriu', runSearch, T.search.error));
 
         return box;
     }
@@ -1023,8 +1144,31 @@ function searchView() {
 
     const items = Array.isArray(data.items) ? data.items : [];
 
+    /* PRÁZDNO Z ZÚŽENIA, nie z neexistencie dát — správy existujú, tento dopyt
+       a tieto filtre ich len nechytili. Preto `.empty--filter` (vlastnú kresbu
+       zámerne nemá, manuál §8) a JEDNA akcia.
+
+       Akcia sa vyberá podľa toho, čo zúženie NAOZAJ je: keď je nasadený filter,
+       zruší sa filter a dopyt zostane (človek hľadá to isté, len širšie); keď
+       filter nasadený nie je, jediné zúženie je samotný dopyt. Tlačidlo, ktoré
+       by rušilo filter, ktorý neexistuje, by nič neurobilo. */
     if (!items.length) {
-        box.append(note(`Hľadaniu „${data.query}" nezodpovedá žiadna správa.`));
+        const narrowed = !!(T.filters.role || T.filters.from || T.filters.to
+            || T.filters.thread || T.filters.project);
+
+        box.append(narrowed
+            ? filterBlock(
+                `Dopytu „${data.query}" so zapnutými filtrami nezodpovedá žiadna správa.`,
+                'Bez filtrov môže mať zásahy.',
+                clearSearchFilters,
+                'Zruš filtre',
+            )
+            : filterBlock(
+                `Dopytu „${data.query}" nezodpovedá žiadna správa.`,
+                'Hľadá sa v texte správ, nie v názvoch vlákien.',
+                clearSearch,
+                'Zruš hľadanie',
+            ));
 
         return box;
     }
@@ -1055,17 +1199,58 @@ function searchHead() {
 
     const clear = iconButton('x', 'Zrušiť hľadanie');
     clear.classList.add('ct-sec-act');
-    clear.addEventListener('click', () => {
-        const field = document.getElementById('chat-search');
-
-        if (field) field.value = '';
-        onQuery('');
-        field?.focus();
-    });
+    clear.addEventListener('click', clearSearch);
 
     head.append(clear);
 
     return head;
+}
+
+/* ---------------------------------------------------------------------------
+   ZRUŠENIE ZÚŽENIA — jedna implementácia na každý rozsah
+
+   Tri prvky rušia zúženie (krížik v hlavičke sekcie, čip „Zrušiť zúženie",
+   akcia prázdneho stavu `.empty--filter`) a bez týchto dvoch funkcií by mal
+   každý svoju kópiu. Krížik ju do 31. 8. 2026 mal — a akcia prázdneho stavu by
+   bola tretia, teda presne ten vzor, ktorý audit tejto appky opakovane našiel
+   ako príčinu rozchodu dvoch ciest k jednej veci.
+   --------------------------------------------------------------------------- */
+
+/**
+ * Zruší celé hľadanie: pole, dopyt aj filtre.
+ *
+ * Pole sa vyprázdňuje TU a nie cez `dispatchEvent('input')`: `onQuery('')` je
+ * verejná cesta panela a je to tá istá, ktorou beží písanie — udalosť by ju
+ * volala druhýkrát cez `main.js`.
+ */
+export function clearSearch() {
+    const field = document.getElementById('chat-search');
+
+    if (field) field.value = '';
+    onQuery('');
+    field?.focus();
+}
+
+/**
+ * Zruší VŠETKÝCH PÄŤ filtrov, dopyt nechá.
+ *
+ * Toto je „hľadám to isté, len širšie". Nový dopyt sa neposiela cez `onQuery`,
+ * pretože sa dopyt nemenil — beží sa `runSearch()` nad tým istým textom.
+ */
+export function clearSearchFilters() {
+    T.filters.role = '';
+    T.filters.from = '';
+    T.filters.to = '';
+    T.filters.thread = '';
+    T.filters.project = '';
+    runSearch();
+}
+
+/** Zruší len zúženie na skupinu (vlákno / projekt) — čip „Zrušiť zúženie". */
+export function clearSearchFacets() {
+    T.filters.thread = '';
+    T.filters.project = '';
+    runSearch();
 }
 
 /**
@@ -1104,6 +1289,8 @@ function filterBar() {
     });
 
     bar.append(role);
+    // Ten istý dôvod ako u presunu do zložky — kresba potrebuje suseda, nie pseudo.
+    dressSelect(role);
     bar.append(dateFilter('from', 'Od dátumu'));
     bar.append(dateFilter('to', 'Do dátumu'));
 
@@ -1113,11 +1300,7 @@ function filterBar() {
     if (T.filters.thread || T.filters.project) {
         const off = el('button', 'ct-chip-off', 'Zrušiť zúženie');
         off.type = 'button';
-        off.addEventListener('click', () => {
-            T.filters.thread = '';
-            T.filters.project = '';
-            runSearch();
-        });
+        off.addEventListener('click', clearSearchFacets);
         bar.append(off);
     }
 
@@ -1271,6 +1454,11 @@ function actsToggle(label) {
 
         acts.hidden = !open;
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+        /* `<select>` presunu vzniká TERAZ. Do 31. 8. 2026 ich dokument nesl 94
+           naraz (jeden na riadok), hoci vidieť môže byť najviac jeden. Plní sa
+           len otvorený blok — zatvorenie nič nemaže, druhé otvorenie je no-op. */
+        if (open) acts.querySelectorAll('.ct-move').forEach((wrap) => fillProjectPicker(wrap));
     });
 
     return btn;

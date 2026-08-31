@@ -122,7 +122,15 @@
     color: var(--bar-text);
     font: inherit;
     cursor: pointer;
-    transition: background-color .12s ease, color .12s ease, opacity .12s ease;
+    /* Rebrík §3 má deväť trvaní „a nič medzi nimi". Do 31. 8. 2026 tu stálo
+       `.12s ease`: 120 ms nie je stupeň rebríka (leží medzi `--dur-press` 80 ms
+       a `--dur-fast` 150 ms) a ryzé `ease` je cudzia krivka. Rola týchto troch
+       prechodov — hover pozadia, farba textu zavretia, stmavnutie `:disabled` —
+       je presne „hover, farba, malý stav", teda `--dur-fast` + `--ease`.
+       Hodnoty sú doslovné, lebo lišta zámerne nezdieľa súbor s public/css/*. */
+    transition: background-color 150ms cubic-bezier(.22, .61, .36, 1),
+                color 150ms cubic-bezier(.22, .61, .36, 1),
+                opacity 150ms cubic-bezier(.22, .61, .36, 1);
   }
   button .ic { width: 16px; height: 16px; flex: none; }
   button:hover { background: var(--bar-hover); }
@@ -154,6 +162,27 @@
   svg { display: block; }
   .ic line, .ic polyline, .ic rect, .ic path { stroke: currentColor; stroke-width: 1.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
   .ic--win line, .ic--win rect, .ic--win polyline { stroke-width: 1.3; }
+
+  /* ── Plošná podlaha pohybu (tichá verzia) ──────────────────────────────────
+     Kópia podlahy z public/css/mind.css. Lišta je Electron chróm a s public/css/*
+     zámerne nezdieľa súbor (viď komentár pri tokenoch), takže podlaha odtiaľ na ňu
+     NEDOSIAHNE — dôsledok bol, že `transition` na `button` bežal aj pri vypnutom
+     pohybe (zmerané: 0,12 s v oboch režimoch prefers-reduced-motion).
+
+     Trvanie padá na .01 ms, nie `transition: none`: hover pozadia, farba textu
+     zavretia aj stmavnutie `:disabled` sú stavy, ktoré sa MUSIA prejaviť — tichá
+     verzia je ten istý stav okamžite, nie žiadny stav. Znak v lište sa neanimuje
+     ani inak (má to pri sebe napísané), takže tu podlaha kryje len prechody. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      animation-delay: 0s !important;
+      transition-duration: .01ms !important;
+      transition-delay: 0s !important;
+      scroll-behavior: auto !important;
+    }
+  }
 </style>
 </head>
 <body>

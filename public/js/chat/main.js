@@ -42,6 +42,16 @@ import { bootBranches, wireBranches } from './branches.js';
 import { bootAttach, wireDrop, wirePaste } from './attach.js';
 import { bootVoice, wireVoice } from './voice.js';
 import { bootAgents, wireAgents } from './agents.js';
+/* Vlna parity s `/` (31. 8. 2026). Tie isté tri veci, čo si graf zaplatil:
+   čítací režim, paleta Ctrl+K a slovník prázdnych stavov. `empty.js` sem
+   NEPATRÍ — nemá čo drôtovať, importujú ho tí, čo prázdny stav kreslia
+   (`threads.js`, `palette.js`), a import bez `wire*` by tu vyzeral ako
+   zabudnutá inicializácia. `selects.js` obliekacie obálky natívnych ovládačov;
+   `bootSelects()` musí byť idempotentné, pretože `bootModelSelect()` dopĺňa
+   `<option>`y až po fetchi. */
+import { bootRead, wireRead } from './read.js';
+import { bootPalette, wirePalette } from './palette.js';
+import { bootSelects } from './selects.js';
 /* Query string. `mind/urlstate.js` je JEDINÉ miesto v repe, ktoré ho číta aj
    píše (rozhodnutie 31), a je to zámerne čistý modul nad `URLSearchParams` bez
    jediného importu z `mind/` — inak by `/chat` jedným importom stiahol celý graf.
@@ -355,9 +365,21 @@ export function toolList() {
     }
 }
 
-/** Titulok vlákna v hlavičke a v karte prehliadača naraz. */
+/**
+ * Titulok vlákna v hlavičke a v karte prehliadača naraz.
+ *
+ * FALLBACK JE „Charón", nie „Chat", a je to oprava zmeraného rozchodu:
+ * `chat.blade.php` má `<title>Hades — Charón</title>` aj `og:title` s tým istým
+ * menom, ale táto funkcia mala `|| 'Chat'`, takže pri prázdnom vlákne PREPÍSALA
+ * hlavičku aj kartu prehliadača na staré meno plochy. Náhľad odkazu teda hovoril
+ * jedno a stránka po dobehnutí JS druhé. Blade si na to nechal poznámku
+ * s tým, že opravu musí urobiť tento súbor — tu je.
+ *
+ * „Charón" je meno pre človeka; identifikátory (`console_*`, `/console`,
+ * `hades.console.*`) sa zámerne nepremenúvajú.
+ */
 export function setTitle(text) {
-    const title = String(text ?? '').trim() || 'Chat';
+    const title = String(text ?? '').trim() || 'Charón';
     const node = document.getElementById('chat-title');
 
     if (node) node.textContent = title;
@@ -711,6 +733,19 @@ export function boot() {
     wirePaste();
     wireVoice();
     wireAgents();
+    /* Čítací režim sa drôtuje PRED `bootThreads()` a `wireRun()` vyššie už beží:
+       `wireRead()` len postaví prepínač v hlavičke, ale `bootRead()` nižšie
+       dorovnáva UŽ VYKRESLENÉ bubliny — a tie na novom vlákne ešte nie sú, kým
+       ich `loadThread()` neprinesie. Nové bubliny si triedu berú z `mdClass()`
+       samé, takže poradie tu rozhoduje len o prepínači.
+
+       Paleta sa drôtuje TU a nie v `wireShortcuts()`: jej Ctrl+K je na
+       `document` rovnako ako ostatné skratky, ale kľúčové je, že overlay si
+       keydown ZASTAVUJE (`stopPropagation`) — bez toho by `Ctrl+B` pod otvorenou
+       paletou prepol panel a `Esc` pri bežiacom ťahu zastavil beh namiesto
+       zavretia palety. */
+    wireRead();
+    wirePalette();
 
     bootThreads();
     bootBranches();
@@ -718,6 +753,9 @@ export function boot() {
     bootAttach();
     bootVoice();
     bootAgents();
+    bootRead();
+    bootPalette();
+    bootSelects();
 
     // Plocha je pripravená. Beh sa vesí na túto udalosť a nie na
     // `DOMContentLoaded` — vtedy ešte nie sú nastavené panely ani šírky, takže

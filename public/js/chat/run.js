@@ -483,7 +483,12 @@ async function openInitial(uuid) {
         R.step = null;
         resetStream();
         showEmpty();
-        setTitle('Chat');
+        /* „Charón", nie „Chat" — to isté meno ako `<title>` a `og:title` v blade
+           (manuál §9). Do 31. 8. 2026 tu stálo 'Chat', takže náhľad odkazu volal
+           plochu jedným menom a stránka po dobehnutí JS druhým. Fallback
+           v `setTitle()` je opravený tiež; tento riadok je ten, ktorý sa
+           uplatní pri prázdnom vlákne. */
+        setTitle('Charón');
         setParked(false);
         paintStats();
 
