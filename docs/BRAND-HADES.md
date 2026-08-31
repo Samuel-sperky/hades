@@ -33,7 +33,7 @@ niekto pracoval:
 | §3 | plošná podlaha je na `mind.css:2728–2736` | **`:2852–2861`**; na 2728 stojí `min-height` prázdnych stavov |
 | §3 | `ease-in-out` sa objavuje **5×** | **4×** + jedno `ease` (`charon.css:257`) |
 | §7 | ligatúr je **41** (subset 215 glyfov) | **61** ligatúr, **254** glyfov |
-| §9 | pri 594 px výšky rail nemá overflow | `overflow-y: visible` áno, ale **obsah 712 px proti 560 px** a dve destinácie sú nedosiahnuteľné |
+| §9 | pri 594 px výšky rail nemá overflow | `overflow-y: visible` áno, ale **obsah 692 px proti 560 px** a dve destinácie sú nedosiahnuteľné |
 
 Merania pochádzajú zo štyroch sond z 27. 8. 2026 (A: URL a `localStorage`,
 B: ikony a subset, C: pohyb a tiché verzie, D: rail, zlomy, typografia a chyba),
@@ -172,19 +172,26 @@ načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora 
 | 3 | `public/brand/hades-sigil-mono.svg` | master znovu, jednofarebne (`currentColor`) |
 | 4 | `resources/views/mind.blade.php:16` | data-URI faviconu: disk r 50 `#0e1413`, prstenec r 36/9 `#c4a2f5`, jadro r 15 `#d8b878` |
 | 5 | `resources/views/console.blade.php:20` | to isté, **bajt na bajt** (md5 `c0ebff62…`) |
-| 6 | `resources/views/chat.blade.php:44` | to isté, **bajt na bajt** |
-| 7 | `resources/views/mind.blade.php:130–131` | viewBox 24: `r 8.64` / `stroke 2.16` / jadro `r 3.6`; `fill="currentColor"`; triedy `bc-ring` / `bc-core` |
-| 8 | `resources/views/console.blade.php:55–56` | tie isté tri čísla; `fill="var(--brand-gold)"`; triedy **sú** |
-| 9 | `resources/views/chat.blade.php:86–87` | tie isté tri čísla; `stroke="var(--accent)"`; **triedy nie sú** → bez animácie |
-| 10 | `resources/views/chat.blade.php:182–183` | tie isté tri čísla, v `.ce-mark`; **triedy nie sú** |
-| 11 | `public/js/console/render.js:41–46` | tie isté tri čísla, skladané `setAttribute`om v JS |
-| 12 | `public/css/mind.css:1233–1234` a `:1246` | `stroke-dasharray: 54.29` = 2π × 8,64 — **derivát polomeru zapísaný ako konštanta**, na troch riadkoch |
-| 13 | `public/css/mind.css:2637–2652` | `.empty-loading .load-mark` — znak **prekreslený CSS boxmi**, a v **iných proporciách**: 26 px box, `border: 2px` (obrys 0,077 boxu, kánon 0,09), jadro 8 px (0,154 boxu, kánon 0,15), stredný polomer prstenca 0,46 boxu proti kánonickým 0,36 |
-| 14 | `electron/assets/build-icon.py:16–40` | **znovu implementované v Pythone**: hardcoded RGB tuply, prstenec ako anulus r 40,5 mínus r 31,5 |
-| 15 | `electron/chrome/topbar.html:156–159` | viewBox 100, r 36/9 + r 15, `var(--accent)` / `var(--gold)` |
-| 16 | `electron/states/offline.html:64–75` + `:174–177` | viewBox 100, `r 36` v markupe, `stroke-width: 9` a jadro `r 15` v `<style>`; navyše **vlastná kópia `core-pulse 4s ease-in-out`** |
-| — | `public/favicon.ico` (40 717 B) | binárka, **generátor v repe NIE JE** |
-| — | `electron/assets/hades.ico` | binárka z #14 |
+| 6 | `resources/views/chat.blade.php:47` | to isté, **bajt na bajt** |
+| 7 | `resources/views/mind.blade.php:128–129` | viewBox 24: `r 8.64` / `stroke 2.16` / jadro `r 3.6`; `fill="currentColor"`; triedy `bc-ring` / `bc-core` |
+| 8 | `resources/views/console.blade.php:54–55` | tie isté tri čísla; `fill="var(--brand-gold)"`; triedy **sú** |
+| 9 | `resources/views/chat.blade.php:94–95` | tie isté tri čísla; `stroke="var(--accent)"`; triedy **sú** (doplnené 31. 8. 2026), ale animácia je inertná — CSS ich tu nečíta |
+| 10 | `resources/views/chat.blade.php:211–212` | tie isté tri čísla, v `.ce-mark`; triedy **sú**, animácia rovnako inertná |
+| 11 | `public/js/console/render.js` → `.empty-sigil` (`ring` / `core`) | tie isté tri čísla, skladané `setAttribute`om v JS |
+| 12 | `public/css/mind.css` → `#brand-core .bc-ring` a `@keyframes bc-draw` | `stroke-dasharray: 54.29` = 2π × 8,64 — **derivát polomeru zapísaný ako konštanta**, na troch riadkoch (`dasharray`, `dashoffset`, `from` v keyframe) |
+| 13 | `public/css/mind.css` → `.empty.empty-loading .load-mark` (+ `::after`) | znak **prekreslený CSS boxmi**, a v **iných proporciách**: 26 px box, `border: 2px` (obrys 0,077 boxu, kánon 0,09), jadro 8 px (0,154 boxu, kánon 0,15), stredný polomer prstenca 0,46 boxu proti kánonickým 0,36 |
+| 14 | `electron/assets/build-icon.py:17–35` | **už NIE je zápis geometrie**: zástupca, `runpy.run_path()` volá `tools/brand/build-mark.py`. Do 27. 8. 2026 tu boli hardcoded RGB tuply a prstenec ako anulus r 40,5 mínus r 31,5 — dnes v súbore nie je ani jedno číslo znaku |
+| 15 | `electron/chrome/topbar.html:162–169` | viewBox 100, r 36/9 + r 15, `var(--accent)` / `var(--gold)` — **generované medzi `ZNAK` markermi** |
+| 16 | `electron/states/offline.html:71–77` + `:189–194` | viewBox 100, `r 36` v markupe, `stroke-width: 9` a jadro `r 15` v `<style>`; navyše **vlastná kópia `core-pulse`** — a jej krivka NIE JE `ease-in-out`, ale `cubic-bezier(.4, 0, .6, 1)` napísaná doslova (tá istá hodnota ako `--ease-pulse`; tokeny do tohto dokumentu nedosiahnu). Oba bloky sú **generované** medzi `ZNAK-STYLE` / `ZNAK` markermi |
+| — | `public/favicon.ico` | binárka, **dnes ju vydáva `build-mark.py`** (`build_icos()`) |
+| — | `electron/assets/hades.ico` | binárka, ten istý generátor a **tie isté bajty** — nie z #14 |
+
+**Odkazy do `mind.css`, `render.js` a `charon.js` sú v tejto tabuľke zámerne
+selektorové, nie riadkové** (od 31. 8. 2026). Riadkové čísla do stylesheetov, ktoré
+sa aktívne prepisujú, zhnijú do týždňa — presne tak sa stalo, že #12 ukazovalo na
+blok `core-shadow` a #13 do prázdna. Selektor prežije vloženie riadka nad seba
+a `grep` ho nájde; číslo riadka nerobí ani jedno. Riadkové čísla zostávajú len tam,
+kde odkazujú na Blade a Electron, teda na súbory bez priebežného prepisovania.
 
 Tri veci, ktoré z tabuľky treba vedieť predtým, než sa to začne zlievať:
 
@@ -197,10 +204,13 @@ Tri veci, ktoré z tabuľky treba vedieť predtým, než sa to začne zlievať:
   rovnako**, lebo `#brand-core { color: var(--brand-gold) }` — ale sú to dva
   mechanizmy a jeden z nich zanikne pri prvej zmene farby. Kánon je
   `var(--brand-gold)`; `currentColor` sa opúšťa.
-- **`electron/states/offline.html` má vlastnú kópiu `core-pulse`** s krivkou
-  `ease-in-out`, ktorú §3 v appke zakazuje. Je to samostatný dokument bez
-  `mind.css`, takže **plošná podlaha `prefers-reduced-motion` ho nekryje** — tichú
-  verziu si musí napísať sám.
+- **`electron/states/offline.html` má vlastnú kópiu `core-pulse`.** Krivka je
+  `cubic-bezier(.4, 0, .6, 1)` — teda **správna slučková**, nie `ease-in-out`, ktorý
+  §3 na nekonečnej slučke zakazuje; manuál tu do 31. 8. 2026 tvrdil opak. Hodnota je
+  napísaná doslova, lebo tokeny `mind.css` do samostatného dokumentu nedosiahnu.
+  A práve preto, že `mind.css` chýba, **plošná podlaha `prefers-reduced-motion` ho
+  nekryje** — tichú verziu si musí napísať sám, a robí to gate `no-preference`
+  (základný stav jadra je hotový znak, nie zamrznutá spodná fáza dýchania).
 
 **[cieľ V2] Jeden generátor, šesť výstupov.** Zdroj je `hades-sigil-mini.svg`
 (mini) a `hades-sigil.svg` (master). Generátor musí vydať:
@@ -236,16 +246,17 @@ karty, ani do toastu, ani k nadpisu sekcie.
 |---|---|---|---|
 | rail `/` (`mind.blade.php:130`) | pulz behu | ✅ | ✅ `bc-draw` + `core-pulse` |
 | hlavička `/console` (`console.blade.php:55`) | pulz behu | ✅ | ✅ |
-| prázdny stav `/console` (`console/render.js:41`) | prázdny stav | ✅ | ✅ |
+| prázdny stav `/console` (`console/render.js` → `.empty-sigil`) | prázdny stav | ✅ | ✅ |
 | načítavanie (`.empty-loading .load-mark`) | načítavanie | ✅ | ✅ dýchanie |
-| Electron topbar (`electron/chrome/topbar.html:156`) | desktop okno | ✅ | ❌ |
-| Electron offline (`electron/states/offline.html:174`) | desktop okno | ✅ | ✅ vlastná kópia |
-| hlavička `/chat` (`chat.blade.php:86`) | pulz behu | ✅ | ❌ **chýbajú triedy `bc-ring`/`bc-core`** |
-| prázdny stav `/chat` (`chat.blade.php:182`) | prázdny stav | ✅ | ❌ to isté |
-| prázdny dok nad grafom (`charon.js:678`) | prázdny stav | ❌ **znak vôbec nie je** | — |
+| Electron topbar (`electron/chrome/topbar.html:162`) | desktop okno | ✅ | ❌ |
+| Electron offline (`electron/states/offline.html:189`) | desktop okno | ✅ | ✅ vlastná kópia |
+| hlavička `/chat` (`chat.blade.php:94`) | pulz behu | ✅ | ❌ triedy `bc-ring`/`bc-core` **už sú**, ale `mind.css` ich číta len pod `#brand-core` / `#back-to-graph` |
+| prázdny stav `/chat` (`chat.blade.php:211`) | prázdny stav | ✅ | ❌ to isté |
+| prázdny dok nad grafom (`charon.js` → `renderEmpty()`) | prázdny stav | ❌ **znak vôbec nie je** | — |
 
-**[cieľ V2]** všetkých deväť výskytov má znak a animáciu z jedného generátora,
-a `.avatar` zostáva desiatym pomenovaným výskytom (§9) — nič nad tento zoznam.
+**[cieľ V2]** všetkých deväť výskytov má znak a animáciu z jedného generátora —
+nič nad tento zoznam. (`.avatar` tu do 31. 8. 2026 stál ako desiaty výskyt; trieda
+v repe **neexistuje**, patrila mŕtvemu chatu nad grafom — viď §9.)
 
 ### Wordmark
 
@@ -275,8 +286,9 @@ medzera v lockupe — tak sa nedá pomýliť).
 ### Dve verzie
 
 - **Master** (`hades-sigil.svg`) — od 32 px vyššie: deck, hero, tlač, OG.
-- **Mini** (`hades-sigil-mini.svg`) — pod 24 px: favicon, avatar, rail, hlavička
-  Charóna. Dva prvky: prstenec r 36 / hrúbka 9 a zlaté jadro r 15. Nič viac.
+- **Mini** (`hades-sigil-mini.svg`) — pod 24 px: favicon, rail, hlavička Charóna.
+  Dva prvky: prstenec r 36 / hrúbka 9 a zlaté jadro r 15. Nič viac.
+  (Zoznam tu do 31. 8. 2026 menoval aj „avatar" — v appke žiadny nie je.)
 
 Overené renderom v oboch témach na 180 / 64 / 32 / 24 / 16 px. Master pod 32 px
 zapadá do blata — preto existuje mini a preto sa nepoužíva jeden súbor na všetko.
@@ -740,8 +752,12 @@ chroma, jednotná cieľová svetlosť, podlaha kontrastu 3,15:1). Každý swatch
 musí ísť cez tú istú funkciu, inak UI hovorí inou farbou než plátno. V HSL to
 nerobiť — zo zlata by bola špinavo hnedá.
 
-Vedľajší efekt prefarbenia: teal `#03797e` je farba oblasti **Vývoj & kód**. Kým bol
-akcent tealový, akcent a jedna oblasť mali tú istú farbu. Amethyst tú kolíziu ruší.
+Vedľajší efekt prefarbenia: farba oblasti **Vývoj & kód** je tiež tealová
+(`#007b76` — tak ju drží DB aj `database/seeders/DatabaseSeeder.php:36`). Kým bol
+akcent tealový (`#03797e`), akcent a jedna oblasť mali prakticky tú istú farbu.
+Amethyst tú kolíziu ruší. Manuál tu do 31. 8. 2026 tvrdil, že oblasť **má** hodnotu
+`#03797e` — to bola hodnota starého akcentu, nie oblasti; sú to dva blízke, ale
+rôzne tealy a zámena robila z „prakticky tá istá farba" nepravdivé „tá istá farba".
 
 ### Farby istoty
 
@@ -753,7 +769,8 @@ by kolíziu len zhoršil.
 
 ### Rampa hustoty (heatmapa)
 
-`--heat-1` … `--heat-4` (`mind.css:435–438`) je **jediná sekvenčná rampa v appke**
+`--heat-1` … `--heat-4` (`mind.css:560–563` svetlá / `929–932` tmavá) je
+**jediná sekvenčná rampa v appke**
 a do 27. 8. 2026 v manuáli nebola vôbec. Pravidlá:
 
 - rampa je **sekvenčná, nie divergentná** — nesie „koľko", nie „na ktorú stranu",
@@ -775,15 +792,19 @@ Mechanika, ktorá to drží (a je jedna):
 | Token | Svetlá | Tmavá |
 |---|---|---|
 | `--panel-a` | `1` | `var(--panel-alpha)` |
-| `--glass-blur1/2/3` | `none` | `--blur-1/2/3` |
-| `--scrim-blur` **[cieľ V1]** | `none` | `--blur-scrim` (4 px) |
+| `--glass-blur-sm` / `--glass-blur` / `--glass-blur-lg` | `none` | `--blur-1/2/3` |
+| `--scrim-blur` | `none` | `--blur-scrim` (4 px) |
 
 Slider priehľadnosti píše `--panel-alpha` inline na `:root`, takže na svetlej ho
-`--panel-a: 1` neutralizuje. **To drží** — merané, 9 z 12 `backdrop-filter`
-deklarácií ide cez prepínateľné tokeny.
+`--panel-a: 1` neutralizuje. **To drží** — merané 31. 8. 2026: **všetkých 10** deklarácií
+`backdrop-filter` ide cez prepínateľný token (`--glass-blur` 4×, `--glass-blur-lg`
+2×, `--glass-blur-sm` 1×, `--scrim-blur` 3×). Jedenásty výskyt slova v súbore je
+komentár `mind.css:2314` („bez backdrop-filter zámerne"), nie deklarácia — kto
+grepuje, musí ho odpočítať.
 
 **Pomenovaná výnimka: scrimy pod modálom.** `#help-overlay`, `#md-overlay` a `#cmdk`
-rozostrujú **na oboch témach**, pretože tam rozostrenie nenesie hĺbku povrchu, ale
+rozostrujú **len na tmavej téme** (na svetlej je `--scrim-blur: none`), pretože
+rozostrenie tam nenesie hĺbku povrchu, ale
 vetu „pod tým je obsah, ktorý teraz nečítaš". Je to výnimka, **nie chyba** — a od
 27. 8. 2026 je pomenovaná. Podmienky výnimky:
 
@@ -851,25 +872,41 @@ Serif má vlastné typografické hodnoty, nie hodnoty ladené pre Geist: **váha
 Negatívne prostrkanie na vysokokontrastnom serife zlepuje pätky.
 
 **Playfair musí byť preloadovaný na každej ploche, kde nesie titulok** — inak sa
-titulok vykreslí najprv v Georgii a preskočí. Dnes nie je preloadovaný nikde.
-**[cieľ V1]**
+titulok vykreslí najprv v Georgii a preskočí. **Splnené:** serif nesie titulok len
+na `/` (`.screen-head h1` a `.hero-val` — jediné dva výskyty `var(--serif)` v celom
+CSS, overiteľné `grep -n 'var(--serif)' public/css/*.css`) a tam je preloadovaný
+**je**, oba subsety
+(`mind.blade.php:47–48`). Na `/console` ani `/chat` sa nepreloaduje **zámerne**:
+ani jedna z tých plôch nemá `.screen-head` či `.hero-val`, takže Playfair tam
+nekreslí ani jeden znak a preload by bol 59 544 B za nič.
+
+Manuál tu do 31. 8. 2026 tvrdil „dnes nie je preloadovaný nikde" a viedol si to ako
+`[cieľ V1]` — bolo to nepravdivé v oboch poloviciach: preload na `/` existoval a na
+zvyšných dvoch plochách nebol čo splniť.
 
 ### Preload — rozpočet, nie zvyk
 
-| Súbor | Bajty | `/` dnes | `/` [cieľ V1] | `/` [cieľ V3] |
+| Súbor | Bajty | `/` | `/console` | `/chat` |
 |---|---|---|---|---|
-| `material-symbols-rounded-subset.woff2` | 132 196 | ✅ | ✅ | **—** |
 | `geist-latin.woff2` | 29 400 | ✅ | ✅ | ✅ |
-| `geist-latin-ext.woff2` | 16 512 | ✅ | ✅ | ✅ |
-| `geist-mono-latin.woff2` | 23 128 | ✗ | ✅ | ✅ |
-| `playfair-display-latin.woff2` | 38 404 | ✗ | ✅ | ✅ |
-| `playfair-display-latin-ext.woff2` | 21 140 | ✗ | ✅ | ✅ |
-| **Σ** | | **178 108** | **260 780** | **128 584** |
+| `geist-latin-ext.woff2` | 16 512 | ✅ | ✗ | ✗ |
+| `geist-mono-latin.woff2` | 23 128 | ✅ | ✅ | ✅ |
+| `playfair-display-latin.woff2` | 38 404 | ✅ | — | — |
+| `playfair-display-latin-ext.woff2` | 21 140 | ✅ | — | — |
+| **Σ** | | **128 584** | **52 528** | **52 528** |
 
-Dve veci z tabuľky, ktoré boli poruchou: `/` je plocha s **86 deklaráciami
-`var(--mono)`** (breadcrumb, metriky hlavičky, všetky čísla kariet, KPI, časy,
-cesty) a **Geist Mono na nej preloadovaný nie je**, kým na `/console` a `/chat` áno.
-A tretí preload je na `/` použitý na `geist-latin-ext` namiesto mono.
+**Rozpočet je splnený a ikonový font z neho vypadol celý.** Tabuľka tu do
+31. 8. 2026 viedla stĺpce „dnes / [cieľ V1] / [cieľ V3]", v ktorých `/` dnes
+preloadovalo `material-symbols-rounded-subset.woff2` (132 196 B) a **nie** mono ani
+serif. Oboje je prekonané: ikony sú od 28. 8. 2026 inline SVG a ten súbor
+v `public/fonts/` **už neexistuje**, takže 132 kB z rozpočtu zmizlo aj bez
+optimalizácie. Namerané dnes: `/` preloaduje päť súborov = **128 584 B**, čo je bajt
+na bajt suma, ktorú stará tabuľka viedla ako cieľ V3.
+
+`—` znamená **zámerne nie**, nie „chýba": Playfair na `/console` a `/chat` nekreslí
+ani jeden znak (viď vyššie). `✗` u `geist-latin-ext` na tých dvoch plochách je
+naopak otvorená otázka, nie rozhodnutie — slovenská diakritika sa tam načíta až
+druhým dychom.
 
 `font-display`: **`block` pre ikony** (krátky prázdny priestor je lepší než blik
 surových ligatúrových názvov), **`swap` pre text** vrátane Playfairu — `block`
@@ -937,10 +974,17 @@ DOM**, nie dvoma načítaniami — Hades je živý a medzi nimi sa naučí uzly.
 
 ### Jeden stylesheet, jedna škála
 
-`charon.css` (dok nad grafom) je **jediný stylesheet úplne mimo typografickej
-škály**: farebné tokeny používa (0 raw farieb), typografické **nie** —
-`var(--fs-*)` 0×, `var(--icon-*)` 0×, **22 surových veľkostí**. 15 px a 20 px nie
-sú stupňami škály vôbec. **[cieľ V3]**
+`charon.css` (dok nad grafom) je **na škále, celý**. Namerané 31. 8. 2026:
+`var(--fs-*)` **26×**, `var(--icon-*)` **5×**, surových veľkostí **0**. Rozdelenie:
+22 deklarácií `font-size` (17 na `--fs-*`, 5 na `--icon-*`) a 9 skratiek `font:`,
+ktoré nesú stupeň v strednej pozícii (`font: 400 var(--fs-small) / 1.2 var(--mono)`).
+
+Manuál tu do 31. 8. 2026 tvrdil presný opak — „`var(--fs-*)` 0×, `var(--icon-*)` 0×,
+**22 surových veľkostí**" a viedol si to ako `[cieľ V3]`. Cieľ je **splnený** a jeho
+kalibrácia je práve to, že **počet 22 sa nezmenil**: migrácia vymenila hodnoty, nie
+počet miest, kde sa veľkosť nastavuje. Merač, ktorý by hlásil zmenu počtu, meria
+niečo iné. Bývalé 15 px a 20 px, ktoré stupňami škály neboli vôbec, sa v súbore ako
+veľkosť písma **nevyskytujú ani raz**.
 
 Kresba **bloku kódu a kopírovania je JEDNA** a je v `mind.css` — jediný stylesheet
 načítaný na všetkých troch plochách.
@@ -1445,8 +1489,12 @@ jadro r .15). Prstenec je amethyst, jadro zlaté.
 
 `#brand-core` je pomenovaná výnimka kánonu: je to `<button>`, ale zlatá tam nesie
 identitu, nie interaktívny stav — všetky jeho stavy (fokus, hover) sú amethystové.
-Ďalšie menované výnimky, a **nič nad ne nepridávaj**: `.avatar` a
-`.empty-loading .load-mark` sú značkový znak.
+Ďalšia menovaná výnimka, a **nič nad ňu nepridávaj**:
+`.empty-loading .load-mark` je značkový znak. (Do 31. 8. 2026 tu stál aj `.avatar` —
+tá trieda v repe nie je ani raz. Patrila kresbe chatu nad grafom, ktorý bol zmazaný
+v A9, takže menovaná výnimka prežila svoj vlastný komponent. Výnimka, ktorá nemá
+call-site, je pozvánka niečo pod jej meno dopísať; preto je vymazaná, nie „ponechaná
+pre istotu".)
 
 **Plátno grafu sa redizajnom nemení** (rozhodnutie 7): živý force layout zostáva,
 determinizmus sa **nezavádza** — bola to raz vlastná podmienka, ktorá zabila živý
@@ -1462,7 +1510,7 @@ Rail má dva stavy a stav je **persistovaný**.
 | `--rail-w` | **80 px** | **208 px** |
 | label destinácie | 10 px **pod** ikonou | vedľa ikony, riadok |
 | výška `.dest` | 52 px | **40 px** |
-| eyebrow skupín (`Teraz`, `Záznamy`, `Znalosti`) | `--fs-micro`, skrytý pod 860 px výšky | `--fs-micro` |
+| eyebrow skupín (`Teraz`, `Záznamy`, `Znalosti`) | **nekreslí sa** (skrytý stavom, nie výškou) | `--fs-micro` |
 | stav | — | `localStorage['hades.rail']`, hodnoty `wide` / `slim` |
 
 Rozbalený je **default**; `slim` je voľba človeka. Labely v raile sú **Geist**, nie
@@ -1478,10 +1526,10 @@ Namerané (sonda D, 1280 × 594):
 |---|---|
 | `rail.getBoundingClientRect().height` | 562 px |
 | `clientHeight` | 560 px |
-| **`scrollHeight`** | **712 px** — deficit **152 px** |
+| **`scrollHeight`** | **692 px** — deficit **132 px** |
 | `overflow-y` | `visible` |
-| „Nastavenia" | `top 617` – `bottom 669` |
-| „Pomoc" | `top 677` – `bottom 729` |
+| „Nastavenia" | `top 577` – `bottom 629` |
+| „Pomoc" | `top 629` – `bottom 681` |
 | dolná hrana railu / okna | 578 / 594 |
 
 **Dve destinácie sa teda kreslia pod dolnou hranou railu aj pod okrajom okna a sú
@@ -1493,18 +1541,26 @@ je vyčerpaný.
 
 | Stav | Obsah | Prah výšky okna | Kalibrácia |
 |---|---|---|---|
-| dnešný 80px rail, bez eyebrow | 712 px | **746 px** | 745 padne, 746 sadne |
-| dnešný 80px rail, s eyebrow | 787 px | **821 px** | jeden eyebrow = 25 px |
-| **rozbalený 208px rail** | **580 px** | **614 px** | 613 padne, 614 sadne |
+| zbalený 80px rail | **692 px** | **726 px** | 725 padne, 726 sadne |
+| rozbalený 208px rail | **551 px** | **585 px** | 584 padne, 585 sadne |
 
-Komentár nad `@media (max-height: 860px)` (`mind.css:1305–1311`) počíta zle: hlási
-obsah 796 px a prah ~844 px. Opravuje sa spolu s railom.
+Riadok „zbalený rail s eyebrow" tu do 31. 8. 2026 stál (787 px / 821 px) a **opisoval
+stav, ktorý nemôže nastať**: eyebrow nie je skrytý výškou, ale stavom
+(`mind.css:1524`, `body[data-rail="slim"] .rail-eyebrow { display: none }`), takže
+v zbalenom raile sa nekreslí pri žiadnej výške okna. Zmerané pri 1280 × 900:
+zbalený 0 eyebrow, rozbalený 3.
+
+Výšková `@media (max-height: 860px)` bola 27. 8. 2026 nahradená tým stavovým
+pravidlom, takže komentár, ktorý tu manuál dovtedy karhal za zlý výpočet, už
+neexistuje.
 
 #### Rozbalenie rieši výšku a platí šírkou
 
-**Zisk je 132 px potrebnej výšky** (11 destinácií × 12 px, `.dest` 52 → 40 px),
-takže prah klesne zo 746 na 614 px a výšková hranica `max-height: 860px` stratí
-volajúceho. **Cena je presne 128 px šírky obsahu na každom viewporte:**
+**Zisk je 141 px potrebnej výšky** — zmerané ako rozdiel obsahu (692 px zbalený →
+551 px rozbalený), takže prah klesne zo 726 na 585 px a výšková hranica
+`max-height: 860px` stratí volajúceho. Aritmetika „11 destinácií × 12 px = 132"
+tú hodnotu **nevystihuje**: rozbalený stav zároveň pridáva tri eyebrow riadky
+a mení rozostupy, takže čistý zisk sa musí merať, nie počítať. **Cena je presne 128 px šírky obsahu na každom viewporte:**
 
 | Šírka okna | `#screens` 80px → 208px | `.dash-grid` |
 |---|---|---|
@@ -1663,11 +1719,27 @@ Mini sigil na tmavom disku: `#0e1413` podklad, prstenec `#c4a2f5` (r 36, hrúbka
 jadro `#d8b878` (r 15). Inline SVG v `<link rel="icon">`, **rovnaký na všetkých
 stránkach** — dnes bit-identický (md5 `c0ebff62…` × 3) ✅, ale zapísaný trikrát.
 
-**Jeden zdroj pre favicon aj Electron `.ico` je [cieľ V2]** a je to §2: generátor
-číta `hades-sigil-mini.svg` a vydáva `public/favicon.ico`,
-`electron/assets/hades.ico` **aj** tri data-URI do Blade. Dnes `build-icon.py`
-stavia len desktopový `.ico` a generátor `favicon.ico` v repe **nie je** — tá
-binárka je 40 717 B bez zdroja.
+**Jeden zdroj pre favicon aj Electron `.ico` je SPLNENÝ** (27.–28. 8. 2026) a je to
+§2: `tools/brand/build-mark.py` číta `hades-sigil-mini.svg` a vydáva
+`public/favicon.ico`, `electron/assets/hades.ico` **aj** tri data-URI do Blade
+(`build_icos()` zapisuje obe `.ico` z **tých istých bajtov**, `patch_blade_icons()`
+prepisuje v každom blade **jediný riadok** `<link rel="icon">` — regexom, nie
+šablónou, aby generátor nevlastnil celý `<head>`).
+
+`electron/assets/build-icon.py` už geometriu **nedrží**: je to zástupca, ktorý cez
+`runpy.run_path()` spustí ten istý generátor. Zostáva preto, že
+`electron-builder.yml` a README naň odkazovali a ten beh je zabehnutý zvyk — má teda
+robiť správnu vec, nie mlčať. Manuál tu do 31. 8. 2026 tvrdil, že `build-icon.py`
+stavia len desktopový `.ico` a že generátor `favicon.ico` v repe nie je; oboje bolo
+prekonané už v čase písania (§2 riadok #14 hovoril to isté a bol v rozpore s týmto
+odstavcom v tom istom dokumente).
+
+**Zaplatené 31. 8. 2026:** keď `bcf2b5e` vytiahol generátory z verejného web rootu,
+zástupca si cestu neopravil a `GENERATOR` mieril na `public/brand/build-mark.py`,
+ktorý neexistuje. Zástupca teda **tichým behom nevydal nič** — a hlásenie „znak sa
+generuje z jedného zdroja" stihol vypísať pred pádom, takže veta tvrdila úspech.
+Dnes cesta ukazuje do `tools/brand/` a zástupca **overí existenciu súboru pred tým
+hlásením**: kontrola pred vetou, nie po nej.
 
 ---
 
@@ -1729,7 +1801,7 @@ po prekliknutí reálnych ovládačov).
 
 **URL už dnes lže:** `?screen=bogus` zostane v adrese a appka ukáže Dnes
 (`state.js` hodnotu nevaliduje, validuje ju až `setScreen()`). Bez zápisu orezanej
-pravdy späť sa ten defekt zmnoží na 37 kľúčov namiesto jedného.
+pravdy späť sa ten defekt zmnoží na 38 kľúčov namiesto jedného.
 
 ### Čo do URL patrí a čo nie
 
@@ -1782,7 +1854,7 @@ bez query stringu.
 8. **strop 24 opakovaní na jeden kľúč.** 40 vybraných značiek dá ~900 znakov query;
    nad stropom sa kľúč z URL **vynechá** a stav zostane lokálny. Nie balík.
 
-### Kanonický slovník kľúčov — 37, úplný
+### Kanonický slovník kľúčov — 38, úplný
 
 **Toto je jediný zdroj a je to zároveň jediné miesto v kóde, ktoré kľúč
 serializuje aj deserializuje.** Krátke kľúče sú bez tabuľky chyba.
@@ -1790,7 +1862,7 @@ serializuje aj deserializuje.** Krátke kľúče sú bez tabuľky chyba.
 **Vylúčenie kolízií je štrukturálne, nie disciplínou:** 6 jednoznakových kľúčov je
 vyhradených pre chrbticu, dvojznakové nesú rodiny (`g*` pohľad, `f*` filtre grafu,
 `p*` panely, `h*` hľadanie v histórii, plus `mw`, `sk`, `ar`), trojznakové sú
-obrazovkové (prefix = 2 znaky slugu obrazovky + os) plus `sel` a `loc`. Všetkých 37
+obrazovkové (prefix = 2 znaky slugu obrazovky + os) plus `sel` a `loc`. Všetkých 38
 je odlišný presný reťazec a ani jeden sa nerovná `token`, `k` ani `screen`.
 
 #### A · Spoločná chrbtica (2)
@@ -1849,7 +1921,7 @@ nikde, ani v `localStorage`.
 **`fg` je jediný POZITÍVNY filter v rodine** — kto to zamení, obráti význam odkazu.
 `ft` a `fs` môžu obe niesť hodnotu `skill`; sú to rôzne kľúče, nie kolízia.
 
-#### E · Obrazovky dát (11) — prefix = 2 znaky slugu + os
+#### E · Obrazovky dát (12) — prefix = 2 znaky slugu + os
 
 | Kľúč | Obrazovka · os | Hodnoty | Default | Väzba |
 |---|---|---|---|---|
@@ -1861,9 +1933,18 @@ nikde, ani v `localStorage`.
 | `kol` | Kontrola · strop | násobky 100, max 500 | **100** | `kontrolaState.limit` |
 | `roy` | Rozhodnutia · rok | `YYYY` | neprítomné | `decisionsState.year` |
 | `roa` | Rozhodnutia · id oblasti | int | neprítomné | `decisionsState.areaId` |
+| `roo` | Rozhodnutia · otvorený panel | int | neprítomné | `rozhodnutia.js` — `bootRoo` / `applyPanelFromUrl()` |
 | `rus` | Runy · stav | `running` `waiting` `failed` `aborted` `done` | neprítomné | `runsState.status` |
 | `rum` | Runy · model | text | neprítomné | `runsState.model` |
 | `ruo` | Runy · rozbalený beh | uuid | neprítomné | `runsState.open` |
+
+**`roo` a `ruo` sú zámerná dvojička**, nie duplicita: obe nesú „ktorý záznam je
+otvorený v pravom paneli", líšia sa len typom kľúča záznamu (`roo` int pre
+rozhodnutie, `ruo` uuid pre beh). Tabuľka tu do 31. 8. 2026 mala hlavičku „(11)"
+a `roo` v nej chýbal, hoci je živo zapojený (`bootRoo` sa číta **pred** prvým
+renderom, `writeUrl({ roo: null })` ho po zavretí panela z adresy zmaže). Kľúč
+pribudol v `6dd1a99`; manuál ten commit nezachytil, takže deviaty riadok chýbal aj
+v celkovom počte — preto sa slovník posunul zo 37 na 38.
 
 **Knižnica má zámernú asymetriu:** `q` filtruje server (SK-aware stemming), oblasť
 filtruje prehliadač (server posiela `limit=null`, všetky karty ležia na klientovi).
@@ -2050,6 +2131,16 @@ Mimo tohto adresára: `public/favicon.ico` (z **mini** verzie, 16–256 px),
 `electron/assets/hades.ico` (desktop) a inline SVG favicon priamo v `<head>`
 všetkých troch stránok.
 
+**Otvorený bod — `public/brand/hades-favicon.svg` v tabuľke ZÁMERNE nie je.**
+Generátor ho vydáva (`favicon_svg()`, výstup #2), súbor v adresári leží a `/brand/
+hades-favicon.svg` vracia 200, ale **nenačítava ho nič**: skutočný favicon je
+data-URI z `favicon_data_uri()` vpísaný priamo do `<head>`, a jediný výskyt mena
+`hades-favicon` v celom repe je riadok v generátore, ktorý ho zapisuje. Je to teda
+mŕtvy výstup vo verejnom web roote, čo je presne to, čo §11 zakazuje — a tabuľka ho
+nesmie legitimizovať tým, že si ho pripíše. Zrušiť ho znamená vymazať súbor **a**
+odobrať výstup #2 z `tools/brand/build-mark.py` (prípadne ho presunúť do
+`tools/brand/` ako referenčný náhľad); kým sa to nestane, platí tento odstavec.
+
 SVG assety sa prispôsobujú téme samy cez `prefers-color-scheme` — jeden súbor drží
 obe verzie, netreba `-dark` / `-light` dvojičky.
 
@@ -2151,7 +2242,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/<cesta>
 
 **URL**
 - [ ] čistý stav = adresa bez query stringu; default sa vynecháva
-- [ ] kľúč je v kanonickom slovníku (§10); žiadny 38. kľúč bez prepisu manuálu
+- [ ] kľúč je v kanonickom slovníku (§10); žiadny 39. kľúč bez prepisu manuálu
 - [ ] množina = **opakovaný kľúč**, adresa stavaná `URLSearchParams`om
 - [ ] test kruhu prejde znakovo; `token`, `k` a cudzie kľúče prežijú nedotknuté
 - [ ] jedno gesto = jeden záznam v histórii

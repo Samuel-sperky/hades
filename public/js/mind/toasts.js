@@ -1,6 +1,6 @@
 import { selectNode } from './panels.js';
 import { focusNode } from './render.js';
-import { REDUCED_MOTION, S } from './state.js';
+import { S, reducedMotionActive } from './state.js';
 import { $, esc } from './util.js';
 import { iconMarkup } from '../shared/icons.js';
 
@@ -25,10 +25,15 @@ export function showToast(text, nodeId, variant) {
    (5200 / 6000 / 2500 ms na 0), takze toast zmizol v tom istom ramci, v ktorom
    vznikol — clovek s tou preferenciou oznamenie NIKDY neprecital a moznost
    „Spat" mu zmizla pod rukami. Znulovat sa smie VYHRADNE 200 ms odchodovy
-   prechod, co je pohyb. Doba zobrazenia zostava rovnaka alebo dlhsia. */
+   prechod, co je pohyb. Doba zobrazenia zostava rovnaka alebo dlhsia.
+
+   Preferencia sa číta ŽIVO (`reducedMotionActive()`), nie z konštanty prečítanej pri
+   vyhodnotení modulu: toast je najdlhšie žijúci spotrebiteľ tejto preferencie — vzniká
+   pri každej udalosti po celý čas, čo je stránka otvorená, teda aj hodiny po tom, čo
+   by taká konštanta bola prestala platiť. */
     const leave = (node) => {
         node.classList.add('leaving');
-        setTimeout(() => node.remove(), REDUCED_MOTION ? 0 : 200);
+        setTimeout(() => node.remove(), reducedMotionActive() ? 0 : 200);
     };
     const arm = () => { el._t = setTimeout(() => leave(el), 5200); };
 
@@ -71,7 +76,7 @@ export function showUndoToast(text, onUndo) {
     undo.textContent = 'Späť';
     el.appendChild(undo);
 
-    const leave = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), REDUCED_MOTION ? 0 : 200); };
+    const leave = () => { el.classList.add('leaving'); setTimeout(() => el.remove(), reducedMotionActive() ? 0 : 200); };
     let t = setTimeout(leave, 6000);
     undo.onclick = () => { clearTimeout(t); leave(); if (onUndo) onUndo(); };
     const hold = () => clearTimeout(t);

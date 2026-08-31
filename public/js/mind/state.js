@@ -186,7 +186,32 @@ export const S = {
     _settleFrames: 0,     // dobeh po animácii (flash/zrod dohasne, potom sa slučka zastaví)
 };
 
-export const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* `prefers-reduced-motion` je ŽIVÁ preferencia, nie vlastnosť načítania stránky:
+   používateľ ju prepne v OS (alebo ju nástroj emuluje až po navigácii) a od tej sekundy
+   musí platiť. Do 31. 8. 2026 tu stála konštanta `REDUCED_MOTION` = `matchMedia().matches`
+   prečítaný RAZ pri vyhodnotení modulu, a `sim.js` si preto musel držať vlastný živý stav.
+   Tá dvojkoľajnosť nebola úplná: `render.js` živý stav dostal, ale pulzy (`anim.js`
+   `spawnPulse`), tichá verzia zrodu WS uzla (`ws.js`), dĺžka odchodu toastu (`toasts.js`)
+   a preskočenie replay animácie (`timeline.js`) čítali zamrznutú konštantu — po prepnutí
+   preferencie za behu sa hýbali ďalej.
+
+   Živý stav je preto JEDEN a je tu: `state.js` je zdroj pravdy a neimportuje z grafu nič,
+   takže ho môže čítať aj modul, ktorý v cykle `render ↔ panels ↔ controls` neleží
+   (`toasts.js`), bez rizika poradia vyhodnotenia. `sim.js` si vlastný odber drží ďalej,
+   ale už len pre svoj VEDĽAJŠÍ účinok (nakopnutie pumpy) — hodnotu nevlastní.
+
+   Hoistovaný `export function`, nie `export const () =>`: cez cyklus by sa arrow v `const`
+   nepretiahla. */
+let _reduceMotion = false;
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    const _rmq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    _reduceMotion = _rmq.matches;
+    const onReduceChange = (e) => { _reduceMotion = e.matches; };
+    if (_rmq.addEventListener) _rmq.addEventListener('change', onReduceChange);
+    else if (_rmq.addListener) _rmq.addListener(onReduceChange);   // starší Safari
+}
+
+export function reducedMotionActive() { return _reduceMotion; }
 
 export const OPT_DEFAULTS = {
     panelAlpha: 0.92,

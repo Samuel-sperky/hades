@@ -16,10 +16,16 @@
 // `export const ICONS` je DÁTO, nie funkcia; navyše tento modul nič neimportuje, takže
 // je vždy plne vyhodnotený skôr, než sa rozbehne telo hocijakého importéra.
 
-// Veľkostné stupne sú TOKENY, nie px (manuál §7). `size` je meno stupňa a prekladá sa
-// na triedu; hodnotu drží CSS. Rozmer napísaný do JS je pre CSSOM neviditeľný a žiadna
-// asercia ho nenájde — presne tak vznikol inline `font-size: 10px` na osi grafu.
-export const ICON_SIZES = ['2xs', 'xs', 'sm', 'md', 'lg'];
+// PREČO tu NIE JE stupnica veľkostí: veľkosť ikony nesie `font-size` z KONTEXTOVÉHO
+// selektora (`.toast .ic { font-size: var(--icon-sm) }` a ďalších ~26 pravidiel), pretože
+// kresba má `width/height` v `em`. Do 31. 8. 2026 tu stálo `ICON_SIZES` + vetva
+// `opts.size → ' ic--' + stupeň`: žiadny stylesheet triedu `.ic--*` nedefinoval a ani
+// jedno z 39 volaní ju neposielalo, takže to bol mechanizmus, ktorý existoval len v tomto
+// komentári. Odstránené, nie doimplementované — druhý spôsob, ako nastaviť tú istú vec,
+// by len rozdelil pravdu o veľkosti medzi CSS a volajúceho. Kto potrebuje inú veľkosť,
+// napíše kontextové pravidlo s tokenom `--icon-*`; rozmer napísaný do JS je pre CSSOM
+// neviditeľný a žiadna asercia ho nenájde — presne tak vznikol inline `font-size: 10px`
+// na osi grafu.
 
 // Základné atribúty kresby (manuál §7 „Kresba vlastnej sady"). `width`/`height` sú v `em`,
 // aby veľkosť nesol `font-size` z CSS — presne ako doteraz `.ms`, takže 26
@@ -243,11 +249,9 @@ function noteMiss(name) {
 }
 
 // Zloží atribút `class`. `cls` sa pridáva K `ic`, nikdy ju nenahrádza — trieda je `ic`,
-// nikdy `ms`. `size` je meno stupňa a prekladá sa na modifikátor `ic--<stupeň>`;
-// hodnotu drží CSS, nie tento modul.
+// nikdy `ms`. Veľkosť sem nepatrí (viď poznámku o `ICON_SIZES` na začiatku súboru).
 function classAttr(opts) {
   let cls = 'ic';
-  if (opts && opts.size && ICON_SIZES.indexOf(opts.size) !== -1) cls += ' ic--' + opts.size;
   if (opts && opts.cls) cls += ' ' + opts.cls;
   return cls;
 }

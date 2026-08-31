@@ -1,5 +1,5 @@
 import { requestDraw } from './render.js';
-import { REDUCED_MOTION, S } from './state.js';
+import { S, reducedMotionActive } from './state.js';
 import { $, now, syncSlider, ts } from './util.js';
 import { iconSwap } from '../shared/icons.js';
 
@@ -41,7 +41,7 @@ export function setupTimeline() {
 
     $('tl-play').addEventListener('click', () => {
         if (S.replay.playing) { stopReplay(); requestDraw(); return; }
-        if (REDUCED_MOTION) { stopReplay(); requestDraw(); return; } // bez animácie — rovno koncový stav
+        if (reducedMotionActive()) { stopReplay(); requestDraw(); return; } // bez animácie — rovno koncový stav
         S.replay.on = true;
         S.replay.playing = true;
         S.replay.t = 0;

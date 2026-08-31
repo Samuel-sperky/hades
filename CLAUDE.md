@@ -187,7 +187,8 @@ textu závisel od obsahu grafu.
 `#6d3fb5` svetlá / `#c4a2f5` tmavá) nesie hover, fokus, aktívny stav a primárne akcie.
 Teal tu bol do 19. 8. 2026; prefarbenie bola **výmena hodnôt, nie refaktor** (akcent
 bol plne tokenizovaný) a nezhoršilo ani jeden meraný kontrastný pár. Vedľajší efekt:
-teal `#03797e` je farba oblasti *Vývoj & kód*, takže akcent a jedna oblasť mali
+teal starého akcentu bol prakticky farba oblasti *Vývoj & kód* (`#007b76`), takže
+akcent a jedna oblasť mali
 dovtedy tú istú farbu. Zlatá (`--gold`) je vyhradená značke
 a jadru vedomia — jadro je na plátne jediný sýty plný prvok a je zlaté. Keby zlatá
 nesla aj interaktívny stav, ten jeden vyhradený význam by sa rozdrobil. Menované

@@ -3,8 +3,8 @@ import { drawEdges } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
 import { screenToWorld } from './interaction.js';
 import { camInsets, computeLayout, drawRadius } from './layout.js';
-import { applyLayoutPositions, currentPath, go, reducedMotionActive, syncNavFromFocus } from './sim.js';
-import { REDUCED_MOTION, S, canvas, ctx } from './state.js';
+import { applyLayoutPositions, currentPath, go, syncNavFromFocus } from './sim.js';
+import { S, canvas, ctx, reducedMotionActive } from './state.js';
 import { T, certColors, mutedColor } from './theme.js';
 import { stopReplay, updateTimelineLabel } from './timeline.js';
 import { highlightSet, isAwake, nodeColor, now, prettyProject, syncSlider, ts, updateStateUi } from './util.js';
@@ -617,7 +617,7 @@ export function draw() {
     // teda skočíme do cieľa: krok 0,02 je exponenciálne dobiehanie, ktoré na rozsahu
     // 1 → 0,78 potrebuje ~270 rámcov, a práve tie držali rAF živý ešte 4 s po tom,
     // čo fyzika (pump()) už ticho dosadla — utíšené plátno by sa nedopočítalo pokoja.
-    if (REDUCED_MOTION || reducedMotionActive()) S.dim = targetDim;
+    if (reducedMotionActive()) S.dim = targetDim;
     else {
         S.dim += (targetDim - S.dim) * 0.02;
         if (Math.abs(targetDim - S.dim) < 0.001) S.dim = targetDim;
@@ -664,7 +664,7 @@ export function draw() {
        obrysom (RING_LW_HOT), ktorý nezhasína. Je to okamžitý ekvivalent: nič sa
        nehýbe a nič sa nemusí dopočítať. Na mape (bez filtra) je fokusom celá scéna,
        takže by obrys nič nerozlišoval — vtedy sa nekreslí. */
-    const quietFocusRing = level !== 'map' && (REDUCED_MOTION || reducedMotionActive());
+    const quietFocusRing = level !== 'map' && reducedMotionActive();
 
     updateCanvasAria();   // P9: drž aria-label plátna živý (lacný guard na signatúre)
 
@@ -990,7 +990,7 @@ export function draw() {
         // zrod uzla — krátky rozpínavý prstenec
         if (n._born != null) {
             const age = S._clock - n._born;
-            if (age < 0.6 && S._anim > 0 && !REDUCED_MOTION) {
+            if (age < 0.6 && S._anim > 0 && !reducedMotionActive()) {
                 const p = age / 0.6;
                 ctx.globalAlpha = (1 - p) * 0.6 * alpha;
                 ctx.lineWidth = 1.4 * invK;
@@ -1753,8 +1753,8 @@ export function frame() {
     S._clock += dt;
     // P1: pri prefers-reduced-motion (aj prepnutom ZA BEHU) zháše ambientný život a
     // udalostné animácie na 0 — inak by S._life > 0 držalo rAF slučku živú a plátno by
-    // ďalej dýchalo/unášalo prach. animLevel()/lifeLevel() čítajú REDUCED_MOTION
-    // zamrznutý na loade, preto tu berieme ŽIVÝ stav zo sim.js.
+    // ďalej dýchalo/unášalo prach. Živý stav vlastní state.js — animLevel()/lifeLevel()
+    // ho čítajú z toho istého miesta, takže toto je len jedno čítanie na rámec.
     const _rm = reducedMotionActive();
     S._anim = _rm ? 0 : animLevel();
     S._lifeTier = lifeTier();

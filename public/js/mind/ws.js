@@ -8,7 +8,7 @@ import { markJournalSeen, setJournalDot } from './rail.js';
 import { SETTLE_FRAMES, requestDraw } from './render.js';
 import { renderJournal } from './screens/dennik.js';
 import { buildSim, kickSim } from './sim.js';
-import { REDUCED_MOTION, S } from './state.js';
+import { S, reducedMotionActive } from './state.js';
 import { renderStructure } from './structure.js';
 import { showToast } from './toasts.js';
 import { $, blip, markAwake, updateHeaderMetrics } from './util.js';
@@ -82,8 +82,11 @@ export function handlePulse(type, data) {
            prstenec s KONŠTANTNOU alfou, ktorý lineárne vyhasne — uzol je teda hneď
            v plnej veľkosti a je označený. `_settleFrames` drží slučku nažive, aby to
            vyhasnutie malo v čom prebehnúť; predtým ho na tomto mieste nastavovala tichá
-           vetva `spawnPulse()`, ktorá odchádza. */
-        if (REDUCED_MOTION) {
+           vetva `spawnPulse()`, ktorá odchádza.
+           Preferencia sa číta ŽIVO (`reducedMotionActive()`): zrod uzla prichádza z WS,
+           teda z definície až po načítaní stránky, takže konštanta z loadu bola presne
+           na tomto mieste najmenej spoľahlivá. */
+        if (reducedMotionActive()) {
             n.flash = 1;
             S._settleFrames = Math.max(S._settleFrames, SETTLE_FRAMES);
         }

@@ -2,14 +2,18 @@ import { edgeCategoryHidden, edgeSkeletal } from './edges.js';
 import { localSet, nodeVisible } from './filters.js';
 import { hash01 } from './layout.js';
 import { SETTLE_FRAMES, requestDraw, visibleInReplay } from './render.js';
-import { REDUCED_MOTION, S } from './state.js';
+import { S, reducedMotionActive } from './state.js';
 import { nodeColor } from './util.js';
 
 /* ---------- pulzy ---------- */
 
 export function spawnPulse(fromNode, toNode, opts = {}) {
     if (!fromNode || !toNode || S.replay.on) return;
-    if (REDUCED_MOTION) {
+    /* ŽIVÝ stav preferencie, nie konštanta z loadu: pulzy chodia z WS udalostí
+       (`ws.js`) a z ručného prepojenia v paneli (`panels.js`), teda dlho po načítaní
+       stránky. Kým sa tu čítala zamrznutá konštanta, po prepnutí preferencie za behu
+       lietali po sieti cestujúce body ďalej — a volajúci pred sebou žiadny gate nemá. */
+    if (reducedMotionActive()) {
         // žiadny cestujúci pulz — cieľový uzol sa staticky zvýrazní cez flash a nechá vyhasnúť
         toNode.flash = 1;
         S._settleFrames = Math.max(S._settleFrames, SETTLE_FRAMES);
@@ -37,20 +41,20 @@ export function neighborsOf(node) {
 
 /* ---------- FÁZA ANIMÁCIE: globálne škálovanie + toky ---------- */
 
-// Efektívna intenzita animácií. REDUCED_MOTION → 0 (statika). Ambient režim zosilní jemné
+// Efektívna intenzita animácií. Pokoj (živá preferencia) → 0 (statika). Ambient režim zosilní jemné
 // efekty ×1.6, inak držané veľmi jemné. Slider 'anim' (0..1) funguje aj ako vypínač na 0.
 export function animLevel() {
-    if (REDUCED_MOTION) return 0;
+    if (reducedMotionActive()) return 0;
     const base = S.opts && S.opts.anim != null ? S.opts.anim : 0.5;
     if (base <= 0) return 0;
     return base * (document.body.classList.contains('ambient') ? 1.6 : 1);
 }
 
 // FÁZA ANIMÁCIE (Living): intenzita ambientného života (dýchanie / drift / synapsie / gravitácia).
-// REDUCED_MOTION → 0 (žiadny ambient, len event pulzy). Ambient režim vždy žije (floor 0.6) a zosilní
+// Pokoj (živá preferencia) → 0 (žiadny ambient, len event pulzy). Ambient režim vždy žije (floor 0.6) a zosilní
 // ×1.8. Slider 'Život' (0..1) je nezávislý od 'Animácie' a na 0 vráti dirty-only pokoj.
 export function lifeLevel() {
-    if (REDUCED_MOTION) return 0;
+    if (reducedMotionActive()) return 0;
     let base = S.opts && S.opts.life != null ? S.opts.life : 0.5;
     const amb = document.body.classList.contains('ambient');
     if (amb) base = Math.max(base, 0.6); // ambient režim ožije aj so stiahnutým Životom
@@ -116,7 +120,7 @@ export function pickSynapseEdge() {
 // v ambient režime (telo .ambient) sa jemné „premýšľanie" povolí naspäť.
 export function maybeSynapse() {
     if (!document.body.classList.contains('ambient')) return;
-    if (S._life <= 0 || S._lifeTier >= 2 || REDUCED_MOTION || document.hidden || S.replay.on) return;
+    if (S._life <= 0 || S._lifeTier >= 2 || reducedMotionActive() || document.hidden || S.replay.on) return;
     if (S._clock < S._nextSynapse) return;
     const life = Math.min(1.6, S._life);
     S._nextSynapse = S._clock + (3 + hash01(Math.floor(S._clock)) * 4) / Math.max(0.2, life);
@@ -133,7 +137,7 @@ export function maybeSynapse() {
 // Vyšle putujúce svetlobody po incidentných hranách uzla (len na aktivitu, nie nepretržite).
 // Respektuje filtre hrán, auto-strop aj anim. tone: 'accent' (teal) | 'ink' | hex.
 export function emitFlows(node, opts = {}) {
-    if (!node || REDUCED_MOTION || (S._anim <= 0 && S._life <= 0) || document.hidden || S.replay.on) return;
+    if (!node || reducedMotionActive() || (S._anim <= 0 && S._life <= 0) || document.hidden || S.replay.on) return;
     const cap = flowCap();
     if (cap <= 0) return;
     for (const e of S.edges) {
@@ -153,9 +157,9 @@ export function emitFlows(node, opts = {}) {
     if (S._flows.length) requestDraw(); // vznikli toky → zobuď slučku
 }
 
-// Zrod uzla: násobič polomeru 0→1 (~0.5 s, ease-out). anim=0 / REDUCED_MOTION → hneď plný.
+// Zrod uzla: násobič polomeru 0→1 (~0.5 s, ease-out). anim=0 / pokoj → hneď plný.
 export function birthScale(n) {
-    if (n._born == null || S._anim <= 0 || REDUCED_MOTION) return 1;
+    if (n._born == null || S._anim <= 0 || reducedMotionActive()) return 1;
     const age = S._clock - n._born;
     if (age >= 0.5) return 1; // prstenec (do 0.6 s) dobehne a _born vyčistí až sám
     return easeOut(age / 0.5);

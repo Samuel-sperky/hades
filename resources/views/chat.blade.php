@@ -33,7 +33,10 @@
          je to ten istý riadok v `console_threads`, teda jeden fakt. Druhé meno
          pre tú istú vec by znamenalo, že každý zdieľaný čítač musí poznať obe. --}}
     <meta name="console-thread" content="{{ request()->route('uuid') ?? '' }}">
-    <title>Hades — Chat</title>
+    {{-- Charón, nie „Chat": beh je jeden pre všetky tri vstupy, takže meno pre
+         človeka musí byť jedno. `/console` už tento titulok má; „Chat" bolo
+         pomenovanie plochy, nie tej veci, ktorá na nej hovorí. --}}
+    <title>Hades — Charón</title>
     {{-- POZOR: tri hodnoty palety sú tu NATVRDO, pretože data-URI je samostatný
          dokument a CSS premenné z mind.css nečíta:
            %230e1413 = --bg-rgb tmavej témy (papier, pozadie znaku),
@@ -81,9 +84,15 @@
                      Klik vracia do grafu — logo, ktoré vedie domov, je zaužívané.
                      Prstenec je amethyst, jadro zlaté, presne ako v znaku. --}}
                 <a href="/" id="chat-home" title="Hades — späť do grafu" aria-label="Hades — späť do grafu">
+                    {{-- Triedy `bc-ring` / `bc-core` sú kánonický tvar znaku v Blade —
+                         presne to vydáva `blade_inline_svg()` v tools/brand/build-mark.py,
+                         takže markup má tie triedy niesť aj tam, kde ich CSS ešte nečíta.
+                         POZOR: intro animácia je v mind.css zúžená na `#brand-core` a
+                         `#back-to-graph`, takže tu je zatiaľ inertná — rozšíriť selektor
+                         na `#chat-home` a `.ce-mark` je zvyšok [cieľ V2]. --}}
                     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-                        <circle cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
-                        <circle cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
+                        <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                        <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
                     </svg>
                 </a>
                 <button id="chat-new" type="button" title="Nové vlákno (Ctrl+N)">
@@ -196,9 +205,11 @@
                 {{-- Prázdny stav. Statický, aby plocha nebola biela ešte pred prvým
                      fetchom; vlna 3 ho odstráni, keď má čo kresliť (`#chat-empty`). --}}
                 <div id="chat-empty">
+                    {{-- Tie isté triedy ako v hlavičke a z toho istého dôvodu: znak má
+                         v Blade jeden kánonický tvar. Animácia je aj tu zatiaľ inertná. --}}
                     <svg class="ce-mark" viewBox="0 0 24 24" width="44" height="44" aria-hidden="true">
-                        <circle cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
-                        <circle cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
+                        <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                        <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
                     </svg>
                     <h2>Napíš úlohu pre vedomie</h2>
                     <p>Chat vidí pamäť Hadesa aj súbory projektu. Každý zápis
