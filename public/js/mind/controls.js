@@ -254,7 +254,7 @@ export function setupControls() {
         syncSkBtn();
         markPresetActive();
         draw();
-        showToast(S.skeleton ? 'Kostra zapnutá' : 'Kostra vypnutá');
+        // Bez hlásenia (J2): syncSkBtn() prepíše stav prepínača a draw() plochu.
     };
 
     // A7 + FÁZA HRANY: min. váha spojení — samostatný stav (nie data-opt), surová hodnota v odpočte
@@ -443,12 +443,13 @@ export function setupControls() {
                 await reloadGraph();
                 if (dockOpen === 'structure') renderStructure();
                 draw();
-                showToast('Uložené');
+                // Bez hlásenia (J2): reloadGraph() + draw() prekreslia uzol s novým menom
+                // a zaradením, takže zmena JE potvrdenie.
             } else {
-                showToast('Uloženie sa nepodarilo');
+                showToast('Uloženie sa nepodarilo', null, 'error');
             }
         } catch (e) {
-            showToast('Uloženie sa nepodarilo');
+            showToast('Uloženie sa nepodarilo', null, 'error');
         }
     }, 'Ukladá sa…');
 
@@ -481,7 +482,7 @@ export function setupControls() {
                 const res = await fetch('/api/nodes/' + node.id, { method: 'DELETE' });
                 if (!res.ok) {
                     const data = await res.json().catch(() => ({}));
-                    showToast(data.message || 'Nepodarilo sa zmazať');
+                    showToast(data.message || 'Nepodarilo sa zmazať', null, 'error');
                     return;
                 }
                 // lokálne odstránenie — pulse node.deleted je idempotentný, duplicitu toleruje
@@ -496,7 +497,7 @@ export function setupControls() {
                 draw();
                 showToast('Uzol zmazaný');
             } catch (e) {
-                showToast('Nepodarilo sa zmazať');
+                showToast('Nepodarilo sa zmazať', null, 'error');
             }
         }, 'Maže sa…');
         disarmNodeDelete();

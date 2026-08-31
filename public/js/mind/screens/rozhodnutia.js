@@ -3,7 +3,7 @@ import { originBadge } from './dnes.js';
 import { S } from '../state.js';
 import { showToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
-import { $, busy, deferSkeleton, emptyHtml, esc, getJson, plainBlock, plainInline, renderError, renderFilterEmpty } from '../util.js';
+import { $, busy, deferSkeleton, emptyHtml, esc, getJson, inlineOk, plainBlock, plainInline, renderError, renderFilterEmpty } from '../util.js';
 import { iconMarkup } from '../../shared/icons.js';
 
 /* ---------- obrazovka Rozhodnutia (/api/decisions) — časová os ----------
@@ -530,7 +530,8 @@ export async function deleteDecision(btn, id) {
    akcia človeka a bránou neprechádza. */
 export async function saveDecision(btn) {
     const text = ($('dec-text').value || '').trim();
-    if (!text) { showToast('Napíš text rozhodnutia'); $('dec-text').focus(); return; }
+    // Validácia inline pri poli (J2) — fokus tam už aj tak ide.
+    if (!text) { inlineOk($('dec-text'), 'Napíš text rozhodnutia'); $('dec-text').focus(); return; }
     const reason = ($('dec-reason').value || '').trim();
     const areaVal = $('dec-area').value;
     const dateVal = $('dec-date').value;

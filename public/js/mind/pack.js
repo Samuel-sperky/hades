@@ -3,7 +3,7 @@ import { attachToContext, contextHas, refreshContextButtons } from './charon.js'
 import { mdLabel, mdNodeId, mdPath, syncMdFoot } from './md.js';
 import { S } from './state.js';
 import { showToast } from './toasts.js';
-import { $, esc } from './util.js';
+import { $, esc, inlineOk } from './util.js';
 import { iconMarkup } from '../shared/icons.js';
 
 /* ---------- „Do balíka" = priloženie do kontextu doku Charóna (A8, R-6) ----------
@@ -48,8 +48,10 @@ export function bindPackButtons(root) {
             e.stopPropagation();
             e.preventDefault();
             const r = attachToContext(b.dataset.packId, b.dataset.packLabel);
-            if (r.full) showToast('Kontext má strop 8 uzlov — najprv niektorý odober');
-            else showToast(r.on ? 'Priložené do rozhovoru' : 'Odobraté z rozhovoru');
+            /* Priloženie/odobranie MENÍ stav tlačidla aj počet v doku Charóna,
+               takže sa nehlási nič (J2). Strop hlási ĎALEJ: to nie je potvrdenie
+               akcie, ale dôvod, prečo sa NESTALA — a ten v ploche vidieť nie je. */
+            if (r.full) showToast('Kontext má strop 8 uzlov — najprv niektorý odober', null, 'warn');
         };
     });
 }
@@ -97,8 +99,9 @@ export function setupPack() {
     const mcp = $('md-copypath');
     if (mcp) mcp.onclick = async () => {
         if (!mdPath) return;
-        try { await navigator.clipboard.writeText(mdPath); showToast('Cesta skopírovaná'); }
-        catch (e) { showToast('Kopírovanie sa nepodarilo'); }
+        // Kopírovanie plochu nezmení → potvrdenie inline pri tlačidle (J2).
+        try { await navigator.clipboard.writeText(mdPath); inlineOk(mcp, 'Skopírované'); }
+        catch (e) { showToast('Kopírovanie sa nepodarilo', null, 'error'); }
     };
 
     // Prepínač rozsahu grafu — 'live' (default) vs 'all' (celá knižnica v grafe)

@@ -6106,3 +6106,34 @@ button, input, select {
    o scéne, ktorá tam nie je vidieť. Pravidlo je nad hranicou 1280 (ktorá ich
    skrýva pri úzkom okne) zámerne — tá rieši miesto, toto význam. */
 body:not([data-screen="graf"]) #header-metrics { display: none; }
+
+/* INLINE POTVRDENIE (kontrakt 28. 8. 2026, J2) — pozri inlineOk() v util.js.
+   Potvrdenie stojí PRI prvku, ktorý akciu vyvolal, a nesie ho text, nie ikona:
+   „Skopírované" povie, čo sa stalo, fajka len to, že sa niečo stalo.
+
+   Farba je --success-ink (rola pre TEXT na papieri), nie --success (rola pre
+   výplň) — na nezafarbenom povrchu by výplňová hodnota nedržala kontrast.
+   Podfarbenie ZÁMERNE nemá: je to jedna veta na jeden a pol sekundy a badge by
+   z nej urobil trvalý stav plochy. */
+.inline-ok {
+    display: inline-flex; align-items: center;
+    margin-inline-start: var(--sp-1);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    color: var(--success-ink);
+    white-space: nowrap;
+    animation: inline-ok-in var(--dur-base) var(--ease) both;
+}
+@keyframes inline-ok-in {
+    from { opacity: 0; transform: translateX(calc(var(--motion-shift) * -0.5)); }
+    to { opacity: 1; transform: none; }
+}
+/* Tichá verzia je ZMYSLUPLNÝ okamžitý ekvivalent, nie „vypnuté": potvrdenie sa
+   objaví hneď a celé. `animation: none` by ho nechalo na `opacity: 0` z `both`,
+   teda by potvrdenie v tichom režime NEBOLO VIDNO vôbec.
+   `!important` je povinné: plošná podlaha nižšie píše `animation-duration` a
+   `animation-iteration-count` s `!important`, a `!important` deklarácie súťažia
+   špecificitou — trieda (0-1-0) prebíja `*` (0-0-0). */
+@media (prefers-reduced-motion: reduce) {
+    .inline-ok { animation: none !important; opacity: 1 !important; transform: none !important; }
+}

@@ -604,8 +604,14 @@ export async function kontrolaVerify(id) {
             const j = await res.json().catch(() => ({}));
             if (!res.ok) { showToast(j.message || j.error || 'Overenie zlyhalo', null, 'error'); return; }
             removeKontrolaItem(id, j.queue_total);
+            /* Bez výhrady sa NEHLÁSI NIČ (kontrakt J2): riadok z frontu zmizne
+               a počítadlo klesne, takže tá zmena JE potvrdenie. Toast „Overené"
+               nad prázdnym miestom, kde riadok bol, hovoril to isté dvakrát.
+               S výhradou toast ZOSTÁVA — tú v prekreslení nevidno a je to jediná
+               cesta, ako sa k nej človek dostane. `warn` a nie `success`: uzol
+               je overený, ale niečo si ešte žiada pozornosť. */
             const warns = j.warnings || [];
-            showToast(warns.length ? ('Overené — ' + warns[0]) : 'Overené', null, 'success');
+            if (warns.length) showToast('Overené — ' + warns[0], null, 'warn');
         } catch (e) { showToast('Overenie zlyhalo', null, 'error'); }
     }, '…');
 }
@@ -617,8 +623,8 @@ export async function kontrolaResolve(id) {
             const res = await fetch('/api/nodes/' + id + '/resolve-review', { method: 'POST' });
             const j = await res.json().catch(() => ({}));
             if (!res.ok) { showToast(j.message || j.error || 'Akcia zlyhala', null, 'error'); return; }
+            // Bez hlásenia — riadok odišiel z frontu, to je potvrdenie (J2).
             removeKontrolaItem(id, j.queue_total);
-            showToast('Vyriešené', null, 'success');
         } catch (e) { showToast('Akcia zlyhala', null, 'error'); }
     }, '…');
 }
@@ -687,6 +693,13 @@ export async function kontrolaDelete(id) {
         // je zdieľaný s grafom a o fronte kontroly nehovorí nič — a zmazaný uzol
         // z nej vypadne presne raz, takže „−1" je tu dokázateľné, nie odhad.
         removeKontrolaItem(id, Math.max(0, kontrolaState.total - 1));
+        /* Mazanie hlási AJ TAK, hoci riadok zmizol — a je to výnimka z pravidla
+           J2 s dôvodom: je to jediná NEVRATNÁ akcia v tejto fronte. „Zmizol
+           riadok" je pri overení potvrdenie, pri mazaní je to to isté, čo by
+           človek videl po omyle. Toast je tu doklad o tom, čo sa stalo, nie
+           potvrdenie, že sa to podarilo. Vrátiť sa nedá (server uzol zmazal),
+           preto NIE showUndoToast — sľúbené vrátenie, ktoré neexistuje, je
+           horšie než žiadne. */
         showToast('Uzol zmazaný', null, 'success');
     } catch (e) {
         showToast('Nepodarilo sa zmazať', null, 'error');

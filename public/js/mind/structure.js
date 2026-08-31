@@ -150,7 +150,7 @@ export async function deptRequest(deptId, method, body, okMsg) {
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
-            showToast(data.message || 'Akcia sa nepodarila');
+            showToast(data.message || 'Akcia sa nepodarila', null, 'error');
             return;
         }
         if (S.focus.departmentId === deptId && method === 'DELETE') setFocus(S.focus.areaId, null);
@@ -158,7 +158,7 @@ export async function deptRequest(deptId, method, body, okMsg) {
         await reloadGraph();
         if (dockOpen === 'structure') renderStructure();
     } catch (e) {
-        showToast('Akcia sa nepodarila');
+        showToast('Akcia sa nepodarila', null, 'error');
     }
 }
 /* ---------- údržba: duplicity ---------- */
@@ -197,9 +197,9 @@ export async function findDuplicates() {
                 const [loser, winner] = (p.a.strength || 0) > (p.b.strength || 0) ? [p.b, p.a] : [p.a, p.b];
                 try {
                     const res = await fetch('/api/nodes/' + loser.id + '/merge/' + winner.id, { method: 'POST' });
-                    if (!res.ok) { showToast('Zlúčenie sa nepodarilo'); return; }
+                    if (!res.ok) { showToast('Zlúčenie sa nepodarilo', null, 'error'); return; }
                 } catch (e) {
-                    showToast('Zlúčenie sa nepodarilo');
+                    showToast('Zlúčenie sa nepodarilo', null, 'error');
                     return;
                 }
                 card.remove();
@@ -207,7 +207,8 @@ export async function findDuplicates() {
                     renderEmpty(wrap, 'check-double', 'Žiadne duplicity',
                         'Nič sa v pamäti neopakuje — nie je čo zlučovať.');
                 }
-                showToast('Zlúčené');
+                // Bez hlásenia (J2): karta duplicity zmizla, prípadne nastúpil
+                // prázdny stav, a graf sa prekreslil zlúčeným uzlom.
                 await reloadGraph();
             }, 'Zlučuje sa…');
         });

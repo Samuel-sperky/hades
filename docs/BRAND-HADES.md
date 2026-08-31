@@ -1313,6 +1313,46 @@ dýchala aj opacitou, v spodnej fáze klesol kontrast na svetlej téme na 2,3:1.
 **Denník nie** — druhý najpomalší endpoint appky je jediný, ktorý by ho potreboval
 najviac. **[cieľ V1]** šesť miest.
 
+### Potvrdenia a oznámenia — tri prípady, nič medzi nimi
+
+Zavedené 28. 8. 2026 (kontrakt `KONTRAKT-DIZAJN-BRANDING-2026-08-28.md`, J2).
+Dovtedy mala appka **85 toastov** a hlásila nimi všetko naraz, takže potvrdenie
+úspechu, dôvod zlyhania aj návod vypadli na to isté miesto v rohu obrazovky.
+
+| Prípad | Nosič | Prečo |
+|---|---|---|
+| Akcia **viditeľne zmení plochu** (riadok odíde z frontu, čip prepne stav, hrana sa dokreslí, počítadlo klesne) | **nič** | tá zmena JE potvrdenie; toast nad ňou hovorí to isté druhýkrát |
+| Akcia **plochu nezmení** (kopírovanie do schránky, validácia poľa) | **inline pri pôvode** (`inlineOk()` v `util.js`) | oko nemusí odísť tam, kde akcia nebola |
+| **Zlyhanie** alebo udalosť **mimo obrazovky** (zrod uzla cez WS, dobehnutý sync, spadnuté spojenie) | **toast** | musí prežiť prekreslenie a niesť dôvod |
+
+Tri **menované výnimky** z prvého riadka a nič nad ne nepridávaj:
+
+- **Nevratná akcia hlási aj tak** (`Uzol zmazaný`, `Smernica zmazaná`, mazanie
+  oddelenia). „Riadok zmizol" je pri overení potvrdenie, pri mazaní je to presne
+  to, čo by človek videl po omyle — toast je tu doklad, nie potvrdenie. A **nie**
+  `showUndoToast`: server uzol zmazal, vrátiť sa nedá, a sľúbené vrátenie, ktoré
+  neexistuje, je horšie než žiadne.
+- **Hromadná zmena hlási aj tak** (`Predvolené obnovené`, `Predvoľba: …`). Mení
+  desiatky ovládačov naraz a časť z nich nemusí byť v zábere.
+- **Navigačný toast zostáva** (`Pribudlo: <uzol>`, `Uzol vytvorený`). Nesie
+  `nodeId`, takže sa dá kliknuť a je to jediná cesta k práve vzniknutému uzlu.
+
+**Variant je povinný pri zlyhaní.** Toast bez variantu je *neutrálne oznámenie*
+(návod, režim, navigácia) — to je legitímna tretia trieda. Zlyhanie bez
+`'error'` je chyba a dá sa zmeriať:
+
+```
+grep -rn "showToast(" public/js/mind/ | grep -v toasts.js \
+  | grep -iE "nepodaril|zlyhal|nenašl|vypršal|zamknut" | grep -v "'error'"
+```
+
+Stav 28. 8. 2026: **0 zásahov**. Rozpis: 43 `error`, 6 `warn`, 3 `success`,
+17 neutrálnych, **5 inline** — celkom 69 toastov proti pôvodným 85.
+
+**Pozor na koreň slova, nie celý tvar.** Prvá verzia toho grepu hľadala
+„nepodarilo" a minula ženské „nepodarila" (`structure.js`, dva zásahy). Slovenské
+hlásenia sa skloňujú podľa predmetu, takže vzor musí byť „nepodaril".
+
 ### Kodifikované stringy
 
 | Situácia | Text |

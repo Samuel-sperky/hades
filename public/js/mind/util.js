@@ -470,6 +470,39 @@ export async function getJson(url) {
     return res.json();
 }
 
+/* INLINE POTVRDENIE (kontrakt 28. 8. 2026, J2).
+   Politika notifikácií má tri prípady a tento je ten prostredný:
+
+     1. Akcia VIDITEĽNE zmení plochu (riadok odíde z frontu, čip prepne stav,
+        počítadlo klesne) → nehlási sa NIČ. Tá zmena je potvrdenie a toast nad
+        ňou hovorí to isté druhýkrát.
+     2. Akcia plochu nezmení (kopírovanie do schránky, uloženie na disk,
+        priloženie do balíka) → TOTO. Potvrdenie stojí pri prvku, ktorý ju
+        vyvolal, takže oko nemusí odísť na druhý konec obrazovky.
+     3. Zlyhanie alebo udalosť MIMO obrazovky (zrod uzla cez WS, dobehnutá
+        synchronizácia, spadnuté spojenie) → toast. Musí prežiť prekreslenie
+        a niesť dôvod.
+
+   `role="status"` a nie `aria-live="assertive"`: je to potvrdenie, nie varovanie,
+   takže čítačka ho má prečítať, keď dohovorí, nie skočiť doprostred vety.
+   Predchádzajúce potvrdenie na tom istom kotviacom prvku sa ODSTRÁNI — dva
+   „Skopírované" vedľa seba po dvoch klikoch sú šum, nie informácia. */
+export function inlineOk(anchor, text) {
+    if (!anchor || !anchor.parentNode) return null;
+    const prev = anchor.parentNode.querySelector(':scope > .inline-ok');
+    if (prev) prev.remove();
+    const el = document.createElement('span');
+    el.className = 'inline-ok';
+    el.setAttribute('role', 'status');
+    el.textContent = text;
+    anchor.insertAdjacentElement('afterend', el);
+    /* Odchod po 2,4 s. Nie kratšie: potvrdenie, ktoré zmizne skôr, než sa naň
+       oko presunie, je to isté ako žiadne. Časovač sa viaže na PRVOK, aby ho
+       ďalší klik zrušil spolu s ním a nezhasil ten nový. */
+    el._t = setTimeout(() => { if (el.isConnected) el.remove(); }, 2400);
+    return el;
+}
+
 // Async spätná väzba tlačidiel — disable + dočasný text počas behu
 export async function busy(btn, fn, busyText) {
     /* Volanie BEZ tlačidla je legitímne: paletu Ctrl-K zatvárame ešte pred štartom

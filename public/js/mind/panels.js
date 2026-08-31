@@ -17,7 +17,7 @@ import { showToast } from './toasts.js';
    zmeň ju aj tu. */
 const NARROW = window.matchMedia('(max-width: 900px)');
 
-import { $, busy, emptyCardHtml, esc, nodeColor, plainBlock, plainInline, prettyProject, typeName, updateHeaderMetrics } from './util.js';
+import { $, busy, emptyCardHtml, esc, inlineOk, nodeColor, plainBlock, plainInline, prettyProject, typeName, updateHeaderMetrics } from './util.js';
 import { iconMarkup } from '../shared/icons.js';
 import { iconSwap } from '../shared/icons.js';
 
@@ -160,7 +160,7 @@ export async function linkSuggestion(source, targetId, row) {
         });
         if (!res.ok) {
             const d = await res.json().catch(() => ({}));
-            showToast(d.message || 'Prepojenie sa nepodarilo');
+            showToast(d.message || 'Prepojenie sa nepodarilo', null, 'error');
             return;
         }
         const data = await res.json();
@@ -183,12 +183,13 @@ export async function linkSuggestion(source, targetId, row) {
             }
             updateHeaderMetrics();
         }
+        /* Bez hlásenia (J2): navrhovaný riadok zmizne, hrana sa dokreslí a
+           metriky v hlavičke sa prepočítajú. Toast hlásil to, čo je vidieť. */
         row.remove();
         draw();
-        showToast('Prepojené');
         if (S.selected && S.selected.id === source.id) selectNode(S.selected); // čerství susedia + návrhy
     } catch (err) {
-        showToast('Prepojenie sa nepodarilo');
+        showToast('Prepojenie sa nepodarilo', null, 'error');
     }
 }
 
@@ -416,7 +417,7 @@ export async function createEdge(sourceId, targetId) {
         });
         if (!res.ok) {
             const d = await res.json().catch(() => ({}));
-            showToast(d.message || 'Prepojenie sa nepodarilo');
+            showToast(d.message || 'Prepojenie sa nepodarilo', null, 'error');
             return;
         }
         const data = await res.json();
@@ -426,8 +427,9 @@ export async function createEdge(sourceId, targetId) {
         if (existing) {
             // pár už existoval — backend zvýšil váhu (WS echo edge.strengthened je idempotentné)
             existing.weight = e.weight;
+            /* Bez hlásenia (J2): pulz po hrane JE potvrdenie posilnenia a je
+               presnejší než toast — ukazuje, KTORÉ spojenie zosilnelo. */
             spawnPulse(existing.source, existing.target, { speed: 1.4 });
-            showToast('Spojenie posilnené');
         } else {
             const src = S.byId.get(e.source_id);
             const tgt = S.byId.get(e.target_id);
@@ -438,13 +440,14 @@ export async function createEdge(sourceId, targetId) {
                 kickSim();
                 spawnPulse(src, tgt, { speed: 1.2 });
             }
-            showToast('Prepojené');
+            /* Bez hlásenia (J2): hrana sa dokreslí a po nej prebehne pulz —
+               ten ukazuje KTORÉ spojenie vzniklo, čo toast nevedel. */
         }
         updateHeaderMetrics();
         draw();
         if (S.selected) selectNode(S.selected); // čerstvý zoznam susedov v paneli
     } catch (err) {
-        showToast('Prepojenie sa nepodarilo');
+        showToast('Prepojenie sa nepodarilo', null, 'error');
     }
 }
 
@@ -453,7 +456,7 @@ export async function deleteEdge(edgeId) {
         const res = await fetch('/api/edges/' + edgeId, { method: 'DELETE' });
         if (!res.ok) {
             const d = await res.json().catch(() => ({}));
-            showToast(d.message || 'Zrušenie sa nepodarilo');
+            showToast(d.message || 'Zrušenie sa nepodarilo', null, 'error');
             return;
         }
         // optimistické odstránenie — WS echo edge.deleted už hranu nenájde (no-op)
@@ -463,11 +466,11 @@ export async function deleteEdge(edgeId) {
         buildSim();
         kickSim();
         updateHeaderMetrics();
+        // Bez hlásenia (J2): hrana z plátna zmizla a metriky klesli.
         draw();
-        showToast('Spojenie zrušené');
         if (S.selected) selectNode(S.selected);
     } catch (err) {
-        showToast('Zrušenie sa nepodarilo');
+        showToast('Zrušenie sa nepodarilo', null, 'error');
     }
 }
 
@@ -497,7 +500,9 @@ export function closeCreateMode() {
 
 export async function createNode() {
     const label = $('edit-label').value.trim();
-    if (!label) { showToast('Zadaj názov uzla'); return; }
+    /* Validácia ide INLINE k poľu (J2): je to odpoveď na klik, ktorý sa práve
+       stal, a človek má oči na formulári, nie v rohu obrazovky. */
+    if (!label) { inlineOk($('edit-label'), 'Zadaj názov uzla'); $('edit-label').focus(); return; }
     try {
         const res = await fetch('/api/nodes', {
             method: 'POST',
@@ -512,7 +517,7 @@ export async function createNode() {
         });
         if (!res.ok) {
             const d = await res.json().catch(() => ({}));
-            showToast(d.message || 'Vytvorenie sa nepodarilo');
+            showToast(d.message || 'Vytvorenie sa nepodarilo', null, 'error');
             return;
         }
         const data = await res.json();
@@ -535,7 +540,7 @@ export async function createNode() {
         selectNode(n);
         showToast('Uzol vytvorený', n.id);
     } catch (err) {
-        showToast('Vytvorenie sa nepodarilo');
+        showToast('Vytvorenie sa nepodarilo', null, 'error');
     }
 }
 

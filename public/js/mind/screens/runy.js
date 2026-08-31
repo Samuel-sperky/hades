@@ -449,7 +449,7 @@ async function loadRunDetail(uuid) {
         runsState.details.set(uuid, d);
     } catch (e) {
         runsState.details.set(uuid, { timeline: [] });
-        showToast('Detail behu sa nepodarilo načítať.', null, 'warn');
+        showToast('Detail behu sa nepodarilo načítať.', null, 'error');
     }
     if (runsState.open === uuid) renderRunsView();
 }

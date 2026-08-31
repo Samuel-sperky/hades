@@ -1,7 +1,6 @@
 import { persistFilter } from './filters.js';
 import { draw } from './render.js';
 import { S } from './state.js';
-import { showToast } from './toasts.js';
 import { $, esc, fmtNum } from './util.js';
 
 /* ---------- F4: prepínač Značky istoty + filter podľa značiek ----------
@@ -50,7 +49,9 @@ export function setupCertTagFilter() {
             localStorage.setItem('hades.certRings', S.certRings ? '1' : '0');
             btn.setAttribute('aria-checked', S.certRings ? 'true' : 'false');
             draw();
-            showToast(S.certRings ? 'Značky istoty zapnuté' : 'Značky istoty vypnuté');
+            /* Bez hlásenia (J2): prepínač si sám nastaví aria-checked a plátno
+               sa prekreslí, takže stav je vidieť na ovládači aj na uzloch. Toast
+               hlásil to isté, čo prvok pod kurzorom. */
         };
     }
 

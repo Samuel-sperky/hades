@@ -1,7 +1,7 @@
 import { mdToHtml } from '../md.js';
 import { setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
-import { $, busy, emptyCardHtml, esc, getJson, plainText, renderEmpty, renderError, renderLoading } from '../util.js';
+import { $, busy, emptyCardHtml, esc, getJson, inlineOk, plainText, renderEmpty, renderError, renderLoading } from '../util.js';
 // Ozbrojené potvrdenie (prvý klik sa spýta, druhý do 3 s maže) je JEDEN vzor pre
 // celú appku, tak sa neduplikuje. Býva v rozhodnutiach len dočasne — patrí do
 // util.js, ktorý táto vlna nevlastní.
@@ -280,7 +280,7 @@ export async function directiveMarkdownForSelection() {
         const data = await res.json();
         return data.markdown || '';
     } catch (e) {
-        showToast('Náhľad sa nepodarilo prepočítať');
+        showToast('Náhľad sa nepodarilo prepočítať', null, 'error');
         return null;
     }
 }
@@ -294,10 +294,15 @@ export function dirAllIds() {
     return out;
 }
 
+/* Kopírovanie plochu NEZMENÍ, takže potvrdenie ide INLINE k tlačidlu (J2).
+   Zlyhanie zostáva toastom: nesie dôvod a musí prežiť prekreslenie náhľadu.
+   Validácia („najprv poskladaj") je tiež inline — je to odpoveď na klik, ktorý
+   sa práve stal, a patrí k tlačidlu, nie do rohu obrazovky. */
 export async function copyDirective() {
-    if (!directiveMarkdown) { showToast('Najprv poskladaj smernicu'); return; }
-    try { await navigator.clipboard.writeText(directiveMarkdown); showToast('Smernica skopírovaná'); }
-    catch (e) { showToast('Kopírovanie sa nepodarilo'); }
+    const btn = $('dir-copy');
+    if (!directiveMarkdown) { inlineOk(btn, 'Najprv poskladaj smernicu'); return; }
+    try { await navigator.clipboard.writeText(directiveMarkdown); inlineOk(btn, 'Skopírované'); }
+    catch (e) { showToast('Kopírovanie sa nepodarilo', null, 'error'); }
 }
 
 export async function saveDirective() {
@@ -309,11 +314,11 @@ export async function saveDirective() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, markdown: directiveMarkdown }),
         });
-        if (!res.ok) { showToast('Uloženie sa nepodarilo'); return; }
+        if (!res.ok) { showToast('Uloženie sa nepodarilo', null, 'error'); return; }
         const data = await res.json();
         showToast('Uložené: ' + (data.path || ''));
         loadDirectiveSaved();
-    } catch (e) { showToast('Uloženie sa nepodarilo'); }
+    } catch (e) { showToast('Uloženie sa nepodarilo', null, 'error'); }
 }
 
 export async function loadDirectiveSaved() {
@@ -392,7 +397,7 @@ export async function deleteDirective(btn, name) {
         try {
             const res = await fetch('/api/directive/' + encodeURIComponent(name), { method: 'DELETE' });
             const j = await res.json().catch(() => ({}));
-            if (!res.ok) { showToast(j.message || 'Nepodarilo sa zmazať'); return; }
+            if (!res.ok) { showToast(j.message || 'Nepodarilo sa zmazať', null, 'error'); return; }
             showToast('Smernica zmazaná');
             /* Riadok zmizne hneď, nie až po `/api/directives`. Ten endpoint skladá
                celú `SmernicaScreen` a trvá sekundy — namerané: zmazaná smernica
@@ -404,21 +409,24 @@ export async function deleteDirective(btn, name) {
             syncDirManageBtn();
             renderDirectiveSaved();
             loadDirectiveSaved();
-        } catch (e) { showToast('Nepodarilo sa zmazať'); }
+        } catch (e) { showToast('Nepodarilo sa zmazať', null, 'error'); }
     }, 'Maže sa…');
 }
 
 export async function openSavedDirective(name) {
     try {
         const d = await getJson('/api/directive/' + encodeURIComponent(name));
-        if (!d || !d.markdown) { showToast('Smernica sa nenašla'); return; }
+        if (!d || !d.markdown) { showToast('Smernica sa nenašla', null, 'error'); return; }
         // Uložená smernica prekrýva náhľad, takže rozbehnutý dopočet výberu už
         // nesmie dosadnúť po nej.
         directivePreviewSeq++;
         directiveMarkdown = d.markdown;
         const pv = $('dir-preview');
         if (pv) pv.innerHTML = mdToHtml(d.markdown);
-        try { await navigator.clipboard.writeText(d.markdown); showToast('Smernica skopírovaná'); }
-        catch (e) { showToast('Smernica otvorená'); }
-    } catch (e) { showToast('Nepodarilo sa načítať'); }
+        /* Tu sa plocha MENÍ (náhľad sa prepíše uloženou smernicou), takže sa
+           nehlási nič — okrem prípadu, keď schránka odmietla: vtedy človek nevie,
+           že v nej smernicu NEMÁ, a to je informácia, nie potvrdenie. */
+        try { await navigator.clipboard.writeText(d.markdown); }
+        catch (e) { showToast('Otvorené, ale do schránky sa nedostalo', null, 'warn'); }
+    } catch (e) { showToast('Nepodarilo sa načítať', null, 'error'); }
 }

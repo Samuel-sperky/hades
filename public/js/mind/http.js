@@ -29,8 +29,8 @@ export function installFetchGuard() {
         }
 
         return nativeFetch(input, opts).then((res) => {
-            if (res.status === 401) showToast('Hades je zamknutý — odomkni ho tokenom (?token=…)');
-            else if (res.status === 419) showToast('Session vypršala — obnov stránku (F5)');
+            if (res.status === 401) showToast('Hades je zamknutý — odomkni ho tokenom (?token=…)', null, 'error');
+            else if (res.status === 419) showToast('Session vypršala — obnov stránku (F5)', null, 'error');
 
             return res;
         });
