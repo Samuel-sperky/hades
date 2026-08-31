@@ -3,7 +3,9 @@
 namespace App\Serializers\Screen;
 
 use App\Http\Controllers\Api\StatsController;
+use App\Models\ConsoleToolCall;
 use App\Models\Node;
+use App\Models\Run;
 use App\Serializers\ScreenSerializer;
 use App\Support\ProjectGroup;
 use Illuminate\Support\Str;
@@ -83,6 +85,11 @@ class DnesScreen extends ScreenSerializer
             'certainty' => $dash['certainty'],
             'per_area' => $dash['per_area'],
             'growth' => $dash['growth'],
+            // 30-dňový trend KPI kariet (E4). V `fieldsForAi()` ZÁMERNE nie je —
+            // rovnaký dôvod ako heatmapa: 120 čísel nesie TVAR, nie fakt, a fakty
+            // má AI v `counts` a `week_added`.
+            'kpi_trend' => $dash['kpi_trend'],
+            'focus' => $this->focus(),
             'heatmap' => $dash['heatmap'],
             'sync' => $this->sync($dash),
             'brain_write_enabled' => $dash['brain_write_enabled'],
@@ -98,6 +105,12 @@ class DnesScreen extends ScreenSerializer
     {
         return [
             'week_added', 'counts', 'certainty', 'growth', 'sync', 'brain_write_enabled',
+            // 'focus' ako CELÝ podstrom, nie tečkované cesty: zoznam pre AI pozná
+            // dva tvary — 'kľúč' a 'kľúč[].podkľúč' — a 'focus.review_total' by bral
+            // ako názov top-level kľúča, ktorý data() nedáva (chytil to test parity).
+            // Vecne je to správne aj tak: fronta, počet otvorených behov a počet
+            // zaparkovaných zápisov sú fakty, nie tvar, takže AI ich má vidieť celé.
+            'focus',
             'per_area[].slug', 'per_area[].name', 'per_area[].count',
             'per_area[].overene', 'per_area[].hypoteza', 'per_area[].pasca', 'per_area[].bez',
             'top_projects[].project', 'top_projects[].count',
@@ -205,6 +218,40 @@ class DnesScreen extends ScreenSerializer
      * @param  array<string, mixed>  $dash
      * @return array<string, mixed>
      */
+    /**
+     * DNEŠNÝ FOKUS — čo čaká na človeka (kontrakt 28. 8. 2026, E5 + E6).
+     *
+     * Fronta overenia sa **nepočíta znova**, číta sa z {@see KontrolaScreen} —
+     * tá istá trieda, ktorú kreslí obrazovka Kontrola a MCP tool. Je to ten istý
+     * vzor, akým sa 24. 8. 2026 pripájala Hygiena: volaj existujúci klasifikátor,
+     * neprepisuj ho. Keby si Dnes skládala frontu vlastným dopytom, obrazovky by
+     * sa rozišli presne tak, ako sa rozišli Denník a jeho čipy projektov.
+     *
+     * `limit => 3` je vstup pre KontrolaScreen, nie krátenie v PHP: strop vie
+     * ona a vie ho aj vynútiť (MAX_LIMIT).
+     *
+     * Na rozdiel od `kpi_trend` toto V `fieldsForAi()` JE — „tri veci čakajú na
+     * tvoje rozhodnutie" je fakt, nie tvar, a je to presne ten druh vecí, pre
+     * ktoré si AI otvára Dnes.
+     *
+     * @return array<string, mixed>
+     */
+    private function focus(): array
+    {
+        $queue = (new KontrolaScreen(['limit' => 3]))->data();
+
+        return [
+            'review' => $queue['queue'],
+            'review_total' => $queue['total'],
+            // Otvorený beh je `running` alebo `waiting` — členstvo drží model,
+            // nie tento zoznam (Run::OPEN_STATES), takže sa nedá rozísť.
+            'open_runs' => Run::query()->open()->count(),
+            // Zaparkovaný zápis čaká na kliknutie človeka v bráne Charóna. Je to
+            // iná fronta než overenie uzlov a mieri na inú plochu.
+            'pending_writes' => ConsoleToolCall::query()->where('status', 'pending')->count(),
+        ];
+    }
+
     private function sync(array $dash): array
     {
         $sync = (array) ($dash['sync'] ?? []);

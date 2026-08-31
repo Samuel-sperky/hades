@@ -94,8 +94,14 @@ export async function renderToday() {
        prázdny stav majú. Tri sekcie hovoria to isté rovnako. */
     const sessions = d.recent_sessions || [];
     h += '<section class="today-sec"><h2>Naposledy si robil na…</h2>'
+        /* KOMPAKTNÝ ZOZNAM, nie mriežka kariet (kontrakt E1). Riadok nesie to isté,
+           čo karta — názov, projekt, čas — ale zmestí sa ich šesť bez scrollu a
+           oko ide po jednej osi. Používa sa `todayRow()`, teda TEN ISTÝ komponent
+           ako „Posledné záznamy": dve rodiny riadkov na tej istej obrazovke boli
+           presne to, čo pri kartách vzniklo. Session nemá `snippet`, takže riadok
+           ho vynechá sám. */
         + (sessions.length
-            ? '<div class="today-grid">' + sessions.map((s) => todaySessionCard(s)).join('') + '</div>'
+            ? '<div class="today-list">' + sessions.map((s) => todayRow('clock', s)).join('') + '</div>'
             : emptyCardHtml('Zatiaľ žiadna session'))
         + '</section>';
 
@@ -151,7 +157,127 @@ export async function renderToday() {
         };
     });
 
+    /* Fokus: otvorenie uzla, dve rozhodnutia a dva preskoky. `data-goto` je
+       jeden atribút pre obe destinácie, aby sa nepridával druhý handler na to
+       isté gesto. */
+    body.querySelectorAll('.focus-open[data-id]').forEach((el) => {
+        el.onclick = () => openNodeFromAnywhere({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
+    });
+    body.querySelectorAll('.focus-act[data-verify]').forEach((el) => {
+        el.onclick = () => busy(el, () => focusDecide(el.closest('.focus-row'), el.dataset.verify, 'verify'), '…');
+    });
+    body.querySelectorAll('.focus-act[data-resolve]').forEach((el) => {
+        el.onclick = () => busy(el, () => focusDecide(el.closest('.focus-row'), el.dataset.resolve, 'resolve'), '…');
+    });
+    body.querySelectorAll('[data-goto]').forEach((el) => {
+        el.onclick = () => setScreen(el.dataset.goto);
+    });
+
     bindPackButtons(body);
+}
+
+/* DNEŠNÝ FOKUS (kontrakt E5 + E6) — čo čaká na človeka, hneď pod hlavným číslom.
+   Tri veci a každá mieri inam: poznatky na overenie sa dajú vyriešiť PRIAMO tu,
+   zaparkované zápisy vedú do Charóna a otvorené behy na Runy.
+
+   Keď nečaká nič, sekcia sa NEKRESLÍ vôbec. Prázdny stav by tu bol horší než
+   ticho: „nič nečaká" už hlási hero (`.hero-action.is-clear`) a druhá veta o tom
+   istom by z pokoja urobila oznam.
+
+   Fronta sa nekrátí tu — server posiela tri (KontrolaScreen s limitom 3). */
+function focusHtml(dash) {
+    const f = (dash || {}).focus || {};
+    const review = Array.isArray(f.review) ? f.review : [];
+    const writes = +f.pending_writes || 0;
+    const runs = +f.open_runs || 0;
+    const more = Math.max(0, (+f.review_total || 0) - review.length);
+    if (!review.length && !writes && !runs) return '';
+
+    let h = '<section class="today-sec focus-sec"><h2>Čaká na teba</h2>';
+
+    if (review.length) {
+        h += '<div class="focus-list">';
+        for (const r of review) {
+            h += '<div class="focus-row" data-review-id="' + esc(r.id) + '">'
+                + '<button type="button" class="focus-open" data-id="' + esc(r.id) + '"'
+                + ' data-label="' + esc(r.label || '') + '">'
+                + '<span class="focus-title">' + esc(prettyLabel(r.label, r.project)) + '</span>'
+                + (r.area_name ? '<span class="focus-area">' + esc(r.area_name) + '</span>' : '')
+                + '</button>'
+                /* Dve akcie, obe cez existujúce endpointy Kontroly — Dnes si
+                   nevymýšľa tretiu cestu k tej istej fronte. */
+                + '<span class="focus-acts">'
+                + '<button type="button" class="focus-act" data-verify="' + esc(r.id) + '">Overiť</button>'
+                + '<button type="button" class="focus-act ghost" data-resolve="' + esc(r.id) + '">Vyriešiť</button>'
+                + '</span></div>';
+        }
+        h += '</div>';
+        if (more) {
+            h += '<button type="button" class="focus-more" data-goto="kontrola">'
+                + 'a ďalších ' + esc(fmtNum(more)) + ' v Kontrole</button>';
+        }
+    }
+
+    if (writes || runs) {
+        h += '<div class="focus-chips">';
+        if (writes) {
+            h += '<a class="focus-chip" href="/chat">' + iconMarkup('send')
+                /* Zhoduje sa AJ SLOVESO, nie len podstatné meno: po slovensky je
+                   „1 zápis čaká“, ale „2 zápisy čakajú“ a „5 zápisov čaká“.
+                   plural() vracia tvar podľa toho istého pravidla, takže sa volá
+                   dvakrát — raz na predmet, raz na sloveso. */
+                + esc(fmtNum(writes)) + ' ' + plural(writes, 'zápis', 'zápisy', 'zápisov')
+                + ' ' + plural(writes, 'čaká', 'čakajú', 'čaká') + ' na potvrdenie</a>';
+        }
+        if (runs) {
+            h += '<button type="button" class="focus-chip" data-goto="runy">' + iconMarkup('bolt')
+                + esc(fmtNum(runs)) + ' ' + plural(runs, 'otvorený beh', 'otvorené behy', 'otvorených behov')
+                + '</button>';
+        }
+        h += '</div>';
+    }
+
+    return h + '</section>';
+}
+
+/* Inline rozhodnutie o poznatku (E5). Po úspechu riadok ODÍDE a číslo v hero
+   klesne — a to je celé potvrdenie (politika J2: viditeľná zmena hlási sama).
+   Zlyhanie hlási toast, pretože riadok zostane a dôvod treba prečítať. */
+async function focusDecide(row, id, kind) {
+    const url = kind === 'verify'
+        ? '/api/nodes/' + encodeURIComponent(id) + '/verify'
+        : '/api/nodes/' + encodeURIComponent(id) + '/resolve-review';
+    let res;
+    try {
+        res = await fetch(url, { method: 'POST' });
+    } catch (e) {
+        showToast(kind === 'verify' ? 'Overenie zlyhalo' : 'Akcia zlyhala', null, 'error');
+        return;
+    }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        showToast(j.message || j.error || 'Akcia zlyhala', null, 'error');
+        return;
+    }
+    row.remove();
+    /* Hero číslo je JEDINÝ ďalší nositeľ tej istej fronty na tejto obrazovke,
+       takže sa musí pohnúť s ňou — inak by karta hlásila štyri a zoznam dva.
+       Server posiela nový počet v `queue_total`; keď ho nepošle, dopočítame −1,
+       čo je pri jednej vyriešenej položke dokázateľné. */
+    const heroVal = document.querySelector('#hero-review .ha-val');
+    if (heroVal) {
+        const next = Number.isFinite(+j.queue_total)
+            ? +j.queue_total
+            : Math.max(0, (parseInt(heroVal.textContent.replace(/\s/g, ''), 10) || 0) - 1);
+        heroVal.textContent = fmtNum(next);
+        if (next === 0) {
+            const btn = $('hero-review');
+            if (btn) btn.remove();
+        }
+    }
+    // Sekcia bez riadkov a bez čipov už nemá čo hlásiť.
+    const sec = document.querySelector('.focus-sec');
+    if (sec && !sec.querySelector('.focus-row') && !sec.querySelector('.focus-chip')) sec.remove();
 }
 
 // Veta o týždni — podtitul hlavného čísla (a záložný riadok, keď /api/dashboard padne).
@@ -179,10 +305,35 @@ export function dashboardHtml(dash, wb) {
     const num = (n) => esc(fmtNum(n ?? 0));
     const review = +(cert.needs_review || 0);
 
-    const kpi = (val, label, suffix) =>
-        '<div class="kpi-card"><div class="kpi-val">' + num(val)
-        + (suffix ? '<span class="kpi-suffix">' + esc(suffix) + '</span>' : '')
-        + '</div><div class="kpi-label">' + esc(label) + '</div></div>';
+    /* KPI karta nesie ČÍSLO, DELTU a TVAR (kontrakt E4).
+       Delta je prírastok za posledných 7 dní zo servera (`kpi_trend[key].week`),
+       nie rozdiel dopočítaný v prehliadači — dopočet by potreboval stav z minulého
+       načítania a ten nikde nie je.
+
+       Znamienko je len PLUS alebo nič: tieto štyri metriky v Hadesovi neklesajú
+       (uzly, hrany, playbooky a rozhodnutia sa pridávajú), takže `--trend-down`
+       tu zámerne nepoužívam — červená pri metrike, ktorá nemôže spadnúť, by bola
+       výstraha bez obsahu. Rola v palete existuje pre metriky, ktoré klesať vedia.
+
+       Sparkline sa NEKRESLÍ TU: `dashboardHtml()` skladá string a SVG potrebuje
+       živý prvok. Kontejner dostane `data-spark`, kresbu doplní
+       `renderDashboardBlocks()` — tá istá deľba ako u heatmapy a donutu. */
+    const kpi = (val, label, suffix, trendKey) => {
+        const t = (dash.kpi_trend || {})[trendKey] || {};
+        const week = +t.week || 0;
+        return '<div class="kpi-card"><div class="kpi-val">' + num(val)
+            + (suffix ? '<span class="kpi-suffix">' + esc(suffix) + '</span>' : '')
+            + '</div><div class="kpi-label">' + esc(label) + '</div>'
+            + (week > 0
+                ? '<div class="kpi-delta" data-trend="up">+' + num(week)
+                  + '<span class="kpi-delta-lbl"> za týždeň</span></div>'
+                : '<div class="kpi-delta" data-trend="flat">bez zmeny'
+                  + '<span class="kpi-delta-lbl"> za týždeň</span></div>')
+            + (Array.isArray(t.points) && t.points.length > 1
+                ? '<div class="kpi-spark" data-spark="' + esc(trendKey) + '"></div>'
+                : '')
+            + '</div>';
+    };
 
     let h = '<section class="today-hero">'
         + '<div class="hero-main">'
@@ -200,13 +351,15 @@ export function dashboardHtml(dash, wb) {
               + '<span class="ha-lbl">Nič nečaká na overenie</span></div>')
         + '</section>';
 
+    h += focusHtml(dash);
+
     h += '<div class="kpi-grid">'
-        + kpi(counts.edges, 'spojení')
+        + kpi(counts.edges, 'spojení', null, 'edges')
         // „brain"/„session" boli jediné neslovenské popisky na dashboarde; appka tie
         // isté množiny inde nazýva Playbooky a Záznamy (viď filter zdrojov v blade).
-        + kpi(counts.brain, 'playbookov')
-        + kpi(counts.session, 'záznamov')
-        + kpi(counts.decisions, 'rozhodnutí')
+        + kpi(counts.brain, 'playbookov', null, 'playbooks')
+        + kpi(counts.session, 'záznamov', null, 'records')
+        + kpi(counts.decisions, 'rozhodnutí', null, 'decisions')
         + '</div>';
 
     h += '<div class="dash-grid">';
@@ -248,11 +401,22 @@ export function certLegend(cert) {
         ['pasca', 'pasca', cert.pasca],
         ['bez', 'bez značky', cert.bez],
     ];
+    /* PERCENTO nesie legenda, nie donut (kontrakt E3). Malý segment sa z kresby
+       prečítať nedá — hypotéza je 24 z 2 773, teda 0,9 % kruhu ≈ 3 stupne — a
+       donut sa kvôli tomu deformovať NESMIE: minimálny viditeľný oblúk by z
+       pomeru urobil lož. Číslo a podiel sú preto v legende a v tooltipe.
+
+       Súčet sa počíta z tých istých štyroch riadkov, nie z `cert.total`:
+       keby sa rozišli, percentá by nedali 100 a nikto by nevedel, ktorá
+       hodnota je tá zlá. */
+    const sum = rows.reduce((a, r) => a + (+r[2] || 0), 0);
+    const pct = (v) => (sum > 0 ? ((+v || 0) / sum * 100).toFixed(1).replace('.', ',') : '0,0');
     return '<div class="cert-legend">'
         + rows.map((r) =>
             '<div class="cl-row" data-cert="' + r[0] + '">'
             + '<span class="cl-sw"></span>'
             + '<span class="cl-name">' + esc(r[1]) + '</span>'
+            + '<span class="cl-pct">' + esc(pct(r[2])) + '&nbsp;%</span>'
             + '<span class="cl-n">' + esc(String(r[2] ?? 0)) + '</span></div>').join('')
         + '</div>';
 }
@@ -420,16 +584,29 @@ export function renderDashboardBlocks(dash) {
     const donutEl = $('dash-donut');
     if (donutEl) {
         const c = dash.certainty || {};
+        /* `label` posiela VOLAJÚCI, nie charts.js: slovník istoty je slovo a slová
+           patria do prehliadača (rovnaké pravidlo ako pri `certLegend`). Bez neho
+           tooltip vypisoval kľúč — „overene" namiesto „overené". */
         HadesCharts.donut(donutEl, [
-            { cert: 'overene', value: c.overene || 0 },
-            { cert: 'hypoteza', value: c.hypoteza || 0 },
-            { cert: 'pasca', value: c.pasca || 0 },
-            { cert: 'bez', value: c.bez || 0 },
+            { cert: 'overene', label: 'overené', value: c.overene || 0 },
+            { cert: 'hypoteza', label: 'hypotéza', value: c.hypoteza || 0 },
+            { cert: 'pasca', label: 'pasca', value: c.pasca || 0 },
+            { cert: 'bez', label: 'bez značky', value: c.bez || 0 },
         ], { total: c.total || 0, centerLabel: 'uzlov' });
     }
 
     const growth = $('dash-growth');
     if (growth) renderGrowth(growth, dash);
+
+    /* Sparkline KPI kariet — kreslí sa až tu, nad živými prvkami (dashboardHtml
+       skladá string). Trend je 'up' alebo 'flat' podľa toho, či za týždeň niečo
+       pribudlo; hodnotu aj deltu nesie text karty, takže SVG je aria-hidden a
+       čítačka ho preskočí. */
+    for (const box of document.querySelectorAll('.kpi-spark[data-spark]')) {
+        const t = (dash.kpi_trend || {})[box.dataset.spark] || {};
+        if (!Array.isArray(t.points) || t.points.length < 2) continue;
+        HadesCharts.sparkline(box, t.points, { trend: (+t.week || 0) > 0 ? 'up' : 'flat' });
+    }
 
     const syncBtn = $('sync-now');
     if (syncBtn) syncBtn.onclick = () => doSync(syncBtn);
@@ -473,16 +650,6 @@ export function plural(n, one, few, many) {
    balík), mení sa len to, čo číta človek. */
 /* `project_label` chodí zo servera (skupina projektu), `project` zostáva surové —
    je to identita záznamu a `prettyLabel` z neho odsekáva prefix v názve. */
-export function todaySessionCard(s) {
-    return '<div class="today-card-wrap">'
-        + '<button type="button" class="today-card-link" data-id="' + s.id + '" data-label="' + esc(s.label || '') + '">'
-        + '<span class="tcl-title">' + esc(prettyLabel(s.label, s.project)) + '</span>'
-        + '<span class="tcl-meta">'
-        + (s.project ? '<span class="tcl-proj">' + esc(s.project_label || '') + '</span>' : '')
-        + (s.created_at ? '<span class="tcl-time">' + esc(timeAgo(s.created_at)) + '</span>' : '')
-        + '</span></button>'
-        + packBtn(s.id, s.label) + '</div>';
-}
 
 /* Riadok záznamu. Berie celý záznam zo servera, nie šesť rozbalených argumentov:
    `snippet` už prichádza bez markdownu (predtým ho tu čistil `plainText`, takže

@@ -281,7 +281,10 @@
                     const lvl = clamp(+d.level || 0, 0, 4);
                     if (lvl > 0) cell.classList.add('l' + lvl);
                     const n = +d.count || 0;
-                    const tip = (d.date || '') + (n ? ' · ' + n : ' · 0');
+                    /* fmtDate() a nie surové ISO: `data-tip` čita človek aj čítačka
+                       (je aj v `title`), a „2025-09-01" je kód, nie dátum. Formátovanie
+                       je SLOVO, takže patrí do prehliadača — server posiela ISO. */
+                    const tip = fmtDate(d.date) + ' · ' + fmtNum(n);
                     cell.setAttribute('data-tip', tip);
                     cell.setAttribute('title', tip);
                     days++;
@@ -295,6 +298,22 @@
             }
         }
         if (!reduceMotion) grid.classList.add('heat-reveal');
+
+        /* Spoločný tooltip JEDNÝM delegovaným listenerom, nie bindTip na bunku:
+           mriežka má 365 buniek a tri listenery na každú je 1 095 uzáverov
+           uložených navyše za nulový úžitok. `title` na bunke ZOSTÁVA — je to
+           textová alternatíva pre klávesnicu a dotyk, kde hover neexistuje.
+        
+           Formát „19. 8. 2026 · 12" skladá `data-tip` už pri kreslení, takže
+           tooltip nič neprepočítava a nemôže sa s `title` rozísť. */
+        grid.addEventListener('mousemove', (e) => {
+            const cell = e.target.closest ? e.target.closest('.heat-cell[data-tip]') : null;
+            if (!cell) { hideTip(); return; }
+            const box = cell.getBoundingClientRect();
+            showTip(esc(cell.getAttribute('data-tip')), box.left + box.width / 2, box.top);
+        });
+        grid.addEventListener('mouseleave', hideTip);
+
         heat.appendChild(grid);
         container.appendChild(heat);
 
@@ -407,6 +426,13 @@
                     'stroke-dasharray': arc + ' ' + (C - arc),
                     'stroke-dashoffset': String(-start * C),
                 });
+                /* Tooltip nesie PRESNÚ hodnotu aj podiel, pretože malý segment sa
+                   z kresby prečítať nedá: hypotéza je na dnešných dátach 24 z 2 773,
+                   teda 0,9 % kruhu ≈ 3 stupne. Donut sa preto NEDEFORMUJE (minimálny
+                   viditeľný oblúk by z pomeru urobil lož) — číslo dodáva legenda
+                   a tooltip. */
+                bindTip(seg, () => '<b>' + esc(s.label || s.cert || '') + '</b><br>'
+                    + fmtNum(v) + ' · ' + (frac * 100).toFixed(1).replace('.', ',') + ' %');
                 if (!reduceMotion) {
                     // narastá od svojho začiatku, nie od stredu kruhu
                     seg.setAttribute('stroke-dasharray', '0 ' + C);

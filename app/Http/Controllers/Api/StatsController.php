@@ -41,6 +41,7 @@ class StatsController extends Controller
         return [
             'heatmap' => $this->heatmap(),
             'growth' => $this->growth(),
+            'kpi_trend' => $this->kpiTrend(),
             'certainty' => $this->certainty($totalNodes),
             'per_area' => $this->perArea(),
             'counts' => [
@@ -128,6 +129,68 @@ class StatsController extends Controller
      *
      * @return array{labels: list<string>, values: list<int>}
      */
+    /**
+     * 30-dňový trend pre štyri KPI karty obrazovky Dnes (kontrakt 28. 8. 2026, E4).
+     *
+     * `points` sú DENNÉ PRÍRASTKY, nie kumulácia: karta už nesie celkové číslo
+     * veľkým textom, takže sparkline vedľa neho má povedať tvar diania, nie ten
+     * istý súčet druhýkrát. `week` je súčet posledných siedmich dní — to je tá
+     * „+65 tento týždeň" delta na karte.
+     *
+     * Prečo štyri samostatné dotazy a nie jeden UNION: každé KPI počíta nad inou
+     * tabuľkou alebo iným filtrom (hrany, uzly z mozgu, uzly zo sessions,
+     * rozhodnutia), takže UNION by musel zjednotiť štyri rôzne WHERE a stal by
+     * sa nečitateľným. Sú to štyri GROUP BY nad indexovaným `created_at` na
+     * 30-dňovom okne, nie plný sken.
+     *
+     * `DATE()` a doplnenie chýbajúcich dní v PHP je tá istá disciplína ako
+     * v `growth()` a `heatmap()`: žiadny DATE_FORMAT / strftime rozkol medzi
+     * MariaDB a sqlite.
+     *
+     * TENTO KĽÚČ NIE JE V `fieldsForAi()` a je to rozhodnutie, nie opomenutie —
+     * presne z toho istého dôvodu ako heatmapa: je to 120 čísel, ktoré nesú
+     * TVAR, nie fakt. Fakty (celkové počty, prírastok za týždeň) má AI
+     * v `counts` a `week_added`.
+     *
+     * @return array<string, array{points: list<int>, week: int}>
+     */
+    private function kpiTrend(): array
+    {
+        $days = 30;
+        $from = today()->subDays($days - 1);
+
+        /** @var array<string, \Illuminate\Database\Eloquent\Builder> $sources */
+        $sources = [
+            'edges' => Edge::query(),
+            'playbooks' => Node::query()->where('origin', 'brain'),
+            'records' => Node::query()->where('source', 'session'),
+            'decisions' => Decision::query(),
+        ];
+
+        $out = [];
+        foreach ($sources as $key => $query) {
+            $perDay = $query
+                ->where('created_at', '>=', $from)
+                ->selectRaw('DATE(created_at) as d, COUNT(*) as c')
+                ->groupBy('d')
+                ->pluck('c', 'd');
+
+            $points = [];
+            $day = $from->copy();
+            for ($i = 0; $i < $days; $i++) {
+                $points[] = (int) ($perDay[$day->toDateString()] ?? 0);
+                $day->addDay();
+            }
+
+            $out[$key] = [
+                'points' => $points,
+                'week' => array_sum(array_slice($points, -7)),
+            ];
+        }
+
+        return $out;
+    }
+
     private function growth(): array
     {
         $monthsBack = 11;

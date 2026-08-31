@@ -4797,6 +4797,15 @@ button.hero-action:hover { border-color: var(--accent); }
     background: var(--cl-c, var(--muted));
 }
 .cert-legend .cl-name { flex: 1; min-width: 0; }
+/* Percento stojí PRED počtom a je utlmenejšie: počet je fakt, percento jeho
+   kontext. Obe sú mono a tabulárne, takže stĺpce v legende stoja pod sebou.
+   Nulové zmenšovanie na oboch — pri úzkej karte sa má skrátiť NÁZOV (ten má
+   `flex: 1` a `min-width: 0`), nie číslo. */
+.cert-legend .cl-pct {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    letter-spacing: var(--ls-mono); color: var(--muted);
+    font-size: var(--fs-chart-axis); flex-shrink: 0;
+}
 .cert-legend .cl-n {
     font-family: var(--mono); font-variant-numeric: tabular-nums;
     letter-spacing: var(--ls-mono); color: var(--muted); flex-shrink: 0;
@@ -5893,6 +5902,309 @@ button, input, select {
 .dtl-dot[data-status="done"] { background: var(--run-done); }
 .dtl-dot[data-status="aborted"] { background: var(--run-aborted); }
 
+/* INLINE POTVRDENIE (kontrakt 28. 8. 2026, J2) — pozri inlineOk() v util.js.
+   Potvrdenie stojí PRI prvku, ktorý akciu vyvolal, a nesie ho text, nie ikona:
+   „Skopírované" povie, čo sa stalo, fajka len to, že sa niečo stalo.
+
+   Farba je --success-ink (rola pre TEXT na papieri), nie --success (rola pre
+   výplň) — na nezafarbenom povrchu by výplňová hodnota nedržala kontrast.
+   Podfarbenie ZÁMERNE nemá: je to jedna veta na jeden a pol sekundy a badge by
+   z nej urobil trvalý stav plochy. */
+.inline-ok {
+    display: inline-flex; align-items: center;
+    margin-inline-start: var(--sp-1);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    color: var(--success-ink);
+    white-space: nowrap;
+    animation: inline-ok-in var(--dur-base) var(--ease) both;
+}
+@keyframes inline-ok-in {
+    from { opacity: 0; transform: translateX(calc(var(--motion-shift) * -0.5)); }
+    to { opacity: 1; transform: none; }
+}
+/* Tichá verzia je ZMYSLUPLNÝ okamžitý ekvivalent, nie „vypnuté": potvrdenie sa
+   objaví hneď a celé. `animation: none` by ho nechalo na `opacity: 0` z `both`,
+   teda by potvrdenie v tichom režime NEBOLO VIDNO vôbec.
+   `!important` je povinné: plošná podlaha nižšie píše `animation-duration` a
+   `animation-iteration-count` s `!important`, a `!important` deklarácie súťažia
+   špecificitou — trieda (0-1-0) prebíja `*` (0-0-0). */
+@media (prefers-reduced-motion: reduce) {
+    .inline-ok { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
+/* ===========================================================================
+   GRAFY — SPOLOČNÝ JAZYK (kontrakt 28. 8. 2026, F1–F5)
+   ===========================================================================
+   `.chart-axis` (vyššie) bola prvá spoločná časť; toto je zvyšok. Mriežka,
+   legenda, tooltip, prázdny stav a prepínač období majú JEDNU kresbu pre
+   všetky typy grafov. Nový graf ich použije — vlastná os alebo vlastná legenda
+   je presne to, čím sa tri grafy pred vlnou 1 rozišli.
+
+   TOKEN MRIEŽKY je vlastný (`--chart-grid`), nie `--line-soft`: mriežka je
+   súčasť jazyka grafov a musí sa dať posunúť bez toho, aby sa pohli rámy
+   kariet. Hodnota je dnes zhodná — a to je v poriadku, alias s dôvodom nie je
+   duplicita.
+   =========================================================================== */
+:root {
+    --chart-grid: var(--line-soft);
+    --chart-tip-bg: var(--surface-2);
+}
+
+.chart-grid line {
+    stroke: var(--chart-grid);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+/* ---- legenda ---- */
+.chart-legend {
+    display: flex; flex-wrap: wrap;
+    gap: var(--sp-0h) var(--sp-2);
+    margin-top: var(--sp-1);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-chart-axis);
+    color: var(--text-secondary);
+}
+.chart-legend-item { display: inline-flex; align-items: center; gap: var(--sp-0h); }
+/* Swatch je PRSTENEC, nie plný disk — tá istá vizuálna sémantika ako na plátne
+   grafu (docs/BRAND-HADES.md §2: plné disky v legende učili zle). Výnimka je
+   donut a heatmapa, ktoré kreslia plochu, nie uzly; tie si swatch nastavujú
+   inline `background` a tento základ prepíšu. */
+.chart-legend-sw {
+    width: 10px; height: 10px;
+    border-radius: var(--r-pill);
+    flex: none;
+}
+
+/* ---- tooltip ----
+   Jeden prvok na dokument (viď tipEl() v charts.js). `pointer-events: none` je
+   podmienka, nie kozmetika: tooltip stojí pod kurzorom a bez toho by si bral
+   `mouseleave` prvku, nad ktorým visí, a blikal by. */
+.chart-tip {
+    position: fixed;
+    z-index: var(--z-tooltip);
+    pointer-events: none;
+    opacity: 0;
+    max-width: 260px;
+    padding: var(--sp-0h) var(--sp-1);
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: var(--chart-tip-bg);
+    color: var(--text);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    box-shadow: var(--elev-tooltip);
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.chart-tip.on { opacity: 1; }
+.chart-tip b { font-weight: var(--fw-semibold); }
+
+/* ---- prázdny stav grafu ----
+   NIE `.empty`: prázdny graf nie je prázdna obrazovka, nemá ikonu ani akciu.
+   `min-height` drží výšku karty, aby zmiznutie kresby nespôsobilo skok layoutu. */
+.chart-empty {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 90px;
+    padding: var(--sp-2);
+    color: var(--muted);
+    font-size: var(--fs-data);
+    text-align: center;
+}
+
+/* ---- prepínač období ---- */
+.chart-periods { display: inline-flex; gap: 2px; }
+.chart-period {
+    font-family: var(--mono);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-control);
+    padding: 2px var(--sp-1);
+    min-height: auto;
+    color: var(--muted);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+}
+.chart-period:hover { color: var(--text); border-color: var(--border); }
+/* Aktívne obdobie nesie stav v `aria-pressed`, takže CSS ho číta ODTIAĽ a nie
+   z vlastnej triedy — jeden nosič stavu, a ten je zároveň v strome prístupnosti. */
+.chart-period[aria-pressed="true"] {
+    color: var(--accent-ink);
+    border-color: var(--border-accent);
+    background: var(--accent-hover-wash);
+}
+
+/* ---- sparkline ----
+   Bez osí a bez tooltipu: je to tvar trendu vedľa čísla. Farbu nesie `data-trend`,
+   teda rola z dátovej palety (B3), nie natvrdo zapísaná zelená/červená. */
+.spark { width: 100%; height: 24px; display: block; }
+.spark-line {
+    fill: none;
+    stroke: var(--trend-flat);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.spark-area { fill: var(--trend-flat); opacity: .10; stroke: none; }
+.spark[data-trend="up"] .spark-line { stroke: var(--trend-up); }
+.spark[data-trend="up"] .spark-area { fill: var(--trend-up); }
+.spark[data-trend="down"] .spark-line { stroke: var(--trend-down); }
+.spark[data-trend="down"] .spark-area { fill: var(--trend-down); }
+
+/* ---- scatter ----
+   Body sú PRSTENCE (fill: none), nie disky — priehľadnosť nesie diera, takže sa
+   prekrývajúce body dajú prečítať. Je to to isté pravidlo ako na plátne grafu. */
+.scatter-dots { opacity: 0; transition: opacity var(--dur-chart-reveal) var(--ease); }
+.scatter-dots.in { opacity: 1; }
+.scatter-dot {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+.scatter-dot:hover { stroke: var(--accent-ink); stroke-width: 2.5; }
+
+/* ---- toky ----
+   Stuha je OBTAH s veľkou hrúbkou, nie výplň: hrúbka = hodnota, takže sa
+   nemusí počítať obrys plochy a stuha drží šírku aj pri zmene viewBoxu. */
+.flow-ribbons { opacity: 0; transition: opacity var(--dur-chart-curve) var(--ease); }
+.flow-ribbons.in { opacity: 1; }
+.flow-ribbon {
+    fill: none;
+    stroke: var(--accent);
+    opacity: .28;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+.flow-ribbon:hover { opacity: .62; }
+.flow-node { fill: var(--text-secondary); }
+
+/* Tichá verzia: kresba je hotová OKAMŽITE, nie nenakreslená. Plošná podlaha
+   `prefers-reduced-motion` skráti prechody na .01 ms, takže `.in` dosadne v tom
+   istom rámci — tu preto stačí PRIPNÚŤ konečný stav pre prípad, že by trieda
+   `.in` z nejakého dôvodu nepribehla (napr. rAF stojí mimo Grafu). */
+@media (prefers-reduced-motion: reduce) {
+    .scatter-dots, .flow-ribbons { opacity: 1 !important; transition: none !important; }
+}
+
+/* ---------------------------------------------------------------------------
+   KPI: DELTA A SPARKLINE (kontrakt 28. 8. 2026, E4)
+
+   `.kpi-card` je zámerne rad s účiarovým zarovnaním a `flex-wrap` (číslo vedľa
+   popisku). Delta a sparkline preto NEMENIA jeho základ — berú si celý riadok
+   cez `flex-basis: 100%`, takže existujúce volajúce karty (panel grafu,
+   `.kpi-card--block`) zostávajú nedotknuté.
+   --------------------------------------------------------------------------- */
+.kpi-delta {
+    flex: 0 0 100%;
+    font-family: var(--mono);
+    font-size: var(--fs-chart-axis);
+    line-height: var(--lh-chart-axis);
+    letter-spacing: var(--ls-mono);
+    color: var(--trend-flat);
+}
+.kpi-delta[data-trend="up"] { color: var(--trend-up); }
+/* `data-trend="down"` tu ZÁMERNE nie je: štyri metriky tejto mriežky (uzly,
+   hrany, playbooky, rozhodnutia) sa len pridávajú, takže klesnúť nemôžu.
+   Červená pri metrike, ktorá nemôže spadnúť, je výstraha bez obsahu. Rola
+   --trend-down existuje pre metriky, ktoré klesať vedia. */
+
+/* Popisok delty je CHRÓM, takže zostáva mikro a utlmený — zdvih dátového textu
+   na 13 px sa ho netýka (viď blok rolových tokenov hustoty). */
+.kpi-delta-lbl {
+    font-family: var(--font);
+    font-size: var(--fs-micro);
+    letter-spacing: normal;
+    color: var(--muted);
+}
+
+.kpi-spark {
+    flex: 0 0 100%;
+    margin-top: var(--sp-0);
+    /* Výška je tu a nie v JS: rozmer napísaný v JS je pre CSSOM neviditeľný a
+       žiadna asercia ho nenájde — presne tak vznikol inline font-size na osi
+       grafu (viď komentár pri .chart-axis). */
+    height: 24px;
+}
+
+/* ---------------------------------------------------------------------------
+   DNEŠNÝ FOKUS (kontrakt 28. 8. 2026, E5 + E6)
+
+   Sekcia stojí hneď pod hlavným číslom a hlási JEDINÚ vec: čo čaká na človeka.
+   Nie je to karta dashboardu (`.dash-card`) — nemá graf ani metriku, je to
+   zoznam s akciami. A nie je to `.today-list` — riadok nesie DVE tlačidlá, nie
+   jeden preklik, takže mriežka riadka je iná.
+   --------------------------------------------------------------------------- */
+.focus-list { display: flex; flex-direction: column; gap: 2px; }
+
+.focus-row {
+    display: flex; align-items: center; gap: var(--sp-1);
+    padding: var(--sp-0h) var(--sp-1);
+    border-radius: var(--r-sm);
+    background: var(--card-bg);
+    border: 1px solid var(--line-soft);
+}
+.focus-row:hover { border-color: var(--border); }
+
+/* Otvorenie uzla berie zvyšok riadka, takže sa dá kliknuť kamkoľvek mimo akcií. */
+.focus-open {
+    flex: 1 1 auto; min-width: 0;
+    display: flex; align-items: baseline; gap: var(--sp-1);
+    background: none; border: none; padding: 0;
+    min-height: auto;
+    text-align: left;
+    color: var(--text);
+}
+.focus-title {
+    flex: 1 1 auto; min-width: 0;
+    font-size: var(--fs-data);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Oblasť je CHRÓM, teda mikro a utlmená — nesúťaží s názvom poznatku. */
+.focus-area {
+    flex: none;
+    font-size: var(--fs-micro);
+    color: var(--muted);
+}
+
+.focus-acts { flex: none; display: flex; gap: var(--sp-0); }
+.focus-act {
+    font-size: var(--fs-caption);
+    line-height: var(--lh-control);
+    padding: 2px var(--sp-1);
+    min-height: auto;
+}
+
+/* „a ďalších N v Kontrole" je pokračovanie zoznamu, nie tlačidlo akcie —
+   preto odkazová kresba a nie rám. */
+.focus-more {
+    align-self: flex-start;
+    margin-top: var(--sp-0h);
+    padding: 0;
+    background: none; border: none;
+    min-height: auto;
+    font-size: var(--fs-caption);
+    color: var(--accent-ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.focus-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
+/* Čip vedie NA INÚ PLOCHU (Charón, Runy), takže nesie ikonu — na rozdiel od
+   `.today-chip`, ktorý len nasadí filter na Denníku. */
+.focus-chip {
+    display: inline-flex; align-items: center; gap: var(--sp-0h);
+    padding: var(--sp-0) var(--sp-1);
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line-soft);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    font-size: var(--fs-caption);
+    min-height: auto;
+    text-decoration: none;
+}
+.focus-chip:hover { border-color: var(--border-accent); color: var(--text); }
+
 /* ===========================================================================
    RESPONSIVE — jeden blok na hranicu, a obe hranice na konci súboru
    ===========================================================================
@@ -6088,6 +6400,13 @@ button, input, select {
 
     /* Hlavička sa posúva na celú šírku (rail už nie je vľavo). */
     #app-header, #screens { left: var(--edge); }
+
+    /* Pod 768 px sa riadok láme: akcie idú pod názov, aby na 375 px nezostal na
+       názov jediný znak a výpustka. */
+
+    .focus-row { flex-wrap: wrap; }
+    .focus-open { flex: 1 1 100%; }
+    .focus-acts { margin-left: auto; }
 }
 
 /* „Viac" je piaty stĺpec spodnej lišty a NIKDE INDE neexistuje. Skrýva ho CSS
@@ -6106,188 +6425,3 @@ button, input, select {
    o scéne, ktorá tam nie je vidieť. Pravidlo je nad hranicou 1280 (ktorá ich
    skrýva pri úzkom okne) zámerne — tá rieši miesto, toto význam. */
 body:not([data-screen="graf"]) #header-metrics { display: none; }
-
-/* INLINE POTVRDENIE (kontrakt 28. 8. 2026, J2) — pozri inlineOk() v util.js.
-   Potvrdenie stojí PRI prvku, ktorý akciu vyvolal, a nesie ho text, nie ikona:
-   „Skopírované" povie, čo sa stalo, fajka len to, že sa niečo stalo.
-
-   Farba je --success-ink (rola pre TEXT na papieri), nie --success (rola pre
-   výplň) — na nezafarbenom povrchu by výplňová hodnota nedržala kontrast.
-   Podfarbenie ZÁMERNE nemá: je to jedna veta na jeden a pol sekundy a badge by
-   z nej urobil trvalý stav plochy. */
-.inline-ok {
-    display: inline-flex; align-items: center;
-    margin-inline-start: var(--sp-1);
-    font-size: var(--fs-caption);
-    line-height: var(--lh-caption);
-    color: var(--success-ink);
-    white-space: nowrap;
-    animation: inline-ok-in var(--dur-base) var(--ease) both;
-}
-@keyframes inline-ok-in {
-    from { opacity: 0; transform: translateX(calc(var(--motion-shift) * -0.5)); }
-    to { opacity: 1; transform: none; }
-}
-/* Tichá verzia je ZMYSLUPLNÝ okamžitý ekvivalent, nie „vypnuté": potvrdenie sa
-   objaví hneď a celé. `animation: none` by ho nechalo na `opacity: 0` z `both`,
-   teda by potvrdenie v tichom režime NEBOLO VIDNO vôbec.
-   `!important` je povinné: plošná podlaha nižšie píše `animation-duration` a
-   `animation-iteration-count` s `!important`, a `!important` deklarácie súťažia
-   špecificitou — trieda (0-1-0) prebíja `*` (0-0-0). */
-@media (prefers-reduced-motion: reduce) {
-    .inline-ok { animation: none !important; opacity: 1 !important; transform: none !important; }
-}
-
-/* ===========================================================================
-   GRAFY — SPOLOČNÝ JAZYK (kontrakt 28. 8. 2026, F1–F5)
-   ===========================================================================
-   `.chart-axis` (vyššie) bola prvá spoločná časť; toto je zvyšok. Mriežka,
-   legenda, tooltip, prázdny stav a prepínač období majú JEDNU kresbu pre
-   všetky typy grafov. Nový graf ich použije — vlastná os alebo vlastná legenda
-   je presne to, čím sa tri grafy pred vlnou 1 rozišli.
-
-   TOKEN MRIEŽKY je vlastný (`--chart-grid`), nie `--line-soft`: mriežka je
-   súčasť jazyka grafov a musí sa dať posunúť bez toho, aby sa pohli rámy
-   kariet. Hodnota je dnes zhodná — a to je v poriadku, alias s dôvodom nie je
-   duplicita.
-   =========================================================================== */
-:root {
-    --chart-grid: var(--line-soft);
-    --chart-tip-bg: var(--surface-2);
-}
-
-.chart-grid line {
-    stroke: var(--chart-grid);
-    stroke-width: 1;
-    vector-effect: non-scaling-stroke;
-}
-
-/* ---- legenda ---- */
-.chart-legend {
-    display: flex; flex-wrap: wrap;
-    gap: var(--sp-0h) var(--sp-2);
-    margin-top: var(--sp-1);
-    font-size: var(--fs-chart-axis);
-    line-height: var(--lh-chart-axis);
-    color: var(--text-secondary);
-}
-.chart-legend-item { display: inline-flex; align-items: center; gap: var(--sp-0h); }
-/* Swatch je PRSTENEC, nie plný disk — tá istá vizuálna sémantika ako na plátne
-   grafu (docs/BRAND-HADES.md §2: plné disky v legende učili zle). Výnimka je
-   donut a heatmapa, ktoré kreslia plochu, nie uzly; tie si swatch nastavujú
-   inline `background` a tento základ prepíšu. */
-.chart-legend-sw {
-    width: 10px; height: 10px;
-    border-radius: var(--r-pill);
-    flex: none;
-}
-
-/* ---- tooltip ----
-   Jeden prvok na dokument (viď tipEl() v charts.js). `pointer-events: none` je
-   podmienka, nie kozmetika: tooltip stojí pod kurzorom a bez toho by si bral
-   `mouseleave` prvku, nad ktorým visí, a blikal by. */
-.chart-tip {
-    position: fixed;
-    z-index: var(--z-tooltip);
-    pointer-events: none;
-    opacity: 0;
-    max-width: 260px;
-    padding: var(--sp-0h) var(--sp-1);
-    border-radius: var(--r-sm);
-    border: 1px solid var(--border);
-    background: var(--chart-tip-bg);
-    color: var(--text);
-    font-size: var(--fs-caption);
-    line-height: var(--lh-caption);
-    box-shadow: var(--elev-tooltip);
-    transition: opacity var(--dur-fast) var(--ease);
-}
-.chart-tip.on { opacity: 1; }
-.chart-tip b { font-weight: var(--fw-semibold); }
-
-/* ---- prázdny stav grafu ----
-   NIE `.empty`: prázdny graf nie je prázdna obrazovka, nemá ikonu ani akciu.
-   `min-height` drží výšku karty, aby zmiznutie kresby nespôsobilo skok layoutu. */
-.chart-empty {
-    display: flex; align-items: center; justify-content: center;
-    min-height: 90px;
-    padding: var(--sp-2);
-    color: var(--muted);
-    font-size: var(--fs-data);
-    text-align: center;
-}
-
-/* ---- prepínač období ---- */
-.chart-periods { display: inline-flex; gap: 2px; }
-.chart-period {
-    font-family: var(--mono);
-    font-size: var(--fs-chart-axis);
-    line-height: var(--lh-control);
-    padding: 2px var(--sp-1);
-    min-height: auto;
-    color: var(--muted);
-    background: none;
-    border: 1px solid transparent;
-    border-radius: var(--r-sm);
-}
-.chart-period:hover { color: var(--text); border-color: var(--border); }
-/* Aktívne obdobie nesie stav v `aria-pressed`, takže CSS ho číta ODTIAĽ a nie
-   z vlastnej triedy — jeden nosič stavu, a ten je zároveň v strome prístupnosti. */
-.chart-period[aria-pressed="true"] {
-    color: var(--accent-ink);
-    border-color: var(--border-accent);
-    background: var(--accent-hover-wash);
-}
-
-/* ---- sparkline ----
-   Bez osí a bez tooltipu: je to tvar trendu vedľa čísla. Farbu nesie `data-trend`,
-   teda rola z dátovej palety (B3), nie natvrdo zapísaná zelená/červená. */
-.spark { width: 100%; height: 24px; display: block; }
-.spark-line {
-    fill: none;
-    stroke: var(--trend-flat);
-    stroke-width: 1.5;
-    vector-effect: non-scaling-stroke;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-.spark-area { fill: var(--trend-flat); opacity: .10; stroke: none; }
-.spark[data-trend="up"] .spark-line { stroke: var(--trend-up); }
-.spark[data-trend="up"] .spark-area { fill: var(--trend-up); }
-.spark[data-trend="down"] .spark-line { stroke: var(--trend-down); }
-.spark[data-trend="down"] .spark-area { fill: var(--trend-down); }
-
-/* ---- scatter ----
-   Body sú PRSTENCE (fill: none), nie disky — priehľadnosť nesie diera, takže sa
-   prekrývajúce body dajú prečítať. Je to to isté pravidlo ako na plátne grafu. */
-.scatter-dots { opacity: 0; transition: opacity var(--dur-chart-reveal) var(--ease); }
-.scatter-dots.in { opacity: 1; }
-.scatter-dot {
-    fill: none;
-    stroke: var(--accent);
-    stroke-width: 1.5;
-    vector-effect: non-scaling-stroke;
-}
-.scatter-dot:hover { stroke: var(--accent-ink); stroke-width: 2.5; }
-
-/* ---- toky ----
-   Stuha je OBTAH s veľkou hrúbkou, nie výplň: hrúbka = hodnota, takže sa
-   nemusí počítať obrys plochy a stuha drží šírku aj pri zmene viewBoxu. */
-.flow-ribbons { opacity: 0; transition: opacity var(--dur-chart-curve) var(--ease); }
-.flow-ribbons.in { opacity: 1; }
-.flow-ribbon {
-    fill: none;
-    stroke: var(--accent);
-    opacity: .28;
-    transition: opacity var(--dur-fast) var(--ease);
-}
-.flow-ribbon:hover { opacity: .62; }
-.flow-node { fill: var(--text-secondary); }
-
-/* Tichá verzia: kresba je hotová OKAMŽITE, nie nenakreslená. Plošná podlaha
-   `prefers-reduced-motion` skráti prechody na .01 ms, takže `.in` dosadne v tom
-   istom rámci — tu preto stačí PRIPNÚŤ konečný stav pre prípad, že by trieda
-   `.in` z nejakého dôvodu nepribehla (napr. rAF stojí mimo Grafu). */
-@media (prefers-reduced-motion: reduce) {
-    .scatter-dots, .flow-ribbons { opacity: 1 !important; transition: none !important; }
-}
