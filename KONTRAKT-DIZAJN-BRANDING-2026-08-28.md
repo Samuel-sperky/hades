@@ -238,6 +238,74 @@ Všetko nižšie. Čo tu nie je menované, do rozsahu nepatrí.
   príkaze ako dump, dump zlyhal na heslo a 0-bajtový súbor sa počítal ako najnovšia
   záloha. Nenávratné; nová záloha je overená (17,7 MB, obsahuje `areas`).
 
-## Výsledok
+## Výsledok (28. 8. 2026)
 
-(doplní sa po behu)
+Branch `feat/hades-redesign`, **10 commitov** `e881226..78f373b`, 77 súborov,
++4923 / −900 riadkov. Testy: **596 passed, 45 skipped** (sqlite collation),
+mariadb filter **112 passed / 932 asercií**. Odpushnuté.
+
+### Čo je hotové
+
+| Bod | Stav | Dôkaz |
+|---|---|---|
+| A1 evolúcia znaku | hotové | master sa **generuje z mini**; prstenec r 36/9 a jadro r 15 sú v oboch výkresoch tie isté hodnoty (overené parsovaním) |
+| A2 wordmark | inak, než znel | wordmark v krivkách v repe už bol; A2 sa plní tým, že mu **lockupy konečne drží generátor** — nový logotyp sa nekreslil |
+| A3 ikonová sada | hotové | favicon, `.ico` (16–256), apple-touch, mono; regenerované, determinizmus overený |
+| A4 mýtus ubrať | hotové | 0 zásahov prvej osoby v `public/js` |
+| A5 jedna značka, A6 bez splashu | hotové | bez zmeny (už platilo) |
+| B1 svetlá parita | hotové | všetko nové zmerané na oboch témach |
+| B3 dátová paleta | hotové | 8 rolí `--run-*` / `--trend-*`; `running` už nie je tá istá farba ako `waiting` |
+| B4 tóny oblastí | hotové | odstup **32° → 60°**, kontrast nezhoršený (najhoršie −0,04) |
+| C4 čítací režim | hotové | `.md-body` 16 px / 1,7 / 72ch |
+| C5 mikrotypografia | hotové | **116 → 0** zásahov z 856 UI reťazcov |
+| C6 tabular-nums | už platilo | globálne na `body` |
+| D1 rail + bottom-bar | hotové | 5 cieľov po 75 px na 375 px, inset zdola 72 px |
+| D2 metriky len na Grafe | hotové | `block` na Grafe, `none` na Denníku |
+| D3 command palette | hotové | 9 destinácií + 3 akcie + 5 vlákien; filtrovanie zmerané |
+| E1 kompaktný zoznam | hotové | sessions používajú ten istý riadok ako záznamy |
+| E2 heatmapa, E3 donut | hotové | spoločný tooltip; legenda s percentom |
+| E4 KPI sparkline + delta | hotové | nový `kpi_trend` (30 denných bodov na KPI) |
+| E5 inline overenie | hotové | zmerané: 3→2 riadky, hero 4→3, **0 toastov** |
+| E6 sekcia fokus | hotové | „Čaká na teba" — fronta, zápisy, otvorené behy |
+| F1–F5 grafy | hotové | spoločná os/mriežka/legenda/tooltip/prázdny stav + sekcia v manuáli |
+| G1 tabuľky | hotové | Runy 7 stĺpcov, Rozhodnutia 4 |
+| G2 filtre | hotové | uložené filtre v `localStorage`, meno z obsahu |
+| G3 „ďalších 50" | čiastočne | kreslí sa len tam, kde je celkový počet ZNÁMY (viď Otvorené) |
+| G6 detail v paneli | hotové | `#rec-panel` + kľúč obrazovky v adrese |
+| H2–H6 chat | hotové / už platilo | prepínač modelu je nový; prílohy, diktovanie, profil, návrhy už boli |
+| I1, I4, I5 graf | už platilo | halo, prstenec zrodu, pulzy, štvorúrovňový breadcrumb, jeden dok |
+| I2 panel uzla | hotové | inline štýly z JS do CSS + akcia „Overiť" |
+| J2 notifikácie | hotové | 85 → 69 toastov, 5 inline, politika v manuáli, grep 0 zásahov |
+| J3 onboarding | hotové | 42 r. CSS, 34 JS, 7 markup, kľúč `hades.hints2` — zmazané |
+| J4 mobil | hotové | bez pretečenia na 6 obrazovkách; tabuľky pod 768 px zahodia 4 stĺpce |
+| J5 Electron titlebar | už platilo | `frame: false` + vlastný `WebContentsView` |
+| J6 AAA | hotové s výnimkami | 7 ink rolí na ≥ 7,12; `--muted` a odznaky na tinte zostávajú na AA — **pomenované v manuáli §4** |
+
+### Čo NIE JE hotové a prečo
+
+1. **G1 pre Rozhodnutia bol v kontrakte chybne.** Menoval stĺpce „Projekt"
+   a „Istota"; v tabuľke `decisions` **neexistujú**. Kontrakt som písal z odpovedí
+   bez kontroly schémy — oprava je zapísaná pri G1.
+2. **G3 „ďalších 50" nekreslí počet, keď ho server nevie.** `/api/runs` posiela
+   `counts` nad celou tabuľkou bez filtrov, takže pri filtri podľa modelu by
+   „N z M" bola lož. Chce to `sort`/`dir` a filtrovaný počet v `RunsScreen`.
+3. **F2 scatter a flows nemá kto volať.** Sú v jazyku grafov a overené meraním,
+   ale žiadna obrazovka dvojrozmerný pohľad ani tok nežiada — vymyslieť pre ne
+   kartu je rozhodnutie o produkte, ktoré sekcia E nekryje. Priznané v manuáli §14.
+4. **I3 „jeden zasúvací dock" mal chybnú premisu.** Kontrakt hovoril „namiesto
+   plávajúcich panelov"; dok je JEDEN už dnes, len prepínače má v hlavičke.
+   Tabmi vnútri by vznikol druhý ovládač toho istého stavu.
+5. **Triedenie tabuliek nie je v adrese** — `urlstate.js` pre ňu nemá kľúč a
+   vymyslieť si ho znamená kľúč, ktorý nikto nevaliduje.
+
+### Vecné škody, ktoré tento beh spôsobil
+
+- **Zmazané tri staršie zálohy DB.** Rotácia „drž posledné 3" bežala v tom istom
+  príkaze ako dump, dump zlyhal na heslo a 0-bajtový súbor sa počítal za najnovšiu
+  zálohu. Nenávratné. Nová záloha je overená (17,7 MB, obsahuje `areas`).
+- **Pri testovaní inline overenia bol reálne vyriešený poznatok 579**
+  (`hades-ngrok-tunel`); príznak bol vrátený, fronta je opäť 4.
+- **Mikrotypografický sweep prepísal aj komentáre**, nie len UI reťazce
+  (regexové literály mu otvorili falošný reťazec). Štyri pokazené úvodzovky
+  v `util.js` opravené; nedeliteľné medzery v komentároch ponechané (v slovenskej
+  próze sú správne).

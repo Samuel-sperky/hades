@@ -566,6 +566,113 @@ a výsledky toolov, kam MCP predtým nevidelo. Dáta nové nie sú, ale ak sa do
 vloží tajomstvo, vedie k nemu odteraz aj táto cesta. Redakcia cez `SecretScanner`
 sa nezaviedla — na ploche AI by rozbila paritu.
 
+### Tabuľky záznamov (od 28. 8. 2026)
+
+**Appka mala do tejto vlny nula tabuliek** — jediný `<table>` v repe bola textová
+alternatíva heatmapy. Runy a Rozhodnutia sú odteraz `<table class="rec-table">`
+z **`public/js/mind/table.js`**, Denník zostáva kartový (naratívna os, nie stĺpce).
+
+- `renderTable(container, columns, opts)` — stĺpec je `{key, label, kind?, width?,
+  cell?, sortValue?, titleFrom?}`. `kind: 'num'` zarovná vpravo a nasadí mono +
+  tabulárne číslice.
+- **`sortValue` je povinné, keď sa zobrazená hodnota nedá porovnať.** Zaplatené:
+  surové ISO `started_at` nesie offset `+02:00`, takže jeho abecedné poradie NIE JE
+  chronologické; „53 s" je ako text pred „6 min"; text rozhodnutia nesie
+  `backticky` (4 zo 41 živých riadkov), takže by sa zoradil inde, než kam ho oko
+  čaká. Radenie je stabilné a nečíselné ide cez `localeCompare('sk')` — bez toho
+  „Č" skončí za „Z" presne na slovenských popiskoch.
+- **`titleFrom(row)` priznáva rez.** Cely sú `overflow: hidden` s výpustkou, takže
+  plný text musí byť dosiahnuteľný. Dopisovať `title` ťahom po hotovej kresbe je
+  druhý prechod nad tým istým DOM a pri novom stĺpci sa zabudne.
+- **`table-layout: fixed` je podmienka, nie optimalizácia:** bez neho prehliadač
+  prepočíta šírky z obsahu a „Ďalších 50" prehodí stĺpce pod rukou.
+- **Šírky stĺpcov: `rem` tam, kde obsah nerastie, percento tam, kde rastie.**
+  `min(7.5rem, 22%)` prehliadač v `table-layout: fixed` ZAHODÍ (zmerané: všetky
+  stĺpce dostali rovnakých 125,5 px).
+- Stĺpce sa adresujú triedou **`col-<key>`**, nie `:nth-child` — poradie sa medzi
+  obrazovkami líši a index je väzba, ktorá sa ticho rozíde. Pod 768 px sa tým
+  skrývajú `model`, `tool_profile`, `tokens_out`, `origin`: Runy mali 7 stĺpcov
+  v 311 px, teda 44 px na stĺpec (zmerané), bez pretečenia — teda nie „rozpadnuté",
+  ale ani použiteľné.
+- **`moreRow()` nekreslí nič, keď celkový počet nie je známy.** `/api/runs` posiela
+  `counts` nad celou tabuľkou BEZ filtrov, takže pri filtri podľa modelu by
+  „N z M" bola lož. Priznanie počtu je vtedy lepšie vynechať.
+- **Uložené filtre žijú v `localStorage`** (`hades.filters.<obrazovka>`), nie v DB:
+  filter je pohľad na dáta, nie dáta. Meno si filter skladá z vlastného obsahu —
+  natívny `prompt()` by bol jediné modálne okno v celej appke.
+
+### Detail záznamu — jeden pravý panel
+
+**`public/js/mind/recpanel.js`**, markup `#rec-panel` v `mind.blade.php`, geometriu
+dedí z `#node-panel` (spoločné pravidlo v CSS, aby `camInsets()` čítalo `--panel-w`
+raz).
+
+- **Adresu nesie kľúč OBRAZOVKY** (`ruo` pre Runy, `roo` pre Rozhodnutia), nie
+  vlastný kľúč panelu. Kľúče v `urlstate.js` sú viazané na obrazovku, takže sa pri
+  prepnutí zahodia samy a dva panely sa v jednej adrese otvoriť nedajú.
+- **`onRecPanelClose(ns, fn)` je API, nie pohodlie.** Panel sa zatvára TROMI cestami
+  (krížik, Esc, `dropRecPanel()` pri prepnutí obrazovky) a bez ohlásenia obe
+  obrazovky sledovali DÔSLEDOK: jedna `MutationObserver`om nad triedou panelu, druhá
+  párom listenerov so `setTimeout(0)`. Sledovanie dôsledku funguje, kým nepribudne
+  štvrtá cesta k zavretiu.
+- **Zvýraznenie otvoreného riadka sa mení NA MIESTE, nie prekreslením tabuľky.**
+  `renderTable()` prepíše `innerHTML`, takže odložený `document.activeElement`
+  v `recpanel.js` by bol odpojený a Esc by fokus nevrátil nikam.
+
+### Notifikácie — tri prípady, nič medzi nimi
+
+Politika je v `docs/BRAND-HADES.md` §8. Skrátene: **viditeľná zmena plochy hlási
+sama** (nekreslí sa nič), **akcia bez viditeľnej zmeny** hlási inline pri pôvode
+(`inlineOk()` v `util.js`), **zlyhanie a udalosť mimo obrazovky** je toast.
+Menované výnimky: nevratná akcia, hromadná zmena a toast nesúci `nodeId`.
+
+**Zlyhanie MUSÍ mať variant `'error'`** a dá sa to zmerať:
+
+```
+grep -rn "showToast(" public/js/mind/ | grep -v toasts.js \
+  | grep -iE "nepodaril|zlyhal|nenašl|vypršal|zamknut" | grep -v "'error'"
+```
+
+Stav 28. 8. 2026: **0 zásahov** (43 error, 6 warn, 3 success, 17 neutrálnych,
+5 inline — 69 toastov proti pôvodným 85). Vzor musí byť **koreň slova**: prvá
+verzia hľadala „nepodarilo" a minula ženské „nepodarila".
+
+### Grafy — jeden jazyk, bez závislostí
+
+`public/js/charts.js` zostáva **bez závislostí**, hoci d3 je na `/` načítané: jadro
+d3 nemá sankey (to je samostatný balík), zvyšok sú škály a cesty, ktoré si súbor
+skládá sám, a bez závislosti sa dá načítať aj na `/console` a `/chat`.
+
+Spoločné helpery, ktoré nový typ MUSÍ použiť: `gridLines`, `axisRow`, `legendRow`,
+`bindTip`, `emptyChart`, `periodSwitch`. Tooltip je **jeden na dokument** (dva naraz
+sú vždy chyba) a nesie `pointer-events: none`, inak si berie `mouseleave` prvku pod
+sebou. **Dotyk tooltip nedostáva** — hover tam neexistuje a prst zakryje práve to,
+na čo sa človek pozerá.
+
+`sparkline`, `scatter` a `flows` sú nové; **scatter a flows nemá kto volať** a je to
+priznané v manuáli §14 — žiadna obrazovka dvojrozmerný pohľad ani tok nežiada.
+
+### Generátory značky žijú MIMO `public/`
+
+`tools/brand/build-mark.py` (SVG kánon, favicon, `.ico`, `DERIVED.md`, lockupy)
+a `tools/brand/build-raster.js` (PNG cez headless Chrome). **Poradie je povinné:**
+python najprv, node potom.
+
+Dôvod je bezpečnostný a je zmeraný: všetko pod `public/` servuje web server priamo
+a `auth.ui` naň nedosiahne — `/` dáva 401, ale `/brand/build-mark.py` dávalo **200
+bez tokenu**, a appka je tunelovaná cez ngrok. `build-raster.js` navyše nesie
+lokálnu cestu k Chrome. **Keď pridávaš čokoľvek do `public/`, over to:**
+
+```
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/<cesta>
+```
+
+**Master znaku sa GENERUJE z mini** (`hades-sigil-mini.svg` je jediný ručný zdroj
+geometrie). Nosný prstenec r 36 / hrúbka 9 a jadro r 15 sú v oboch výkresoch tie
+isté hodnoty; prerušenie a satelit sa pod 64 px zatvárajú, pretože `Mini` parser
+prijíma dva kruhy, raster kreslí anulus dvoma diskami a `.load-mark` je CSS
+`border` — ani jeden z tých troch výstupov prerušenie vyjadriť nedokáže.
+
 ## Overenie UI
 
 Docker servuje repo z jeho koreňa, takže **worktree na 8080 neuvidíš**. Postup,
@@ -639,7 +746,8 @@ cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na akcentovej výplni)
 
 ## Testy
 
-`docker compose exec app php artisan test` — 438 testov, všetko PHP (backend, MCP,
+`docker compose exec app php artisan test` — **596 testov** (45 preskočených na sqlite),
+všetko PHP (backend, MCP,
 API). Frontend testy nie sú; UI sa overuje prekliknutím v prehliadači.
 
 **Zelená sada na sqlite NEZNAMENÁ overený recall.** `phpunit.xml` beží na sqlite
