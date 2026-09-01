@@ -3119,8 +3119,14 @@ pre.code code {
     transition: opacity 520ms var(--ease) 240ms;
 }
 /* 760 ms je tu ONESKORENIE, nie trvanie kreslenia: karta má dobehnúť až po
-   obtiahnutí. Zapísané číslom zámerne — keby to bol --dur-chart-draw, tvárilo
-   by sa to ako tá istá rola a zmena trvania kresby by ticho posunula aj fade. */
+   obtiahnutí. Zostáva LITERÁLOM (rozhodnuté 1. 9. 2026) a dôvod je meraný, nie
+   estetický: to číslo má DVE presné odvodenia naraz a ani jedno nie je rola škály.
+     (a) --dur-chart-draw = 760 ms — obtiahnutie donutu (.donut .seg-draw, delay 0),
+     (b) 240 ms + 520 ms = 760 ms — koniec prvého fadu (.chart-fade nad tým).
+   Token ani calc() nad tokenom preto nejde: musel by si vybrať JEDNU z tých dvoch
+   rodín, čím by o zámere tvrdil viac, než kód unesie, a pri zmene tej druhej by sa
+   stupňovanie ticho rozišlo. Cena literálu je opačná a treba ju vedieť: keď meníš
+   520/240 ms vyššie ALEBO --dur-chart-draw, prepočítaj toto číslo ručne. */
 .chart-fade-late {
     transition-delay: 760ms;
 }

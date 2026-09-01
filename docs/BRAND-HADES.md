@@ -31,7 +31,7 @@ niekto pracoval:
 |---|---|---|
 | §2 | geometria znaku je zapísaná **8×** | **16×** v repe + 2 binárky |
 | §3 | plošná podlaha je na `mind.css:2728–2736` | **`:2852–2861`**; na 2728 stojí `min-height` prázdnych stavov |
-| §3 | `ease-in-out` sa objavuje **5×** | **4×** + jedno `ease` (`charon.css:257`) |
+| §3 | `ease-in-out` sa objavuje **5×** | **4×** + jedno ryzé `ease` (v `@keyframes charon-blink`) |
 | §7 | ligatúr je **41** (subset 215 glyfov) | **61** ligatúr, **254** glyfov |
 | §9 | pri 594 px výšky rail nemá overflow | `overflow-y: visible` áno, ale **obsah 692 px proti 560 px** a dve destinácie sú nedosiahnuteľné |
 
@@ -439,12 +439,17 @@ doba zobrazenia má byť v tichom režime rovnaká alebo **dlhšia**, nikdy krat
 **`--ease-pulse` nie je kozmetika a od 28. 8. 2026 už nie je cieľ — žije.** `--ease` je
 príchodová krivka: spomaľuje na konci. Na nekonečnej slučke to znamená, že animácia
 dobehne pomaly a potom **skočí** na začiatok — kulhá. Slučka potrebuje symetrickú
-krivku. Zmerané 31. 8. 2026: token je definovaný v `:root` v `mind.css` a číta ho
-**osem** slučiek (`core-pulse`, `load-breathe`, `hades-shimmer`, `sync-pulse`,
-`sk-pulse`, `think-blink`, `tool-pulse`, `charon-blink`), a **cudzia krivka v repe
-nezostala ani jedna** — dotaz na `animation`/`transition` s ryzým `ease` alebo
-`ease-in-out` v štyroch stylesheetoch dáva **0 zásahov** (bolo 4× `ease-in-out`
-a jedno `ease` s natvrdo napísaným `.15s`).
+krivku. Zmerané 1. 9. 2026 (comment-masking sken štyroch stylesheetov z disku —
+metóda pod tabuľkou v "Tichá verzia je záväzná"): token je definovaný v `:root`
+v `mind.css` a číta ho **desať** slučiek (`core-pulse`, `load-breathe`,
+`hades-shimmer`, `sync-pulse`, `sk-pulse`, `think-blink`, `tool-pulse`,
+`charon-blink`, **`cm-breathe`, `cv-live`** — posledné dve sú v `chat.css` a
+predošlý zápis, 31. 8. 2026, ich vynechal: chat plocha vtedy nemala byť súčasťou
+pulzovej rodiny vôbec, ale je, odkedy pribudlo dýchanie avatara a prsteň
+nahrávania). **Cudzia krivka v repe nezostala ani jedna** — dotaz na
+`animation`/`transition` s ryzým `ease` alebo `ease-in-out` v štyroch
+stylesheetoch dáva **0 zásahov** (bolo 4× `ease-in-out` a jedno ryzé `ease`
+s natvrdo napísaným `.15s`, obe zmerané pred prepisom na `--ease-pulse`).
 
 Pozor pri zápise: v `console.css` a `charon.css` sú tie animácie napísané
 **longhandom** (`animation-name` / `-duration` / `-timing-function`), nie shorthandom,
@@ -453,13 +458,18 @@ je pri výpočte hodnoty **celý neplatný**. Nezlievaj ich do shorthandu; a mer
 deklarácií to musí vedieť, inak jednu animáciu spočíta trikrát (viď tabuľku nižšie).
 
 **„Neurčité čakanie" má JEDNU periódu a to je `--dur-pulse`** — a od 28. 8. 2026
-to už aj platí. Zmerané 31. 8. 2026: `hades-shimmer`, `load-breathe`, `sync-pulse`,
-`sk-pulse`, `think-blink`, `tool-pulse` aj `charon-blink` berú trvanie z
-`var(--dur-pulse)`; ručné 1,4 s, dve 1,2 s ani 1,1 s v repe nie sú.
+to už aj platí. Zmerané 1. 9. 2026: `hades-shimmer`, `load-breathe`, `sync-pulse`,
+`sk-pulse`, `think-blink`, `tool-pulse`, `charon-blink`, `cm-breathe` aj `cv-live`
+berú trvanie z `var(--dur-pulse)` — deväť slučiek, nie sedem; ručné 1,4 s, dve
+1,2 s ani 1,1 s v repe nie sú. Jediná výnimka je `core-pulse` (dýchanie jadra),
+ktorý drží vlastný literál `4s` zámerne — je to dramaturgia jadra, nie stupeň
+rebríka, viď nižšie.
 
 **Grafové trvania sú tokeny** (od 28. 8. 2026, do vtedy [cieľ V2]) — dôvod bol, že
-760 ms žilo na dvoch miestach a raz by sa rozišlo. Zmerané 31. 8. 2026, päť
-volajúcich a žiadny druhý zápis:
+760 ms žilo na dvoch miestach a raz by sa rozišlo. Zmerané 1. 9. 2026, **šesť**
+volajúcich — tabuľka nižšie ich vždy menovala šesť (dva na token), len sprievodná
+veta 31. 8. 2026 napočítala piatich; opravené na zhodu s vlastnou tabuľkou — a
+žiadny druhý zápis hodnoty:
 
 | Token | Hodnota | Kto ho číta |
 |---|---|---|
@@ -481,11 +491,41 @@ aj tie štyri, ktoré tu boli menované, sú prepísané na párový zápis
 **skrýva, ktorú krivku si dostal**. Že token bez volajúceho v súbore zostal, je
 zaznamenané pri jeho definícii — nie opomenutie.
 
+### Odstupňovanie — zlomok periódy, nie milisekundy
+
+Tri plochy kreslia ten istý vzor „tri bodky pulzujú, model píše"
+(`.think-dot` v `console.css`, `.charon-dot` v `charon.css`, `.cm-dot` v
+`chat.css`) a jedna kreslí štvoricu pruhov skeletonu (`.sk-row` v
+`console.css`). Každá bodka/pruh **za sebou** posúva fázu tej istej slučky, aby
+vlna prebehla cez rad — druhá a tretia bodka nemajú vlastnú animáciu, len
+`animation-delay` voči prvej.
+
+**Rozhodnuté (2. kolo, 1. 9. 2026): posun je zlomok `var(--dur-pulse)`, nikdy
+milisekundy napevno.** Do vtedy mali tri plochy tri rôzne kroky (`.16s`/`.2s`
+literál na dvoch plochách, `/6` zlomok na tretej) — teda nie zámer, ale
+rozchod. Milisekundový krok drží tvar vlny len pokým sa `--dur-pulse` nezmení;
+zlomok periódy ho udrží aj po zmene. Zjednotené na krok, ktorý `.cm-dot` mal už
+predtým (najširší rozostup z troch bodkových plôch, teda najčitateľnejší):
+
+| Selektor | Súbor | Krok 2. prvku | Krok 3. prvku |
+|---|---|---|---|
+| `.think-dot` | `console.css` | `calc(var(--dur-pulse) / 6)` | `calc(var(--dur-pulse) / 3)` |
+| `.charon-dot` | `charon.css` | `calc(var(--dur-pulse) / 6)` | `calc(var(--dur-pulse) / 3)` |
+| `.cm-dot` | `chat.css` | `calc(var(--dur-pulse) / 6)` | `calc(var(--dur-pulse) / 3)` |
+| `.sk-row` | `console.css` | `calc(var(--dur-pulse) / 12)` (2.) · `/6` (3.) · `/4` (4.) | — |
+
+**`.sk-row` dostal VLASTNÚ rodinu menovateľov, nie ten istý `/6`, `/3`** — a to
+je zámer, nie nedôslednosť: je to **štvorica** pásov skeletonu, nie trojica
+bodiek, takže potrebuje o jeden krok viac a jemnejší začiatok (`/12` pred
+`/6`), aby sa štyri fázy rozložili rovnomerne cez periódu. Spoločný token pre
+„jedno odstupňovanie appky" preto zámerne **nevznikol** — pomenoval by
+niečo, čo v appke reálne nie je jedno.
+
 ### Katalóg pohybu
 
 | Miesto | Pohyb | Trvanie | Nesie |
 |---|---|---|---|
-| Znak (rail, Charón, prázdny stav) | prstenec sa obtiahne, potom jadro | 760 + 460 ms | značkový podpis |
+| Znak (rail, `/console`, `/chat`, prázdne stavy, dok nad grafom) | prstenec sa obtiahne, potom jadro | 760 + 460 ms | značkový podpis |
 | Jadro v raile | dýchanie = stav vedomia (`bdie` / `spí`) | 4 s, slučka | **informáciu** |
 | Načítavanie (`load-breathe`) | znak dýcha mierkou | `--dur-pulse` | informáciu — „pracuje sa" |
 | Skeleton (`hades-shimmer`) | jeden sweep cez plochu | `--dur-pulse` | informáciu — skeleton žije |
@@ -497,6 +537,29 @@ zaznamenané pri jeho definícii — nie opomenutie.
 | Uzol na plátne | `birthScale()` pri zrode z WS | 0,5 s | **informáciu** — pribudol uzol |
 | Beh je živý (`sync-pulse`) | pulz bodky stavu | `--dur-pulse` | **informáciu** |
 | Správa v Charónovi | `msg-in` — len pri živom pribudnutí | `--dur-base` | **informáciu** |
+
+**Zrod znaku má dnes ŠESŤ nosičov, nie dva.** `bc-draw` (obtiahnutie) a
+`bc-core-in` (jadro) bežia na `#brand-core` (rail), `#back-to-graph` a
+`.empty-sigil` (`/console`), `#chat-home` a `.ce-mark` (`/chat`) — a od
+1. 9. 2026 aj na **`.charon-sigil`**, 32 px, prázdny dok nad grafom
+(`charon.js` → `renderEmpty()`); do toho dátumu dok znak nemal vôbec, hoci
+markup triedy `bc-ring`/`bc-core` už niesol. Plný zoznam s rolami je v §2
+(„Kde znak je a kde má byť") — tu ide len o pohyb: všetkých šesť nosičov zdieľa
+JEDEN pár keyframes a JEDEN token trvania, takže obtiahnutie vyzerá rovnako
+na 24 px v hlavičke aj na 44 px v prázdnom stave.
+
+**Dýchanie (`core-pulse`) nededí — zostáva zámerne len na `#brand-core`.**
+Bolo to do 1. 9. 2026 otvorené (§2 nechávalo možnosť rozšíriť rolu „pulz behu"
+aj na hlavičky `/console` a `/chat`); rozhodnuté: NIE. Dôvod je merateľný, nie
+estetický — dýchanie je jediný nosič stavu „vedomie bdie / spí" a ten stav sa
+prepína výhradne na `#brand-core` (`asleep` trieda), nikde inde v appke. Slučka
+na hlavičke, ktorá by nikdy nezmenila fázu (lebo `asleep` sa tam nikdy
+nenastaví), by nenosila informáciu — bola by dekorácia presne tam, kde ju kánon
+zakazuje. K tomu druhý dôvod: `core-pulse` hýbe `filter`om a hlavičkové odkazy
+majú vlastný hover/fokus stav, takže nekonečné dýchanie pod nimi by miešalo
+značkový pohyb so stavom rozhrania. Obe hlavičky (a `.charon-sigil`, ktorý po
+nich dedí zrod bez pulzu) preto nesú inú rolu — „identita plochy s odkazom
+domov" — nie „pulz behu"; podrobný zápis rozhodnutia je v §2.
 
 **Jeden `@keyframes` nesie PÄŤ významov a je to opak pravidla „jeden kanál, jeden
 význam":** `rise-fade` v `mind.css` používajú `.toast`, `#help-card`, `#md-card`,
@@ -604,55 +667,62 @@ Rozhodnutie 8: **každá animácia má tichú verziu pre `prefers-reduced-motion
 „vypnuté", ale zmysluplný okamžitý ekvivalent.** Reduced motion nie je „nič sa
 nestane" — stav sa zachová textom, ikonou, obrysom, fokusom alebo oznámením.
 
-**Znovu merané 31. 8. 2026** (metóda nižšie; čísla sonda C z 27. 8. — 104 deklarácií,
-16 `@keyframes`, 79 živých pohybov, 11 pomenovaných tichých verzií, 64 krytých len
-podlahou — **už neplatia a nie sú s dnešnými porovnateľné**, viď poznámku pod tabuľkou):
+**Znovu overené 1. 9. 2026, dvoma nezávislými metódami** (obe nad štyrmi
+stylesheetmi z disku: skript čítajúci CSSOM cez `new CSSStyleSheet()` +
+`replaceSync()`, a druhý, nezávislý sken nad textom so zamaskovanými
+komentármi — obe sa musia zhodnúť, inak nemeria ani jedna). Čísla z **31. 8.
+2026 boli čiastočne nesprávne** — nie preto, že by sa kód medzitým zmenil, ale
+preto, že `chat.css` vtedy nebol prepočítaný správne (viď nižšie) — a nahrádzajú
+sa, nie dopĺňajú:
 
 | | Počet |
 |---|---|
-| deklarácií `transition` / `animation` v štyroch stylesheetoch | **123** (mind 85 · console 28 · charon 8 · chat 2) |
-| z toho **vnútri** `@media (prefers-reduced-motion: reduce)` | **16** |
-| deklarácií mimo tichého bloku (živých alebo modifikátorov) | **107** |
-| `@keyframes` | **17** (mind 12 · console 4 · charon 1 · chat 0) |
+| `@keyframes` | **19** (mind 12 · console 4 · charon 1 · **chat 2**) |
 | `@keyframes` bez volajúceho | **0** |
-| **pomenovaných tichých pravidiel v CSS** (bez plošnej podlahy) | **13** nad 12 skupinami komponentov |
+| **pomenovaných tichých pravidiel v CSS** (bez plošnej podlahy) | **15** (mind 7 · console 5 · charon 1 · **chat 2**) nad **14** skupinami komponentov |
 | stráží tichej verzie v **JS** (`charts.js`) | **3** (heatmapa; segmenty donutu; krivka + oba `chart-fade`) |
 | pohybov, ktorých jedinou tichou verziou je **plošná podlaha** | **zvyšok** — stále veľká väčšina |
 
-**Metóda (aby sa dala zopakovať a aby bolo jasné, čo číslo znamená):** štyri
-stylesheety sa načítajú **z disku** (`fetch('/css/<x>.css')`), naparsujú do
-`new CSSStyleSheet()` + `replaceSync()` — teda skutočným CSSOM, nie regexom — a rekurzia
-počíta v každom `CSSStyleRule` deklarácie, ktoré začínajú na `transition` alebo
-`animation`. **Kalibrácia z oboch strán je povinná** a bez nej to nemeria nič: na
-syntetickom CSS s presne 3 pohybovými deklaráciami, 1 `@keyframes` a 1 tichým blokom
-musí harness vrátiť práve tie čísla, a pravidlo s `color` sa počítať nesmie. Prvá
-verzia tohto merača vrátila **nuly na všetkom** a vyzeralo to ako čistý repozitár:
-v modernom Chrome má **`CSSStyleRule` tiež `cssRules`** (vnorené pravidlá), takže
-podmienka „má `cssRules` → je to skupina" preskočila každé jedno pravidlo v súbore.
-Rozlišuj podľa `constructor.name`, nie podľa prítomnosti `cssRules`.
+**Čo sa OPRAVUJE oproti 31. 8. 2026:** `chat.css` má **dva** `@keyframes`
+(`cm-breathe` — dýchanie avatara, `cv-live` — prsteň nahrávania), nie nula, a **dve**
+pomenované tiché pravidlá (`.cm-dot`, `.cv-btn.is-on .cv-dot`), nie žiadne — obe
+existovali v kóde už predtým, len predošlé počítanie ich minulo. Súčet
+pomenovaných pravidiel je preto **15 nad 14 skupinami** (mind má sedem PRAVIDIEL
+nad ŠIESTIMI skupinami, lebo znak nesie dve pravidlá — `animation: none` a
+`stroke-dashoffset: 0` — na jednej skupine selektorov), nie „13 nad 12".
 
-**Prečo sa 123 a 104 nedajú odčítať:** medzitým sa slučkové animácie v `console.css`
-a `charon.css` prepísali zo shorthandu na **longhand trojice** (`animation-name` +
-`-duration` + `-timing-function`, kvôli `--ease-pulse`), takže tá istá jedna animácia
-dnes stojí tri deklarácie namiesto jednej. Rast čísla je zápis, nie nový pohyb.
+**Čo sa NEPOTVRDZUJE dnes:** predošlá tabuľka niesla aj celkový počet
+`transition`/`animation` deklarácií (123, z toho 16 vnútri tichého bloku).
+Pri opakovanom meraní cez CSSOM sa objavila **nová pasca** (viď nižšie, štvrtý
+bod v „Štyri pasce"), ktorá robí `CSSStyleDeclaration.length` nespoľahlivým
+meradlom pre skrátené (shorthand) `transition`/`animation` zápisy — číslo sa
+dnes nedá bez ďalšej práce zopakovať s istotou, ktorú si tento manuál
+vyžaduje, takže sa tu **neuvádza ako fakt**. Čo z pôvodnej tabuľky zostáva
+spoľahlivé (keyframes, pomenované pravidlá) je nahradené vyššie; zvyšok je
+označený ako nezmerané, nie odhadnuté.
 
-Pomenované tiché verzie, ktoré **existujú** — **selektorový** zoznam (riadkové čísla
-tu boli do 31. 8. 2026 a **všetkých trinásť ukazovalo mimo**):
+Pomenované tiché verzie, ktoré **existujú** — **selektorový** zoznam, potvrdený
+CSSOM aj textovým skenom zhodne:
 
-- `mind.css`: znak (`#brand-core`, `#back-to-graph`, `.empty-sigil`, `#chat-home`,
-  `.ce-mark` × `.bc-ring` / `.bc-core` — dve pravidlá: `animation: none`
-  a `stroke-dashoffset: 0`), `.empty.empty-loading .load-mark`, `.skel::after`
+- `mind.css` (7 pravidiel, 6 skupín): znak (`#brand-core`, `#back-to-graph`,
+  `.empty-sigil`, `#chat-home`, `.ce-mark`, `.charon-sigil` × `.bc-ring` /
+  `.bc-core` — dve pravidlá: `animation: none` a `stroke-dashoffset: 0`),
+  `.empty.empty-loading .load-mark`, `.skel::after`
   (`display: none`, teda pokojná plocha — nie zastavený sweep),
   `.status-dot[data-status="running"]`, `.inline-ok`, `.scatter-dots, .flow-ribbons`;
-- `console.css`: `.msg.is-new` / `.tool-call.is-new` / `.notice.is-new`, `.think-dot`,
+- `console.css` (5): `.msg.is-new` / `.tool-call.is-new` / `.notice.is-new`, `.think-dot`,
   `.sk-row`, `.tr-acts`, `.tool-call.running .tool-state`;
-- `charon.css`: `.charon-dot`;
-- `chat.css`: **žiadne** (a nemá čo krýť — má 2 pohybové deklarácie).
+- `charon.css` (1): `.charon-dot`;
+- `chat.css` (2): `.cm-dot`, `.cv-btn.is-on .cv-dot`.
 
-**`.charon-dot` bol pritom presne zakázaný vzor a je OPRAVENÝ** (zmerané 31. 8. 2026):
-pravidlo je dnes `.charon-dot { animation: none; opacity: 1 }` a vetu o stave nesie
-`.charon-note` vedľa bodiek. Samotné `animation: none` nechávalo tri bodky na
-`opacity: .4`, takže indikátor „model píše" stratil rozdiel medzi pokojom a behom.
+**`.charon-dot` bol pritom presne zakázaný vzor a je OPRAVENÝ** (zmerané 31. 8. 2026,
+potvrdené 1. 9. 2026): pravidlo je dnes `.charon-dot { animation: none; opacity: 1 }`
+a vetu o stave nesie `.charon-note` vedľa bodiek. Samotné `animation: none`
+nechávalo tri bodky na `opacity: .4`, takže indikátor „model píše" stratil
+rozdiel medzi pokojom a behom. **Ten istý vzor a tá istá oprava platí aj pre
+`.cm-dot` v `chat.css`** — `!important` na ňom je ale iba OBRANA, nie podmienka
+(vysvetlené priamo v komentári pri pravidle): plošná podlaha nedeklaruje
+`animation-name`, takže by stačil aj nezvýraznený zápis.
 
 #### Plošné pravidlo je PODLAHA, nie strop
 
@@ -673,9 +743,11 @@ a `charon.css`.
 
 **To pravidlo zostáva a `!important` sa z neho neodstraňuje.** Jeho odstránenie by
 zhodilo pravidlo na špecificitu 0-0-0 bez `!important`, teda by prehralo
-s **každým** komponentným pravidlom — a 64 pohybov by tichú verziu stratilo naraz,
-pričom by si to nikto nevšimol: prejaví sa to len u človeka, ktorý má preferenciu
-zapnutú.
+s **každým** komponentným pravidlom — a každý pohyb, ktorý dnes tichú verziu
+dostáva len od tejto podlahy (teda väčšina z nich, viď „pomenovaných tichých
+pravidiel" vyššie — len 15 pohybov má vlastnú, pomenovanú výnimku), by ju
+stratil naraz, pričom by si to nikto nevšimol: prejaví sa to len u človeka,
+ktorý má preferenciu zapnutú.
 
 Zápis `.01ms` (nie `0s`) je zámerný: prvok tak **dobehne** do koncového stavu
 a `transitionend` / `animationend` sa vydá, takže JS, ktorý na koniec prechodu
@@ -710,7 +782,7 @@ Príklady zmysluplných okamžitých ekvivalentov:
 | nájdený uzol | žiadny znak | prstenec s konštantnou alfou, drží 2 s |
 | toast | **doba zobrazenia 0 ms** | plná doba zobrazenia, bez príchodu a odchodu |
 
-#### Tri pasce, ktoré dávajú falošný nález
+#### Štyri pasce, ktoré dávajú falošný nález
 
 1. **Prehliadač normalizuje selektor podlahy na `*, ::before, ::after`.** Regex,
    ktorý v `cssText` hľadá `*, *::before`, ju nenájde a ohlási, že chýba. Je tam.
@@ -726,6 +798,21 @@ Príklady zmysluplných okamžitých ekvivalentov:
    ~1 Hz. Merať sa dajú **stavové hodnoty** (`S._camTween.dur`, `S._simAlpha`,
    `S._drawMs`) a kód, nie priebeh. A meraj na `graphScope: all` (2 765 uzlov), nie
    na defaultnom `live` (~1 095) — inak zmeriaš polovicu záťaže.
+4. **`CSSStyleDeclaration.length` nepočíta „koľko deklarácií je v pravidle" —
+   počíta, koľko DLHÝCH (longhand) mien skrátený zápis zasahuje, a to číslo je
+   PEVNÉ bez ohľadu na obsah.** Nájdené 1. 9. 2026 pri pokuse zopakovať počet
+   „123 deklarácií" z 31. 8.: `.x { transition: opacity 1s; }` aj
+   `.c { transition: background var(--dur-fast) var(--ease), color var(--dur-fast)
+   var(--ease); }` dajú v CSSOM **rovnakých `style.length === 5`** (`-property`,
+   `-duration`, `-timing-function`, `-delay`, `-behavior`), hoci druhé pravidlo
+   nesie DVA prechody a prvé jeden. `animation` shorthand rovnako vždy expanduje
+   na svojich osem až jedenásť vlastností. Meranie cez `style.length` teda ráta
+   **pravidlá krát pevný faktor** (5 alebo ~11), nie skutočný počet zápisov v
+   zdroji — nad `mind.css` to namiesto ~86 (priame počítanie výskytov
+   `animation:`/`transition:`/`animation-*:`/`transition-*:` v texte so
+   zamaskovanými komentármi) vrátilo 525. Číslo z 31. 8. 2026 („123") touto
+   metódou nevzniklo (je príliš nízke na oba výklady), takže jeho pôvodná metóda
+   nie je dnes rekonštruovateľná — preto sa tabuľka vyššie k nemu nevracia.
 
 #### Kde je manuál a kód dnes rozdielny
 

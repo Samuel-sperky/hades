@@ -1763,9 +1763,24 @@ select.ct-filter { flex: 1 1 46%; }
 
 @media (prefers-reduced-motion: reduce) {
     /* Tichá verzia: bodky STOJA a sú plne viditeľné — „model píše" sa v tichom
-       režime hlási vetou `.cm-wait-note`, nie pohybom. `!important` je povinné,
-       lebo plošná podlaha píše `animation-*` s `!important` a `!important`
-       deklarácie súťažia ŠPECIFICITOU: `.cm-dot` (0-1-0) prebíja `*` (0-0-0). */
+       režime hlási vetou `.cm-wait-note`, nie pohybom.
+
+       `!important` tu NIE JE POVINNÉ a do 1. 9. 2026 tu stálo, že je — bola to
+       úvaha o špecificite, nie meranie. Plošná podlaha v mind.css deklaruje
+       `animation-duration`, `animation-iteration-count` a `animation-delay`,
+       ale `animation-name` NIE. Nezvýraznené `animation: none` teda vyhráva na
+       mene bez súpera a slučka sa nespustí vôbec. Zmerané 1. 9. 2026 na sesterských
+       pravidlách, ktoré `!important` nemajú: `.think-dot`, `.sk-row`,
+       `.tool-call.running .tool-state` (console.css) a `.charon-dot` (charon.css)
+       všetky sadnú na `animation-name: none`. Nedopisuj im `!important` — nič
+       neopravíš a rozdiel medzi „potrebné" a „obranné" sa tým zmaže.
+
+       Čo `!important` na SHORTHANDE naozaj robí (a je to jediný dôvod, prečo tu
+       zostáva ako obrana, nie ako podmienka): zvýrazní aj `animation-duration: 0s`,
+       teda prebije zámerných `.01ms` z podlahy. Pri `name: none` je to neškodné —
+       nemá čo dobehnúť, takže nikto nečaká `animationend`. Pravidlo, ktoré chce
+       animáciu NECHAŤ BEŽAŤ a len zmeniť, preto shorthand s `!important` použiť
+       nesmie; tam sa píšu longhandy práve tých vlastností, ktoré sa majú líšiť. */
     .cm-dot { animation: none !important; opacity: 1 !important; }
 }
 
@@ -2668,9 +2683,18 @@ select.ct-filter { flex: 1 1 46%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    /* `!important` je povinné: plošná podlaha píše `animation-*` s `!important`
-       a `!important` deklarácie súťažia ŠPECIFICITOU — `.cv-btn.is-on .cv-dot`
-       (0-3-0) prebíja `*` (0-0-0). */
+    /* NOSNÁ ČASŤ TOHOTO PRAVIDLA JE `box-shadow`, nie zastavenie animácie.
+       Podlaha z mind.css by bodku aj sama nechala na pokojnej `opacity: 1`
+       (`cv-live` má 0 % aj 100 % na 1 a bez `fill-mode` sa hodnota vracia do
+       kaskády — zmerané 1. 9. 2026: len s podlahou vyjde `opacity: 1`).
+       Bez pulzu ale „nahrávam" stráca jediný rozdiel proti pokojnej bodke, takže
+       okamžitý ekvivalent musí ten rozdiel povedať inak — prstencom.
+
+       `!important` na `animation`/`opacity` je preto OBRANA, nie podmienka:
+       podlaha `animation-name` nedeklaruje, takže by stačil aj nezvýraznený zápis
+       (celé meranie je pri `.cm-dot`). `box-shadow` zvýraznený BYŤ NESMIE —
+       podlaha ho nedeklaruje, nikto s ním nesúťaží a `!important` by len zabránil
+       stavu `:focus-visible` prekresliť si prsteň po svojom. */
     .cv-btn.is-on .cv-dot {
         animation: none !important;
         opacity: 1 !important;

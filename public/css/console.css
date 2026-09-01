@@ -402,9 +402,20 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     animation-timing-function: var(--ease-pulse);
 }
 
-.sk-row:nth-child(2) { animation-delay: .12s; }
-.sk-row:nth-child(3) { animation-delay: .24s; }
-.sk-row:nth-child(4) { animation-delay: .36s; }
+/* Odstupňovanie je FÁZOVÝ POSUN VNÚTRI PERIÓDY, preto zlomok `--dur-pulse`,
+   nie absolútne číslo. Literál (.12/.24/.36 s do 1. 9. 2026) drží tvar vlny len
+   pri dnešnej perióde 1,4 s: keby sa token skrátil, štyri riadky by pulzovali
+   takmer v zákryte, keby sa predĺžil, rozpadli by sa na štyri samostatné bliknutia
+   — a ani jedno by nebolo vidieť v diffe tokenu. Rozostup je štvrtina periódy
+   (0 · 1/12 · 1/6 · 1/4 = 0 / 116,7 / 233,3 / 350 ms, teda 3–10 ms od pôvodných
+   hodnôt: tá istá kresba, len odteraz odvodená).
+
+   Deliteľ NIE JE tokenom a nemá byť: `.sk-row` je ŠTVORICA pásov, bodky „model
+   píše" sú TROJICA (a majú svoj vlastný, hrubší krok /6 — viď `.think-dot`).
+   Token by pomenoval jedno odstupňovanie pre celú appku, čo je nepravda. */
+.sk-row:nth-child(2) { animation-delay: calc(var(--dur-pulse) / 12); }
+.sk-row:nth-child(3) { animation-delay: calc(var(--dur-pulse) / 6); }
+.sk-row:nth-child(4) { animation-delay: calc(var(--dur-pulse) / 4); }
 
 @keyframes sk-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 
@@ -554,6 +565,13 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: none; }
 }
+/* Vstupná animácia dosadnutie ZNESIE: `msg-in` má na 100 % `opacity: 1` a
+   `transform: none`, a `fill-mode: both` tú hodnotu drží, takže podlaha z mind.css
+   sama vykreslí blok hotový na mieste (zmerané 1. 9. 2026: len s podlahou
+   `opacity: 1`). Toto pravidlo teda PRIPÍNA, nezachraňuje — a je tu preto, že
+   `both` je jediný dôvod, prečo to sedí: keby `fill-mode` niekto odobral, blok by
+   sa po dobehnutí vrátil na kaskádu a pri `opacity: 0` v `from` by to bola
+   neviditeľná správa. */
 @media (prefers-reduced-motion: reduce) {
     .console-body .msg.is-new,
     .console-body .tool-call.is-new,
@@ -657,8 +675,16 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     animation-timing-function: var(--ease-pulse);
 }
 
-.think-dot:nth-child(2) { animation-delay: .16s; }
-.think-dot:nth-child(3) { animation-delay: .32s; }
+/* JEDEN KROK PRE JEDEN VZOR. Tri bodky „model píše" kreslia všetky tri plochy —
+   `.think-dot` tu, `.charon-dot` v charon.css, `.cm-dot` v chat.css — z tej istej
+   periódy (`--dur-pulse`) a tej istej krivky (`--ease-pulse`). Do 1. 9. 2026 mala
+   každá vlastný krok: .16 s tu, .2 s v doku, `--dur-pulse / 6` (233,3 ms) na chate.
+   Tri čísla pre jeden vzor nie je rozhodnutie, ale rozchod, ktorý vznikol tým, že
+   každú plochu písal niekto iný. Zjednotené na krok chatu, teda /6 a /3 — je to
+   najširší z tých troch rozostupov (tretina periódy), takže vlna je najčitateľnejšia.
+   Zlomok tokenu, nie literál: dôvod je pri `.sk-row` vyššie. */
+.think-dot:nth-child(2) { animation-delay: calc(var(--dur-pulse) / 6); }
+.think-dot:nth-child(3) { animation-delay: calc(var(--dur-pulse) / 3); }
 
 @keyframes think-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
@@ -667,10 +693,47 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 /* Bez pohybu zostáva bublina aj jej veta — signál nesie prítomnosť bubliny,
    nie pulz. To isté platí pre kostru zoznamu vlákien.
 
-   `tool-pulse` je JEDINÁ nekonečná animácia v celej appke a do 21. 8. 2026 tu
-   nebola krytá vôbec — bežal by teda pulz na stave nástroja aj človeku, ktorý
-   si pohyb výslovne vypol. Stav „beží" nesie text `.tool-state`, nie jeho blikanie,
-   takže jeho farba (`--accent-ink`) zostáva. */
+   Stav „beží" nesie text `.tool-state`, nie jeho blikanie, takže jeho farba
+   (`--accent-ink`) zostáva. (Do 1. 9. 2026 tu stálo, že `tool-pulse` je „JEDINÁ
+   nekonečná animácia v celej appke". Nie je a asi nikdy nebola: nekonečné sú aj
+   `sk-pulse` a `think-blink` v tomto súbore, `charon-blink`, `cm-breathe`,
+   `cv-live`, `core-pulse`, `load-breathe`, `sync-pulse` a `hades-shimmer`.)
+
+   ČO Z TÝCHTO ŠTYROCH PRAVIDIEL JE NOSNÉ (zmerané 1. 9. 2026 vstreknutím podlahy
+   z mind.css nad ten istý DOM, A/B/A):
+
+   Rozhoduje `animation-fill-mode`, NIE hodnota na 100 %. Podlaha nechá slučku
+   dobehnúť za `.01ms` s jedinou iteráciou, a keďže žiadna z týchto animácií nemá
+   `fill-mode`, prvok sa po dobehnutí vracia na hodnotu z KASKÁDY — nie na svoju
+   poslednú keyframe. Preto:
+
+   - `.think-dot` je NOSNÉ. Základná kresba má `opacity: .3`, takže len s podlahou
+     bodky sadnú na 30 % a „model píše" je od „vypnuté" nerozoznateľné. Zmerané:
+     len podlaha → `.3`, podlaha + toto pravidlo → `1`.
+   - `.sk-row` je ROZHODNUTIE, nie záchrana: len podlaha dá `opacity: 1` (základ
+     opacitu nedeklaruje), čo je pokojné a správne. `.7` je zámerný útlm, aby
+     kostra ostala čitateľná ako zástupný obsah, nie ako hotový riadok.
+   - `.tool-call.running .tool-state` PRIPÍNA. `tool-pulse` má 0 % aj 100 %
+     na `opacity: 1` a základ tiež, takže len podlaha dá `1` sama. Pravidlo
+     zostáva, aby stav nezostal v polovici, keby `tool-pulse` niekto neskôr
+     prekreslil na inú krivku.
+
+   `!important` tu nie je a nemá byť dopisovaný — podlaha `animation-name`
+   nedeklaruje, takže nezvýraznené `animation: none` vyhráva na mene bez súpera.
+   Meranie aj dôsledky sú rozpísané pri `.cm-dot` v chat.css.
+
+   PASCA HARNESSU, ktorá tomuto meraniu dala dvakrát iné čísla: Browser pane
+   NETIKÁ animačnú časovú os. `getAnimations()` vráti `CSSAnimation` s
+   `playState: "running"`, ale `currentTime: 0` natrvalo, takže `getComputedStyle`
+   číta keyframe **0 %**, nie hodnotu po dobehnutí. Zamrznuté čísla vyzerajú
+   vierohodne a vedú k opačnému záveru: `msg-in` hlási `opacity: 0` (teda „správa
+   je v tichom režime NEVIDITEĽNÁ", čo je nepravda), `sk-pulse` `.5` namiesto `1`.
+   Pred čítaním preto treba dorazíť VŠETKO — `el.getAnimations().forEach(a => a.finish())`
+   —, nielen prechody. To isté platí o `.01ms` prechodoch, ktoré podlaha zavedie
+   na každý prvok (`transition-property` má počiatočnú hodnotu `all`): mimo
+   viewportu nedobehnú vôbec, takže sonda musí stáť v zornom poli.
+   A kalibruj z OBOCH strán — zamrznuté čítanie si nechaj v tabuľke ako stĺpec,
+   ktorý MÁ dať iné číslo; keď ho dá rovnaké, harness nemeria. */
 @media (prefers-reduced-motion: reduce) {
     /* Bodky v PLNEJ farbe, nie na .65: bez pohybu je jediný nositeľ „model
        píše" ich prítomnosť, takže útlm by hovoril „vypnuté". Vetu o stave nesie

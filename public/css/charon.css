@@ -250,8 +250,13 @@
     animation-timing-function: var(--ease-pulse);
 }
 
-.charon-dot:nth-child(2) { animation-delay: .2s; }
-.charon-dot:nth-child(3) { animation-delay: .4s; }
+/* Krok odstupňovania je ten istý ako `.think-dot` (console.css) a `.cm-dot`
+   (chat.css) — jeden vzor „tri bodky, model píše" na troch plochách má jeden
+   fázový posun. Do 1. 9. 2026 tu stálo .2 s proti .16 s na konzole a /6 na chate;
+   celé zdôvodnenie je pri `.think-dot`. Zlomok periódy, nie literál: absolútne
+   číslo drží tvar vlny len pri dnešnej hodnote `--dur-pulse`. */
+.charon-dot:nth-child(2) { animation-delay: calc(var(--dur-pulse) / 6); }
+.charon-dot:nth-child(3) { animation-delay: calc(var(--dur-pulse) / 3); }
 
 @keyframes charon-blink {
     0%, 80%, 100% { opacity: .35; }
@@ -259,10 +264,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    /* Tichá verzia NIE JE „vypnuté". Samotné `animation: none` nechá bodky na
-       `opacity: .4`, teda indikátor „model píše" stratí rozdiel medzi pokojom
-       a behom — a to je jediná vec, ktorú tá kresba nesie. Okamžitý ekvivalent
-       je plná farba; vetu o stave hovorí `.charon-note` vedľa bodiek. */
+    /* Tichá verzia NIE JE „vypnuté", a toto pravidlo je NOSNÉ, nie kozmetické.
+       `charon-blink` má 0 % aj 100 % na `opacity: .35`, základ bodky `.4` a žiadny
+       `animation-fill-mode`, takže plošná podlaha z mind.css (`.01ms`, jedna
+       iterácia) ju nechá utlmenú tak či tak — zmerané 1. 9. 2026 vstreknutím
+       podlahy nad ten istý DOM: LEN podlaha dá `.4` (bez `fill-mode` sa hodnota po
+       dobehnutí vracia do KASKÁDY, nie na poslednú keyframe), podlaha + toto
+       pravidlo dá `1`. Utlmené je jedno aj druhé číslo, takže rozhodnutie na tom
+       nestojí. Indikátor „model píše" by teda bez
+       tohto pravidla stratil rozdiel medzi pokojom a behom, a to je jediná vec,
+       ktorú tá kresba nesie. Okamžitý ekvivalent je plná farba; vetu o stave
+       hovorí `.charon-note` vedľa bodiek. Rovnaké rozhodnutie ako `.think-dot`
+       v console.css. `!important` netreba (podlaha `animation-name` nedeklaruje —
+       meranie je pri `.cm-dot` v chat.css). */
     .charon-dot { animation: none; opacity: 1; }
 }
 
