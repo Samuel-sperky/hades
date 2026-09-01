@@ -189,4 +189,98 @@ sa beh zastaví a rozsah sa prerokuje.**
 
 ## 11. Výsledok
 
-_(dopíše sa po behu)_
+**Stav:** beh 1 dobehol, plán W1–W6 na 30 agentov sa nespustil vcelku — bežalo
+5 agentov (backend, console-a11y, opcache, spotrebitelia, grafy) plus paralelné
+session mimo tohto fan-outu, ktoré postavili tabuľku + panel pre Knižnicu,
+Kontrolu a Smernicu a kresbu `/chat` (commity `d43a975`, `2fea7a9` — nie sú
+súčasťou výsledkov nižšie, len overené v kóde). Šprint **nie je hotový**;
+zvyšok je v §11.1.
+
+### Prestrelenie odhadu
+
+Odhad behu 1 bol **1,5 M tokenov**, reálne **3,58 M** (+365 k na pokus zhorený
+na limite), teda **~2,6×**. Celý šprint bol v §7 odhadnutý na **2,2–2,9 M** a
+**prvý beh ho sám prekročil** — ďalší beh sa má počítať z tohto reálneho čísla
+(~3,6 M na 5 agentov, tj. ~720 k/agent), nie z pôvodného per-vlnového odhadu.
+
+### Akceptačné kritériá — bod po bode
+
+1. **Knižnica, Kontrola, Smernica — tabuľka + panel.** ✅ Zmerané v kóde
+   (`screens/kniznica.js`, `kontrola.js`, `smernica.js` importujú `renderTable`/
+   `recpanel.js`). Vlastná URL bola stavaná bez zápisu do slovníka — `writeUrl()`
+   neznámy kľúč ticho zahodí — a opravilo sa to samostatným commitom (`kno`,
+   `koo`, `smo` v `urlstate.js DICT`). Nebolo súčasťou 5 hlásených behov, preto
+   bez čísel z reportu; overené štrukturálne, nie premeraním DOM.
+2. **Denník — filtre + „ďalších 50", zostáva kartový.** ✅ Zmerané (backend +
+   spotrebitelia): 153/153 unikátnych záznamov cez tri `offset` okná, `?q=`
+   server-side hľadanie nájde záznam **mimo** načítaného okna (id 662),
+   `.empty--filter` pri prázdnom výsledku. Karty, nie tabuľka — zámer držaný.
+3. **`/console` a `/chat` — čítací režim + paleta Ctrl-K.** ⚠️ Čiastočne.
+   `wireReader()` a paleta (`#cmdk`) na `/console` v kóde existujú (`palette.js`,
+   `reader.js`), rovnako paleta na `/chat` (`public/js/chat/palette.js`) — ale
+   **žiadny z 5 behov to nezmeral** (a11y agent meral len mobilný rail), takže
+   zhoda so zvyškom jazyka appky nie je overená týmto behom.
+4. **Mobil 375 px `/console` a `/chat`.** ⚠️ Čiastočne, s nálezom.
+   Zatvorený panel: `inert` funguje (0/289 fokusovateľných, potvrdené strom
+   prístupnosti). **Nájdená chyba** (flagnutá `task_53a6b179`, k 1. 9. stále
+   nefixnutá): na 375 px otvorený panel hit-testuje `#rail-toggle` na
+   `#back-to-graph` vnútri panela (`#console-header` je `position: static`,
+   `#thread-rail` má `z-index: 20`) — ťuknutie na hamburger namiesto zatvorenia
+   panela **odnavigujte na `/`**. Kritérium č. 4 žiada „spodná lišta klikateľná
+   overená cez `elementFromPoint` na každej destinácii" — tento prípad to
+   nespĺňa. `/chat` mobil nebol v žiadnom z 5 behov meraný vôbec.
+5. **`/api/runs` `sort`/`dir` + filtrovaný počet, nad celou tabuľkou.** ⚠️
+   Server aj UI hotové a zmerané (`?sort=duration_ms&dir=desc&limit=3` vrátilo
+   riadok mimo predošlého okna — dôkaz, že radí server, nie klient; `?sort=id`
+   a SQL injection pokus obe 422). **Radenie sa nedostáva do URL** — rovnaká
+   diera ako u kno/koo/smo (`writeUrl()` ticho zahodí `ruk`/`rud`, chýbajú
+   v `DICT`), k 1. 9. **neopravené** (viď needs nižšie).
+6. **`flows` a `scatter` majú volajúceho.** ⚠️ Polovica. `flows` ✅ — karta
+   „Istota v oblastiach" na Dnes, 20 stúh/9 uzlov na živých dátach, cesta
+   `oblasť → projekt` zo zadania nahradená za `oblasť → istota` (jediný joint,
+   ktorý server posiela — zdôvodnené v reporte). Popri tom opravená latentná
+   chyba (`nextFrame` zaparkované navždy pri skrytom dokumente), ktorá postihla
+   aj `scatter`. `scatter` **zostáva bez volajúceho** — domov (štatistiky Grafu,
+   `panels.js`) je len navrhnutý v needs, nepostavený (súbor je mimo vlastníctva
+   tohto behu).
+7. **Znak sa zrodí na 4 plochách, `offline.html` ticho.** ⚠️ `offline.html`
+   je v kóde OPRAVENÝ (kubická krivka namiesto `ease-in-out`, `no-preference`
+   gate) — nebolo súčasťou 5 behov, overené priamym čítaním súboru. Zrod znaku
+   na `#chat-home`/`.ce-mark` **zostáva neurobený**: komentár v
+   `chat.blade.php` ho sám označuje `[cieľ V2]`.
+8. **Výkon pred/po nad tichým stromom, počet dopytov.** ⚠️ Čiastočne.
+   `/api/today`, `/api/journal`, `/api/dashboard` zmerané pred/po (opcache):
+   medián sa **nehol** (~0,10–0,15 s pred aj po), zmizli chvosty (17/18 → ~5/106
+   špičiek nad 1 s). Príčina nebola dopyt, ale **opcache revalidácia nad
+   Windows bind-mountom** (`enable_cli=0` bolo východisko, appka opcache
+   **vôbec nepoužívala**) — kritérium žiada aj počet dopytov k pomalým
+   endpointom, ten sa nemeral, pretože sa nenašla dopytová príčina. W5
+   (N+1, indexy) sa vôbec nespustilo.
+9. **Celý balík zelený.** ✅ **606 passed / 45 skipped / 0 failed** (potvrdené
+   opakovane vo všetkých piatich behoch, +10 oproti baseline 596 z paralelnej
+   práce, nie z tejto vlny). MariaDB filter `ScreenParity|McpTools|
+   ContentSecurityPolicy`: **48 testov, 760 asercií, OK**. Parita drží.
+10. **Manuál a CLAUDE.md hovoria len to, čo platí.** Práve robím týmto zápisom
+    (CLAUDE.md a `docs/BRAND-HADES.md` opravené v tomto commite dokumentov) —
+    rozsah opravy je to, čo tento beh naozaj zmeral; zvyšok kódu (W2/W3 mimo
+    5 hlásených behov) je overený len namátkovo cez grep/čítanie, nie
+    premeraním na bežiacej appke.
+
+**Súhrn:** 2/10 plne ✅, 6/10 čiastočne ⚠️ (funkčné jadro hotové, chýba buď
+URL perzistencia, druhý koniec páru, alebo meranie), 2/10 (č. 7 časť so znakom,
+a implicitne W2/W6 vcelku) sú vyslovene **nedokončené**.
+
+### 11.1 Čo zostáva do ďalšieho behu
+
+- **`urlstate.js` DICT**: doplniť `ruk`/`rud` (Runy radenie) — presný zápis je
+  v potrebe frontendového agenta vyššie v tomto behu, vzor `kno`/`koo`/`smo`.
+- **Mobilný hit-test bug na `/console`** (`task_53a6b179`) — hamburger vnútri
+  otvoreného panela na 375 px odnavigúje namiesto zatvorenia.
+- **`scatter`** — domov v `panels.js` (štatistiky Grafu), zadanie v needs
+  grafového agenta vyššie.
+- **W2 zvyšok**: zrod znaku na `#chat-home`/`.ce-mark` (`[cieľ V2]` v
+  `chat.blade.php`).
+- **`/console` a `/chat` mobil** — nezmerané vôbec (žiaden z 5 behov to nepokryl).
+- **W5 Optimalizácie** — nespustené; opcache vyriešil chvost, nie prípadné N+1.
+- **Dve MariaDB-only zlyhania** v `ScreenDnesDennikTest` (`project_counts` 5 vs 4,
+  `no_project_group` 3 vs 4), potvrdené staršie než tento beh — samostatná úloha.

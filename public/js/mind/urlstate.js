@@ -119,6 +119,16 @@ function vSlug(v) {
     return /^[a-z0-9][a-z0-9-]{0,60}$/.test(s) ? s : null;
 }
 
+// Meno smernice NIE JE slug oblasti: skládá ho `Str::slug()` zo zadania úlohy,
+// ktoré `DirectiveController::save` validuje ako `max:200`. Strop 61 znakov
+// z `vSlug` by teda ticho zahodil každú smernicu pomenovanú celou vetou —
+// zmerané 1. 9. 2026: 64-znakový slug sa z adresy stratil a nikde sa to
+// neohlásilo. Tvar je ten istý, strop je dlhší než serverový `max:200`.
+function vSlugLong(v) {
+    const s = String(v).trim().toLowerCase();
+    return /^[a-z0-9][a-z0-9-]{0,199}$/.test(s) ? s : null;
+}
+
 // Lokálny graf: `<rootId>.<depth>`, hĺbka 1–3. Jeden kľúč, pretože bez koreňa
 // hĺbka nič neznamená a dva kľúče by dovolili polovičný stav.
 function vLocal(v) {
@@ -186,9 +196,18 @@ const DICT = [
     { k: 'rus', kind: 'one', v: vEnum(['running', 'waiting', 'failed', 'aborted', 'done']), def: null, screen: 'runy', deb: DEB_FILTER },
     { k: 'rum', kind: 'one', v: vText, def: null, screen: 'runy', deb: DEB_FILTER },
     { k: 'ruo', kind: 'one', v: vUuid, def: null, screen: 'runy', deb: DEB_FILTER },
+    // Radenie tabuľky Runov. Zoznam kľúčov je zrkadlo `RunsScreen::SORTS`
+    // na serveri — ten neplatný `sort` ODMIETNE (422), takže adresa, ktorá by
+    // ho pustila ďalej, by len vyrobila chybu namiesto pohľadu. `started_at`
+    // a `desc` v zozname zámerne NIE SÚ: sú to defaulty, a kľúč s hodnotou
+    // rovnou defaultu sa do adresy nepíše (`def: null` + `null` z obrazovky).
+    { k: 'ruk', kind: 'one', v: vEnum(['ended_at', 'duration_ms', 'tokens_in', 'tokens_out',
+        'tokens_per_second', 'steps', 'tool_calls', 'status', 'model', 'source']), def: null, screen: 'runy', deb: DEB_FILTER },
+    { k: 'rud', kind: 'one', v: vEnum(['asc']), def: null, screen: 'runy', deb: DEB_FILTER },
     // Otvorená smernica sa adresuje MENOM, nie id: smernica je súbor
-    // (`directives/<meno>.md`) a v DB riadok nemá, takže vSlug je jej presný tvar.
-    { k: 'smo', kind: 'one', v: vSlug, def: null, screen: 'smernica', deb: DEB_FILTER },
+    // (`directives/<meno>.md`) a v DB riadok nemá. Validátor je `vSlugLong`,
+    // nie `vSlug` — dôvod je pri jeho definícii.
+    { k: 'smo', kind: 'one', v: vSlugLong, def: null, screen: 'smernica', deb: DEB_FILTER },
 
     // Prečo pribudli 'kno', 'koo' a 'smo' naraz (31. 8. 2026): Knižnica, Kontrola
     // a Smernica dostali pravý panel v jednej vlne a všetky tri ho postavili

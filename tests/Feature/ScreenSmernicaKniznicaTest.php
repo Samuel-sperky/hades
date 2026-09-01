@@ -121,6 +121,59 @@ class ScreenSmernicaKniznicaTest extends TestCase
         $this->assertArrayHasKey('directives', $this->getJson('/api/directives')->assertOk()->json());
     }
 
+    public function test_the_saved_directives_carry_the_time_they_were_sorted_by(): void
+    {
+        // Do 1. 9. 2026 si `saved()` prečítala `filemtime()`, zoradila ním a potom
+        // ho z každého riadka `unset`-la. V odpovedi teda bolo PORADIE, ale nie
+        // HODNOTA — obrazovka nemohla napísať „pred 2 dňami" ani zoradiť inak.
+        $dir = sys_get_temp_dir().'/hades-saved-'.bin2hex(random_bytes(4));
+        mkdir($dir, 0775, true);
+        config(['hades.directives_path' => $dir]);
+
+        $stamps = [
+            'stara' => strtotime('2026-08-01 10:00:00'),
+            'nova' => strtotime('2026-08-30 10:00:00'),
+            'prostredna' => strtotime('2026-08-15 10:00:00'),
+        ];
+
+        try {
+            foreach ($stamps as $name => $ts) {
+                file_put_contents("{$dir}/{$name}.md", "# Smernica: {$name}
+
+telo
+");
+                touch("{$dir}/{$name}.md", $ts);
+            }
+
+            $rows = $this->getJson('/api/directives')->assertOk()->json('directives');
+
+            // 1. Poradie zostalo — najnovšie prvé. Toto platilo aj predtým.
+            $this->assertSame(['nova', 'prostredna', 'stara'], array_column($rows, 'name'));
+
+            // 2. A čas je v odpovedi, presne ten, ktorým sa radilo. Nie „teraz":
+            //    keby sa dopĺňal aktuálny čas, boli by všetky tri rovnaké.
+            foreach ($rows as $row) {
+                $this->assertArrayHasKey('saved_at', $row, 'Zoznam smerníc stratil čas úpravy.');
+                $this->assertSame(
+                    $stamps[$row['name']],
+                    strtotime((string) $row['saved_at']),
+                    "`saved_at` smernice {$row['name']} nie je jej `filemtime`.",
+                );
+            }
+
+            $this->assertCount(3, array_unique(array_column($rows, 'saved_at')));
+
+            // 3. `mtime` je interný kľúč radenia a v odpovedi nesmie zostať —
+            //    surové unixové číslo je pre klienta druhý tvar tej istej pravdy.
+            $this->assertArrayNotHasKey('mtime', $rows[0]);
+        } finally {
+            foreach (glob($dir.'/*') ?: [] as $file) {
+                @unlink($file);
+            }
+            @rmdir($dir);
+        }
+    }
+
     public function test_the_library_endpoint_keeps_every_key_it_had(): void
     {
         $this->node('Docker Compose', ['external_key' => 'skill:it/docker'])->tags()->attach(Tag::forName('devops'));

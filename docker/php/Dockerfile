@@ -10,3 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
+
+# Dev ladenie PHP — celé zdôvodnenie a namerané čísla sú v samotnom súbore.
+# Musí byť ako posledná vrstva: mení sa častejšie než apt/composer nad ním.
+COPY php.ini /usr/local/etc/php/php.ini

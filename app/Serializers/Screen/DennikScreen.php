@@ -31,6 +31,24 @@ use Illuminate\Database\Eloquent\Builder;
  * rozišiel s klientmi, o ktorých neviem. Zdrojom pravdy pre obrazovku aj pre AI je
  * `project_groups` — a to je jediné, čo `fieldsForAi()` menuje, aby sa nikdy
  * nestalo, že si každá plocha vyberie inú mapu.
+ *
+ * **Stránkovanie je `offset`, nie cursor — a je to rozhodnutie, nie lenivosť.**
+ * Do 1. 9. 2026 endpoint hlásil `total: 153` a poslal 50 záznamov, ku zvyšným 103
+ * nevedla žiadna cesta. Zvolený je offset preto, že:
+ *
+ *  1. **Odpoveď už nesie `filtered_total`.** Offset je jediné stránkovanie, ktoré
+ *     sa s tým číslom dá zladiť („51–100 z 153"); cursor vie povedať len „ďalších
+ *     50" a pozíciu v celku nie. Repo má vlastné pravidlo, že rez, ktorý sa
+ *     nepriznáva, je lož — a priznať sa dá len tam, kde je pozícia známa.
+ *  2. **Denník rastie NAHORE a jeho riadky sa nemenia.** Nový záznam vloží na
+ *     začiatok, takže okno na `offset=50` sa posunie o jeden riadok *dozadu* —
+ *     hraničný záznam sa raz zobrazí dvakrát. Cursor by chránil pred stratou
+ *     riadka, ale strata je opačný smer a tu nastať nemôže: nič sa nevkladá
+ *     doprostred a nič sa nemaže.
+ *  3. Cursor by potreboval zložený kľúč `(created_at, id)` — dve hodnoty v URL,
+ *     ktoré sa navyše zahodia pri každej zmene filtra.
+ *
+ * Druhý kľúč radenia (`id DESC`) je aj tak povinný a je vysvetlený pri dopyte.
  */
 class DennikScreen extends ScreenSerializer
 {
@@ -44,14 +62,16 @@ class DennikScreen extends ScreenSerializer
     private ?\Illuminate\Support\Collection $groupRows = null;
 
     /**
-     * @param  array<string, mixed>  $filters  project (kľúč skupiny), limit
+     * @param  array<string, mixed>  $filters  project (kľúč skupiny), q, offset, limit
      */
     public function __construct(private array $filters = []) {}
 
     public function data(): array
     {
         $limit = max(1, min((int) ($this->filters['limit'] ?? self::MAX_LIMIT), self::MAX_LIMIT));
+        $offset = max(0, (int) ($this->filters['offset'] ?? 0));
         $project = trim((string) ($this->filters['project'] ?? ''));
+        $q = self::text($this->filters['q'] ?? null);
 
         $query = $this->scope();
 
@@ -59,8 +79,18 @@ class DennikScreen extends ScreenSerializer
             $this->applyProject($query, $project);
         }
 
+        if ($q !== '') {
+            $this->applySearch($query, $q);
+        }
+
         $records = (clone $query)
+            // Druhý kľúč radenia je podmienka stránkovania, nie kozmetika:
+            // `created_at` nie je unikátny (dva záznamy jednej sekundy sú reálne)
+            // a bez rozlíšenia by MySQL mohol dať tomu istému riadku iné miesto
+            // v dvoch po sebe idúcich oknách — teda ho raz zdvojiť a raz vynechať.
             ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->offset($offset)
             ->limit($limit)
             ->get()
             ->map(fn (Node $n): array => $this->row($n))
@@ -73,8 +103,13 @@ class DennikScreen extends ScreenSerializer
             'projects' => $this->rawProjects(),
             'project_groups' => $this->projectGroups(),
             'total' => $this->scope()->count(),
+            // Počet PO filtri (projekt aj `q`) — nad tým istým builderom, z ktorého
+            // sa berie okno. Keby sa počítal nad `scope()`, „ďalších 50" by pri
+            // filtri sľubovalo číslo, ktoré zoznam nikdy nedá.
             'filtered_total' => $query->count(),
             'project' => $project === '' ? null : $project,
+            'q' => $q === '' ? null : $q,
+            'offset' => $offset,
             'limit' => $limit,
         ];
     }
@@ -82,7 +117,7 @@ class DennikScreen extends ScreenSerializer
     public function fieldsForAi(): array
     {
         return [
-            'total', 'filtered_total', 'project',
+            'total', 'filtered_total', 'project', 'q', 'offset', 'limit',
             'project_groups[].key', 'project_groups[].label', 'project_groups[].count',
             'records[].id', 'records[].source', 'records[].label', 'records[].project_key',
             'records[].created_at', 'records[].prompt_count', 'records[].file_count',
@@ -174,6 +209,41 @@ class DennikScreen extends ScreenSerializer
             ->get()
             ->mapWithKeys(fn ($row): array => [$row->project => (int) $row->c])
             ->all();
+    }
+
+    /**
+     * Hľadanie v zázname — label a popis.
+     *
+     * `LOWER(...) LIKE`, **nie** `COLLATE utf8mb4_unicode_ci`: ten je MariaDB-only
+     * a obrazovka Smernica na ňom stojí, preto ju `ScreenParityTest` na sqlite
+     * preskakuje. Denník sa preskakovať nemá, takže tu ide o ten istý kompromis,
+     * aký si zvolil `ChatScreen::base()` — bez akcentovej necitlivosti, ale merateľný
+     * na oboch ovládačoch DB.
+     *
+     * Prečo to musí byť na serveri: klient má okno `limit`, takže „hľadanie" nad ním
+     * by prehľadávalo 50 zo 153 záznamov a hlásilo prázdny výsledok tam, kde záznam
+     * existuje. To nie je pomalé hľadanie, to je nesprávna odpoveď.
+     *
+     * @param  Builder<Node>  $query
+     */
+    private function applySearch(Builder $query, string $q): void
+    {
+        $needle = '%'.mb_strtolower($q).'%';
+
+        $query->where(function (Builder $inner) use ($needle): void {
+            $inner->whereRaw('LOWER(label) LIKE ?', [$needle])
+                ->orWhereRaw('LOWER(description) LIKE ?', [$needle]);
+        });
+    }
+
+    /**
+     * Filter ako text, alebo prázdno. Ten istý dôvod ako v {@see RunsScreen::text()}:
+     * MCP tool posiela argumenty tak, ako ich napísal model, takže tu môže pristáť
+     * pole aj objekt a `(string) []` by bolo varovanie.
+     */
+    private static function text(mixed $value): string
+    {
+        return is_scalar($value) ? trim((string) $value) : '';
     }
 
     /**

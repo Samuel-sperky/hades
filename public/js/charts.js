@@ -115,8 +115,23 @@
     }
 
     /** Spustí prechod až v ďalšom rámci — inak prehliadač zlúči počiatočný
-        a cieľový stav do jedného štýlu a animácia sa preskočí. */
-    function nextFrame(fn) { requestAnimationFrame(() => requestAnimationFrame(fn)); }
+        a cieľový stav do jedného štýlu a animácia sa preskočí.
+     *
+     * SKRYTÝ DOKUMENT DOSTANE CIEĽOVÝ STAV OKAMŽITE, bez rAF. Pri
+     * `document.hidden` je `requestAnimationFrame` podľa špecifikácie zaparkované,
+     * takže trieda `.in` nepribehne NIKDY — a `.flow-ribbons` aj `.scatter-dots`
+     * majú v mind.css `opacity: 0` do jej príchodu, čiže kresba by bola prázdne
+     * miesto, ktoré sa po prepnutí na tab dokreslí. Zmerané v Browser pane, kde
+     * je tab trvalo `document.hidden`: rAF nevystrelil ani po 900 ms a stuhy
+     * stáli na `opacity: 0`. Komentár pri `@media (prefers-reduced-motion)`
+     * v mind.css tú istú poruchu predvídal; toto je jej cesta bez rAF.
+     * Vedľajší efekt, ktorý sa počíta: merací harness (tab je v ňom vždy skrytý)
+     * odteraz vidí KONEČNÝ stav kresby, nie jej nulu.
+     */
+    function nextFrame(fn) {
+        if (document.hidden) { fn(); return; }
+        requestAnimationFrame(() => requestAnimationFrame(fn));
+    }
 
     /* -----------------------------------------------------------------------
        AUTO-FIT — grafy berú výšku z REÁLNEHO boxu kontejnera, nie z konštanty.
@@ -673,14 +688,26 @@
         return axis;
     }
 
-    /** Legenda — jeden tvar swatchu pre celú appku. */
+    /** Legenda — jeden tvar swatchu pre celú appku.
+     *
+     * Swatch je PRSTENEC, nie plný disk — tak, ako to pri `.chart-legend-sw`
+     * v mind.css hovorí komentár (manuál §2: plné disky v legende učili zle,
+     * pretože uzol na plátne je prstenec). Kým bola legenda bez volajúceho,
+     * kreslila výplň a nikto si to nevšimol. Výplň je odteraz priznaná VOĽBA
+     * (`it.fill`) pre grafy, ktoré kreslia PLOCHU (donut, heatmapa), nie uzly.
+     *
+     * Prstenec je `inset box-shadow`, nie `border`: `.chart-legend-sw` je 10×10 px
+     * v content-boxe, takže border by swatch rozšíril na 13 px a rozhodil krok
+     * legendy — a rozmer napísaný v JS je pre CSSOM aj tak neviditeľný.
+     */
     function legendRow(container, items) {
         if (!items || !items.length) return null;
         const wrap = el('div', 'chart-legend');
         for (const it of items) {
             const row = el('span', 'chart-legend-item');
             const sw = el('i', 'chart-legend-sw');
-            sw.style.background = it.color;
+            if (it.fill) sw.style.background = it.color;
+            else sw.style.boxShadow = 'inset 0 0 0 1.5px ' + it.color;
             row.appendChild(sw);
             const tx = el('span'); tx.textContent = it.label;
             row.appendChild(tx);
@@ -803,7 +830,20 @@
 
        Stuhy sú kubické Bézierove krivky s vodorovnými riadiacimi bodmi, takže
        vstup aj výstup dosadá na uzol pod pravým uhlom a stuhy sa nekrížia viac,
-       než musia. */
+       než musia.
+
+       FARBU NESIE VOLAJÚCI, nie tento súbor: `l.color` stuhy a `opts.nodeColor(name,
+       side)` uzly. Je to ten istý dôvod ako pri `label` donutu — utlmenie farby
+       oblasti (`mutedColor()`) aj slovník istoty (`--cert-*`) sú veci obrazovky,
+       nie jazyka grafu. `nodeColor` je funkcia, nie mapa: obe strany môžu nesť
+       rôzne kanály (vľavo oblasť, vpravo istota) a `side` ich rozlíši.
+
+       OBE STRANY MERAJÚ PROTI TEJ ISTEJ VÝŠKE (`usable`) — a to je podmienka, nie
+       kozmetika. Kým si každá strana odpočítala len svoje medzery, kratšia strana
+       (4 uzly proti 5) dostala vyššie uzly než súčet stúh, ktoré do nich vtekajú,
+       takže spodok cieľového uzla zostal prázdny bez toho, aby to čokoľvek
+       znamenalo. Cenou je, že kratší stĺpec nedosiahne spodný okraj — to je
+       pravda o dátach, nie chyba kresby. */
     function flows(container, data, opts) {
         if (!container) return;
         container.innerHTML = '';
@@ -823,23 +863,32 @@
         };
         const left = side('source'), right = side('target');
         const total = links.reduce((s, l) => s + (+l.value || 0), 0);
+        const usable = H - gap * Math.max(0, Math.max(left.length, right.length) - 1);
 
-        const place = (arr, x) => {
-            const usable = H - gap * Math.max(0, arr.length - 1);
+        const place = (arr, x, sideKey) => {
             let y = 0;
             const map = new Map();
             for (const [name, v] of arr) {
                 const h = Math.max(2, (v / total) * usable);
-                map.set(name, { x: x, y: y, h: h, v: v, name: name, cursor: y });
+                map.set(name, {
+                    x: x, y: y, h: h, v: v, name: name, cursor: y,
+                    color: opts.nodeColor ? opts.nodeColor(name, sideKey) : null,
+                });
                 y += h + gap;
             }
             return map;
         };
-        const L = place(left, 0), R = place(right, W - nodeW);
+        const L = place(left, 0, 'source'), R = place(right, W - nodeW, 'target');
 
         const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img' });
         svg.setAttribute('aria-label', opts.label || ('Toky: ' + links.length + ' spojení, '
             + left.length + ' zdrojov, ' + right.length + ' cieľov'));
+        // Rozmer je inline z toho istého dôvodu ako pri growthLine: SVG bez width
+        // by v `.dash-card` (flex column) dostalo intrinzických 300 px a karta by
+        // ho neroztiahla.
+        svg.style.width = '100%';
+        svg.style.height = 'auto';
+        svg.style.display = 'block';
 
         // stuhy pod uzlami — uzol musí prekryť ich zakončenie
         const ribbons = svgEl('g', { class: 'flow-ribbons' });
@@ -847,7 +896,7 @@
             const a = L.get(l.source), b = R.get(l.target);
             if (!a || !b) continue;
             const t = (+l.value || 0) / total;
-            const h = Math.max(1, t * (H - gap * Math.max(0, Math.max(left.length, right.length) - 1)));
+            const h = Math.max(1, t * usable);
             const y1 = a.cursor + h / 2, y2 = b.cursor + h / 2;
             a.cursor += h; b.cursor += h;
             const x1 = nodeW, x2 = W - nodeW;
@@ -879,7 +928,66 @@
         }
         svg.appendChild(nodes);
         container.appendChild(svg);
+        /* Os menuje STĹPCE, nie uzly — `.chart-axis` je `space-between`, takže
+           prvý popisok sedí pod ľavým a druhý pod pravým stĺpcom. Rovnaká deľba
+           ako v scatteri: kresba je v SVG, slová v HTML. */
+        if (opts.sourceLabel || opts.targetLabel) {
+            axisRow(container, [String(opts.sourceLabel || ''), String(opts.targetLabel || '')]);
+        }
+        container.appendChild(flowAlt(links, left, right, total));
         nextFrame(() => ribbons.classList.add('in'));
+    }
+
+    /* Textová alternatíva tokov — jediná cesta k obsahu pre čítačku a klávesnicu,
+       pretože hodnotu stuhy nesie inak len hrúbka a tooltip (a ten dotyk zámerne
+       nedostáva). `aria-label` na SVG hlási TVAR (koľko stúh), táto tabuľka OBSAH.
+       Žije v `.sr-only`, takže výšku karty neovplyvní. */
+    function flowAlt(links, left, right, total) {
+        const box = el('div', 'sr-only');
+
+        const p = document.createElement('p');
+        p.textContent = 'Spolu ' + fmtNum(total) + ' v ' + fmtNum(links.length)
+            + ' tokoch medzi ' + fmtNum(left.length) + ' zdrojmi a '
+            + fmtNum(right.length) + ' cieľmi.';
+        box.appendChild(p);
+
+        const table = document.createElement('table');
+        const cap = document.createElement('caption');
+        cap.textContent = 'Toky po zdrojoch';
+        table.appendChild(cap);
+
+        const thead = document.createElement('thead');
+        const hr = document.createElement('tr');
+        for (const h of ['Zdroj', 'Cieľ', 'Počet']) {
+            const th = document.createElement('th');
+            th.setAttribute('scope', 'col');
+            th.textContent = h;
+            hr.appendChild(th);
+        }
+        thead.appendChild(hr);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        // Poradie je to isté, v akom sa stĺpce kreslia (zostupne podľa súčtu),
+        // aby tabuľka a kresba hovorili v jednom poradí.
+        for (const [name] of left) {
+            for (const l of links.filter((x) => x.source === name)
+                .sort((a, b) => (+b.value || 0) - (+a.value || 0))) {
+                const tr = document.createElement('tr');
+                const th = document.createElement('th');
+                th.setAttribute('scope', 'row');
+                th.textContent = name;
+                const t1 = document.createElement('td');
+                t1.textContent = String(l.target == null ? '' : l.target);
+                const t2 = document.createElement('td');
+                t2.textContent = fmtNum(l.value);
+                tr.appendChild(th); tr.appendChild(t1); tr.appendChild(t2);
+                tbody.appendChild(tr);
+            }
+        }
+        table.appendChild(tbody);
+        box.appendChild(table);
+        return box;
     }
 
     /* Export: jeden objekt, jeden jazyk. Nový typ grafu sa PRIDÁVA sem a musí
@@ -889,5 +997,10 @@
         heatmap: heatmap, donut: donut, growthLine: growthLine,
         sparkline: sparkline, scatter: scatter, flows: flows,
         periodSwitch: periodSwitch, emptyChart: emptyChart, legend: legendRow,
+        /* `certColor` je vystavené preto, aby slovník istoty mal JEDNU farbu na
+           celej appke: donut si ju rozhoduje sám (dostáva `cert` kľúč), ale toky
+           dostávajú farbu od volajúceho — a bez tohto exportu by si ju obrazovka
+           musela prečítať z `--cert-*` druhýkrát a vlastnou cestou. */
+        certColor: certColor,
     };
 })();

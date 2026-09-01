@@ -20,7 +20,39 @@ class RunsScreen extends ScreenSerializer
     public const MAX_LIMIT = 200;
 
     /**
-     * @param  array<string, mixed>  $filters  status, model, source, thread, since, q, limit
+     * Povolené radenie: **kľúč z odpovede → skutočný stĺpec**.
+     *
+     * Whitelist a nie „escapuj názov stĺpca": `ORDER BY` sa v Laravelu neparametrizuje
+     * (`orderBy()` vloží identifikátor do SQL), takže hodnota od klienta by tam
+     * nesmela doraziť ani v okliestenej podobe. Mapa navyše drží, že verejný kľúč je
+     * vec kontraktu a nie mena stĺpca v DB — keby sa stĺpec premenoval, mení sa
+     * hodnota, nie kontrakt.
+     *
+     * Radenie MUSÍ byť tu a nie v prehliadači: tabuľka Runov si dovtedy radila
+     * načítané okno, takže „prvý najdrahší beh" znamenal „najdrahší z posledných 50",
+     * čo je pri strope 200 a 13 živých riadkoch neviditeľné dnes a lož zajtra.
+     *
+     * @var array<string, string>
+     */
+    public const SORTS = [
+        'started_at' => 'started_at',
+        'ended_at' => 'ended_at',
+        'duration_ms' => 'duration_ms',
+        'tokens_in' => 'tokens_in',
+        'tokens_out' => 'tokens_out',
+        'tokens_per_second' => 'tokens_per_second',
+        'steps' => 'steps',
+        'tool_calls' => 'tool_calls',
+        'status' => 'status',
+        'model' => 'model',
+        'source' => 'source',
+    ];
+
+    /** Predvolené radenie — presne to, čo obrazovka mala pred zavedením `sort`. */
+    public const DEFAULT_SORT = 'started_at';
+
+    /**
+     * @param  array<string, mixed>  $filters  status, model, source, thread, since, q, sort, dir, limit
      */
     public function __construct(private array $filters = []) {}
 
@@ -68,13 +100,34 @@ class RunsScreen extends ScreenSerializer
             $query->where('prompt', 'like', '%'.$q.'%');
         }
 
-        $runs = $query->orderByDesc('started_at')->orderByDesc('id')->limit($limit)->get();
+        // Počet PO filtri sa musí vziať PRED oknom, teda z klonu bez `limit`.
+        // `counts` je zámerne nad celou tabuľkou (viď jeho komentár), takže bez
+        // tohto čísla nemá „N z M" pri filtri odkiaľ vziať to M — a M z `counts`
+        // by bola lož: filter podľa modelu ho nezúži.
+        $filteredTotal = (clone $query)->count();
+
+        [$sort, $dir] = $this->order();
+
+        $runs = $query
+            ->orderBy(self::SORTS[$sort], $dir)
+            // Rozlíšenie rovnosti. Pri radení podľa `status` alebo `model` má
+            // desiatky riadkov tú istú hodnotu a bez druhého kľúča je ich poradie
+            // vecou plánu dopytu — teda medzi dvoma načítaniami iné.
+            ->orderBy('id', $dir)
+            ->limit($limit)
+            ->get();
 
         return [
             'items' => $runs->map(fn (Run $run): array => $this->row($run))->all(),
             'counts' => $this->counts(),
+            'filtered_total' => $filteredTotal,
             'models' => $this->distinct('model'),
             'sources' => $this->distinct('source'),
+            // Echo skutočne použitého radenia: klient nesmie hádať, či mu server
+            // jeho `sort` prijal. Neznámy kľúč tu vidieť nikdy nebude — vráti sa
+            // `started_at`, teda to, čím sa naozaj radilo.
+            'sort' => $sort,
+            'dir' => $dir,
             'limit' => $limit,
         ];
     }
@@ -82,7 +135,10 @@ class RunsScreen extends ScreenSerializer
     public function fieldsForAi(): array
     {
         return [
-            'counts',
+            // `counts` je nad celou tabuľkou, `filtered_total` po filtri. Sú to dva
+            // rôzne údaje a AI potrebuje oba: bez druhého nevie, či `items` je celý
+            // výsledok, alebo prvá stránka.
+            'counts', 'filtered_total',
             'items[].uuid', 'items[].status', 'items[].prompt', 'items[].model',
             'items[].tool_profile',
             'items[].steps', 'items[].tool_calls', 'items[].tokens_out',
@@ -172,6 +228,28 @@ class RunsScreen extends ScreenSerializer
         $counts['total'] = array_sum($counts);
 
         return array_map('intval', $counts);
+    }
+
+    /**
+     * Radenie: kľúč z whitelistu a smer.
+     *
+     * Neznámy `sort` sa **ticho vráti na default**, nie na výnimku — z toho istého
+     * dôvodu, z akého ho ticho ignoruje `since`: `RunsController` validuje a vráti
+     * 422, ale MCP tool posiela `$args` surové a `tools/call` by výnimku zabalil do
+     * neurčitého `isError`, z ktorého sa model nedozvie, čo urobil zle. Fallback je
+     * pritom bezpečný, pretože sa nikdy nedostane do SQL nič iné než hodnota z
+     * {@see self::SORTS} — to je vlastnosť konštrukcie, nie disciplíny volajúcich.
+     *
+     * @return array{0: string, 1: 'asc'|'desc'}
+     */
+    private function order(): array
+    {
+        $sort = self::text($this->filters['sort'] ?? null);
+        $sort = array_key_exists($sort, self::SORTS) ? $sort : self::DEFAULT_SORT;
+
+        $dir = strtolower(self::text($this->filters['dir'] ?? null)) === 'asc' ? 'asc' : 'desc';
+
+        return [$sort, $dir];
     }
 
     /**

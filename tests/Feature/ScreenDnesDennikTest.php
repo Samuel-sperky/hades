@@ -97,6 +97,125 @@ class ScreenDnesDennikTest extends TestCase
         $this->getJson('/api/journal?limit=999')->assertOk()->assertJsonPath('limit', DennikScreen::MAX_LIMIT);
     }
 
+    // ---- 1b. cesta k záznamom za oknom -------------------------------------
+
+    public function test_the_journal_walks_past_its_window_without_losing_or_repeating_a_record(): void
+    {
+        $this->seedJournal();   // 7 záznamov denníka
+
+        $all = [];
+        $pages = [];
+
+        foreach ([0, 3, 6] as $offset) {
+            $body = $this->getJson("/api/journal?offset={$offset}&limit=3")->assertOk()->json();
+
+            $this->assertSame($offset, $body['offset']);
+            $this->assertSame(7, $body['filtered_total'], 'Počet po filtri sa nesmie meniť podľa okna.');
+
+            $ids = array_column($body['records'], 'id');
+            $pages[$offset] = $ids;
+            $all = [...$all, ...$ids];
+        }
+
+        // Do 1. 9. 2026 endpoint vrátil prvé okno a k zvyšku nevedla cesta:
+        // `total: 153` proti 50 poslaným záznamom.
+        $this->assertSame([3, 3, 1], array_map('count', array_values($pages)));
+
+        // Bez druhého kľúča radenia (`id`) by tá istá sekunda dala riadku v dvoch
+        // oknách iné miesto — raz duplikát, raz vynechaný záznam. Toto to meria.
+        $this->assertCount(7, $all);
+        $this->assertCount(7, array_unique($all), 'Okná sa prekrývajú — chýba rozlíšenie rovnosti.');
+
+        $whole = array_column(
+            $this->getJson('/api/journal')->assertOk()->json('records'),
+            'id',
+        );
+        $this->assertSame($whole, $all, 'Rozdelené okná nedávajú to isté poradie ako jedno veľké.');
+    }
+
+    public function test_two_records_of_the_same_second_have_a_fixed_order(): void
+    {
+        // Bez druhého kľúča radenia je poradie riadkov s rovnakým `created_at`
+        // vecou plánu dopytu, teda medzi dvoma oknami iné — hraničný záznam by sa
+        // raz zdvojil a raz vypadol. Toto meria, že rozlíšenie existuje: bez
+        // `orderByDesc('id')` vráti sqlite riadky v poradí rowid, teda opačne.
+        $moment = now()->subDay();
+
+        foreach (['prvý', 'druhý', 'tretí'] as $label) {
+            $this->record('AI-mind', "AI-mind — {$label}", 'session')
+                ->forceFill(['created_at' => $moment])->save();
+        }
+
+        $ids = array_column($this->getJson('/api/journal')->assertOk()->json('records'), 'id');
+        $sorted = $ids;
+        rsort($sorted);
+
+        $this->assertSame($sorted, $ids, 'Rovnaká sekunda musí mať pevné poradie (id zostupne).');
+    }
+
+    public function test_an_offset_past_the_end_is_an_empty_page_with_an_honest_total(): void
+    {
+        $this->seedJournal();
+
+        $body = $this->getJson('/api/journal?offset=500')->assertOk()->json();
+
+        // Prázdna stránka, nie 422 a nie „total: 0". Klient musí vidieť, že
+        // záznamy existujú, len ich toto okno nezachytilo.
+        $this->assertSame([], $body['records']);
+        $this->assertSame(7, $body['filtered_total']);
+        $this->assertSame(7, $body['total']);
+
+        // Záporný offset sa zviera, nie odmieta — rovnaká zmluva ako `limit`.
+        $this->getJson('/api/journal?offset=-5')->assertOk()->assertJsonPath('offset', 0);
+    }
+
+    public function test_the_search_reads_the_whole_journal_and_not_the_loaded_window(): void
+    {
+        $this->seedJournal();
+        // Zámerne NAJSTARŠÍ záznam: v okne `limit=1` (najnovšie prvé) nie je,
+        // takže klientske hľadanie nad načítanými riadkami by ho nenašlo.
+        $needle = $this->record('AI-mind', 'AI-mind — vlákno o cenotvorbe', 'session');
+        $needle->forceFill(['created_at' => now()->subYear()])->save();
+
+        $body = $this->getJson('/api/journal?q=cenotvorbe&limit=1')->assertOk()->json();
+
+        $this->assertSame('cenotvorbe', $body['q']);
+        $this->assertSame(1, $body['filtered_total'], 'Počet po filtri musí byť po filtri.');
+        $this->assertSame(8, $body['total'], 'Celkový počet sa filtrom nemení.');
+        $this->assertSame([$needle->id], array_column($body['records'], 'id'));
+
+        // Kalibrácia z druhej strany: bez `q` v tom istom okne ten záznam NIE JE,
+        // takže test naozaj meria serverové hľadanie a nie zhodu náhodou.
+        $this->assertNotContains(
+            $needle->id,
+            array_column($this->getJson('/api/journal?limit=1')->json('records'), 'id'),
+        );
+
+        // A hľadanie hľadá aj v popise, nie len v labeli.
+        $described = $this->record('AI-mind', 'AI-mind — práca 20.8.2026', 'session', [], 'Zmerané pásmo hrán.');
+        $this->assertSame(
+            [$described->id],
+            array_column($this->getJson('/api/journal?q=pásmo')->json('records'), 'id'),
+        );
+    }
+
+    public function test_the_project_filter_and_the_search_narrow_the_same_total(): void
+    {
+        $this->seedJournal();
+
+        // Dva filtre naraz: keby sa `filtered_total` počítal pred jedným z nich,
+        // „ďalších N" by sľuboval riadky, ktoré zoznam nikdy nedá.
+        $body = $this->getJson('/api/journal?project=AI-mind&q=19.8')->assertOk()->json();
+
+        $this->assertSame(1, $body['filtered_total']);
+        $this->assertCount(1, $body['records']);
+        $this->assertSame(7, $body['total']);
+
+        // Ten istý projekt bez `q` má dva záznamy — teda `q` naozaj zúžilo počet,
+        // nie iba zoznam.
+        $this->assertSame(2, $this->getJson('/api/journal?project=AI-mind')->json('filtered_total'));
+    }
+
     // ---- 2. presunuté agregáty sedia s nezávislým prepočtom -----------------
 
     public function test_the_week_counters_match_an_independent_recount(): void

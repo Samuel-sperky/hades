@@ -79,8 +79,12 @@ class DirectiveController extends Controller
     }
 
     /**
-     * GET /api/directives → zoznam uložených smerníc { name, path, title }.
+     * GET /api/directives → zoznam uložených smerníc { name, path, title, saved_at }.
      * title = prvý riadok súboru (nadpis bez '#'). Najnovšie prvé.
+     *
+     * `saved_at` (ISO, z `filemtime`) pribudlo 1. 9. 2026: dovtedy odpoveď nesla
+     * poradie podľa času úpravy, ale samotný čas z každého riadka vypadol, takže
+     * sa zoznam nedal zoradiť inak ani opísať slovami („pred 2 dňami").
      */
     public function index(): JsonResponse
     {

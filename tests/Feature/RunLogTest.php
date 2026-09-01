@@ -374,6 +374,104 @@ class RunLogTest extends TestCase
         $this->getJson('/api/runs?status=vymyslene')->assertStatus(422);
     }
 
+    public function test_the_filtered_count_is_after_the_filter_and_counts_stays_before_it(): void
+    {
+        $this->makeRun(['model' => 'qwen3:8b', 'prompt' => 'nájdi Docker']);
+        $this->makeRun(['model' => 'qwen3:8b', 'prompt' => 'oprav label']);
+        $this->makeRun(['model' => 'fake:1', 'prompt' => 'iné']);
+
+        $all = $this->getJson('/api/runs')->assertOk()->json();
+        $this->assertSame(3, $all['filtered_total']);
+        $this->assertSame(3, $all['counts']['total']);
+
+        // Toto je celý nález: `counts` je zámerne nad CELOU tabuľkou, takže pri
+        // filtri by „N z M" z neho bola lož. `filtered_total` je to M.
+        $filtered = $this->getJson('/api/runs?model=qwen3:8b')->assertOk()->json();
+        $this->assertCount(2, $filtered['items']);
+        $this->assertSame(2, $filtered['filtered_total']);
+        $this->assertSame(3, $filtered['counts']['total'], '`counts` sa filtrom zúžiť NESMIE.');
+
+        // A počet po filtri nesmie závisieť od okna — inak by „ďalších N" sľuboval
+        // presne toľko, koľko už vidím.
+        $page = $this->getJson('/api/runs?model=qwen3:8b&limit=1')->assertOk()->json();
+        $this->assertCount(1, $page['items']);
+        $this->assertSame(2, $page['filtered_total']);
+    }
+
+    public function test_the_whole_filtered_set_is_sorted_on_the_server_not_the_loaded_window(): void
+    {
+        // Tri behy, ktorých poradie podľa ceny je iné než podľa času: keby radil
+        // prehliadač nad oknom, „najdrahší beh" by znamenal „najdrahší z okna".
+        $slow = $this->makeRun(['duration_ms' => 900_000, 'started_at' => now()->subDays(3)]);
+        $mid = $this->makeRun(['duration_ms' => 5_000, 'started_at' => now()->subDay()]);
+        $fast = $this->makeRun(['duration_ms' => 1_000, 'started_at' => now()]);
+
+        $default = $this->getJson('/api/runs')->assertOk()->json();
+        $this->assertSame('started_at', $default['sort']);
+        $this->assertSame('desc', $default['dir']);
+        $this->assertSame(
+            [$fast->uuid, $mid->uuid, $slow->uuid],
+            array_column($default['items'], 'uuid'),
+            'Predvolené radenie sa nesmie zmeniť — obrazovka na ňom stojí.',
+        );
+
+        // Okno JEDNÉHO riadku a najdrahší beh je najstarší: nájsť sa dá len tak,
+        // že sa radí nad celou filtrovanou množinou.
+        $top = $this->getJson('/api/runs?sort=duration_ms&dir=desc&limit=1')->assertOk()->json();
+        $this->assertSame([$slow->uuid], array_column($top['items'], 'uuid'));
+        $this->assertSame('duration_ms', $top['sort']);
+        $this->assertSame(3, $top['filtered_total']);
+
+        // Kalibrácia z druhej strany: obrátený smer musí dať iný riadok, inak
+        // by test prešiel aj vtedy, keby sa `dir` ignoroval.
+        $bottom = $this->getJson('/api/runs?sort=duration_ms&dir=asc&limit=1')->assertOk()->json();
+        $this->assertSame([$fast->uuid], array_column($bottom['items'], 'uuid'));
+        $this->assertSame('asc', $bottom['dir']);
+    }
+
+    public function test_sorting_takes_a_whitelisted_column_and_nothing_else(): void
+    {
+        $this->makeRun();
+
+        // Každý povolený kľúč musí naozaj prejsť dopytom — whitelist, ktorý menuje
+        // stĺpec, čo v tabuľke nie je, by padol až u používateľa.
+        foreach (array_keys(RunsScreen::SORTS) as $sort) {
+            $this->getJson('/api/runs?sort='.$sort)->assertOk()->assertJsonPath('sort', $sort);
+        }
+
+        // `ORDER BY` sa neparametrizuje, takže hodnota od klienta sa doňho nesmie
+        // dostať ani okliestená. Endpoint odmieta, nesanitizuje.
+        foreach (['id', 'prompt', 'started_at; DROP TABLE runs', 'runs.id', '(SELECT 1)'] as $bad) {
+            $this->getJson('/api/runs?sort='.urlencode($bad))->assertStatus(422);
+        }
+
+        $this->getJson('/api/runs?dir=sideways')->assertStatus(422);
+
+        // Prázdny parameter je „neposlané", nie neplatná hodnota — `nullable`
+        // to prepustí a radí sa predvolene. Odpovedať naň 422 by zhodilo klienta,
+        // ktorý skládá query string bez vetvenia.
+        $this->getJson('/api/runs?sort=&dir=')->assertOk()->assertJsonPath('sort', 'started_at');
+    }
+
+    public function test_the_mcp_plane_falls_back_to_the_default_sort_instead_of_erroring(): void
+    {
+        $slow = $this->makeRun(['duration_ms' => 900_000, 'started_at' => now()->subDays(3)]);
+        $fast = $this->makeRun(['duration_ms' => 1_000, 'started_at' => now()]);
+
+        // MCP tool posiela `$args` surové (žiadny validátor), takže serializér musí
+        // sám ustáť čokoľvek. Výnimka by sa premenila na neurčité `isError`, z ktorého
+        // sa model nedozvie, čo urobil zle — a whitelist drží aj tak.
+        $data = (new RunsScreen(['sort' => 'prompt); DROP TABLE runs; --', 'dir' => 'čokoľvek']))->data();
+
+        $this->assertSame('started_at', $data['sort']);
+        $this->assertSame('desc', $data['dir']);
+        $this->assertSame([$fast->uuid, $slow->uuid], array_column($data['items'], 'uuid'));
+
+        // A platný kľúč z tej istej cesty funguje, takže fallback nie je „vypnuté radenie".
+        $sorted = (new RunsScreen(['sort' => 'duration_ms', 'dir' => 'desc']))->data();
+        $this->assertSame([$slow->uuid, $fast->uuid], array_column($sorted['items'], 'uuid'));
+    }
+
     public function test_the_detail_leaves_the_system_directive_out_of_the_timeline(): void
     {
         $thread = ConsoleThread::create([]);

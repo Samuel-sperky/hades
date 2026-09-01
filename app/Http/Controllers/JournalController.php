@@ -16,15 +16,20 @@ use Illuminate\Http\Request;
  * zachytí prázdny projekt aj každý strojový názov adresára. Dovtedy tú skupinu
  * skládal prehliadač, takže sa dala vidieť, ale nedala filtrovať.
  *
- * Vstupy sa **nevalidujú, ale zvierajú** (`limit` v serializéri): endpoint dovtedy
- * na `?limit=999` vrátil 50 a odpovedať naň 422 by bola zmena zmluvy, nie oprava.
+ * Vstupy sa **nevalidujú, ale zvierajú** (`limit` a `offset` v serializéri): endpoint
+ * dovtedy na `?limit=999` vrátil 50 a odpovedať naň 422 by bola zmena zmluvy, nie
+ * oprava. To isté platí pre `offset` — záporný sa zviera na 0 a offset za koncom
+ * vráti prázdne `records` s pravdivým `filtered_total`, nie chybu.
+ *
+ * `offset` a `q` pribudli 1. 9. 2026: predtým bol `total: 153` proti 50 poslaným
+ * záznamom, takže odpoveď sama priznávala 103 záznamov, ku ktorým nevedla cesta.
  */
 class JournalController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
         return response()->json(
-            (new DennikScreen($request->only(['project', 'limit'])))->data()
+            (new DennikScreen($request->only(['project', 'q', 'offset', 'limit'])))->data()
         );
     }
 }

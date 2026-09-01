@@ -1929,7 +1929,7 @@ po prekliknutí reálnych ovládačov).
 
 **URL už dnes lže:** `?screen=bogus` zostane v adrese a appka ukáže Dnes
 (`state.js` hodnotu nevaliduje, validuje ju až `setScreen()`). Bez zápisu orezanej
-pravdy späť sa ten defekt zmnoží na 38 kľúčov namiesto jedného.
+pravdy späť sa ten defekt zmnoží na 41 kľúčov namiesto jedného.
 
 ### Čo do URL patrí a čo nie
 
@@ -1982,7 +1982,7 @@ bez query stringu.
 8. **strop 24 opakovaní na jeden kľúč.** 40 vybraných značiek dá ~900 znakov query;
    nad stropom sa kľúč z URL **vynechá** a stav zostane lokálny. Nie balík.
 
-### Kanonický slovník kľúčov — 38, úplný
+### Kanonický slovník kľúčov — 41, úplný
 
 **Toto je jediný zdroj a je to zároveň jediné miesto v kóde, ktoré kľúč
 serializuje aj deserializuje.** Krátke kľúče sú bez tabuľky chyba.
@@ -1990,7 +1990,7 @@ serializuje aj deserializuje.** Krátke kľúče sú bez tabuľky chyba.
 **Vylúčenie kolízií je štrukturálne, nie disciplínou:** 6 jednoznakových kľúčov je
 vyhradených pre chrbticu, dvojznakové nesú rodiny (`g*` pohľad, `f*` filtre grafu,
 `p*` panely, `h*` hľadanie v histórii, plus `mw`, `sk`, `ar`), trojznakové sú
-obrazovkové (prefix = 2 znaky slugu obrazovky + os) plus `sel` a `loc`. Všetkých 38
+obrazovkové (prefix = 2 znaky slugu obrazovky + os) plus `sel` a `loc`. Všetkých 41
 je odlišný presný reťazec a ani jeden sa nerovná `token`, `k` ani `screen`.
 
 #### A · Spoločná chrbtica (2)
@@ -2049,39 +2049,45 @@ nikde, ani v `localStorage`.
 **`fg` je jediný POZITÍVNY filter v rodine** — kto to zamení, obráti význam odkazu.
 `ft` a `fs` môžu obe niesť hodnotu `skill`; sú to rôzne kľúče, nie kolízia.
 
-#### E · Obrazovky dát (12) — prefix = 2 znaky slugu + os
+#### E · Obrazovky dát (15) — prefix = 2 znaky slugu + os
 
 | Kľúč | Obrazovka · os | Hodnoty | Default | Väzba |
 |---|---|---|---|---|
 | `dep` | Denník · projekt | text, môže začínať `#` | všetky | `journalProject` |
 | `kna` | Knižnica · slug oblasti | `dizajn-kreativa` … | neprítomné | `libraryState.areaSlug` — **filtruje KLIENT** |
+| `kno` | Knižnica · otvorený panel | int | neprítomné | `recpanel.js` (`recOpenId('kniznica')`) |
 | `kot` | Kontrola · typ | `core` `skill` `project` `memory` | `''` | `kontrolaState.f.type` |
 | `koc` | Kontrola · istota | `overene` `hypoteza` `pasca` | `''` | `kontrolaState.f.certainty` |
 | `koa` | Kontrola · slug oblasti | slug | `''` | `kontrolaState.f.area` |
 | `kol` | Kontrola · strop | násobky 100, max 500 | **100** | `kontrolaState.limit` |
+| `koo` | Kontrola · otvorený panel | int | neprítomné | `recpanel.js` (`recOpenId('kontrola')`) |
 | `roy` | Rozhodnutia · rok | `YYYY` | neprítomné | `decisionsState.year` |
 | `roa` | Rozhodnutia · id oblasti | int | neprítomné | `decisionsState.areaId` |
 | `roo` | Rozhodnutia · otvorený panel | int | neprítomné | `rozhodnutia.js` — `bootRoo` / `applyPanelFromUrl()` |
 | `rus` | Runy · stav | `running` `waiting` `failed` `aborted` `done` | neprítomné | `runsState.status` |
 | `rum` | Runy · model | text | neprítomné | `runsState.model` |
 | `ruo` | Runy · rozbalený beh | uuid | neprítomné | `runsState.open` |
+| `smo` | Smernica · otvorená smernica | slug (`vSlug`) | neprítomné | `recpanel.js` (`recOpenId('smernica')`) |
 
-**`roo` a `ruo` sú zámerná dvojička**, nie duplicita: obe nesú „ktorý záznam je
-otvorený v pravom paneli", líšia sa len typom kľúča záznamu (`roo` int pre
-rozhodnutie, `ruo` uuid pre beh). Tabuľka tu do 31. 8. 2026 mala hlavičku „(11)"
-a `roo` v nej chýbal, hoci je živo zapojený (`bootRoo` sa číta **pred** prvým
-renderom, `writeUrl({ roo: null })` ho po zavretí panela z adresy zmaže). Kľúč
-pribudol v `6dd1a99`; manuál ten commit nezachytil, takže deviaty riadok chýbal aj
-v celkovom počte — preto sa slovník posunul zo 37 na 38.
+**`roo`, `ruo`, `kno`, `koo` a `smo` sú zámerná päťka**, nie duplicita: všetky
+nesú „ktorý záznam je otvorený v pravom paneli", líšia sa len typom kľúča
+záznamu obrazovky (`roo`/`kno`/`koo` int, `ruo` uuid, `smo` slug — Smernica žije
+v `directives/<meno>.md` a v DB riadok nemá). `roo` pribudol v `6dd1a99`,
+`kno`/`koo`/`smo` naraz 31. 8. 2026, keď Knižnica, Kontrola a Smernica dostali
+pravý panel v jednej vlne — **všetky tri ho postavili správne, ale žiadna
+nedoplnila tento slovník**: `writeUrl()` neznámy kľúč ticho zahodí, takže panel
+fungoval a `location.search` ostal `?s=<obrazovka>` bez neho. Preto sa slovník
+za jeden beh posunul z 38 na 41 (`docs/BRAND-HADES.md` `writeUrl` pascu má aj
+`CLAUDE.md`, sekcia „Detail záznamu — jeden pravý panel").
 
 **Knižnica má zámernú asymetriu:** `q` filtruje server (SK-aware stemming), oblasť
 filtruje prehliadač (server posiela `limit=null`, všetky karty ležia na klientovi).
 **`kna` sa nesmie premietnuť do dopytu na server.**
 
-**Dnes a Smernica nemajú ani jeden kľúč.** Obrazovka Dnes má krížový skok, ktorý je
-prirodzene prvým hlbokým odkazom appky: čip projektu prepne obrazovku na Denník
-**a** nasadí filter projektu (`dnes.js:140–144`) — teda `?s=dennik&dep=AI-mind`
-a musí to byť **jeden** `pushState`.
+**Dnes nemá ani jeden kľúč** (Smernica ho odteraz má — `smo`). Obrazovka Dnes má
+krížový skok, ktorý je prirodzene prvým hlbokým odkazom appky: čip projektu
+prepne obrazovku na Denník **a** nasadí filter projektu (`dnes.js:140–144`) —
+teda `?s=dennik&dep=AI-mind` a musí to byť **jeden** `pushState`.
 
 #### F · `/chat` (10) — vlákno nesie pathname `/chat/<uuid>`
 
@@ -2440,19 +2446,33 @@ Kontrakt F1 hovoril „d3 + vlastný štýl" a d3 je na `/` naozaj načítané (
 | kumulatívna krivka | `growthLine(el, series)` | Dnes — Rast siete |
 | sparkline | `sparkline(el, values, opts)` | KPI karty (vlna V4) |
 | scatter | `scatter(el, points, opts)` | **bez volajúceho** — viď nižšie |
-| toky | `flows(el, {links}, opts)` | **bez volajúceho** — viď nižšie |
+| toky | `flows(el, {links}, opts)` | Dnes — karta „Istota v oblastiach" (od 31. 8. 2026) |
 
-**Scatter a toky zatiaľ nemá kto volať a je to priznané, nie zamlčané.** Sú
-súčasťou jazyka, pretože kontrakt F2 ich vymenoval, a sú **overené meraním**
-(scatter: 5 bodov, 5 liniek mriežky, os aj popis; toky: 4 stuhy, 5 uzlov,
-popis „Toky: 4 spojení, 2 zdrojov, 3 cieľov"). Nie sú napojené, pretože žiadna
-obrazovka dnes dvojrozmerný pohľad ani tok nežiada a vymýšľať si preň kartu je
-rozhodnutie o produkte, ktoré sekcia E kontraktu nekryje. Platí tu tá istá veta
+**`flows` dostalo domov 31. 8. 2026: karta „Istota v oblastiach" na Dnes**
+(`renderCertaintyFlows()` v `dnes.js`), kreslí `per_area[]` (oblasť × istota,
+5 oblastí × 4 stupne, 20 stúh / 9 uzlov na živých dátach). Pôvodné zadanie
+znelo „oblasť → projekt", ale **spoločné rozdelenie oblasť × projekt neposiela
+žiadny endpoint** — `per_area` je marginál istoty, `top_projects` marginál
+projektu, z dvoch marginálov sa joint nedá dopočítať bez vymýšľania. `flows`
+teda kreslí jediný joint, ktorý server naozaj posiela. Pri napájaní sa opravila
+latentná chyba spoločná so `scatter`: `nextFrame()` bolo pri skrytom dokumente
+zaparkované navždy (rAF v skrytej karte nikdy nevystrelí), takže obe kresby
+zostávali na `opacity: 0` donekonečna — dnes pri `document.hidden` dosadá
+`nextFrame` okamžite.
+
+**Scatter zatiaľ nemá kto volať a je to priznané, nie zamlčané.** Je
+súčasťou jazyka, pretože kontrakt F2 ho vymenoval, a je **overený meraním**
+(5 bodov, 5 liniek mriežky, os aj popis). Nie je napojený, pretože žiadna
+obrazovka dnes dvojrozmerný pohľad nežiada a vymýšľať si preň kartu je
+rozhodnutie o produkte, ktoré sekcia E kontraktu nekryje — navrhnutý domov je
+štatistiky Grafu (`panels.js`, vek uzla × sila, farba cez `mutedColor()`,
+filtrované cez `filterPass()`), zatiaľ nepostavený. Platí tu tá istá veta
 ako pri škále veľkostí: **diera v jazyku je horšia než nepoužitý typ** — ďalší
 človek by si na jeho mieste nakreslil vlastný.
 
-Pozor pri napájaní tokov: `top_projects` je na dnešných dátach **prázdne**
-(zmerané, 0 položiek), takže graf oblasť → projekt by dnes ukázal prázdny stav.
+Ak by k `top_projects` niekedy pribudlo spoločné rozdelenie oblasť × projekt
+(vlastný kľúč na serveri, nie odvodenina z dvoch marginálov), `flows` má
+prepínač `periodSwitch` hotový na to, aby druhú veličinu ponúkol vedľa istoty.
 
 ### Spoločné prvky — nový graf ich MUSÍ použiť
 

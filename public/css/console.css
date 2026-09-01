@@ -1453,7 +1453,16 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     #console-app { grid-template-columns: 1fr; }
 
     /* Panel sa pod 900 px nezruší, len sa odsune — inak by na úzkom okne nebolo
-       ako otvoriť staré vlákno. Prepínač #rail-toggle ho vysunie ako prekryv. */
+       ako otvoriť staré vlákno. Prepínač #rail-toggle ho vysunie ako prekryv.
+
+       `transform` NIE JE zatvorenie: prvky zostanú v tab-poradí aj v strome
+       prístupnosti (zmerané 1. 9. 2026 pri 375 px: 289 fokusovateľných prvkov
+       zatvoreného panela a dvanásť Tabov zo skip-linku dvanásťkrát vnútri).
+       Zatvorený prekryv preto dostáva `inert` z `public/js/console/rail.js` —
+       tam je aj rozhodnutie, prečo nie `hidden` atribút ako na `/chat` (zabil by
+       tento prechod a hranica 900 px by bola zapísaná druhýkrát v JS).
+       `railOverlay()` v tom module číta režim prekryvu z `position: fixed` NIŽŠIE,
+       takže tento riadok je jediné miesto, kde tá hranica pre panel platí. */
     #thread-rail {
         position: fixed;
         top: 0;

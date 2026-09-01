@@ -1,5 +1,6 @@
 import { bindPackButtons, packBtn } from '../pack.js';
 import { openNodeDetail } from '../screens.js';
+import { showToast } from '../toasts.js';
 import { renderSavedFilters } from '../table.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, getJson, prettyLabel, renderEmpty, renderError, renderFilterEmpty } from '../util.js';
@@ -17,12 +18,23 @@ import { iconMarkup } from '../../shared/icons.js';
 
      · projekt  — SERVEROVÁ os (`?project=<kľúč skupiny>`), počty zo servera nad
                   celým korpusom
+     · hľadanie — SERVEROVÁ os (`?q=`), od 1. 9. 2026
      · obdobie  — klientska os nad načítaným oknom
      · zdroj    — klientska os nad načítaným oknom (`session` / `digest`)
 
-   Klientske osi existujú preto, že `/api/journal` iné parametre než `project`
-   a `limit` neprijíma (`JournalController::index` → `$request->only`), takže
-   preosiať sa dajú len záznamy, ktoré už tu sú.
+   HĽADANIE MUSÍ BYŤ SERVEROVÉ a je to jediná možná odpoveď, nie preferencia:
+   okno je 50 riadkov z 153 (namerané 1. 9. 2026), takže klientske hľadanie by
+   prehľadalo tretinu denníka a na zvyšok odpovedalo „nenašlo sa". To nie je
+   pomalé hľadanie, to je nesprávna odpoveď. `DennikScreen::applySearch()` hľadá
+   v `label` aj `description` cez `LOWER(...) LIKE`.
+
+   Klientske osi (obdobie, zdroj) zostávajú klientske, pretože ich `/api/journal`
+   neprijíma (`JournalController::index` → `$request->only`), takže preosiať sa
+   dajú len záznamy, ktoré už tu sú.
+
+   OKNO SA DÁ PREDĹŽIŤ (`?offset=`, od 1. 9. 2026): „Ďalších 50" v pätičke načíta
+   ďalšie okno a PRIPOJÍ ho k načítaným. Do tejto vlny bola pätička len text —
+   endpoint offset nemal, takže tlačidlo by kliklo a nič by sa nestalo.
 
    A PRÁVE TU JE PASCA, ktorú si táto obrazovka raz už zaplatila (nález M6):
    čip s počtom vypočítaným z 50 načítaných záznamov sľubuje číslo nad celým
@@ -63,6 +75,38 @@ export let journalFiltered = 0;
    že v adrese už nie je — a človek by hľadal čip, ktorý nikde nesvieti. */
 const BOOT_MINE = readUrl().s === 'dennik';
 export let journalProject = (BOOT_MINE ? urlValue('dep') : null) || null;
+/* Hľadaný výraz. Kľúč `q` je v slovníku SPOLOČNÝ pre všetky obrazovky a
+   `scoped: true`, takže sa pri prepnutí obrazovky zahodí sám — Denník si preň
+   vlastný prefixovaný kľúč vymýšľať nemusí a ani nesmie (na obrazovke je najviac
+   jedno voľné hľadanie, viď komentár pri `q` v `urlstate.js`). */
+export let journalQ = (BOOT_MINE ? urlValue('q') : null) || '';
+
+/* Veľkosť okna. Je to zároveň `DennikScreen::MAX_LIMIT`, teda strop, ktorý server
+   stláča sám (`min(limit, 50)`) — zdvojené vedome: `?limit=200` vráti 50 riadkov
+   BEZ chyby, takže sa strop nedá zistiť pokusom a offset ďalšej strany by sa
+   počítal z priania, nie z reality. Offset sa preto nikdy nepočíta z `pages * 50`,
+   ale z `journalRecords.length`. */
+const JOURNAL_STEP = 50;
+
+/* Koľko okien je načítaných. Nie je to len počítadlo pre pätičku: `renderJournal()`
+   podľa neho okná znovu načíta, takže WS zrod uzla (`ws.js` volá `renderJournal()`
+   pri každom novom `session` uzle, keď je Denník na obrazovke) nezhodí človeka
+   z tretej strany späť na prvú. Namerané: jedno okno je 117 ms, takže tri okná
+   sú 350 ms — na obnovu zoznamu, ktorá sa deje raz za zrod uzla, to je únosné. */
+let journalPages = 1;
+// Beží dopyt na ďalšie okno? Dva kliky za sebou by inak požiadali o ten istý offset.
+let journalLoadingMore = false;
+
+/* Dopyt na jedno okno. Poradie parametrov je stabilné (URLSearchParams v poradí
+   `set`), takže sa dva dopyty dajú porovnať v sieťovom logu očami. */
+function journalQuery(offset) {
+    const p = new URLSearchParams();
+    if (journalProject) p.set('project', journalProject);
+    if (journalQ) p.set('q', journalQ);
+    if (offset > 0) p.set('offset', String(offset));
+    p.set('limit', String(JOURNAL_STEP));
+    return '?' + p.toString();
+}
 
 /* Späť / Dopredu. Bez tohto by tlačidlo Naspäť zmenilo adresu a nechalo filter
    stáť — teda by URL lhala, čo je presne to, proti čomu celá vlna vznikla.
@@ -72,8 +116,14 @@ export let journalProject = (BOOT_MINE ? urlValue('dep') : null) || null;
 registerUrlApply('dennik', (url) => {
     if (url.s !== 'dennik') return;
     const next = url.dep || null;
-    if (next === journalProject) return;
+    const nextQ = url.q || '';
+    if (next === journalProject && nextQ === journalQ) return;
     journalProject = next;
+    journalQ = nextQ;
+    /* Serverová os sa zmenila, takže načítané okná platia pre inú množinu —
+       späť na prvé. Bez toho by Späť z tretej strany hľadania načítal tri okná
+       nového dopytu, o ktoré nikto nepýtal. */
+    journalPages = 1;
     if (document.body.dataset.screen === 'dennik') renderJournal();
 });
 // Projektov je bežne ~23 — všetky naraz sa lámu na dva riadky chipov nad obsahom.
@@ -85,7 +135,7 @@ export const JOURNAL_CHIPS_TOP = 8;
    KLIENTSKE OSI: obdobie a zdroj
 
    V ADRESE NIE SÚ a je to zámer. Slovník kľúčov v `urlstate.js` má pre Denník
-   jediný kľúč `dep` (projekt) a dopisovať doň ďalšie dva by bola zmena súboru,
+   `dep` (projekt) a spoločné `q` (hľadanie); dopisovať doň ďalšie dva by bola zmena súboru,
    ktorý táto obrazovka nevlastní. Ten istý dôvod a to isté riešenie má triedenie
    v `rozhodnutia.js` (kľúč pre `sortKey` v slovníku nie je). Trvalosť nesú
    ULOŽENÉ FILTRE, nie adresa.
@@ -201,10 +251,27 @@ export async function renderJournal() {
        potreboval predkresliť rozloženie. */
     const cancelSkeleton = deferSkeleton(list, 'list');
     try {
-        const q = journalProject ? '?project=' + encodeURIComponent(journalProject) : '';
-        const data = await getJson('/api/journal' + q);
+        /* Načítajú sa VŠETKY doteraz otvorené okná, nie len prvé. Dôvod je pri
+           `journalPages`. Dedupe podľa `id` nie je opatrnosť: Hades je živý
+           a denník rastie NAHORE, takže záznam pribudnutý medzi dvoma dopytmi
+           posunie okno o riadok dozadu a hraničný záznam príde DVAKRÁT. Presne
+           tento smer chyby má offset (cursor chráni pred opačným, teda pred
+           stratou — a tá tu nastať nemôže). */
+        const recs = [];
+        const seen = new Set();
+        let data = null;
+        for (let i = 0; i < Math.max(1, journalPages); i++) {
+            data = await getJson('/api/journal' + journalQuery(recs.length));
+            for (const r of (data.records || [])) {
+                if (seen.has(r.id)) continue;
+                seen.add(r.id);
+                recs.push(r);
+            }
+            // Ďalšie okno by bolo prázdne — server už povedal, koľko riadkov má.
+            if (recs.length >= (data.filtered_total ?? 0)) { journalPages = i + 1; break; }
+        }
         cancelSkeleton();
-        journalRecords = data.records || [];
+        journalRecords = recs;
         journalGroups = data.project_groups || [];
         journalTotal = data.total || 0;
         /* `?? total` a nie `|| 0`: `filtered_total` môže byť legitímna NULA
@@ -218,6 +285,8 @@ export async function renderJournal() {
         // znova. Druhýkrát sa to stať nemôže, filter je vtedy prázdny.
         if (journalProject && !journalGroups.some((g) => g.key === journalProject)) {
             journalProject = null;
+            // Okná načítané pre filter, ktorý zmizol, platia pre inú množinu.
+            journalPages = 1;
             return renderJournal();
         }
 
@@ -228,7 +297,7 @@ export async function renderJournal() {
 
            `replace`, nikdy `push` (rozhodnutie 10): tlačidlo Späť patrí
            obrazovkám a vláknam, nie klikaniu do radu čipov. */
-        writeUrl({ dep: journalProject }, 'replace');
+        writeUrl({ dep: journalProject, q: journalQ || null }, 'replace');
 
         renderJournalFilter();
         renderJournalList();
@@ -260,11 +329,32 @@ function axisChips(items, activeKey, attr, statFor) {
     }).join('');
 }
 
+/* Rad hľadania. Vlastný rad, nie miesto medzi čipmi: vstupy majú v tejto appke
+   `width: 100%`, takže v rade čipov by ich vytlačilo na ďalší riadok. Je to ten
+   istý idióm ako `#dec-search` v Rozhodnutiach a `#library-search` v Knižnici,
+   takže tri obrazovky hovoria rovnako.
+
+   Kreslí sa len keď je v čom hľadať (`journalTotal > 0`) ALEBO keď v ňom niečo
+   je — inak by hľadanie, ktoré nič nenašlo, zmizlo spolu s výsledkami a nedalo
+   by sa zmazať. */
+function searchRowHtml() {
+    if (!journalTotal && !journalQ) return '';
+    return '<div class="dtl-filter">'
+        + '<input id="journal-q" type="search" value="' + esc(journalQ) + '"'
+        + ' placeholder="Hľadať v názvoch a popisoch…" autocomplete="off"'
+        + ' aria-label="Hľadať v denníku">'
+        + '</div>';
+}
+
 export function renderJournalFilter() {
     const wrap = $('journal-filter');
     // Poradie aj počty sú zo servera (podľa počtu záznamov v CELOM denníku), takže
     // v zbalenom rade ostanú tie projekty, ktoré sa reálne používajú.
     const groups = journalGroups;
+    /* Prázdne skupiny znamenajú prázdny KORPUS, nie prázdny výsledok hľadania:
+       `DennikScreen::projectGroups()` ich počíta nad celým denníkom bez `q`
+       (zmerané: `?q=zzzznieco` → records 0, filtered_total 0, project_groups 26).
+       Preto tu hľadanie nemá čo strážiť — keď nie sú skupiny, nie je čo hľadať. */
     if (!groups.length) { wrap.innerHTML = ''; return; }
 
     const hiddenCount = Math.max(0, groups.length - JOURNAL_CHIPS_TOP);
@@ -298,7 +388,18 @@ export function renderJournalFilter() {
 
        Vzor troch radov aj triedy sú Rozhodnutia / Runy / Kontrola
        (`<div class="dtl-filter">` na rad), takže tu nevzniká nový slovník. */
+    /* Fokus a poloha kurzora sa musia PREŽIŤ prekreslenie: lišta sa kreslí aj po
+       odpovedi servera na hľadanie (počty ostatných osí sa `q` menia), a to je
+       presne okamih, keď človek v poli ešte píše. Rozhodnutia to riešia tým, že
+       lištu pri hľadaní neprekresľujú vôbec; tu prekresliť treba, tak sa obnoví
+       fokus. `selectionStart` je na `type="search"` legálne (selection API platí
+       pre text/search/url/tel/password, nie pre number/email). */
+    const act = document.activeElement;
+    const hadFocus = !!act && act.id === 'journal-q';
+    const caret = hadFocus ? act.selectionStart : null;
+
     wrap.innerHTML = '<div>'
+        + searchRowHtml()
         + '<div class="dtl-filter">' + projectRow + '</div>'
         + '<div class="dtl-filter">' + axisChips(JOURNAL_PERIODS, journalPeriod, 'period',
             (k) => chipStat(journalSource, k)) + '</div>'
@@ -308,6 +409,15 @@ export function renderJournalFilter() {
         + '</div>';
 
     renderJournalSaved();
+
+    wireJournalSearch(wrap);
+    if (hadFocus) {
+        const qi = $('journal-q');
+        if (qi) {
+            qi.focus();
+            if (caret != null) { try { qi.setSelectionRange(caret, caret); } catch (e) { /* nepodstatné */ } }
+        }
+    }
 
     const more = $('journal-chips-more');
     if (more) more.onclick = () => { journalChipsOpen = !journalChipsOpen; renderJournalFilter(); };
@@ -338,6 +448,48 @@ export function renderJournalFilter() {
     });
 }
 
+/* Hľadanie ide na SERVER, tak sa nesmie pýtať na každé písmeno. 250 ms je to isté
+   číslo, aké má `#dec-search` v Rozhodnutiach — kratšie než rozmyslenie ďalšieho
+   znaku a dlhšie než rýchle písanie. Enter dopyt vypálí hneď.
+
+   Nezmenená hodnota sa NEODOSIELA: `oninput` padne aj na Escape a na výber
+   z histórie prehliadača, a nový dopyt so tým istým `q` by prekreslil zoznam pod
+   rukou bez toho, aby čokoľvek zmenil. */
+let journalQTimer = 0;
+function wireJournalSearch(wrap) {
+    const input = wrap.querySelector('#journal-q');
+    if (!input) return;
+    const fire = () => {
+        clearTimeout(journalQTimer);
+        const v = input.value || '';
+        if (v === journalQ) return;
+        setJournalQ(v);
+    };
+    input.oninput = () => {
+        clearTimeout(journalQTimer);
+        journalQTimer = setTimeout(fire, 250);
+    };
+    input.onkeydown = (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        fire();
+    };
+}
+
+/**
+ * Nastaví hľadanie a načíta denník znova.
+ *
+ * `journalPages = 1`: iná serverová os = iná množina, takže dolistované okná
+ * predošlého dopytu neplatia. Adresa sa mení HNEĎ (`replace`), aby odkaz
+ * skopírovaný počas dopytu nesl to, čo je v poli.
+ */
+export function setJournalQ(q) {
+    journalQ = q || '';
+    journalPages = 1;
+    writeUrl({ q: journalQ || null }, 'replace');
+    renderJournal();
+}
+
 /**
  * Nastaví filter projektu a prekreslí denník.
  *
@@ -357,6 +509,8 @@ export function setJournalProject(key) {
        výhradne cez `URLSearchParams`: konkatenácia by `#` nechala odseknúť
        zvyšok adresy do fragmentu. */
     writeUrl({ dep: journalProject }, 'replace');
+    // Iný projekt = iná množina, takže dolistované okná predošlého filtra neplatia.
+    journalPages = 1;
     renderJournal();
 }
 
@@ -376,6 +530,10 @@ export function setJournalProject(key) {
    Ukladajú sa VŠETKY TRI osi vrátane serverovej: projekt je to, čo filter robí
    užitočným, a `applyJournalFilter()` vie, že jeho zmena znamená nový dopyt.
    --------------------------------------------------------------------------- */
+/* HĽADANIE SA NEUKLÁDÁ, a je to ten istý dôvod ako v Rozhodnutiach: hľadanie je
+   ťah, nie pohľad — píše sa doň priebežne a uloženie by zachytilo náhodný
+   medzistav („AI-mind · ngro"). Dôsledok, ktorý treba poznať: keď je aktívne LEN
+   hľadanie, meno je prázdne a `renderSavedFilters` tlačidlo „Uložiť" nekreslí. */
 function journalFilterName() {
     const parts = [];
     if (journalProject) {
@@ -425,45 +583,122 @@ export function applyJournalFilter(st) {
     journalPeriod = JOURNAL_PERIODS.some((p) => p.key === s.period) ? s.period : 'all';
     journalSource = JOURNAL_SOURCES.some((p) => p.key === s.source) ? s.source : 'all';
     const project = s.project || null;
-    if (project !== journalProject) { setJournalProject(project); return; }
+    /* `q` sa berie len keď ho volajúci naozaj poslal (reťazec, aj prázdny).
+       Uložený filter ho nenesie (hľadanie sa neukládá — dôvod nižšie), takže
+       `undefined` znamená „nechaj, ako je", nie „zmaž". Bez toho rozlíšenia by
+       nasadenie uloženého filtra ticho zmazalo hľadaný výraz. */
+    const q = typeof s.q === 'string' ? s.q : journalQ;
+    const qChanged = q !== journalQ;
+    journalQ = q;
+    if (project !== journalProject || qChanged) {
+        /* Obe osi sú SERVEROVÉ, takže sa dopyt platí RAZ: `q` do adresy tu
+           a `dep` + načítanie nechá na `setJournalProject()`. Dva `renderJournal()`
+           by načítali dve okná, z ktorých prvé by nikto nevidel. */
+        if (qChanged) writeUrl({ q: journalQ || null }, 'replace');
+        setJournalProject(project);
+        return;
+    }
     renderJournalFilter();
     renderJournalList();
 }
 
 /* ---------------------------------------------------------------------------
-   PÄTIČKA ZOZNAMU — priznanie počtu, a prečo tu NIE JE „Ďalších 50"
+   PÄTIČKA ZOZNAMU — „Ďalších 50" a priznanie počtu
 
-   „Ďalších 50" sa NEKRESLÍ, pretože ho `/api/journal` neumožňuje a namerané to
-   je (31. 8. 2026): `DennikScreen::MAX_LIMIT` je 50 a `data()` limit zviera
-   (`min(limit, 50)`), takže `?limit=200` vráti presne 50 záznamov. Offset ani
-   `page` ten endpoint nemá a `JournalController` prepúšťa len `project`
-   a `limit`. Tlačidlo by teda kliklo a nič by sa nestalo — a to je horšie než
-   jeho absencia. Tlačidlo bude mať čo robiť až keď serializér dostane okno
-   (offset), a dovtedy pätička hovorí, kde okno končí.
+   TLAČIDLO ODTERAZ NAOZAJ NAČÍTA (1. 9. 2026). Do tejto vlny tu bol len text
+   a bolo to správne: `/api/journal` offset nemal, `DennikScreen::MAX_LIMIT` je 50
+   a `data()` limit zviera (`?limit=200` vrátilo presne 50), takže tlačidlo by
+   kliklo a nič by sa nestalo. Serializér má odteraz `?offset=`, takže `loadMoreJournal()`
+   načíta ďalšie okno a PRIPOJÍ ho — kresba je kartová, nie `moreRow()` z `table.js`:
+   text pri klientskom filtri nesie inú vetu, než akú `moreRow()` pozná.
 
-   Počet sa priznáva, keď je pravdivý:
-     · `filtered_total` zo servera je pravda vždy (počet po serverovom filtri
-       nad celou tabuľkou), takže bez klientskej osi je „50 z 151" presné;
-     · s klientskou osou nad NEÚPLNÝM oknom celkový počet NEPOZNÁME, takže sa
-       netvrdí — pätička vtedy povie, aké je okno a aký je denník.
+   ČO SA SMIE HLÁSIŤ:
+     · tlačidlo sa kreslí, keď `journalRecords.length < journalFiltered` — to je
+       porovnanie dvoch SERVEROVÝCH čísel (načítané okno vs počet po serverovom
+       filtri), teda pravda nezávislá od klientskych osí;
+     · „Ďalších N" je `min(50, journalFiltered - načítané)`, teda koľko riadkov
+       naozaj pribudne, nie okrúhle číslo;
+     · počet zobrazených sa priznáva len tam, kde je dokázateľný — bez klientskej
+       osi je „50 z 153" presné, s klientskou osou nad NEÚPLNÝM oknom celkový
+       počet NEPOZNÁME, takže sa netvrdí (pätička vtedy povie, aké je okno a aký
+       je denník).
    --------------------------------------------------------------------------- */
 export function journalFooterText(shown) {
     // Zobrazená množina je dokázateľne celá: buď je celé okno, alebo obdobie
     // leží celé v okne (a potom v ňom nechýba ani jeden záznam).
     const complete = windowComplete() || (clientFilterOn() && periodSure(journalPeriod));
     if (complete) return shown === 1 ? '1 záznam' : 'všetkých ' + shown;
-    if (!clientFilterOn()) return shown + ' z ' + journalFiltered + ' · viac denník neposiela';
+    if (!clientFilterOn()) return shown + ' z ' + journalFiltered;
     return shown + ' z okna ' + journalRecords.length + ' najnovších · denník má ' + journalFiltered;
+}
+
+/** Koľko riadkov ešte server má nad rámec načítaných. 0 = okno je celé. */
+function journalRemaining() {
+    return Math.max(0, journalFiltered - journalRecords.length);
 }
 
 function renderJournalFooter(list, shown) {
     const wrap = document.createElement('div');
     wrap.className = 'rec-more';
+    const remaining = journalRemaining();
+    if (remaining > 0) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'rec-more-btn';
+        b.textContent = 'Ďalších ' + Math.min(JOURNAL_STEP, remaining);
+        b.onclick = () => loadMoreJournal(b);
+        wrap.appendChild(b);
+    }
     const n = document.createElement('span');
     n.className = 'rec-more-n';
     n.textContent = journalFooterText(shown);
     wrap.appendChild(n);
     list.appendChild(wrap);
+}
+
+/**
+ * Ďalšie okno záznamov.
+ *
+ * OFFSET JE `journalRecords.length`, nie `journalPages * 50`: dedupe mohol
+ * niektoré riadky zahodiť, takže počet načítaných je jediné číslo, ktoré vie,
+ * odkiaľ pokračovať.
+ *
+ * DEDUPE JE POVINNÝ. Denník rastie NAHORE, takže záznam pribudnutý medzi dvoma
+ * dopytmi posunie okno o riadok dozadu a hraničný záznam by prišiel druhýkrát —
+ * v kartovom zozname by sa objavil dvakrát pod sebou. Offset chráni pred stratou
+ * len tam, kde zoznam rastie na konci; tu chráni klient.
+ *
+ * ZLYHANIE JE TOAST S VARIANTOM `'error'` (politika §8): tlačidlo je akcia bez
+ * inej viditeľnej zmeny, takže mlčanie by vyzeralo, že klik nezabral. Tlačidlo
+ * sa vráti do pôvodného stavu, aby sa dalo skúsiť znova.
+ */
+async function loadMoreJournal(btn) {
+    if (journalLoadingMore) return;
+    journalLoadingMore = true;
+    const label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Načítavam…'; }
+    try {
+        const data = await getJson('/api/journal' + journalQuery(journalRecords.length));
+        const seen = new Set(journalRecords.map((r) => r.id));
+        for (const r of (data.records || [])) {
+            if (seen.has(r.id)) continue;
+            seen.add(r.id);
+            journalRecords.push(r);
+        }
+        journalTotal = data.total ?? journalTotal;
+        journalFiltered = data.filtered_total ?? journalFiltered;
+        journalPages += 1;
+        /* Lišta sa prekresľuje tiež: počty na čipoch klientskych osí sú počítané
+           z okna a väčšie okno ich mení — a `periodSure()` sa novým, starším
+           najstarším záznamom môže prepnúť z „netvrdíme" na exaktné číslo. */
+        renderJournalFilter();
+        renderJournalList();
+    } catch (e) {
+        showToast('Ďalšie záznamy sa nepodarilo načítať', null, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = label; }
+    } finally {
+        journalLoadingMore = false;
+    }
 }
 
 export function renderJournalList() {
@@ -483,10 +718,14 @@ export function renderJournalList() {
            Jedna akcia ruší VŠETKY TRI osi. Dve tlačidlá („zruš projekt", „zruš
            obdobie") by pýtali od človeka, aby uhádol, ktorá os ho zamkla — a pri
            prázdnom zozname na to nemá z čoho prísť. */
-        if (journalProject || clientFilterOn()) {
+        if (journalProject || journalQ || clientFilterOn()) {
+            /* Hľadanie je štvrtá os a tá istá jedna akcia ho ruší tiež — `q: ''`
+               je explicitný reťazec, takže `applyJournalFilter()` ho zmaže
+               (`undefined` by znamenalo „nechaj"). Text hovorí „filter", nie
+               „hľadanie": človek nemá hádať, ktorá os ho zamkla. */
             renderFilterEmpty(list, 'Žiadne záznamy pre tento filter',
                 'Zruš filter a uvidíš celý denník.',
-                () => applyJournalFilter({ project: null, source: 'all', period: 'all' }));
+                () => applyJournalFilter({ project: null, q: '', source: 'all', period: 'all' }));
         } else {
             renderEmpty(list, 'receipt', 'Zatiaľ žiadne záznamy',
                 'Pribudnú, keď si Hades zapamätá prvý poznatok.');

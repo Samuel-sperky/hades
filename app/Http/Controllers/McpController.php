@@ -470,7 +470,11 @@ class McpController extends Controller
                     .'why it can dwarf the generation time. `tool_calls` of 0 means the model answered '
                     .'from context alone. Filters narrow the list server-side; `q` matches the prompt '
                     .'text — but `counts` always covers the WHOLE table and no filter ever narrows it, '
-                    .'so do not read it as the shape of your filtered result. Read one run whole with '
+                    .'so do not read it as the shape of your filtered result: the number of runs your '
+                    .'filter matched is `filtered_total`, and when it exceeds the rows you got, you are '
+                    .'looking at one page — raise `limit` or narrow the filter. `sort` reorders the whole '
+                    .'filtered set server-side, not just the page, so sorting by `duration_ms` really does '
+                    .'find the slowest run and not merely the slowest of the newest 50. Read one run whole with '
                     .'mind_run. `parent` is the uuid of the run that spawned this one as a subagent '
                     .'(spawn_agent), so the list is a tree; pass it to mind_run to read the turn that '
                     .'delegated the work. Never add `duration_ms` up across a parent and its children — '
@@ -490,6 +494,18 @@ class McpController extends Controller
                         'thread' => ['type' => 'string', 'description' => 'Uuid of one console thread'],
                         'q' => ['type' => 'string', 'description' => 'Substring of the prompt'],
                         'since' => ['type' => 'string', 'description' => 'Only runs started at or after this date (YYYY-MM-DD)'],
+                        'sort' => [
+                            'type' => 'string',
+                            // Tá istá konštanta, z ktorej sa berie stĺpec do `ORDER BY`
+                            // aj validácia v `RunsController` — jeden zoznam, tri čitatelia.
+                            'enum' => array_keys(RunsScreen::SORTS),
+                            'description' => 'Order the whole filtered set by this column (default started_at)',
+                        ],
+                        'dir' => [
+                            'type' => 'string',
+                            'enum' => ['asc', 'desc'],
+                            'description' => 'Direction of `sort` (default desc)',
+                        ],
                         'limit' => ['type' => 'integer', 'description' => 'Max rows (default 50, max 200)'],
                     ],
                 ],
@@ -555,7 +571,12 @@ class McpController extends Controller
                     .'`file_count`, `commit_count`, `project_key`), `project_groups` (every project with '
                     .'its record count over the WHOLE journal, largest first — these `key` values are '
                     .'exactly what `project` accepts), `total` and `filtered_total` (how many records the '
-                    .'filter matched, which can exceed the rows returned; `limit` caps at 50). A '
+                    .'filter matched, which can exceed the rows returned; `limit` caps at 50). When '
+                    .'`filtered_total` exceeds the records you got, the rest is reachable: pass `offset` '
+                    .'(50, 100, …) to walk further back in time — before 1. 9. 2026 there was no such '
+                    .'path and everything older than the newest 50 records was invisible. `q` searches '
+                    .'the label and the description of every record over the WHOLE journal, so use it '
+                    .'instead of paging when you know what you are looking for. A '
                     .'`project_key` of `#bez-projektu` is not a project: it is the group of sessions whose '
                     .'working directory was a generated name like `mystifying-mclaren-23750a`, which means '
                     .'nothing. The full text of a record — its markdown description, the prompts, the '
@@ -569,6 +590,14 @@ class McpController extends Controller
                         'project' => [
                             'type' => 'string',
                             'description' => 'Only records of this project — pass a `key` from project_groups, e.g. `#bez-projektu`',
+                        ],
+                        'q' => [
+                            'type' => 'string',
+                            'description' => 'Substring of the record label or description, over the whole journal',
+                        ],
+                        'offset' => [
+                            'type' => 'integer',
+                            'description' => 'Skip this many records — the way to reach anything older than the newest `limit`',
                         ],
                         'limit' => ['type' => 'integer', 'description' => 'Max records (default 50, max 50)'],
                     ],

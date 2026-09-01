@@ -410,6 +410,27 @@ export function dashboardHtml(dash, wb) {
     h += '<div class="dash-card"><div class="dash-head"><span class="dash-title">Podľa oblasti</span></div>'
         + perAreaHtml(dash.per_area || []) + '</div>';
 
+    /* Toky oblasť → istota (F2). Tretia karta nad tými istými `per_area` dátami,
+       a je to zámer, nie duplikát: donut hlási istotu BEZ oblasti, bary oblasti
+       BEZ istoty, a spoločnú tabuľku (5 oblastí × 4 stupne) nevie prečítať ani
+       jedna z nich. Otázka, na ktorú odpovedá len táto karta, je „ktorá oblasť
+       nesie neistotu" — na živých dátach napr. Vývoj & kód má 403 z 814 uzlov
+       bez značky, čo z barov ani z donutu vidieť nie je.
+
+       Prečo práve tento tok a nie „oblasť → projekt": spoločné rozdelenie
+       oblasť × projekt server neposiela nikde (`per_area` je oblasť × istota,
+       `top_projects` je len marginál projektu), a dopočítať ho v prehliadači sa
+       z dvoch marginálov NEDÁ — vyšla by vymyslená kresba. Oblasť × istota je
+       na serveri spočítaná a je aj v `fieldsForAi()`, takže plochy sa nerozídu. */
+    h += '<div class="dash-card"><div class="dash-head">'
+        + '<span class="dash-title">Istota v oblastiach</span>'
+        /* Poznámka je PRÁZDNA a dopisuje ju `renderDashboardBlocks()` z toho istého
+           poľa stúh, z ktorého sa kresba počíta. Súčet `per_area` totiž NIE JE
+           `certainty.total` (2 792 proti 2 796 na živých dátach — `per_area` vynecháva
+           uzly bez oblasti), takže druhý zdroj toho čísla by bol tichý rozdiel. */
+        + '<span class="dash-note" id="dash-flows-note"></span>'
+        + '</div><div id="dash-flows"></div></div>';
+
     // Sync karta
     h += syncCardHtml(dash);
 
@@ -594,6 +615,78 @@ export function renderGrowth(container, dash) {
     draw();
 }
 
+/* TOKY OBLASŤ → ISTOTA (F2, `HadesCharts.flows`).
+
+   Dáta sú `per_area[]` tak, ako ich posiela server: {slug, name, color, count,
+   overene, hypoteza, pasca, bez}. Je to už spoločné rozdelenie oblasť × istota,
+   takže sa tu nič nepočíta — len sa preklápa na `{source, target, value}`.
+   Nula sa NEPOSIELA (a `flows` ju aj tak filtruje): stuha s hodnotou 0 by mala
+   hrúbku 1 px, teda by tvrdila, že tam niečo je.
+
+   DVA FAREBNÉ KANÁLY, KAŽDÝ NA SVOJEJ STRANE — a poloha ich rozlišuje:
+     · vľavo a v stuhách farba OBLASTI cez `mutedColor()` (povinné: každý swatch
+       oblasti v DOM musí hovoriť tú istú farbu ako plátno grafu),
+     · vpravo farba ISTOTY z `HadesCharts.certColor()`, teda tá istá hodnota,
+       akú kreslí donut a legenda istoty o dve karty vedľa. Práve preto tie štyri
+       cieľové uzly nepotrebujú vlastnú legendu: ich kľúč už na obrazovke je.
+   Legenda tejto karty menuje OBLASTI, pretože tie sú na obrazovke inde len ako
+   bodka pri bare, nie ako plocha.
+
+   Slová (`Overené`, `oblasť`, `istota`) posiela volajúci, nie charts.js — to isté
+   pravidlo, aké má donut pri `label`. */
+const CERT_FLOW_STEPS = [
+    ['overene', 'Overené'],
+    ['hypoteza', 'Hypotéza'],
+    ['pasca', 'Pasca'],
+    ['bez', 'Bez značky'],
+];
+
+export function renderCertaintyFlows(container, dash) {
+    const areas = Array.isArray(dash.per_area) ? dash.per_area : [];
+    const note = $('dash-flows-note');
+
+    const links = [];
+    const areaColor = new Map();
+    /* Legenda musí ísť v TOM ISTOM poradí, v akom `flows` stĺpec kreslí (zostupne
+       podľa súčtu) — inak oko hľadá piatu farbu v inom poradí, než v akom leží.
+       Poradie `per_area` zo servera je iné (podľa `angle` oblasti), takže sa tu
+       kopíruje a radí, nie mutuje pole odpovede. */
+    for (const a of [...areas].sort((x, y) => (+y.count || 0) - (+x.count || 0))) {
+        const name = a.name || a.slug || '';
+        if (!name) continue;
+        const color = a.color ? mutedColor(a.color) : 'var(--accent)';
+        areaColor.set(name, color);
+        for (const [key, label] of CERT_FLOW_STEPS) {
+            const v = +a[key] || 0;
+            if (v > 0) links.push({ source: name, target: label, value: v, color: color });
+        }
+    }
+
+    if (!links.length) {
+        HadesCharts.emptyChart(container, 'Zatiaľ žiadne oblasti');
+        if (note) note.textContent = '';
+        return;
+    }
+
+    const certOf = new Map(CERT_FLOW_STEPS.map(([k, l]) => [l, HadesCharts.certColor(k)]));
+    HadesCharts.flows(container, { links: links }, {
+        nodeColor: (name, side) => (side === 'source' ? areaColor.get(name) : certOf.get(name)) || null,
+        sourceLabel: 'oblasť',
+        targetLabel: 'istota',
+        label: 'Toky z ' + areas.length + ' oblastí do štyroch stupňov istoty',
+        empty: 'Zatiaľ žiadne oblasti',
+    });
+    HadesCharts.legend(container, [...areaColor.entries()].map(([name, color]) => ({
+        label: name, color: color,
+    })));
+
+    // Číslo v hlavičke karty z TOHO ISTÉHO poľa stúh, z ktorého je kresba.
+    if (note) {
+        const total = links.reduce((s, l) => s + l.value, 0);
+        note.textContent = fmtNum(total) + ' ' + plural(total, 'uzol', 'uzly', 'uzlov');
+    }
+}
+
 // Napojenie chartov (charts.js) a Sync tlačidla na existujúce DOM kontajnery.
 export function renderDashboardBlocks(dash) {
     if (!window.HadesCharts) return;
@@ -621,6 +714,9 @@ export function renderDashboardBlocks(dash) {
 
     const growth = $('dash-growth');
     if (growth) renderGrowth(growth, dash);
+
+    const flowsEl = $('dash-flows');
+    if (flowsEl) renderCertaintyFlows(flowsEl, dash);
 
     /* Sparkline KPI kariet — kreslí sa až tu, nad živými prvkami (dashboardHtml
        skladá string). Trend je 'up' alebo 'flat' podľa toho, či za týždeň niečo

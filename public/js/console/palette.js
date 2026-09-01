@@ -43,6 +43,7 @@ import { announce, clearView, pushNotice } from './render.js';
 import { emptyBox, errorBox } from './empty.js';
 import { iconSvg } from '../shared/icons.js';
 import { newThread, openThread } from './main.js';
+import { setRail } from './rail.js';
 
 /* ---------- destinácie a profily ---------- */
 
@@ -330,7 +331,8 @@ function bindItems(root) {
             if (!isUuid(id)) return;
 
             closePalette();
-            document.body.classList.remove('rail-open');
+            // Jediný zápisovateľ stavu panela (`inert` + `aria-expanded`).
+            setRail(false);
             openThread(id);
         });
     });

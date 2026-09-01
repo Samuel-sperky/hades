@@ -2246,9 +2246,18 @@ select.ct-filter { flex: 1 1 46%; }
 /* ---------------------------------------------------------------------------
    12 · PORADIE ZADANÍ (`.cq`) A PÁS VETIEV (`.cb`)
    --------------------------------------------------------------------------- */
+/* `display` v `:not([hidden])` — PIATA rodina, ktorá sa zatvára atribútom
+   (`chat/render.js` robí `list.hidden = rows.length === 0`). Komentár nižšie
+   aj commit d43a975 hovorili o ŠTYROCH; boli to päť a táto piata zostala
+   nezaplatená. Zmerané 1. 9. 2026 sondou class+hidden vs class: `.cq` dávala
+   pri `hidden` stále `flex`, kým `.cf-bar`, `.cb-bar`, `.ct-acts`, `.cs-box`
+   dávali `none` — takže prázdny `<ul aria-label="Správy v poradí">` zostával
+   v strome prístupnosti a composer bol trvalo o 6 px vyšší (117 → 123 px,
+   `margin-bottom: var(--sp-0h)` na prvku s výškou 0). */
+.cq:not([hidden]) { display: flex; }
+
 .cq {
     list-style: none;
-    display: flex;
     flex-direction: column;
     gap: 2px;
     max-width: var(--stream-w);

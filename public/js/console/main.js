@@ -33,6 +33,7 @@ import { wireSlash, closePalette } from './slash.js';
 import { wireModels, paintModels } from './models.js';
 import { emptyBox, errorBox } from './empty.js';
 import { wirePalette } from './palette.js';
+import { setRail, wireRail } from './rail.js';
 import { wireReader } from './reader.js';
 import {
     clearThreadFilter, renderThreadFilters, setThreadQuery, threadFilter, threadPass,
@@ -148,7 +149,9 @@ function threadRow(t) {
 
     open.append(el('span', 'ttl', t.title || 'Nové vlákno'), el('span', 'when', when));
     open.addEventListener('click', () => {
-        document.body.classList.remove('rail-open');
+        // Stav panela zapisuje `setRail()`, nikdy trieda priamo — inak by táto
+        // cesta k zatvoreniu nechala `inert` aj `aria-expanded` na starej hodnote.
+        setRail(false);
         openThread(t.uuid);
     });
 
@@ -577,18 +580,11 @@ function wireShell() {
         renderThreadList();
     });
 
-    // Pod 860 px je panel vlákien skrytý — bez tohto prepínača by sa k histórii
-    // na úzkom okne nedalo dostať vôbec.
-    $('#rail-toggle')?.addEventListener('click', (event) => {
-        event.stopPropagation();
-        document.body.classList.toggle('rail-open');
-    });
-
-    document.addEventListener('click', (event) => {
-        if (!document.body.classList.contains('rail-open')) return;
-        if (event.target.closest('#thread-rail, #rail-toggle')) return;
-        document.body.classList.remove('rail-open');
-    });
+    /* Pod 900 px je panel vlákien odsunutý — bez prepínača by sa k histórii na
+       úzkom okne nedalo dostať vôbec. Prepínač, klik mimo, Esc, pasca fokusu
+       a rola dialógu sú v `rail.js`: zatvorený prekryv musí zmiznúť aj z
+       tab-poradia, a to `transform` sám nerobí (zmerané, viď hlavička rail.js). */
+    wireRail();
 
     $('#auto-accept')?.addEventListener('change', async (event) => {
         if (!C.thread) return;

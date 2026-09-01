@@ -628,10 +628,22 @@ class SmernicaScreen extends ScreenSerializer
     }
 
     /**
-     * Uložené smernice { name, path, title }. title = prvý riadok súboru
+     * Uložené smernice { name, path, title, saved_at }. title = prvý riadok súboru
      * (nadpis bez '#'). Najnovšie prvé.
      *
-     * @return list<array{name: string, path: string, title: string}>
+     * **`saved_at` je tu preto, že poradie bez hodnoty sa nedá použiť.** Do
+     * 1. 9. 2026 si táto metóda `filemtime()` prečítala, zoradila ním a potom ho
+     * z každého riadka `unset`-la — v odpovedi teda bolo PORADIE, ale nie ČAS.
+     * Obrazovka preto nemohla napísať „pred 2 dňami" ani zoradiť inak než tak,
+     * ako to poslal server, a klient si čas nemal odkiaľ vziať. Dátum je dáta.
+     *
+     * Radí sa naďalej podľa **celého čísla** `mtime`, nie podľa `saved_at`: ISO
+     * s offsetom (`+02:00` vs `+01:00` cez hranicu DST) nie je lexikograficky
+     * chronologický, a smernice napísané v lete a v zime sú v jednom adresári.
+     * `mtime` sa z riadka vyhadzuje až po zoradení — je to interný kľúč, `saved_at`
+     * je jeho verejný tvar.
+     *
+     * @return list<array{name: string, path: string, title: string, saved_at: string|null}>
      */
     private function saved(): array
     {
@@ -647,11 +659,16 @@ class SmernicaScreen extends ScreenSerializer
                 $first = trim(ltrim((string) $line, "# \t"));
             }
 
+            $mtime = @filemtime($file) ?: 0;
+
             $out[] = [
                 'name' => pathinfo($file, PATHINFO_FILENAME),
                 'path' => 'directives/'.basename($file),
                 'title' => $first,
-                'mtime' => @filemtime($file) ?: 0,
+                // `null`, keď sa čas nedá prečítať — vymyslený „teraz" by riadok
+                // poslal na začiatok zoznamu, čo je horšie než priznané prázdno.
+                'saved_at' => $mtime > 0 ? \Illuminate\Support\Carbon::createFromTimestamp($mtime)->toIso8601String() : null,
+                'mtime' => $mtime,
             ];
         }
 

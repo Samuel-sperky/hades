@@ -350,6 +350,29 @@ pridaj mu import **a** `wire*()`/`boot*()` do `boot()`, a over to **meraním**
 (`read_network_requests` na `/js/chat/<modul>.js` musí dať 200, a `wire*` musí naozaj
 niečo pripojiť do DOM).
 
+**`chat.css` dostal kresbu komponentov 31. 8. 2026 (97 → 309 pravidiel)** a niesla
+si vlastnú pascu: `chat/main.js` zatvára oba bočné panely ATRIBÚTOM `hidden`, nie
+triedou, a UA pravidlo `[hidden] { display: none }` má špecificitu 0-1-0 — prehrá
+s hocijakým autorským `display: flex/grid` na tom istom selektore bez ohľadu na
+poradie v zdroji. Preto **každé pravidlo, ktoré nastavuje `display` na prvku
+skrývanom `hidden`, musí ísť cez `:not([hidden])`** (`#chat-threads`,
+`#chat-artifact`, `.ct-acts`, `.ch-right :is(a, button)` — komentáre pri každom
+to opakujú). Bez toho zostal zatvorený panel na mobile na obrazovke a hlavička
+kreslila nad jeho tlačidlami.
+
+**Mobilný rail na `/console` má jediného zapisovateľa** (od 31. 8. 2026):
+`public/js/console/rail.js` (`setRail`, `applyRailState`, `trapTab`, `wireRail`,
+`syncRail`). Zatvorený prekryv (pod 900 px) nesie **`inert`, nie `hidden`** ako
+`/chat` — panel je v tomto režime `position: fixed` s prechodom `transform`
+a `[hidden]{display:none}` by ho zabil; nad 900 px, keď je rail trvalý stĺpec,
+`applyRailState()` `role`/`aria-modal`/`inert` sám odoberie. Režim prekryvu sa
+**nečíta z `matchMedia`** — hranica 900 px je literál v troch stylesheetoch a JS
+by bol štvrtý zdroj pravdy — ale z toho, čo hovorí CSS (`position: fixed`).
+**Známy neopravený bug** (`task_53a6b179`, k 1. 9. 2026): na 375 px s otvoreným
+panelom hit-testuje stred `#rail-toggle` na `#back-to-graph` vnútri panela
+(`#console-header` je `position: static`, `#thread-rail` má `z-index: 20`) —
+ťuknutie na hamburger odnavigúje na `/` namiesto zatvorenia panela.
+
 **Podagenti: `spawn_agent` a parkovanie prenášané nahor.** Profil `orchestrator`
 (`mind_recall` + `spawn_agent`, 626 tok proti stropu 680) je jediný, ktorý ten tool
 má — `TOOLS` je 14, ale **`full` zostáva presne dvanástka**. Dieťa môže zaparkovať na
@@ -570,8 +593,11 @@ sa nezaviedla — na ploche AI by rozbila paritu.
 ### Tabuľky záznamov (od 28. 8. 2026)
 
 **Appka mala do tejto vlny nula tabuliek** — jediný `<table>` v repe bola textová
-alternatíva heatmapy. Runy a Rozhodnutia sú odteraz `<table class="rec-table">`
-z **`public/js/mind/table.js`**, Denník zostáva kartový (naratívna os, nie stĺpce).
+alternatíva heatmapy. Runy, Rozhodnutia, **Knižnica, Kontrola a Smernica** (od
+31. 8. 2026) sú `<table class="rec-table">` z **`public/js/mind/table.js`**,
+Denník zostáva kartový zámerne (naratívna os, nie stĺpce) — **Kontrola ako
+tabuľka je vedomé riziko** (fronta na rozhodovanie číta lepšie po jednej veci
+naraz než po stĺpcoch; návrat je jeden commit, kontrakt Sprint 2 §3).
 
 - `renderTable(container, columns, opts)` — stĺpec je `{key, label, kind?, width?,
   cell?, sortValue?, titleFrom?}`. `kind: 'num'` zarovná vpravo a nasadí mono +
@@ -608,9 +634,18 @@ z **`public/js/mind/table.js`**, Denník zostáva kartový (naratívna os, nie s
 dedí z `#node-panel` (spoločné pravidlo v CSS, aby `camInsets()` čítalo `--panel-w`
 raz).
 
-- **Adresu nesie kľúč OBRAZOVKY** (`ruo` pre Runy, `roo` pre Rozhodnutia), nie
-  vlastný kľúč panelu. Kľúče v `urlstate.js` sú viazané na obrazovku, takže sa pri
-  prepnutí zahodia samy a dva panely sa v jednej adrese otvoriť nedajú.
+- **Adresu nesie kľúč OBRAZOVKY** (`ruo` Runy, `roo` Rozhodnutia, `kno` Knižnica,
+  `koo` Kontrola, `smo` Smernica), nie vlastný kľúč panelu. Kľúče v `urlstate.js`
+  sú viazané na obrazovku, takže sa pri prepnutí zahodia samy a dva panely sa
+  v jednej adrese otvoriť nedajú.
+- **`writeUrl()` neznámy kľúč TICHO ZAHODÍ** (`if (!e) continue` v `urlstate.js`).
+  Panel sa otvorí a funguje, adresu ale nenesie — a nič nespadne, takže sa to
+  nájde len meraním `location.search`. Presne to sa stalo `kno`/`koo`/`smo`
+  (tri nezávislé obrazovky postavili panel správne, žiadna nedoplnila slovník)
+  a k 1. 9. 2026 platí to isté pre **`ruk`/`rud`** (radenie tabuľky Runy —
+  server aj UI ho posielajú a čítajú, ale kým nepribudnú v `DICT`, Späť/Dopredu
+  vráti radenie na default). Nový panel/filter s vlastným kľúčom: over
+  `location.search` po akcii, nie len že sa UI zmenilo.
 - **`onRecPanelClose(ns, fn)` je API, nie pohodlie.** Panel sa zatvára TROMI cestami
   (krížik, Esc, `dropRecPanel()` pri prepnutí obrazovky) a bez ohlásenia obe
   obrazovky sledovali DÔSLEDOK: jedna `MutationObserver`om nad triedou panelu, druhá
@@ -674,6 +709,31 @@ isté hodnoty; prerušenie a satelit sa pod 64 px zatvárajú, pretože `Mini` p
 prijíma dva kruhy, raster kreslí anulus dvoma diskami a `.load-mark` je CSS
 `border` — ani jeden z tých troch výstupov prerušenie vyjadriť nedokáže.
 
+## Docker a opcache
+
+**Zmena v `.php` (vrátane `.blade.php`) sa NEPREJAVÍ bez reštartu** (od
+31. 8. 2026). `docker/php/php.ini` má `opcache.validate_timestamps=0`, pretože
+pri bind-mounte z Windows hostu spustila každá medzera > 2 s stat storm nad
+542 súbormi (zmerané 1,7–6,8 s na `/api/*`, po zmene 0,10–0,15 s medián,
+špičky nad 1 s klesli 17/18 → ~5/106). Predtým bola opcache na tomto stroji
+**úplne mŕtva** (`php artisan serve` je CLI SAPI, `opcache.enable_cli` je
+default 0) — samotné zapnutie s `validate_timestamps=1` nezlepšilo nič, cena
+nebola v kompilácii, ale v revalidácii pri každom requeste. Aplikuj zmenu cez:
+
+```
+docker compose restart -t 1 app
+```
+
+`-t 1` nie je kozmetika — `php artisan serve` neobsluhuje SIGTERM, bez neho
+compose čaká default 10 s a SIGKILL-ne (zmerané 11 s). **Blade je najmenej
+očividný prípad**: kompiluje sa do `storage/framework/views/<hash>.php`, kde
+hash je z **cesty**, nie z obsahu, takže nový obsah na tej istej ceste dostane
+starý opcode bez reštartu. JS a CSS sa opcache netýka.
+
+`session.driver=file` bol preverený a **vylúčený** ako príčina zvyšnej
+zriedkavej špičky (2,1–2,6 s, ~1 z 30 dopytov): A/B proti `SESSION_DRIVER=redis`
+dalo redis stranu horšiu (1/24 vs 0/24 špičiek). Nemeň ho bez nového merania.
+
 ## Overenie UI
 
 Docker servuje repo z jeho koreňa, takže **worktree na 8080 neuvidíš**. Postup,
@@ -735,9 +795,10 @@ cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na akcentovej výplni)
 
 Ďalšie tri pasce toho istého druhu, na každú z nich sa dá naletieť:
 
-- **Nečakaj fixný čas, čakaj na obsah.** `/api/journal` a `/api/dashboard` bežia 3–4 s.
-  Pri kratšom spánku sa nasnímkuje loading skeleton a *všetky* obrazovky vyzerajú
-  prázdne. Čakaj na `waitForFunction`, kým v `.screen.active` nie sú položky.
+- **Nečakaj fixný čas, čakaj na obsah.** `/api/journal` a `/api/dashboard` mávajú
+  špičky **1,5–6,8 s** (zmerané pred opravou nižšie), aj keď medián je 0,1–0,2 s —
+  krátky spánok tak nasnímka loading skeleton nepredvídateľne, nie vždy. Čakaj na
+  `waitForFunction`, kým v `.screen.active` nie sú položky.
 - **Nepíš merací skript ako kópiu formuly z kódu.** Po zmene kódu bude merať svoju
   starú kópiu a hlásiť nezmenené čísla. Nechaj render vystaviť výsledok na `S`
   (napr. `S._labelBoxes`) a čítaj ten.
@@ -747,7 +808,8 @@ cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na akcentovej výplni)
 
 ## Testy
 
-`docker compose exec app php artisan test` — **596 testov** (45 preskočených na sqlite),
+`docker compose exec app php artisan test` — **606 testov** (45 preskočených na sqlite,
+stav 1. 9. 2026; +10 oproti staršej báze 596 z paralelnej práce na Denníku a Runoch),
 všetko PHP (backend, MCP,
 API). Frontend testy nie sú; UI sa overuje prekliknutím v prehliadači.
 

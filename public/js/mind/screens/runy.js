@@ -1,7 +1,7 @@
 import { showToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, filterEmptyHtml, fmtNum, getJson, loadingHtml, plainInline, renderEmpty, renderError, timeAgo } from '../util.js';
-import { ASC, DESC, moreRow, renderSavedFilters, renderTable, sortRows } from '../table.js';
+import { ASC, DESC, moreRow, renderSavedFilters, renderTable } from '../table.js';
 import { closeRecPanel, onRecPanelClose, openRecPanel, recOpenId, updateRecPanel } from '../recpanel.js';
 
 /* ---------- obrazovka Runy (/api/runs) — čo konzola robila ----------
@@ -26,14 +26,30 @@ import { closeRecPanel, onRecPanelClose, openRecPanel, recOpenId, updateRecPanel
    Čo TU zostáva vizuálne, a je to tak správne: popisok dňa (dnes/včera/dátum),
    formát trvania a `timeAgo`. To sú slová, nie údaje.
 
-   TRIEDENIE JE KLIENTSKE a je to priznaný kompromis, nie omyl: `/api/runs`
-   pozná len `orderByDesc('started_at')` a `sort`/`dir` parameter nemá. Tabuľka
-   teda radí OKNO, ktoré prišlo (default 50 riadkov, strop 200) — „najdrahší beh"
-   je najdrahší z načítaných, nie z celej tabuľky. Serverový `sort` je zmena
-   mimo tohto súboru; kým nebude, je toto jediná pravda, ktorú sa dá povedať bez
-   dopočtu nad neúplnými dátami. */
+   TRIEDENIE JE SERVEROVÉ (od 1. 9. 2026) a preto sa `sortRows()` z `table.js`
+   TU UŽ NEVOLÁ. Do tejto vlny radila tabuľka OKNO, ktoré prišlo — „najdrahší
+   beh" bol najdrahší z načítaných 50, nie z celej tabuľky. `/api/runs` má odteraz
+   `sort`/`dir` (whitelist `RunsScreen::SORTS`, 11 kľúčov) a `filtered_total`,
+   takže `query()` posiela radenie a obrazovka kreslí `d.items` V PORADÍ, V AKOM
+   PRIŠLI. Druhé radenie nad tým istým poľom by bolo druhý zdroj pravdy: pri
+   `status` by sa navyše LÍŠILO (server radí abecedne, `STATUS_ORDER` podľa
+   významu), takže by hlavička hlásila jedno a riadky boli v inom poradí.
 
-/* Boot z URL (slovník §6): `rus` stav · `rum` model · `ruo` otvorený beh.
+   DÔSLEDOK, ktorý treba poznať: radiť sa dá len podľa toho, čo je v tom
+   whiteliste. `prompt` a `tool_profile` v ňom nie sú, takže ich hlavičky sú
+   `sortable: false` — nie preto, že by sa nedali porovnať (`sortValue` na to
+   bolo), ale preto, že klientske radenie okna by po tejto zmene bolo jediný
+   stĺpec, ktorý hovorí o inej množine než ostatných päť. Radšej žiadne radenie
+   než dve rôzne pravdy v jednej tabuľke.
+
+   Zoradenie podľa STAVU je odteraz abecedné (server), nie podľa `STATUS_ORDER`.
+   Je to zámerná výmena: poradie významu nad oknom 50 je pekná lož, abecedné
+   zoskupenie nad celou tabuľkou je pravda. `STATUS_ORDER` zostáva poradím
+   filtračných čipov, a filter podľa stavu je aj tak silnejší nástroj než
+   radenie podľa neho. */
+
+/* Boot z URL (slovník §6): `rus` stav · `rum` model · `ruo` otvorený beh ·
+   `ruk` kľúč radenia · `rud` smer.
    Číta sa pri načítaní modulu, teda pred prvým `query()` — odkaz tak pošle na
    server rovno svoj filter.
 
@@ -53,8 +69,33 @@ const bootKey = (k) => (BOOT_MINE ? urlValue(k) : null) || null;
 const LIMIT_MAX = 200;
 const LIMIT_STEP = 50;
 
+/* Kľúče, podľa ktorých vie radiť SERVER (`RunsScreen::SORTS`). Zdvojené vedome,
+   ten istý dôvod ako pri `LIMIT_MAX`: hlavička stĺpca sa musí rozhodnúť, či bude
+   tlačidlom, ešte pred prvou odpoveďou — a odpoveď nesie len `sort`, teda kľúč,
+   ktorý sa naozaj použil, nie zoznam možností. Kľúč, ktorý tu je a na serveri nie,
+   by dal 422; kľúč, ktorý je na serveri a tu nie, je len nedostupné radenie.
+   Preto sa tento zoznam smie líšiť len smerom „menej", nikdy „viac". */
+const SERVER_SORTS = ['started_at', 'ended_at', 'duration_ms', 'tokens_in', 'tokens_out',
+    'tokens_per_second', 'steps', 'tool_calls', 'status', 'model', 'source'];
+
+/** Smer pre server. Stav drží ±1 (násobiteľ komparátora), dopyt slová. */
+function dirWord(d) { return d === ASC ? 'asc' : 'desc'; }
+
+/* Radenie z adresy. Neznámy kľúč sa zahodí na default — `ruk` môže prísť
+   z odkazu, ktorý vznikol pred zmenou whitelistu, a poslať ho na server by
+   znamenalo 422, teda chybový stav obrazovky namiesto tabuľky. */
+function bootSortKey() {
+    const k = bootKey('ruk');
+    return k && SERVER_SORTS.includes(k) ? k : 'started_at';
+}
+
 export const runsState = {
     items: [], counts: {}, models: [],
+    /* Počet riadkov, ktoré vyhovujú AKTUÁLNEMU filtru, nad celou tabuľkou
+       (`filtered_total`). Je to tretie číslo vedľa `counts` (tie sú nad celou
+       tabuľkou BEZ filtrov) a práve ono robí „N z M" pravdivým aj pri filtri
+       podľa modelu — dovtedy sa tam počet nesmel ukázať vôbec. */
+    filteredTotal: null,
     status: bootKey('rus'), model: bootKey('rum'),
     /* `open` NIE JE stav panelu — je to JEDNORAZOVÉ prianie z adresy („otvor mi
        tento beh"), ktoré `applyOpenWish()` spotrebuje a zahodí. Stav panelu
@@ -65,8 +106,12 @@ export const runsState = {
     /* Koľko riadkov si obrazovka vyžiadala. Do adresy NEIDE: slovník `urlstate.js`
        preň kľúč nemá a vymyslieť si ho tu by bol kľúč, ktorý nikto nevaliduje. */
     limit: LIMIT_STEP,
-    sortKey: 'started_at',
-    sortDir: DESC,
+    /* Radenie IDE DO ADRESY (`ruk`/`rud`) — je to pohľad na dáta, ktorý sa dá
+       poslať odkazom („pozri, toto bežalo najdlhšie"). Do uloženého filtra
+       nejde: filter je to, čo sa pýtam servera o množine, radenie je poradie
+       v nej. */
+    sortKey: bootSortKey(),
+    sortDir: bootKey('rud') === 'asc' ? ASC : DESC,
     details: new Map(),
 };
 
@@ -80,10 +125,10 @@ const STATUS_LABEL = {
 };
 
 /* Poradie filtračných čipov je poradie, v akom to človek hľadá — nie abecedné.
-   Slúži aj ako kľúč triedenia stĺpca Stav: `localeCompare` slovenských slov by
-   dal „beží, čaká, hotové, prerušené, spadlo", teda poradie bez významu.
-   Zoradiť podľa stavu znamená „ukáž mi najprv to, čo ma zaujíma", a to je presne
-   toto poradie. */
+   Kľúčom TRIEDENIA stĺpca Stav už NIE JE (do 1. 9. 2026 bol, cez `sortValue`):
+   radí server a ten pozná `status`, nie tento zoznam. Dôvod výmeny je v hlavičke
+   súboru; tu zostáva ako poradie čipov, kde nesie presne to, čo má — „ukáž mi
+   najprv to, čo ma zaujíma". */
 const STATUS_ORDER = ['running', 'waiting', 'failed', 'aborted', 'done'];
 
 export async function renderRuns() {
@@ -97,6 +142,17 @@ export async function renderRuns() {
         runsState.items = d.items || [];
         runsState.counts = d.counts || {};
         runsState.models = d.models || [];
+        /* `?? null` a nie `|| null`: nula je legitímny filtrovaný počet (filter,
+           ktorý nič nezachytil) a `||` by ju nerozlíšil od chýbajúceho kľúča.
+           `null` znamená „server ho nepovedal" a `renderMore()` vtedy mlčí. */
+        runsState.filteredTotal = d.filtered_total ?? null;
+        /* ECHO RADENIA, nie prianie klienta. Server whitelist nevaliduje výnimkou,
+           ale tichým návratom na `started_at` (dôvod je v `RunsScreen`: MCP cesta
+           bez validátora nesmie skončiť neurčitým `isError`), takže keby sa stav
+           opravil sám z vlastného priania, hlavička by ukazovala šípku nad stĺpcom,
+           podľa ktorého sa neradilo. Riadi sa tým, čo sa naozaj stalo. */
+        if (d.sort && SERVER_SORTS.includes(d.sort)) runsState.sortKey = d.sort;
+        if (d.dir === 'asc' || d.dir === 'desc') runsState.sortDir = d.dir === 'asc' ? ASC : DESC;
         // Strop berieme zo SERVERA: `RunsScreen` si ho stláča sám (`min(limit, MAX)`),
         // takže po jeho zásahu je pravdou odpoveď, nie prianie klienta.
         if (d.limit) runsState.limit = d.limit;
@@ -125,6 +181,12 @@ function query() {
     const p = new URLSearchParams();
     if (runsState.status) p.set('status', runsState.status);
     if (runsState.model) p.set('model', runsState.model);
+    /* Radenie posiela obrazovka VŽDY, aj default. Nie kvôli serveru (ten padá na
+       `started_at desc` sám), ale kvôli sebe: keby sa default vynechával, dopyt na
+       prvé načítanie a dopyt po dvoch klikoch „tam a späť" by sa líšili tvarom,
+       nie obsahom — a v sieťovom logu by sa nedalo prečítať, čo obrazovka chcela. */
+    p.set('sort', runsState.sortKey);
+    p.set('dir', dirWord(runsState.sortDir));
     // `limit` posiela obrazovka vždy, aj default — „Ďalších 50" je inak jediné
     // miesto, ktoré by ho posielalo, a dopyt by sa medzi prvým a druhým načítaním
     // líšil viac než o počet riadkov.
@@ -158,6 +220,17 @@ function syncRunsUrl() {
     writeUrl({
         rus: runsState.status || null,
         rum: runsState.model || null,
+        /* Default sa v adrese neukazuje (`def` v slovníku ho vynechá), takže
+           `?s=runy` znamená „najnovšie zhora" a `?s=runy&ruk=duration_ms` je
+           odkaz na tabuľku zoradenú podľa trvania.
+
+           POZOR, kým `urlstate.js` tie dva kľúče nemá v `DICT`: `writeUrl()`
+           neznámy kľúč TICHO ZAHODÍ (`if (!e) continue`), takže radenie funguje,
+           ale v adrese sa neobjaví a Späť/Dopredu ho vráti na default. Zmerané
+           1. 9. 2026: `location.search` = '?s=runy' aj po kliknutí na hlavičku
+           Trvanie. Presné riadky do slovníka sú v hlásení tejto vlny. */
+        ruk: runsState.sortKey === 'started_at' ? null : runsState.sortKey,
+        rud: runsState.sortDir === ASC ? 'asc' : null,
     }, 'replace');
 }
 
@@ -169,13 +242,23 @@ registerUrlApply('runy', (url) => {
     const nextStatus = url.rus || null;
     const nextModel = url.rum || null;
     const nextOpen = url.ruo || null;
-    const filterChanged = nextStatus !== runsState.status || nextModel !== runsState.model;
-    if (!filterChanged && nextOpen === recOpenId('runy')) return;
+    /* Kľúč, ktorý v adrese NIE JE, znamená DEFAULT — nie „nechaj, ako je".
+       Adresa je vstup, takže Späť na `?s=runy` má vrátiť aj poradie riadkov, nie
+       len filtre. (Kým `ruk`/`rud` nie sú v slovníku, `url.ruk` je vždy
+       `undefined`, takže sa radenie na Späť vráti na default. Je to viditeľný
+       dôsledok chýbajúceho slovníka, nie druhá pravda v tomto súbore.) */
+    const nextSortKey = url.ruk && SERVER_SORTS.includes(url.ruk) ? url.ruk : 'started_at';
+    const nextSortDir = url.rud === 'asc' ? ASC : DESC;
+    const queryChanged = nextStatus !== runsState.status || nextModel !== runsState.model
+        || nextSortKey !== runsState.sortKey || nextSortDir !== runsState.sortDir;
+    if (!queryChanged && nextOpen === recOpenId('runy')) return;
     runsState.status = nextStatus;
     runsState.model = nextModel;
+    runsState.sortKey = nextSortKey;
+    runsState.sortDir = nextSortDir;
     runsState.open = nextOpen;
     if (document.body.dataset.screen !== 'runy') return;
-    if (filterChanged) { renderRuns(); return; }
+    if (queryChanged) { renderRuns(); return; }
     applyOpenWish();
 });
 
@@ -268,7 +351,11 @@ function renderRunsView() {
     } else {
         const columns = runColumns();
         renderTable($('runy-table'), columns, {
-            rows: sortRows(runsState.items, runsState.sortKey, runsState.sortDir, columns),
+            /* `d.items` V PORADÍ ZO SERVERA. `sortRows()` tu ZÁMERNE nie je —
+               dôvod je v hlavičke súboru: druhé radenie nad tým istým poľom by
+               bolo druhý zdroj pravdy a pri `status` by dalo iné poradie, než
+               hlási hlavička. */
+            rows: runsState.items,
             sortKey: runsState.sortKey,
             sortDir: runsState.sortDir,
             onSort: sortBy,
@@ -309,9 +396,15 @@ function renderRunsView() {
    nula. Dôsledok, s ktorým treba počítať: na úzkej ploche sa režú aj chrómové
    stĺpce, preto nesú `title`.
 
-   `sortValue` je tam, kde sa ZOBRAZENÁ hodnota porovnať nedá: „2 min" vs „45 s"
-   sú texty, ktorých abecedné poradie je náhoda, a „pred 3 d" je text bez dátumu.
-   Triedi sa vždy surová hodnota zo servera. */
+   `sortValue` TU UŽ NIE JE ani na jednom stĺpci a je to dôsledok serverového
+   radenia, nie opomenutie: `sortRows()` sa nevolá, takže funkcia, ktorá by mu
+   dodala porovnateľnú hodnotu, by bola mŕtvy kód. Práve preto, že sa zobrazené
+   hodnoty porovnať nedajú („2 min" vs „45 s", „pred 3 d" bez dátumu), musí radiť
+   ten, kto má surové čísla — teda `ORDER BY` nad celou tabuľkou.
+
+   `sortable: false` je na `prompt` a `tool_profile`: `RunsScreen::SORTS` ich
+   nemá, takže hlavička-tlačidlo by poslala `sort`, ktorý server odmietne (422 na
+   ceste HTTP), a klientske dorovnanie by radilo len okno. */
 function runColumns() {
     return [
         {
@@ -321,14 +414,9 @@ function runColumns() {
                 return '<span class="badge" data-status="' + esc(r.status) + '" title="' + esc(w) + '">'
                     + esc(w) + '</span>';
             },
-            // Poradie významu, nie abecedy — dôvod je pri `STATUS_ORDER`.
-            sortValue: (r) => {
-                const i = STATUS_ORDER.indexOf(r.status);
-                return i < 0 ? STATUS_ORDER.length : i;
-            },
         },
         {
-            key: 'prompt', label: 'Zadanie',
+            key: 'prompt', label: 'Zadanie', sortable: false,
             /* `title` nesie ten istý text ako cela. Nie je to zdvojenie: cela sa
                reže s výpustkou (`.rec-table td` je nowrap + overflow hidden),
                takže bez `title` sa dlhšie zadanie nedá prečítať bez otvorenia
@@ -338,7 +426,6 @@ function runColumns() {
                 const p = plainInline(r.prompt || '(bez zadania)');
                 return '<span title="' + esc(p) + '">' + esc(p) + '</span>';
             },
-            sortValue: (r) => plainInline(r.prompt || ''),
         },
         {
             key: 'started_at', label: 'Kedy', width: '8%',
@@ -347,12 +434,11 @@ function runColumns() {
                 if (!when) return '—';
                 return '<span title="' + esc(whenTitle(r)) + '">' + esc(when) + '</span>';
             },
-            /* ISO zo servera nesie OFFSET (`+02:00` v lete, `+01:00` v zime),
-               takže jeho abecedné poradie nie je chronologické na hranici času.
-               Normalizácia na UTC dá pevný tvar rovnakej dĺžky, kde abecedné
-               poradie chronologické JE — a to je dôvod, prečo tento stĺpec
-               nemusí byť `num`. */
-            sortValue: (r) => (r.started_at ? new Date(r.started_at).toISOString() : null),
+            /* Bez `sortValue`: chronologicky radí `ORDER BY started_at` na serveri,
+               teda nad hodnotou v DB. Bývalá klientska cesta musela ISO najprv
+               normalizovať na UTC (offset `+02:00` v lete vs `+01:00` v zime robí
+               z abecedného poradia náhodu na hranici DST) — v SQL ten problém
+               neexistuje, stĺpec je timestamp, nie text. */
         },
         {
             key: 'model', label: 'Model', width: '13%',
@@ -360,9 +446,10 @@ function runColumns() {
         },
         {
             // Profil nástrojov, s ktorým beh bežal (memory/files/graph/full). `null`
-            // = beh z čias pred profilmi; prázdne riadky idú pri triedení na konec
-            // samy (`sortRows`), pretože „nič" nie je najmenšia hodnota.
-            key: 'tool_profile', label: 'Profil', width: '8%',
+            // = beh z čias pred profilmi. Radiť sa podľa neho nedá: v serverovom
+            // whiteliste nie je, a klientske radenie okna by tu bolo jediný stĺpec,
+            // ktorý hovorí o inej množine než ostatné (viď hlavička súboru).
+            key: 'tool_profile', label: 'Profil', width: '8%', sortable: false,
             cell: (r) => (r.tool_profile ? esc(r.tool_profile) : '—'),
         },
         {
@@ -382,8 +469,17 @@ function runColumns() {
 
 /* Prvý klik na stĺpec: čísla a čas ZOSTUPNE, text vzostupne. Najdrahší beh
    a najnovší beh sú to, čo človek hľadá; „najstarší" chce až druhým klikom.
-   Triedenie do adresy neide — slovník `urlstate.js` pre ňu kľúč nemá. */
+
+   `renderRuns()`, nie `renderRunsView()`: klik na hlavičku je odteraz NOVÝ DOPYT
+   (`?sort=&dir=`), pretože radiť treba celú tabuľku, nie okno, ktoré už tu je.
+   Zaplatené meraním 1. 9. 2026: pri `limit=3` dá klientske radenie okna prvý
+   riadok 402 000 ms, serverové 1 000 000 ms — a druhé je naozaj najdlhší beh.
+
+   Kľúč, ktorý server nepozná, sem nedôjde: hlavička takého stĺpca nie je
+   tlačidlo (`sortable: false`). Stráž je tu aj tak — `onSort` chodí z `table.js`,
+   teda z komponentu, ktorý o whiteliste nevie nič. */
 function sortBy(key) {
+    if (!SERVER_SORTS.includes(key)) return;
     if (runsState.sortKey === key) {
         runsState.sortDir = runsState.sortDir === ASC ? DESC : ASC;
     } else {
@@ -391,20 +487,27 @@ function sortBy(key) {
         runsState.sortKey = key;
         runsState.sortDir = (col.kind === 'num' || key === 'started_at') ? DESC : ASC;
     }
-    renderRunsView();
+    /* `limit` sa NERESETUJE: dolistovaná dĺžka okna je poloha v zozname a tú klik
+       na hlavičku nemení — kto si vyžiadal 150 riadkov, dostane 150 riadkov
+       v novom poradí (jeden dopyt, `ORDER BY … LIMIT 150`). Zmenšiť okno na 50 by
+       vyzeralo, akoby radenie časť riadkov zahodilo. Ten istý idióm majú
+       filtračné čipy — tie `limit` tiež nechávajú stáť. */
+    renderRuns();
 }
 
 /* „Ďalších 50" (G3).
 
-   Server posiela `limit` (strop okna), ale NEPOSIELA počet riadkov, ktoré filtru
-   vyhovujú. `counts` je nad celou tabuľkou BEZ filtrov, takže celkový počet je
-   známy presne v dvoch prípadoch: bez filtra (`counts.total`) a pri filtri len
-   podľa stavu (`counts[status]`). Pri filtri podľa modelu ho nemá odkiaľ vziať —
-   a dopočítať si ho z `items.length` je presne tá lož, na ktorú už naletel Denník.
-   Vtedy sa priznanie počtu NEKRESLÍ: mlčať je lepšie než ukázať číslo, ktoré
-   platí pre inú množinu.
+   Celkový počet je odteraz `filtered_total` zo servera — počet riadkov PO filtri
+   nad celou tabuľkou. Do 1. 9. 2026 sa musel hádať z `counts` (tie sú nad celou
+   tabuľkou BEZ filtrov), takže pri filtri podľa modelu sa priznanie počtu
+   NEKRESLILO vôbec: mlčať bolo lepšie než ukázať číslo pre inú množinu. Zmerané
+   po zmene: `?model=qwen3:8b` → items 6, `filtered_total` 6, `counts.total` 13 —
+   „6 z 6" je pravda, „6 z 13" by bola lož a to bol presne ten dôvod mlčať.
 
-   Nad serverovým stropom (200) sa tiež nekreslí nič — tlačidlo, ktoré nemôže
+   `counts` zostávajú v čipoch a je to správne: tam nesú „koľko behov v tomto
+   stave existuje", teda ponuku filtra, nie veľkosť aktuálneho výberu.
+
+   Nad serverovým stropom (200) sa nekreslí nič — tlačidlo, ktoré nemôže
    priniesť ďalší riadok, je horšie než jeho absencia; ďalej sa dostane už len
    filtrom. */
 function renderMore() {
@@ -421,8 +524,17 @@ function renderMore() {
     });
 }
 
-/** Celkový počet riadkov filtru, alebo `null` = server ho nepovedal (viď `renderMore`). */
+/**
+ * Celkový počet riadkov filtru, alebo `null` = server ho nepovedal.
+ *
+ * Fallback na `counts` je pre STARŠIU ODPOVEĎ (nasadenie, kde `/api/runs`
+ * `filtered_total` ešte neposiela) a drží presne tú starú disciplínu: bez filtra
+ * `counts.total`, pri filtri podľa stavu `counts[status]`, pri filtri podľa
+ * modelu `null`. Nie je to druhá pravda — je to tá istá otázka zodpovedaná
+ * horším zdrojom, keď lepší chýba.
+ */
 function knownTotal() {
+    if (typeof runsState.filteredTotal === 'number') return runsState.filteredTotal;
     const c = runsState.counts || {};
     if (runsState.model) return null;
     if (runsState.status) return typeof c[runsState.status] === 'number' ? c[runsState.status] : null;

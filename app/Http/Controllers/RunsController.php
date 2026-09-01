@@ -34,6 +34,12 @@ class RunsController extends Controller
             'thread' => 'sometimes|nullable|uuid',
             'since' => 'sometimes|nullable|date',
             'q' => 'sometimes|nullable|string|max:200',
+            // `sort` sa validuje proti TEJ ISTEJ whitelist konštante, z ktorej sa
+            // berie stĺpec do `ORDER BY`. Druhý zoznam povolených hodnôt tu by bol
+            // presne to miesto, kde sa dve kópie jedného pravidla rozídu — a rozišli
+            // by sa vo prospech útočníka: `in:` by povolilo, čo serializér nemá.
+            'sort' => 'sometimes|nullable|string|in:'.implode(',', array_keys(RunsScreen::SORTS)),
+            'dir' => 'sometimes|nullable|string|in:asc,desc',
             'limit' => 'sometimes|nullable|integer|min:1|max:'.RunsScreen::MAX_LIMIT,
         ]);
 
