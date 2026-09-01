@@ -107,6 +107,25 @@
     line-height: 1.5;
 }
 
+/* Znak v prázdnom stave doku (markup skladá `sigilMark()` v mind/charon.js).
+   Zrod aj podlaha pre `prefers-reduced-motion` sú v mind.css spolu s ostatnými
+   piatimi nosičmi — tu je LEN rozmer a poloha, pretože jedna kresba znaku na
+   šiestich plochách je celý zmysel toho zoznamu.
+
+   32 px, nie 44 px ako `.empty-sigil` na /console: dok je 440 px široký panel nad
+   plátnom, nie plocha na celú obrazovku, a 44 px znak by v ňom prebil titulok
+   prázdneho stavu (--fs-title). Rovnaká geometria v inej veľkosti je v poriadku —
+   `stroke-dasharray` sa v SVG meria v užívateľských jednotkách viewBoxu, takže
+   jedna hodnota 54,29 platí na 24, 32 aj 44 px (zapísané v mind.css nad zrodom).
+
+   `margin-inline: auto` a nie `text-align` z rodiča: `<svg>` je `display: block`,
+   takže by ho zarovnanie textu nechytilo a znak by stál pri ľavom okraji. */
+.charon-sigil {
+    width: 32px; height: 32px;
+    display: block;
+    margin: 0 auto var(--sp-1);
+}
+
 /* 15 px v škále neexistuje a manuál §9 rozhodol NAHOR: titulok prázdneho stavu
    je titulok, nie zdôraznená veta, takže berie stupeň --fs-title. Nadol by splynul
    s telom (--fs-body 13 px) a stav by prestal učiť, čo to je. */

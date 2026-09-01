@@ -21,6 +21,16 @@
    jediná obrana — blokuje z konštrukcie, nie z poradia vrstiev).
    `aria-hidden` sám by nestačil: ten fokus neodoberá.
 
+   DÔSLEDOK, KTORÝ TREBA POZNAŤ: práve preto NESMIE byť `#rail-toggle` vnútri
+   panela. Zatvorený prekryv je inertný a jeho `transform` je containing block,
+   takže prepínač by bol odobraný z klikov aj odsunutý mimo obrazovky presne
+   vtedy, keď má panel otvárať (zmerané 1. 9. 2026 na sonde v zatvorenom paneli:
+   `focus()` odmietnutý, `position: fixed; left: 200px` skončilo na x −100).
+   Prepínač preto zostáva v hlavičke a nad panel sa dostáva Z-PORADÍM —
+   `z-index: 30` v mobilnom bloku `console.css` (rebrík scrim 10 → panel 20 →
+   prepínač 30). Bez toho ho otvorený panel prekryl a ťuknutie na hamburger
+   odnavigovalo na `/` cez `#back-to-graph` pod ním.
+
    PREČO SA REŽIM PREKRYVU NEČÍTA Z ŠÍRKY:
    hranica 900 px je literál v troch stylesheetoch (viď komentár nad
    `@media` v `console.css`) a `matchMedia('(max-width: 900px)')` by bol štvrtý.

@@ -35,7 +35,9 @@ VÝSTUPY:
   2. public/brand/hades-favicon.svg         (mini na atramentovom disku — zdroj data-URI)
   3. public/brand/apple-touch-icon.png      (180 px, tá istá kompozícia)
   4. public/favicon.ico + electron/assets/hades.ico  (16/24/32/48/64/128/256)
-  5. <link rel="icon"> data-URI v troch blade súboroch (bit-identický vo všetkých)
+  5. <link rel="icon"> data-URI v resources/views/partials/brand-icons.blade.php
+     (jeden cieľ; tri page blade si ho `@include`ujú — do 1. 9. 2026 to boli tri
+     bit-identické kópie v troch `<head>`och a generátor patchoval každú zvlášť)
   6. znak v electron/chrome/topbar.html a electron/states/offline.html (medzi ZNAK markermi)
   7. tools/brand/DERIVED.md — odvodené čísla pre CSS a Blade, ktoré tento generátor
      nevlastní (`stroke-dasharray`, tri čísla `.load-mark`, inline blok viewBox 24)
@@ -69,10 +71,23 @@ MINI_SRC = BRAND / "hades-sigil-mini.svg"
 MASTER_SRC = BRAND / "hades-sigil.svg"
 MIND_CSS = ROOT / "public" / "css" / "mind.css"
 
-BLADES = [
-    ROOT / "resources" / "views" / "mind.blade.php",
-    ROOT / "resources" / "views" / "console.blade.php",
-    ROOT / "resources" / "views" / "chat.blade.php",
+VIEWS = ROOT / "resources" / "views"
+
+# Ikony značky majú od 1. 9. 2026 JEDEN cieľ — Blade partial, ktorý si tri page
+# blade `@include`ujú. Dovtedy tu bol zoznam troch blade a generátor prepisoval
+# jeden riadok v každom; boli bit-identické, takže to bola jedna pravda napísaná
+# trikrát, aj s trojitou kópiou komentára „keď sa paleta zmení, prepíš to ručne".
+ICONS_PARTIAL = VIEWS / "partials" / "brand-icons.blade.php"
+
+# Stráž proti tichému návratu tretej kópie: page blade nesmie mať vlastný
+# `<link rel="icon">`. Keby ho mala, generátor by prepísal partial a plocha by
+# ostala v starých farbách — presne ten drift, kvôli ktorému partial vznikol.
+# `errors/401.blade.php` v zozname NIE JE zámerne: nesie iný výkres (zlatý disk
+# s prstencom na 40 % alfy), teda nie kópiu tejto pravdy, a nikto ho negeneruje.
+PAGE_BLADES = [
+    VIEWS / "mind.blade.php",
+    VIEWS / "console.blade.php",
+    VIEWS / "chat.blade.php",
 ]
 
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
@@ -301,21 +316,51 @@ def favicon_data_uri(mini: Mini, ink: str) -> str:
     )
 
 
-def patch_blade_icons(uri: str) -> None:
-    """Prepíše LEN riadok <link rel="icon"> v troch blade súboroch.
+# Bez koncovej zátvory `$`: v CRLF súbore je pred koncom riadka `\r` a anker by
+# nesedel — regex by nenašiel nič a generátor by padol. Odsadenie je `[ \t]*`,
+# nie `\s*`: `\s` berie aj nový riadok, teda by match začal na predchádzajúcom
+# riadku a `emit` by zapísal o riadok menej.
+ICON_LINK_RE = re.compile(r'(?m)^([ \t]*<link rel="icon" href=")([^"]*)(">)')
+
+
+def patch_icon_partial(uri: str) -> None:
+    """Prepíše LEN riadok <link rel="icon"> v Blade partiale ikon.
 
     Vlastníctvo v tomto behu je po súboroch a v blade po regiónoch: tento
     generátor smie do blade zapísať jediný riadok. Preto regex, nie šablóna —
-    šablóna by prepísala celý <head>.
+    šablóna by prepísala celý súbor vrátane komentára, ktorý generátor nevlastní.
+
+    Cieľ je jeden, nie tri. Zvyšok partialu (`alternate icon`, `apple-touch-icon`)
+    je ručný a generátor sa ho nedotkne.
     """
-    for blade in BLADES:
+    src = read(ICONS_PARTIAL)
+    if not ICON_LINK_RE.search(src):
+        raise SystemExit(
+            f"{ICONS_PARTIAL.name}: nenašiel som riadok <link rel=\"icon\">")
+    emit(ICONS_PARTIAL, ICON_LINK_RE.sub(
+        lambda m: m.group(1) + uri + m.group(3), src, count=1))
+
+
+def assert_partial_is_only_truth() -> None:
+    """Page blade nesmie mať vlastný `<link rel="icon">` — musí ísť cez partial.
+
+    Bez tejto stráže sa dá tretia kópia vrátiť tichom: generátor by prepísal
+    partial, plocha by ostala v starých farbách a nič by nepadlo. Kontrola je
+    tu preto, že práve tak driftol znak predtým, než mal generátora.
+    """
+    strays = []
+    for blade in PAGE_BLADES:
         src = read(blade)
-        # Bez koncovej zátvory `$`: v CRLF súbore je pred koncom riadka `\r`
-        # a anker by nesedel — regex by nenašiel nič a generátor by padol.
-        pat = re.compile(r'(?m)^(\s*<link rel="icon" href=")([^"]*)(">)')
-        if not pat.search(src):
-            raise SystemExit(f"{blade.name}: nenašiel som riadok <link rel=\"icon\">")
-        emit(blade, pat.sub(lambda m: m.group(1) + uri + m.group(3), src, count=1))
+        if ICON_LINK_RE.search(src):
+            strays.append(blade.name)
+        if "partials.brand-icons" not in src:
+            raise SystemExit(
+                f"{blade.name}: chýba @include('partials.brand-icons') — "
+                "plocha by bola bez ikon značky")
+    if strays:
+        raise SystemExit(
+            "vlastný <link rel=\"icon\"> v page blade: " + ", ".join(strays)
+            + " — patrí do resources/views/partials/brand-icons.blade.php")
 
 
 # --------------------------------------------------------------------------- #
@@ -520,7 +565,10 @@ nezrodí — animáciu na ne vešia `mind.css` (`chat.blade.php:86` a `:182` ich
 {blade_inline_svg(mini, d)}
 ```
 
-## data-URI faviconu (v `<head>` troch blade súborov, spravuje generátor)
+## data-URI faviconu (`resources/views/partials/brand-icons.blade.php`, spravuje generátor)
+
+Jeden cieľ, nie tri: page blade si partial `@include`ujú a generátor si overuje,
+že žiadna z nich nemá vlastný `<link rel="icon">`.
 
 ```
 {uri}
@@ -747,7 +795,10 @@ def main() -> int:
     build_lockups(master)
     emit(BRAND / "hades-favicon.svg", favicon_svg(mini, ink))
     uri = favicon_data_uri(mini, ink)
-    patch_blade_icons(uri)
+    # Stráž PRED zápisom: keď je pravda rozdvojená, generátor nemá čo prepisovať —
+    # prepísaný partial pri stray kópii by bol práve ten tichý drift.
+    assert_partial_is_only_truth()
+    patch_icon_partial(uri)
     build_icos(mini, ink)
     build_electron_html(mini)
     build_derived_md(mini, ink, uri, d)

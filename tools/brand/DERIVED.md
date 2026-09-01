@@ -63,7 +63,10 @@ nezrodí — animáciu na ne vešia `mind.css` (`chat.blade.php:86` a `:182` ich
 </svg>
 ```
 
-## data-URI faviconu (v `<head>` troch blade súborov, spravuje generátor)
+## data-URI faviconu (`resources/views/partials/brand-icons.blade.php`, spravuje generátor)
+
+Jeden cieľ, nie tri: page blade si partial `@include`ujú a generátor si overuje,
+že žiadna z nich nemá vlastný `<link rel="icon">`.
 
 ```
 data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>

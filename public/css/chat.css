@@ -888,6 +888,45 @@ body.cp-dragging {
         width: min(460px, 94vw);
     }
 
+    /* ------------------------------------------------------------------
+       PREPÍNAČ PANELA MUSÍ STÁŤ NAD PREKRYVOM.
+
+       Panely vyššie sú v tomto režime `position: fixed` so `--z-panel`,
+       kým `#chat-threads-toggle` zostával `position: static; z-index: auto`.
+       Otvorený panel teda kreslil NAD hamburgerom a druhý ťuk na tie isté
+       súradnice zasiahol `#chat-home` — odkaz `href="/"` v hlavičke panela,
+       ktorý tam leží presne cez ne. Ťuk na „zavrieť panel" tak ODNAVIGOVAL
+       Z APPKY. Zmerané 1. 9. 2026 pri 375 aj 768 px: toggle x 16–60 / y 6–50
+       proti home x 10–56 / y 10–54, a `location.href` sa po druhom ťuku
+       zmenilo.
+
+       Je to TRETÍ výskyt tej istej triedy chyby v tomto repe: prvý bola
+       spodná lišta na mobile (obsah siahal pod ňu a vyhral v z-poradí),
+       druhý ten istý prepínač na `/console` (`console.css`, opravený rovnakým
+       vzorom). Pri `/console` sa navyše výslovne odhadlo, že `/chat` sa to
+       netýka, pretože panel je tam vraj stĺpec na každej šírke — a bol to
+       nesprávny odhad, pod 900 px je to prekryv rovnako.
+       PRAVIDLO: keď dáš panelu `position: fixed`, over `elementFromPoint`
+       na KAŽDOM ovládači, ktorý ho má zatvárať.
+
+       `position: relative` tu nie je kozmetika — na statickom prvku je
+       `z-index` bez účinku. 30 > `--z-panel` (20) a oba súťažia v koreňovom
+       kontexte (hlavička ani panel nemajú transform, opacity, filter ani
+       `isolation`), takže to porovnanie naozaj platí.
+       ------------------------------------------------------------------ */
+    #chat-threads-toggle { position: relative; z-index: 30; }
+
+    /* Roh vľavo nahore patrí v režime prekryvu prepínaču, tak mu ho panel
+       uvoľní — inak zdvihnutý hamburger kreslí priamo na znaku v hlavičke
+       panela a sú to dva glyfy na sebe. Číslo nie je voľné: `.cp-top` má
+       padding 10 px, tlačidlo je v tomto režime 44 px široké a 8 px je
+       medzera, aby sa nedotýkali → 10 + 44 + 8 = 62.
+       Platí v CELOM režime prekryvu, nie len pri otvorenom paneli: keby sa
+       odsadenie zapínalo otvorením, znak by pri každom vysunutí poskočil.
+       (Ten istý vzor a to isté zdôvodnenie ako `.rail-top` v `console.css`,
+       len iné číslo — tam je tlačidlo 32 px a padding 16 px.) */
+    .cp-top { padding-left: 62px; }
+
     /* Na dotyku sa 5 px hrana netrafí a šírku prekryvu aj tak nemá zmysel meniť. */
     .cp-grip { display: none; }
 

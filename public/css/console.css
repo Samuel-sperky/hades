@@ -1492,7 +1492,60 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     /* Na dotyku hover neexistuje — skryté akcie by boli nedosiahnuteľné. */
     .tr-acts { opacity: 1; }
 
-    #rail-toggle { display: inline-flex; }
+    /* ------------------------------------------------------------------
+       Z-REBRÍK PREKRYVU: scrim 10 → panel 20 → PREPÍNAČ PANELA 30.
+
+       Prečo prepínač hore: `#console-header` je `position: static`, takže
+       otvorený panel (z 20) ho prekryl a `elementFromPoint` na strede
+       hamburgeru vrátil `#back-to-graph` VNÚTRI panela. Ťuknutie na
+       hamburger teda panel nezatvorilo, ale ODNAVIGOVALO na `/`.
+       Zmerané 1. 9. 2026 pri 375 px, pred opravou:
+         zatvorený panel → `path` v `#rail-toggle`  (správne)
+         otvorený panel  → `svg` v `<a href="/">`   (chyba)
+       Je to tá istá trieda chyby ako kedysi neklikateľná spodná lišta na
+       mobile: obsah siahol pod ovládací prvok a vyhral v z-poradí.
+
+       PREČO SA ZDVIHOL LEN PREPÍNAČ, A NIE CELÁ HLAVIČKA:
+       hlavička sa na tejto šírke ZLOMÍ (`flex-wrap: wrap` nižšie) a je
+       zmerané 103 px vysoká pri 375 px. Zdvihnutá by prekryla panel od
+       y 0 do 103, teda celý `.rail-top` (y 0–59: znak a „Nové vlákno")
+       a väčšinu `.rail-find` (y 59–110: hľadanie). To je tá istá chyba
+       zrkadlovo — nedosiahnuteľné by boli hlavné ovládače panela.
+       Druhý dôvod: hlavička nesie prepínač modelu a bránu zápisov, a tie
+       nad `role="dialog" aria-modal="true"` klikateľné byť NESMÚ. Scrim
+       si tak necháva svoju prácu; hore ide jediný prvok, ktorý panelu
+       naozaj patrí — jeho disclosure tlačidlo s `aria-expanded`.
+
+       PREČO PREPÍNAČ NIE JE SÚČASŤOU PANELA (druhá zvažovaná oprava):
+       zatvorený prekryv je `inert` (`public/js/console/rail.js`) a `inert`
+       sa dedí na celý podstrom bez možnosti výnimky pre jedného potomka.
+       Zmerané na sonde vloženej do zatvoreného panela: `focus()` ho
+       ODMIETOL a hit-test na jeho súradniciach vrátil prvok za ním.
+       Navyše `transform` panela je preň containing block, takže sonda
+       s `position: fixed; left: 200px` skončila na x −100 — teda mimo
+       obrazovky. Prepínač vnútri panela by bol inertný a odsunutý presne
+       vtedy, keď má panel otvárať.
+
+       Nadradený stacking context tu žiadny nie je (zmerané: `#console-app`,
+       `#console-main` aj `#console-header` sú `position: static`,
+       `z-index: auto`, bez transformu, opacity, filtra a `isolation`),
+       takže panel aj prepínač súťažia v koreňovom kontexte a 30 > 20
+       naozaj platí. `position: relative` je tu preto, že bez neho je
+       `z-index` na statickom prvku bez účinku.
+       ------------------------------------------------------------------ */
+    #rail-toggle { display: inline-flex; position: relative; z-index: 30; }
+
+    /* Roh vľavo nahore patrí v režime prekryvu prepínaču, tak mu ho panel
+       uvoľní. Bez tohto riadku by zdvihnutý hamburger (x 16–48, y 6–38)
+       kreslil priamo na znaku `#back-to-graph` (x 10–56, y 10–48) — dva
+       glyfy na sebe. Číslo nie je voľné: vodorovný padding hlavičky je
+       `--sp-2` (16 px), tlačidlo je 32 px široké a 8 px je medzera, aby sa
+       hamburger a znak nedotýkali → 16 + 32 + 8 = 56.
+       Platí v CELOM režime prekryvu, nie len pri `.rail-open`: keby sa
+       odsadenie zapínalo otvorením, znak by pri každom vysunutí panela
+       poskočil o 46 px do strany. */
+    .rail-top { padding-left: 56px; }
+
     #console-header { flex-wrap: wrap; padding: 6px var(--sp-2); }
     .ch-right { gap: 10px; }
     /* Text zmizne, cieľ nie. Tento riadok bol do 21. 8. 2026 presne to miesto,

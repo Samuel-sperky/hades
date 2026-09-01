@@ -75,12 +75,34 @@ class ScreenDnesDennikTest extends TestCase
             $this->assertArrayHasKey($key, $body, "/api/journal stratilo kľúč `{$key}`.");
         }
 
+        // Presne tie kľúče, ktoré `dennik.js` naozaj čerpá (`id`, `source`, `label`,
+        // `project`, `project_label`, `created_at`, `file_count`, `commit_count`)
+        // plus `project_key` a počty, ktoré menuje `fieldsForAi()`.
+        //
+        // Do 1. 9. 2026 tento zoznam pýtal aj `commits`, `files`, `tools`
+        // a `prompts` — teda štyri polia, ktoré obrazovka NEČÍTA, hoci sa test
+        // menuje „keeps every key the screen reads". Niesli 104 kB zo 151 kB
+        // odpovede a pin ich držal pri živote. Telo záznamu patrí do detailu
+        // (`openNodeDetail(r.id)`), zoznam nesie počty — viď {@see DennikScreen}.
         $this->getJson('/api/journal')->assertJsonStructure([
             'records' => [[
-                'id', 'source', 'label', 'description', 'project', 'created_at',
-                'prompt_count', 'file_count', 'commits', 'files', 'tools', 'prompts',
+                'id', 'source', 'label', 'description', 'project', 'project_key',
+                'project_label', 'created_at', 'prompt_count', 'file_count',
+                'commit_count', 'tool_count',
             ]],
         ]);
+
+        // A druhá strana toho istého tvrdenia: telá sú preč a majú byť preč.
+        // Bez tejto polovice by sa dali ticho vrátiť a test by zostal zelený.
+        foreach ($body['records'] as $row) {
+            foreach (['commits', 'files', 'tools', 'prompts', 'final'] as $heavy) {
+                $this->assertArrayNotHasKey(
+                    $heavy,
+                    $row,
+                    "`{$heavy}` je telo záznamu — v zozname ho nečíta žiadna plocha.",
+                );
+            }
+        }
 
         // Surová mapa „projekt → počet" je pôvodný tvar a ostáva mapou, nie zoznamom:
         // starší klient nad ňou robí lookup podľa názvu.
@@ -352,6 +374,69 @@ class ScreenDnesDennikTest extends TestCase
         $this->assertNotNull($machine);
         $this->assertSame(ProjectGroup::NONE, $machine['project_key']);
         $this->assertSame(ProjectGroup::NONE_LABEL, $machine['project_label']);
+    }
+
+    /**
+     * Regresia na spojenie, na ktorom appka BEŽÍ.
+     *
+     * `meta.project` je explicitné JSON `null`, kedykoľvek session nemá `cwd`
+     * (`TranscriptIngestService` ten kľúč plní vždy). Na sqlite z toho `json_extract`
+     * vráti SQL NULL, ale na MariaDB `json_unquote(json_extract(…))` vráti
+     * štvorznakový STRING `'null'` — a ten prešiel cez `ProjectGroup::key()` ako
+     * plnohodnotný názov projektu. Človek teda videl čip `null`, AI kľúč
+     * `project_key: "null"`, a v tej istej odpovedi si dve čísla protirečili:
+     * skupina „bez projektu" hlásila 3, kým `filtered_total` toho istého filtra 4
+     * (filter ide cez `whereNull`, ktorý JSON `null` chytá správne).
+     *
+     * Test je tu preto, že na sqlite je zelený aj s chybou — chytí ho iba
+     * `phpunit.mariadb.xml`.
+     */
+    public function test_an_explicit_json_null_project_is_not_a_project_named_null(): void
+    {
+        $this->record(null, 'Session bez cwd', 'session');
+
+        $body = $this->getJson('/api/journal')->assertOk()->json();
+        $keys = collect($body['project_groups'])->pluck('key')->all();
+
+        $this->assertNotContains('null', $keys, 'string `null` nie je názov projektu');
+        $this->assertContains(ProjectGroup::NONE, $keys);
+
+        // Surová mapa má pre taký uzol `COALESCE(…, 'projekt')` — na MariaDB
+        // nevystrelila, pretože hodnota nebola NULL, ale string.
+        $this->assertArrayNotHasKey('null', $body['projects']);
+
+        // Agregát (čip) a filter (`whereNull`) musia tvrdiť o tom istom uzle to isté.
+        $chip = collect($body['project_groups'])->firstWhere('key', ProjectGroup::NONE)['count'];
+        $filtered = $this->getJson('/api/journal?project='.urlencode(ProjectGroup::NONE))
+            ->assertOk()->json('filtered_total');
+
+        $this->assertSame($chip, $filtered, 'čip a filter sa nesmú rozísť');
+    }
+
+    public function test_the_journal_list_carries_counts_and_admits_the_clipped_description(): void
+    {
+        $long = str_repeat('a', DennikScreen::DESCRIPTION_MAX + 120);
+        $this->record('AI-mind', 'Dlhý popis', 'session', ['c1'], $long);
+        $this->record('AI-mind', 'Krátky popis', 'session', ['c1'], 'krátke');
+
+        $records = collect($this->getJson('/api/journal')->assertOk()->json('records'));
+
+        $clipped = $records->firstWhere('label', 'Dlhý popis');
+        $this->assertSame(DennikScreen::DESCRIPTION_MAX, mb_strlen($clipped['description']));
+        $this->assertTrue($clipped['description_truncated'], 'rez sa musí priznať');
+        $this->assertSame(mb_strlen($long), $clipped['description_length']);
+
+        // Kalibrácia zo záporného konca: nerezaný popis rez NEHLÁSI. Bez tejto
+        // polovice by test nerozlíšil „priznáva sa" od „hlási vždy".
+        $short = $records->firstWhere('label', 'Krátky popis');
+        $this->assertSame('krátke', $short['description']);
+        $this->assertArrayNotHasKey('description_truncated', $short);
+        $this->assertArrayNotHasKey('description_length', $short);
+
+        // Počty nesú to, čo niesli zmazané polia. `record()` seeduje jeden commit,
+        // jeden súbor, jeden nástroj a jeden prompt.
+        $this->assertSame(1, $short['commit_count']);
+        $this->assertSame(1, $short['tool_count']);
     }
 
     public function test_the_group_key_filters_on_the_server_so_the_chip_count_can_be_kept(): void

@@ -61,9 +61,14 @@ usadení dotiahne. Okraje sa čítajú z CSS tokenov (`--rail-w`, `--header-h`,
 
 **Vizuálna sémantika** (jeden význam na kanál): farba = oblasť, tvar = typ.
 Uzly sú **priehľadné prstence**, nie plné disky — priehľadnosť nesie *diera*, nie
-nízka alfa, takže sa prekrývajúce uzly dajú čítať a každý drží kontrast (obrys má
-podlahu `RING_LW = 1,5` px v obraznovkových px; pri 1,1 px zoberie antialiasing
-viac než polovicu kontrastu). Spomienka = jeden prstenec, skill = dva súosé,
+nízka alfa, takže sa prekrývajúce uzly dajú čítať. Podlaha obrysu sa medzitým
+**rozdvojila podľa role** (`render.js`): pokojový uzol má `RING_LW = 1,15` px
+a informačný — pod kurzorom, vo výbere, s popiskom, jadro a hub — `RING_LW_HOT`
+**1,7** px. To druhé číslo nie je 1,5 preto, aby mal obrys plne pokrytý pixel aj
+pri najnepriaznivejšom subpixelovom zarovnaní. Pokojový uzol prah 3:1 zámerne
+nespĺňa a je to ten istý argument ako pri hranách: informáciu nesie hustota
+oblaku, nie jedna vláska. Do 1. 9. 2026 tu stálo `RING_LW = 1,5`, čo neplatilo
+ani pre jednu z tých dvoch hodnôt. Spomienka = jeden prstenec, skill = dva súosé,
 projekt = prstenec s plným stredom, **jadro = jediný sýty plný prvok** (zlato).
 Legenda v `panels.js` musí hovoriť ten istý jazyk — plné disky tam učili zle.
 
@@ -175,7 +180,8 @@ blik surových ligatúrových názvov, čo je presne tá porucha, ktorú tu rie�
 s nameranými kontrastmi, typografia, hlas, assety. Je to zdroj pravdy; keď sa tu
 a tam niečo rozíde, platí manuál.
 
-`public/css/mind.css`, ~3700 riadkov. Pravidlo: **žiadny raw hex/rgba mimo `:root`**,
+`public/css/mind.css`, **6849 riadkov** (1. 9. 2026 — číslo rastie, ber ho ako rád
+veľkosti, nie ako fakt). Pravidlo: **žiadny raw hex/rgba mimo `:root`**,
 všetko cez tokeny. Svetlá paleta je v `:root`, tmavá v `:root[data-theme="dark"]`.
 **Tmavá je default** (`initialTheme()` v `theme.js`).
 
@@ -368,10 +374,17 @@ a `[hidden]{display:none}` by ho zabil; nad 900 px, keď je rail trvalý stĺpec
 `applyRailState()` `role`/`aria-modal`/`inert` sám odoberie. Režim prekryvu sa
 **nečíta z `matchMedia`** — hranica 900 px je literál v troch stylesheetoch a JS
 by bol štvrtý zdroj pravdy — ale z toho, čo hovorí CSS (`position: fixed`).
-**Známy neopravený bug** (`task_53a6b179`, k 1. 9. 2026): na 375 px s otvoreným
-panelom hit-testuje stred `#rail-toggle` na `#back-to-graph` vnútri panela
-(`#console-header` je `position: static`, `#thread-rail` má `z-index: 20`) —
-ťuknutie na hamburger odnavigúje na `/` namiesto zatvorenia panela.
+**Opravený bug, poučný pre budúce prekryvy** (`task_53a6b179`, opravené 1. 9. 2026):
+na 375 px s otvoreným panelom hit-testoval stred `#rail-toggle` na `#back-to-graph`
+vnútri panela (`#console-header` je `position: static`, `#thread-rail` má
+`z-index: 20`) — ťuknutie na hamburger odnavigovalo na `/` namiesto zatvorenia
+panela. Oprava NIE JE presun prepínača do panela (ten nesie `inert` v zatvorenom
+stave, takže by bol pri otváraní sám fokusovo mŕtvy) ani zdvihnutie celej hlavičky
+(103 px pri 375 px, prekryla by `.rail-top` aj `.rail-find`), ale **z-poradie**:
+`#rail-toggle` dostal `position: relative; z-index: 30` (nad panel `20`, scrim
+`10`) a `.rail-top` v prekryve `padding-left: 56px`, aby znak neprekryl posunutý
+hamburger. V ceste od `#rail-toggle` po `html` nevytvára stacking context žiadny
+predok, takže poradie súťaží v koreňovom kontexte a `z-index: 30` naozaj vyhrá.
 
 **Podagenti: `spawn_agent` a parkovanie prenášané nahor.** Profil `orchestrator`
 (`mind_recall` + `spawn_agent`, 626 tok proti stropu 680) je jediný, ktorý ten tool
@@ -642,10 +655,12 @@ raz).
   Panel sa otvorí a funguje, adresu ale nenesie — a nič nespadne, takže sa to
   nájde len meraním `location.search`. Presne to sa stalo `kno`/`koo`/`smo`
   (tri nezávislé obrazovky postavili panel správne, žiadna nedoplnila slovník)
-  a k 1. 9. 2026 platí to isté pre **`ruk`/`rud`** (radenie tabuľky Runy —
-  server aj UI ho posielajú a čítajú, ale kým nepribudnú v `DICT`, Späť/Dopredu
-  vráti radenie na default). Nový panel/filter s vlastným kľúčom: over
-  `location.search` po akcii, nie len že sa UI zmenilo.
+  a rovnako **`ruk`/`rud`** (radenie tabuľky Runy — server aj UI ho posielali
+  a čítali skôr, než pribudli do `DICT`). Všetkých päť je od `2b0bb3e`
+  (1. 9. 2026) v `DICT` — `grep -n "kno\|koo\|smo\|ruk\|rud" public/js/mind/urlstate.js`
+  ich nájde. Nový panel/filter s vlastným kľúčom: over `location.search` po
+  akcii, nie len že sa UI zmenilo — presne táto trieda chyby sa už zopakovala
+  päťkrát na piatich rôznych obrazovkách.
 - **`onRecPanelClose(ns, fn)` je API, nie pohodlie.** Panel sa zatvára TROMI cestami
   (krížik, Esc, `dropRecPanel()` pri prepnutí obrazovky) a bez ohlásenia obe
   obrazovky sledovali DÔSLEDOK: jedna `MutationObserver`om nad triedou panelu, druhá
@@ -685,8 +700,15 @@ sú vždy chyba) a nesie `pointer-events: none`, inak si berie `mouseleave` prvk
 sebou. **Dotyk tooltip nedostáva** — hover tam neexistuje a prst zakryje práve to,
 na čo sa človek pozerá.
 
-`sparkline`, `scatter` a `flows` sú nové; **scatter a flows nemá kto volať** a je to
-priznané v manuáli §14 — žiadna obrazovka dvojrozmerný pohľad ani tok nežiada.
+`sparkline`, `scatter` a `flows` sú nové. **`flows` dostalo domov 31. 8. 2026**:
+karta „Istota v oblastiach" na Dnes (`renderCertaintyFlows()` v `dnes.js`), oblasť
+× istota, 20 stúh / 9 uzlov na živých dátach — pôvodné zadanie „oblasť → projekt"
+nahradené za jediný joint, ktorý server naozaj posiela (`per_area`). **`scatter`
+zostáva bez volajúceho a je to priznané, nie zamlčané** (`docs/BRAND-HADES.md`):
+navrhovaný domov „štatistiky Grafu" v `panels.js` **neexistuje** (ten súbor je
+panel uzla, legenda a ručné prepájanie hrán — sekciu štatistík nemá), dať mu tam
+domov by bola nová plocha, nie doťah. Jediný nevymyslený kandidát je sila × vek
+uzla nad Knižnicou alebo frontou Kontroly — patrí do zadania, nie do upratovania.
 
 ### Generátory značky žijú MIMO `public/`
 
@@ -708,6 +730,19 @@ geometrie). Nosný prstenec r 36 / hrúbka 9 a jadro r 15 sú v oboch výkresoch
 isté hodnoty; prerušenie a satelit sa pod 64 px zatvárajú, pretože `Mini` parser
 prijíma dva kruhy, raster kreslí anulus dvoma diskami a `.load-mark` je CSS
 `border` — ani jeden z tých troch výstupov prerušenie vyjadriť nedokáže.
+
+**Favicon má od 1. 9. 2026 jeden zdroj pravdy: `resources/views/partials/brand-icons.blade.php`.**
+Predtým `build-mark.py` prepisoval `<link rel="icon">` v troch page blade zvlášť
+(`patch_blade_icons()`); dnes je blok (`icon` data-URI, `alternate icon`,
+`apple-touch-icon`) v jednom partiali a `mind.blade.php`/`console.blade.php`/
+`chat.blade.php` ho vkladajú `@include('partials.brand-icons')`. Generátorová
+funkcia je `patch_icon_partial()`; `assert_partial_is_only_truth()` beží pred
+zápisom a odmietne stav, keď má niektorý page blade vlastný `<link rel="icon">`
+alebo partial chýba v `@include`. **`errors/401.blade.php` je zámerne mimo** —
+nesie od kánonu odlišný výkres (zlatý disk + prstenec na 40 % alfy), nie kópiu
+tejto pravdy. `public/brand/hades-favicon.svg` je mŕtvy generovaný výstup
+(len zdroj kompozície pre editor, nič ho nenačítava) a je **verejný** — over
+rovnako ako pri každom novom súbore pod `public/`.
 
 ## Docker a opcache
 

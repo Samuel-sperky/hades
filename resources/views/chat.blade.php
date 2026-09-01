@@ -51,16 +51,9 @@
          = „Hades — Charón". Tri miesta, jedno meno — keď meníš jedno, prejdi
          všetky tri. --}}
     <title>Hades — Charón</title>
-    {{-- POZOR: tri hodnoty palety sú tu NATVRDO, pretože data-URI je samostatný
-         dokument a CSS premenné z mind.css nečíta:
-           %230e1413 = --bg-rgb tmavej témy (papier, pozadie znaku),
-           %23c4a2f5 = --accent tmavej témy (amethyst, prstenec),
-           %23d8b878 = --brand-gold (jadro vedomia).
-         Keď sa paleta zmení, tento favicon sa NEZMENÍ sám — a to isté platí pre
-         kópiu v console.blade.php a mind.blade.php. --}}
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
-    <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
-    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+    {{-- Ikony značky (favicon, .ico fallback, dlaždica iOS) — jedna pravda pre
+         všetky tri plochy. Data-URI v nej prepisuje tools/brand/build-mark.py. --}}
+    @include('partials.brand-icons')
     <meta property="og:type" content="website">
     <meta property="og:title" content="Hades — Charón">
     <meta property="og:description" content="Hierarchical Associative Data Embedding System">

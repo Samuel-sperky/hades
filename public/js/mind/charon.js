@@ -685,6 +685,44 @@ function pushError(text) {
     return appendBlock(box);
 }
 
+/* Znak Hadesa — tá istá geometria ako favicon, rail a prázdny stav /console
+   (public/brand/hades-sigil-mini.svg): prstenec r 8,64 / hrúbka 2,16 a jadro r 3,6
+   vo viewBoxe 24. Dok je TRETÍ vstup k tomu istému behu modelu, takže jeho prázdny
+   stav má hovoriť tým istým znakom ako `/chat` (`.ce-mark`) a `/console`
+   (`.empty-sigil`); do 1. 9. 2026 tu znak nebol vôbec.
+
+   Kreslí sa cez createElementNS a nie cez `iconMarkup()` zo shared/icons.js —
+   tá sada je ikonografia (60 symbolov), znak značky do nej nepatrí. A pozor:
+   `textContent` na `<svg>` nezobrazí NIČ a výnimku nevydá, takže znak sa nesmie
+   nikdy skládať priradením textu.
+
+   Farby sú kánon a nie sú zameniteľné: prstenec amethyst (`--accent`, interaktívna
+   rola značky), jadro zlaté (`--brand-gold`, značková rola). Tokeny, nie hex.
+   Zrod (`bc-draw` + `bc-core-in`) dedí z mind.css — trieda `.charon-sigil` je
+   v jeho zozname nosičov AJ v podlahe `prefers-reduced-motion`. Dýchanie
+   (`core-pulse`) sem NEIDE: prázdny stav je ticho pred prácou, nie stav vedomia. */
+function sigilMark() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', 'charon-sigil');
+
+    const ring = document.createElementNS(NS, 'circle');
+    ring.setAttribute('class', 'bc-ring');
+    ring.setAttribute('cx', '12'); ring.setAttribute('cy', '12'); ring.setAttribute('r', '8.64');
+    ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'var(--accent)');
+    ring.setAttribute('stroke-width', '2.16');
+
+    const core = document.createElementNS(NS, 'circle');
+    core.setAttribute('class', 'bc-core');
+    core.setAttribute('cx', '12'); core.setAttribute('cy', '12'); core.setAttribute('r', '3.6');
+    core.setAttribute('fill', 'var(--brand-gold)');
+
+    svg.append(ring, core);
+    return svg;
+}
+
 function renderEmpty() {
     const box = stream();
     if (!box) return;
@@ -693,6 +731,7 @@ function renderEmpty() {
     waitNode = null;
 
     const empty = el('div', 'charon-empty');
+    empty.append(sigilMark());
     empty.append(el('p', 'charon-empty-title', 'Charón nad grafom'));
     empty.append(el('p', null,
         'Opýtaj sa na vedomie a Charón ho prehľadá. Vybrané uzly (čipy nižšie) '

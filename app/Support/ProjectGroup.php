@@ -58,14 +58,41 @@ final class ProjectGroup
      * `meta->project` nedá napísať ako obyčajný stĺpec (`selectRaw`, `COALESCE`).
      *
      * Skladá ho **gramatika spojenia**, nie tento súbor: v MariaDB z toho vyjde
-     * `json_value(…)`, v sqlite `json_extract(…)`, a testy tohto projektu bežia na
-     * sqlite, kým appka na MariaDB. Natvrdo napísané `JSON_UNQUOTE(JSON_EXTRACT())`
-     * (ako to mal `TodayController` a `JournalController`) je platné len na jednej
-     * z nich, takže endpoint sa v testoch nedal vôbec zavolať.
+     * `json_unquote(json_extract(…))`, v sqlite `json_extract(…)`, a testy tohto
+     * projektu bežia na sqlite, kým appka na MariaDB. Natvrdo napísané
+     * `JSON_UNQUOTE(JSON_EXTRACT())` (ako to mal `TodayController` a
+     * `JournalController`) je platné len na jednej z nich, takže endpoint sa
+     * v testoch nedal vôbec zavolať.
+     *
+     * **`NULLIF(…, 'null')` nie je opatrnosť, je to oprava zmeranej chyby.**
+     * `meta.project` je explicitné JSON `null`, kedykoľvek session nemá `cwd`
+     * ({@see \App\Services\TranscriptIngestService} plní kľúč vždy, hodnotou
+     * `$rec['project']`, ktorej default je `null`). A tu sa obe spojenia rozchádzajú:
+     *
+     *   sqlite   `json_extract`                     → SQL NULL
+     *   MariaDB  `json_unquote(json_extract(…))`    → štvorznakový STRING `'null'`
+     *
+     * Ten string prejde cez {@see self::key()} ako plnohodnotný názov projektu,
+     * takže na MariaDB — teda na jedinom spojení, na ktorom appka naozaj beží —
+     * dostal človek na Denníku čip s popiskom `null` a AI kľúč `project_key: "null"`
+     * namiesto skupiny „bez projektu". Na sqlite sa to neprejaví vôbec, preto to
+     * dva testy `ScreenDnesDennikTest` chytili až v `phpunit.mariadb.xml`.
+     *
+     * Prečo práve tu a nie v `key()`: `key()` odpovedá na otázku „nesie tento názov
+     * význam?" a `'null'` je artefakt SQL, nie názov. Navyše to takto opravuje
+     * **všetkých troch volajúcich naraz** (`DennikScreen::groupRows()`,
+     * `DennikScreen::rawProjects()`, `DnesScreen::topProjects()`) a vracia k životu
+     * `COALESCE(…, 'projekt')` v `rawProjects()`, ktorý na MariaDB nikdy nevystrelil.
+     *
+     * Filtrovacia strana opravu **nepotrebuje**: `whereNull('meta->project')`
+     * v `DennikScreen::applyProject()` prekladá Laravel na
+     * `json_extract(…) is null OR json_type(json_extract(…)) = 'NULL'`, takže JSON
+     * `null` chytá správne (zmerané). Do tejto zmeny teda agregát a filter tvrdili
+     * o tom istom uzle dve rôzne veci; teraz sa zhodujú.
      */
     public static function column(): string
     {
-        return DB::connection()->getQueryGrammar()->wrap('meta->project');
+        return "NULLIF(".DB::connection()->getQueryGrammar()->wrap('meta->project').", 'null')";
     }
 
     /** Text, ktorý o skupine číta človek. */

@@ -49,11 +49,42 @@ use Illuminate\Database\Eloquent\Builder;
  *     ktoré sa navyše zahodia pri každej zmene filtra.
  *
  * Druhý kľúč radenia (`id DESC`) je aj tak povinný a je vysvetlený pri dopyte.
+ *
+ * **Zoznam nesie počty, nie telá (1. 9. 2026).** `/api/journal` bol s 151 kB
+ * najťažší endpoint appky (`/api/decisions` 56 kB, `/api/today` 21 kB) a 135 kB
+ * z toho boli `records`. Váhu nenieslo okno — to je 50 záznamov a funguje —
+ * ale **telo každého záznamu**: `prompts` 68 kB, `final` 15 kB, `files` 11 kB,
+ * `tools` 7 kB, `commits` 2,5 kB. Zmerané volajúcich: `dennik.js` z nich číta
+ * **nič** (label, projekt, čas, `id`, `file_count`, `commit_count`), `rail.js`
+ * číta **jediné** `created_at` a `fieldsForAi()` ich nemenoval nikdy. Telo teda
+ * platilo päťdesiatkrát v každej odpovedi a nečítal ho nikto: detail sa otvára
+ * cez `openNodeDetail(r.id)`, ktorý si uzol doťahuje samostatným dopytom.
+ *
+ * Je to **dôsledné dotiahnutie pravidla, ktoré tu už bolo napísané** — komentár
+ * pri `commit_count` hovorí „AI dostane číslo namiesto celého zoznamu, ktorý na
+ * obrazovke nikto nevidí", ale to číslo vzniklo *vedľa* pola, nie namiesto neho.
+ * Teraz platí pre commity, súbory aj nástroje (`tool_count` je nový a je
+ * v `fieldsForAi()`, pretože počet je údaj).
+ *
+ * `description` **zostáva**, ale je ohraničený na {@see self::DESCRIPTION_MAX}
+ * a rez sa priznáva (`description_truncated`, `description_length`). Dnes to
+ * ušetrí málo (6 z 50 záznamov, ~1,6 kB) — dôvod nie je úspora, ale že
+ * `description` je jediný **neohraničený** text v zozname, takže jeden dlhý
+ * týždenný súhrn by inak vedel odpoveď nafúknuť sám.
  */
 class DennikScreen extends ScreenSerializer
 {
     /** Strop okna. Denník je časová os, nie export — starší záznam sa hľadá filtrom. */
     public const MAX_LIMIT = 50;
+
+    /**
+     * Strop popisu jedného záznamu v ZOZNAME. Rez sa priznáva
+     * (`description_truncated`), tak ako to robí `mind_read` — rez, ktorý sa
+     * nepriznáva, je lož. Plný text nesie detail (`openNodeDetail(r.id)` si ho
+     * doťahuje samostatným dopytom), takže sa tu nič nestráca, len sa to nenesie
+     * päťdesiatkrát v odpovedi, ktorú nikto nečíta celú.
+     */
+    public const DESCRIPTION_MAX = 400;
 
     /** Zdroje uzlov, ktoré sú „záznam zo session". */
     private const SOURCES = ['session', 'digest'];
@@ -121,7 +152,7 @@ class DennikScreen extends ScreenSerializer
             'project_groups[].key', 'project_groups[].label', 'project_groups[].count',
             'records[].id', 'records[].source', 'records[].label', 'records[].project_key',
             'records[].created_at', 'records[].prompt_count', 'records[].file_count',
-            'records[].commit_count',
+            'records[].commit_count', 'records[].tool_count',
         ];
     }
 
@@ -140,12 +171,20 @@ class DennikScreen extends ScreenSerializer
         $meta = is_array($node->meta) ? $node->meta : [];
         $project = $meta['project'] ?? null;
         $commits = is_array($meta['commits'] ?? null) ? $meta['commits'] : [];
+        $files = is_array($meta['files'] ?? null) ? $meta['files'] : [];
+        $tools = is_array($meta['tools'] ?? null) ? $meta['tools'] : [];
+        $prompts = is_array($meta['prompts'] ?? null) ? $meta['prompts'] : [];
 
-        return [
+        $description = (string) ($node->description ?? '');
+        $clipped = mb_strlen($description) > self::DESCRIPTION_MAX;
+
+        $row = [
             'id' => $node->id,
             'source' => $node->source,
             'label' => $node->label,
-            'description' => $node->description,
+            'description' => $clipped
+                ? mb_substr($description, 0, self::DESCRIPTION_MAX)
+                : $node->description,
             'project' => $project,
             'project_key' => ProjectGroup::key($project),
             'project_label' => ProjectGroup::label($project),
@@ -156,12 +195,37 @@ class DennikScreen extends ScreenSerializer
             // údaj, nie kresba, takže ho dáva server — a AI dostane číslo namiesto
             // celého zoznamu, ktorý na obrazovke nikto nevidí.
             'commit_count' => count($commits),
-            'commits' => $commits,
-            'files' => $meta['files'] ?? [],
-            'tools' => $meta['tools'] ?? [],
-            'prompts' => $meta['prompts'] ?? [],
-            'final' => $meta['final'] ?? null,
+            // Tá istá veta platí pre súbory, nástroje a prompty. Do 1. 9. 2026 tu
+            // stáli aj celé polia `commits`, `files`, `tools`, `prompts` a `final`
+            // a niesli 104 kB zo 151 kB odpovede (`prompts` samo 68 kB) — pričom ich
+            // nečítala ANI JEDNA z troch plôch: `dennik.js` kreslí label, projekt,
+            // čas a počty; `rail.js` len `created_at`; `fieldsForAi()` ich nemenuje.
+            // `final` bol navyše duplikát: `TranscriptIngestService::describe()` ho
+            // pripája do `description`. Telo záznamu nesie detail, ktorý si
+            // `openNodeDetail(r.id)` doťahuje samostatne — zoznam nesie počty.
+            'tool_count' => count($tools),
         ];
+
+        // Priznanie rezu: kľúč je v odpovedi len keď rez naozaj nastal, aby sa
+        // neplatilo 20 B za `false` na každom zázname (to isté pravidlo ako
+        // vynechávanie prázdnych polí v `mind_recall`).
+        if ($clipped) {
+            $row['description_truncated'] = true;
+            $row['description_length'] = mb_strlen($description);
+        }
+
+        // `prompt_count` pochádza z `meta` a je pôvodné; keby chýbalo, počet
+        // uložených promptov je jediné, čo o ňom vieme.
+        if ($row['prompt_count'] === null && $prompts !== []) {
+            $row['prompt_count'] = count($prompts);
+        }
+
+        // To isté pre `file_count`.
+        if ($row['file_count'] === null && $files !== []) {
+            $row['file_count'] = count($files);
+        }
+
+        return $row;
     }
 
     /**

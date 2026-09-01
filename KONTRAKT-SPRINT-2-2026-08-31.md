@@ -189,7 +189,7 @@ sa beh zastaví a rozsah sa prerokuje.**
 
 ## 11. Výsledok
 
-**Stav:** šprint bežal v DVOCH fan-outoch, nie v jednom, a plán W1–W6 na 30
+**Stav:** šprint bežal v TROCH fan-outoch, nie v jednom, a plán W1–W6 na 30
 agentov sa vcelku nespustil.
 
 - **Beh 1** (18 agentov, `wf_1822750c-815`): baseline meranie, doťah brandingu,
@@ -198,7 +198,15 @@ agentov sa vcelku nespustil.
   prvý zápis tejto sekcie ich pripísal „paralelným sessions", pretože ho písal
   agent behu 2, ktorý reporty behu 1 nevidel.
 - **Beh 2** (8 agentov, `wf_327ff36c-793`): dátové diery, a11y railu konzoly,
-  opcache, overenie, tento zápis. Commit `2b0bb3e`.
+  opcache, overenie, tento zápis. Commit `2b0bb3e`, opravy zápisu `2679a34`
+  a `b05da64`.
+- **Beh 3** (4 agenti, 1. 9. 2026): znak na dok nad grafom + rozhodnutie
+  o `core-pulse`, favicon zjednotený do jedného partialu, oprava mobilného
+  hit-test bugu na `/console` (nájdený behom 2), oprava JSON `null` ako
+  „projektu" na MariaDB + zmenšenie payloadu `/api/journal`. Podrobnosti
+  nižšie pri kritériách 4, 7, 9 a v §11.1. Commity zatiaľ nevytvorené (agenti
+  behu 3 nekomitujú, viď §6 pravidlá behu) — čaká sa na commit tohto zápisu
+  spolu s ich diffom.
 
 Šprint **nie je hotový**; zvyšok je v §11.1.
 
@@ -226,15 +234,24 @@ na limite), teda **~2,6×**. Celý šprint bol v §7 odhadnutý na **2,2–2,9 M
    `reader.js`), rovnako paleta na `/chat` (`public/js/chat/palette.js`) — ale
    **žiadny z 5 behov to nezmeral** (a11y agent meral len mobilný rail), takže
    zhoda so zvyškom jazyka appky nie je overená týmto behom.
-4. **Mobil 375 px `/console` a `/chat`.** ⚠️ Čiastočne, s nálezom.
-   Zatvorený panel: `inert` funguje (0/289 fokusovateľných, potvrdené strom
-   prístupnosti). **Nájdená chyba** (flagnutá `task_53a6b179`, k 1. 9. stále
-   nefixnutá): na 375 px otvorený panel hit-testuje `#rail-toggle` na
-   `#back-to-graph` vnútri panela (`#console-header` je `position: static`,
-   `#thread-rail` má `z-index: 20`) — ťuknutie na hamburger namiesto zatvorenia
-   panela **odnavigujte na `/`**. Kritérium č. 4 žiada „spodná lišta klikateľná
-   overená cez `elementFromPoint` na každej destinácii" — tento prípad to
-   nespĺňa. `/chat` mobil nebol v žiadnom z 5 behov meraný vôbec.
+4. **Mobil 375 px `/console` a `/chat`.** ⚠️ Čiastočne, nález z behu 2 **opravený
+   behom 3**. Zatvorený panel: `inert` funguje (0/289 fokusovateľných, potvrdené
+   strom prístupnosti). Nájdená chyba (`task_53a6b179`): na 375 px otvorený panel
+   hit-testoval `#rail-toggle` na `#back-to-graph` vnútri panela
+   (`#console-header` je `position: static`, `#thread-rail` mal `z-index: 20`) —
+   ťuknutie na hamburger namiesto zatvorenia panela odnavigovalo na `/`. **Oprava**
+   (`public/css/console.css`, `public/js/console/rail.js`): prepínač dostal
+   `z-index: 30` (nad panel `20`, scrim `10`) a `.rail-top` v prekryve
+   `padding-left: 56px`, aby znak neprekryl posunutý hamburger. Overené reálnym
+   tapom cez `elementFromPoint` na 375 aj 768 px: druhý ťuk teraz panel zatvorí
+   (`rail-open: false`, `inert: true`, `location` nezmenená), na 1440 px beh
+   nezasiahol (`#rail-toggle` je tam `display: none`). Zápornou kalibráciou
+   (vrátenie starého CSS) sa chyba znova reprodukovala. `task_53a6b179` je
+   splnená. Kritérium ako celok zostáva ⚠️: `/chat` mobil nebol v žiadnom
+   z 5 pôvodných behov ani v behu 3 meraný vôbec (dôvod na jeho vynechanie:
+   `/chat` zatvára panel atribútom `hidden`, nie transformom, a panel je stĺpec
+   na každej šírke, takže rovnaký z-konflikt tam podľa kódu nastať nemôže —
+   ale to je zdôvodnenie, nie meranie).
 5. **`/api/runs` `sort`/`dir` + filtrovaný počet, nad celou tabuľkou.** ⚠️
    Server aj UI hotové a zmerané (`?sort=duration_ms&dir=desc&limit=3` vrátilo
    riadok mimo predošlého okna — dôkaz, že radí server, nie klient; `?sort=id`
@@ -260,6 +277,20 @@ na limite), teda **~2,6×**. Celý šprint bol v §7 odhadnutý na **2,2–2,9 M
    `#back-to-graph` na `/console`. Prvý zápis tejto sekcie tvrdil opak,
    pretože čítal `[cieľ V2]` v komentári `chat.blade.php` namiesto merania
    computed style — komentár je zastaraný, kód nie.
+
+   **Beh 3 doplnil šiesty nosič, prázdny dok nad grafom** (`charon.js` →
+   nová `sigilMark()`, kreslí `createElementNS` priamo, nie cez
+   `shared/icons.js` — znak nie je ikona): 32×32 px, `getTotalLength()`
+   = 54,29 (identická hodnota ako na 24/44 px nosičoch), `centerOff = 0 px`
+   v strede `.charon-empty`. Nosičov zrodu je teraz **šesť**. Zároveň
+   **rozhodnuté** (nie odložené): `core-pulse` sa NEROZŠIRUJE na
+   `#back-to-graph`/`#chat-home`/`.charon-sigil` — `.asleep` prepína
+   `updateStateUi()` výhradne na `#brand-core` (`grep -rn asleep public/`
+   nedá na `/chat` ani `/console` nič), takže pulz tam nemá čo hlásiť a
+   rozšírenie by z jediného informačného pohybu značky urobilo dekoráciu.
+   Znak-agent nemohol manuál editovať (mimo vlastníctva jeho behu) a poslal
+   päť konkrétnych needs — tento zápis ich premietol priamo do
+   `docs/BRAND-HADES.md` §„Kde znak je a kde má byť".
 8. **Výkon pred/po nad tichým stromom, počet dopytov.** ⚠️ Čiastočne.
    `/api/today`, `/api/journal`, `/api/dashboard` zmerané pred/po (opcache):
    medián sa **nehol** (~0,10–0,15 s pred aj po), zmizli chvosty (17/18 → ~5/106
@@ -268,20 +299,47 @@ na limite), teda **~2,6×**. Celý šprint bol v §7 odhadnutý na **2,2–2,9 M
    **vôbec nepoužívala**) — kritérium žiada aj počet dopytov k pomalým
    endpointom, ten sa nemeral, pretože sa nenašla dopytová príčina. W5
    (N+1, indexy) sa vôbec nespustilo.
-9. **Celý balík zelený.** ✅ **606 passed / 45 skipped / 0 failed** (potvrdené
-   opakovane vo všetkých piatich behoch, +10 oproti baseline 596 z paralelnej
-   práce, nie z tejto vlny). MariaDB filter `ScreenParity|McpTools|
-   ContentSecurityPolicy`: **48 testov, 760 asercií, OK**. Parita drží.
-10. **Manuál a CLAUDE.md hovoria len to, čo platí.** Práve robím týmto zápisom
-    (CLAUDE.md a `docs/BRAND-HADES.md` opravené v tomto commite dokumentov) —
-    rozsah opravy je to, čo tento beh naozaj zmeral; zvyšok kódu (W2/W3 mimo
-    5 hlásených behov) je overený len namátkovo cez grep/čítanie, nie
-    premeraním na bežiacej appke.
+9. **Celý balík zelený.** ✅ **608 passed / 45 skipped / 0 failed** po behu 3
+   (potvrdené opakovane vo všetkých piatich pôvodných behoch na 606, +2 z behu 3
+   — nové testy `ScreenDnesDennikTest`). MariaDB filter `ScreenParity|McpTools|
+   ContentSecurityPolicy`: **48 testov, 760 asercií, OK**; `ScreenDnesDennikTest`
+   samostatne **22/22, 695 asercií** (bolo 20 s 2 padnutými, viď oprava nižšie).
+   Parita drží.
 
-**Súhrn po oprave troch zastaraných tvrdení:** 5/10 plne ✅ (č. 1, 2, 5, 7, 9),
-4/10 čiastočne ⚠️ (č. 3 a 4 chýba meranie `/chat` mobilu a parity jazyka,
-č. 6 chýba `scatter`, č. 8 chýba dopytová strana), 1/10 rozpracované (č. 10 —
-časť kódu je overená len čítaním, nie premeraním).
+   **Beh 3 opravil dve MariaDB-only zlyhania** zapísané v §11.1 ako otvorený bod:
+   `meta->project` je explicitné JSON `null`, keď session nemá `cwd`, a na
+   MariaDB `json_unquote(json_extract(...))` z neho spraví **string `'null'`**
+   (na sqlite ostáva SQL `NULL`) — ten štvorznakový string prešiel
+   `ProjectGroup::key()` ako názov projektu, takže Denník hlásil čip „null"
+   a agregát (3) si protirečil s filtrom (4) na tom istom uzle. Oprava je
+   `NULLIF(<wrapped>, 'null')` v `ProjectGroup::column()`, kalibrovaná z oboch
+   strán (vrátenie na starý tvar zhodí presne tri testy). Súbežne zmenšený
+   `/api/journal` zo 150 816 B na **33 259 B** (−78 %) odobratím piatich tiel
+   záznamov (`prompts`/`final`/`files`/`tools`/`commits`), ktoré nečítal ani
+   Denník, ani `fieldsForAi()` — `tool_count` dopĺňa počty, `description` ostáva
+   orezaný na 400 znakov s priznaným rezom. Nesúvisí priamo s kritériom 8
+   (ktoré žiada dopytovú stranu, nie veľkosť payloadu), ale je to zmeraný zisk
+   na tej istej ceste.
+10. **Manuál a CLAUDE.md hovoria len to, čo platí.** Beh 2 opravil tri zastarané
+    tvrdenia (viď vyššie). **Beh 3 opravil ďalšie v `docs/BRAND-HADES.md`**
+    podľa needs znak- a favicon-agentov: tabuľka nosičov (dok pridaný ako ✅,
+    rola dvoch hlavičiek prepísaná z „pulz behu" na „identita plochy s odkazom
+    domov", `core-pulse` odstavec prepísaný na ROZHODNUTÉ), počet selektorov
+    `bc-draw`/`bc-core-in` (päť → šesť, na dvoch miestach) a favicon zápis
+    (troch blade → jeden partial, na troch miestach, `patch_blade_icons()` →
+    `patch_icon_partial()`). Aj tu platí
+    tá istá výhrada ako v behu 2: rozsah opravy je to, čo behy 1–3 naozaj
+    zmerali; zvyšok kódu (W2/W3 mimo 5+4 hlásených behov) je overený len
+    namátkovo cez grep/čítanie, nie premeraním na bežiacej appke. `CLAUDE.md`
+    dostal navyše dve opravy vlastných zastaraných tvrdení (§11.1 nižšie):
+    mobilný hit-test bug ako „známy neopravený" a `ruk`/`rud` ako chýbajúce
+    z `DICT` — oboje bolo v čase písania behu 2 pravda, beh 3 to zaplatil.
+
+**Súhrn po behu 3:** 5/10 plne ✅ (č. 1, 2, 5, 7, 9), 4/10 čiastočne ⚠️
+(č. 3 chýba meranie parity jazyka; č. 4 nájdená chyba je opravená, ale `/chat`
+mobil zostáva úplne nezmeraný; č. 6 chýba `scatter`; č. 8 chýba dopytová
+strana), 1/10 z veľkej časti hotové (č. 10 — dokumenty prepísané na aktuálny
+kód týmto zápisom, časť kódu mimo hlásených behov je overená len čítaním).
 
 Tri z tých pôvodných hodnotení boli zastarané, nie nesprávne meranie: agent
 behu 2 nemal reporty behu 1 a dva body (č. 5, č. 7) medzitým zaplatil beh 2
@@ -298,8 +356,6 @@ je hodinu zaplatená.
 - **Duplikát mechaniky filtrov** (`console/threadfilter.js` proti
   `shared/filters.js`) — kópie sa už rozišli, obe píšu do `hades.filters.*`.
   Odišlo ako samostatná úloha `task_911edace`.
-- **Mobilný hit-test bug na `/console`** (`task_53a6b179`) — hamburger vnútri
-  otvoreného panela na 375 px odnavigúje namiesto zatvorenia.
 - **`scatter` — plánovaný domov NEEXISTUJE.** Zistené 1. 9. 2026: plán aj needs
   grafového agenta posielali `scatter` do „štatistík Grafu" v `panels.js`, ale
   ten súbor je panel uzla, legenda a ručné prepájanie hrán — **sekciu štatistík
@@ -316,9 +372,33 @@ je hodinu zaplatená.
   hygienu". Dáta na to existujú (Knižnica už kreslí stĺpce Vek a Istota), takže
   by to bol graf nad Knižnicou alebo nad frontou Kontroly. Je to ale zmena
   produktovej plochy, nie doťah — patrí do zadania, nie do doťahu.
-- **Zastaraný komentár `[cieľ V2]`** v `chat.blade.php` — zrod znaku je hotový,
-  komentár tvrdí opak a už raz spôsobil nesprávny zápis do tohto kontraktu.
-- **`/console` a `/chat` mobil** — nezmerané vôbec (žiaden z 5 behov to nepokryl).
+- **`/chat` mobil** — nezmerané vôbec (žiaden z 9 behov to nepokryl). Beh 3
+  odôvodnil, prečo `/chat` pravdepodobne netrpí tým istým z-konfliktom ako
+  `/console` (zatvára panel `hidden`, nie transformom; panel je stĺpec na
+  každej šírke) — ale je to zdôvodnenie z čítania kódu, nie meranie
+  `elementFromPoint` na bežiacej ploche. Rovnaká úloha, aká opravila
+  `/console`, dá sa použiť aj tu.
 - **W5 Optimalizácie** — nespustené; opcache vyriešil chvost, nie prípadné N+1.
-- **Dve MariaDB-only zlyhania** v `ScreenDnesDennikTest` (`project_counts` 5 vs 4,
-  `no_project_group` 3 vs 4), potvrdené staršie než tento beh — samostatná úloha.
+- **`tests/Feature/ContentSecurityPolicyTest.php:122`** enumeruje blade cez
+  `glob(resource_path('views/*.blade.php'))` — **nerekurzívne**. `views/partials/`
+  (a už predtým `views/errors/`) je tým pre test „no blade loads a script from
+  a foreign host" neviditeľný. Dnes to nie je diera (ani `partials/brand-icons`,
+  ani `errors/*` nemajú `<script>`), ale skript vložený do jedného z nich by
+  test nechytil. Odporúčaná oprava: rekurzívna enumerácia
+  (`RecursiveDirectoryIterator` nad `resource_path('views')`), kalibrovaná
+  z oboch strán (musí padnúť na cudzí host vložený do partialu aj do page
+  blade). Nahlásené favicon-agentom behu 3, needituje test (mimo vlastníctva).
+- **`public/brand/hades-favicon.svg` je mŕtvy generovaný výstup a je verejný**
+  (200 bez tokenu, over `curl`). Jediné referencie sú riadky
+  `tools/brand/build-mark.py`, ktoré ho zapisujú. Rozhodnutie pre používateľa:
+  zmazať a vyhodiť ten `emit()` z generátora, alebo nechať a v generátore
+  priznať jediný dôvod (kontrola kompozície faviconu okom v editore).
+- **`public/js/mind/rail.js` `checkJournalUnread()`** ťahá celé `/api/journal`
+  pri každom načítaní stránky, ale číta z odpovede jediné `created_at` (max).
+  Záznamy prichádzajú `created_at DESC`, takže `fetch('/api/journal?limit=1')`
+  by stačilo — zmerané: 33 259 B → **4 358 B** na to isté jedno číslo.
+  Nahlásené backend-agentom behu 3, needituje `rail.js` (mimo vlastníctva C5).
+- **`resources/views/console.blade.php`** má pri `#rail-toggle` zastaraný
+  komentár „Pod 860 px je panel skrytý" — hranica je od 27. 8. 2026 900 px
+  a panel sa neskrýva, len sa odsúva ako prekryv (opravil to práve beh 3
+  console-fix agent). Nahlásené, needitované (mimo vlastníctva behu).

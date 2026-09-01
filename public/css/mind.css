@@ -1429,7 +1429,7 @@ button.close:active { background: var(--accent-soft); }
    dasharray, inak sa obtiahnutie zastaví v polovici alebo skočí.
 
    JEDNA hodnota stačí na všetky nosiče znaku, aj keď sa kreslia v rôznej veľkosti
-   (24 px v hlavičkách, 44 px v prázdnych stavoch). `stroke-dasharray` aj
+   (24 px v hlavičkách, 32 px v doku, 44 px v prázdnych stavoch). `stroke-dasharray` aj
    `transform-origin` sa v SVG merajú v UŽÍVATEĽSKÝCH jednotkách viewBoxu, nie
    v obrazovkových px, a všetkých päť nosičov má `viewBox="0 0 24 24"` s `r="8.64"`.
    Zmerané 31. 8. 2026: `getTotalLength()` dá na 24 px aj 44 px znaku rovnakých
@@ -1437,13 +1437,16 @@ button.close:active { background: var(--accent-soft); }
    `getBoundingClientRect().width` sa líši 17,28 vs 31,68 px. Druhá hodnota
    dasharray by teda nebola presnejšia, ale rozbitá.
 
-   Nosičov je päť a znak sa má zrodiť na KAŽDEJ ploche: `#brand-core` (/),
+   Nosičov je ŠESŤ a znak sa má zrodiť na KAŽDEJ ploche: `#brand-core` (/),
    `#back-to-graph` a `.empty-sigil` (/console — druhý kreslí `console/render.js`,
-   preto trieda a nie id), `#chat-home` a `.ce-mark` (/chat). Do 31. 8. 2026 tu
-   stáli len prvé dva, takže /chat dával `animationName: none` a znak tam
-   nevznikal — hoci markup triedy `bc-ring`/`bc-core` už niesol. Keď pridáš šiesty
-   nosič, pridaj ho do OBOCH zoznamov nižšie aj do podlahy `prefers-reduced-motion`;
-   selektor bez podlahy je znak, ktorý sa človeku s vypnutým pohybom nikdy nedokreslí.
+   preto trieda a nie id), `#chat-home` a `.ce-mark` (/chat) a `.charon-sigil`
+   (prázdny dok nad grafom, kreslí `mind/charon.js`). Do 31. 8. 2026 tu stáli len
+   prvé dva, takže /chat dával `animationName: none` a znak tam nevznikal — hoci
+   markup triedy `bc-ring`/`bc-core` už niesol; dok znak nemal VÔBEC do 1. 9. 2026.
+   Keď pridáš siedmy nosič, pridaj ho do OBOCH zoznamov nižšie aj do podlahy
+   `prefers-reduced-motion`; selektor bez podlahy je znak, ktorý sa človeku
+   s vypnutým pohybom nikdy nedokreslí. Rozmer si každý nosič drží u seba
+   (`.charon-sigil` v charon.css, `.empty-sigil` v console.css) — tu je len pohyb.
 
    Trvanie obtiahnutia je --dur-chart-draw, ten istý token, aký nesú segmenty
    donutu: je to jeden pohyb „čiara sa kreslí" na dvoch miestach, a kým to boli
@@ -1452,7 +1455,8 @@ button.close:active { background: var(--accent-soft); }
 #back-to-graph .bc-ring,
 .empty-sigil .bc-ring,
 #chat-home .bc-ring,
-.ce-mark .bc-ring {
+.ce-mark .bc-ring,
+.charon-sigil .bc-ring {
     stroke-dasharray: 54.29;
     stroke-dashoffset: 54.29;
     /* od 12 hodín, nie od 3 — inak znak vzniká zboku */
@@ -1464,7 +1468,8 @@ button.close:active { background: var(--accent-soft); }
 #back-to-graph .bc-core,
 .empty-sigil .bc-core,
 #chat-home .bc-core,
-.ce-mark .bc-core {
+.ce-mark .bc-core,
+.charon-sigil .bc-core {
     transform-origin: 12px 12px;
     animation: bc-core-in 460ms var(--ease) 620ms 1 both;
 }
@@ -1480,13 +1485,41 @@ button.close:active { background: var(--accent-soft); }
 /* Bez pohybu je znak rovno hotový — nie neviditeľný. */
 @media (prefers-reduced-motion: reduce) {
     #brand-core .bc-ring, #back-to-graph .bc-ring, .empty-sigil .bc-ring,
-    #chat-home .bc-ring, .ce-mark .bc-ring,
+    #chat-home .bc-ring, .ce-mark .bc-ring, .charon-sigil .bc-ring,
     #brand-core .bc-core, #back-to-graph .bc-core, .empty-sigil .bc-core,
-    #chat-home .bc-core, .ce-mark .bc-core { animation: none; }
+    #chat-home .bc-core, .ce-mark .bc-core, .charon-sigil .bc-core { animation: none; }
     #brand-core .bc-ring, #back-to-graph .bc-ring, .empty-sigil .bc-ring,
-    #chat-home .bc-ring, .ce-mark .bc-ring { stroke-dashoffset: 0; }
+    #chat-home .bc-ring, .ce-mark .bc-ring, .charon-sigil .bc-ring { stroke-dashoffset: 0; }
 }
 
+/* PROČ MÁ `core-pulse` JEDINÝ SELEKTOR `#brand-core` (rozhodnuté 1. 9. 2026).
+   Manuál §2 priraďoval rolu „pulz behu" aj hlavičke /console (`#back-to-graph`)
+   a hlavičke /chat (`#chat-home`) a nechával otvorené, či sa im rola priradí
+   v CSS, alebo sa im v tabuľke prepíše. ROZHODNUTIE: selektor sa NEROZŠIRUJE,
+   prepisuje sa manuál — tie dve hlavičky nesú „identita plochy s odkazom domov",
+   nie pulz behu. (Manuál sám tú formuláciu ponúka; roly zostávajú štyri.)
+
+   Dôvod je meraný, nie estetický. Dýchanie nie je dekorácia, ale JEDINÝ nosič
+   stavu `bdie / spí` — a stav prepína `updateStateUi()` v mind/util.js jedinou
+   cestou: `document.getElementById('brand-core').classList.toggle('asleep', …)`.
+   Iný nosič v celom repe nie je (`grep -rn asleep public/` dá util.js, mind.css
+   a komentár v mind.blade.php — nič na /chat ani /console). Na tých dvoch plochách
+   teda nie je čo prepnúť: `#brand-core.asleep` (pauza + `--core-glow-asleep`
+   + `opacity .5` na svg) by tam nikdy nenastalo, takže pulz by bežal navždy
+   v jednej fáze. Slučka, ktorá nikdy nezmení stav, nenesie informáciu — a manuál
+   (§Katalóg pohybu) o tomto pohybe výslovne tvrdí, že informáciu nesie. Rozšíriť
+   selektor by teda znamenalo urobiť z jediného informačného pohybu značky
+   dekoráciu na dvoch z troch plôch, čo kánon zakazuje.
+
+   Druhý dôvod: `core-pulse` hýbe `filter`om, a `#back-to-graph` / `#chat-home`
+   sú 24 px odkazy v hlavičke, ktoré majú vlastný hover a fokus. Nekonečné
+   dýchanie `drop-shadow`u pod nimi by miešalo značkový pohyb s interaktívnym
+   stavom — presne to rozdrobenie významu, kvôli ktorému je zlatá vyhradená
+   značke a amethyst interakcii.
+
+   Tichá verzia: `core-pulse` NEVYPÍNA pomenovaný blok zrodu vyššie (`#brand-core`
+   v ňom nie je), ale plošná podlaha `prefers-reduced-motion` na konci súboru.
+   Pre dýchanie je teda tá podlaha nosná, nie kozmetická — nemaž ju. */
 @keyframes core-pulse {
     0%, 100% { filter: drop-shadow(var(--core-glow-min)); }
     50%      { filter: drop-shadow(var(--core-glow-max)); }

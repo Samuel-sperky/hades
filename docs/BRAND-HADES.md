@@ -164,13 +164,27 @@ naraz** — inak sa vráti presne ten rozchod, ktorý toto pravidlo rieši.
 zjednotením a číta sa ako inventár, nie ako TODO.
 
 **Zmerané 31. 8. 2026 z `main()` generátora:** pod generátorom je dnes **13 zápisov** —
-master, mono, **oba lockupy**, `hades-favicon.svg`, data-URI v troch blade, obe `.ico`,
+master, mono, **oba lockupy**, `hades-favicon.svg`, data-URI v partiale, obe `.ico`,
 `apple-touch-icon.png`, topbar a offline — a k nim `tools/brand/DERIVED.md`. Ručným
 zdrojom geometrie zostáva **jediný súbor**, `hades-sigil-mini.svg`. Dve veci, ktoré tu
 do 31. 8. 2026 stáli inak: **lockupy už mimo generátora nie sú** (`build_lockups()`
 v nich vymieňa skupinu `.sig`, wordmark nechá stáť), a pribudol jeden generovaný zápis,
 ktorý tabuľka nemá vôbec — **`public/brand/hades-favicon.svg`** (kompozícia mini na
 atramentovom disku, zdroj data-URI).
+
+**Od 1. 9. 2026 je data-URI zápis JEDEN, nie tri.** Predtým `patch_blade_icons()`
+prepisoval `<link rel="icon">` v troch page blade zvlášť; dnes patrí do
+`resources/views/partials/brand-icons.blade.php` (celý blok: `icon` data-URI,
+`alternate icon`, `apple-touch-icon`), tri page blade ho vkladajú
+`@include('partials.brand-icons')` a generátorová funkcia je `patch_icon_partial()`.
+Počet zápisov generátora ostáva **13** — nezmenilo sa *koľko* súborov generátor píše,
+zmenilo sa, že tri kópie tej istej pravdy nahradil jeden zdroj. `assert_partial_is_only_truth()`
+beží pred zápisom a stráži oba smery: page blade nesmie mať vlastný `<link rel="icon">`
+a MUSÍ mať `@include`; kalibrované 1. 9. 2026 vloženou stray kópiou (padne) aj
+odstráneným `@include` (padne). `errors/401.blade.php` v partiali zámerne nie je —
+nesie iný, od kánonu odlišný výkres (zlatý disk r30 + amethystový prstenec r45 na
+40 % alfy pri 16 px), nie kópiu tejto pravdy.
+
 Manuál tu do 27. 8. 2026 tvrdil „osemkrát" — bolo to podhlásené, pretože počítalo
 len web a Python a nevidelo Electron chrome, offline stav a **CSS prekresbu**
 načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora znaku:
@@ -237,7 +251,7 @@ Tri veci, ktoré z tabuľky treba vedieť predtým, než sa to začne zlievať:
 | # | Výstup | Stav |
 |---|---|---|
 | 1 | SVG assety v `public/brand/` (master, mono, oba lockupy, `hades-favicon.svg`) | **vydáva** |
-| 2 | data-URI faviconu pre všetky tri `<head>` | **vydáva** (`patch_blade_icons()` prepíše jediný riadok `<link rel="icon">`) |
+| 2 | data-URI faviconu pre `resources/views/partials/brand-icons.blade.php` (tri page blade ho vkladajú `@include`) | **vydáva** (`patch_icon_partial()`, od 1. 9. 2026 — pred tým prepisoval tri blade zvlášť) |
 | 3 | inline `<svg>` znaku pre Blade (viewBox 24, triedy `bc-ring` / `bc-core`) | **nezapisuje** — `blade_inline_svg()` blok len **vypíše do `DERIVED.md`** |
 | 4 | `public/favicon.ico` **a** `electron/assets/hades.ico` | **vydáva**, a oba sú bajt na bajt zhodné (zmerané: md5 `761e7afa…` na oboch) |
 | 5 | `stroke-dasharray` (dnes `54.29` = 2π × 8,64, v CSS na troch miestach) a tri čísla `.load-mark` | **nezapisuje** — čísla idú do `DERIVED.md` |
@@ -269,34 +283,53 @@ karty, ani do toastu, ani k nadpisu sekcie.
 
 | Výskyt | Rola | Znak | Animuje sa |
 |---|---|---|---|
-Animačný stĺpec je **zmeraný 31. 8. 2026** z CSSOM (`animation` deklarácie
-v `mind.css`, čítané z disku): `bc-draw` a `bc-core-in` majú **päť** selektorov
-(`#brand-core`, `#back-to-graph`, `.empty-sigil`, `#chat-home`, `.ce-mark` — každý
-so svojím `.bc-ring` / `.bc-core`), zatiaľ čo `core-pulse` má **jediný: `#brand-core`**.
+Animačný stĺpec je **zmeraný 1. 9. 2026** z CSSOM (`animation` deklarácie
+v `mind.css`, čítané z disku): `bc-draw` a `bc-core-in` majú **šesť** selektorov
+(`#brand-core`, `#back-to-graph`, `.empty-sigil`, `#chat-home`, `.ce-mark`,
+`.charon-sigil` — každý so svojím `.bc-ring` / `.bc-core`), zatiaľ čo `core-pulse`
+má **jediný: `#brand-core`**.
 
 | Výskyt | Rola | Znak | Animuje sa |
 |---|---|---|---|
 | rail `/` (`mind.blade.php:128`) | pulz behu | ✅ | ✅ `bc-draw` + `bc-core-in` + **`core-pulse` (jediné miesto)** |
-| hlavička `/console` (`console.blade.php:55`) | pulz behu | ✅ | ✅ **len zrod** (`bc-draw` + `bc-core-in`), `core-pulse` tu nie je |
+| hlavička `/console` (`console.blade.php:55`) | identita plochy s odkazom domov | ✅ | ✅ **len zrod** (`bc-draw` + `bc-core-in`), `core-pulse` tu nie je |
 | prázdny stav `/console` (`console/render.js` → `.empty-sigil`) | prázdny stav | ✅ | ✅ zrod |
 | načítavanie (`.empty-loading .load-mark`) | načítavanie | ✅ | ✅ dýchanie (`load-breathe`) |
 | Electron topbar (`topbar.html`, medzi `ZNAK` markermi) | desktop okno | ✅ | ❌ |
 | Electron offline (`offline.html`, medzi `ZNAK` markermi) | desktop okno | ✅ | ✅ vlastná kópia `core-pulse` |
-| hlavička `/chat` (`chat.blade.php:94`) | pulz behu | ✅ | ✅ **zrod je od 31. 8. 2026 živý** — selektor rozšírený na `#chat-home`; `core-pulse` ani tu nie je |
+| hlavička `/chat` (`chat.blade.php:94`) | identita plochy s odkazom domov | ✅ | ✅ **zrod je od 31. 8. 2026 živý** — selektor rozšírený na `#chat-home`; `core-pulse` ani tu nie je |
 | prázdny stav `/chat` (`chat.blade.php:211`) | prázdny stav | ✅ | ✅ zrod (`.ce-mark`) |
-| prázdny dok nad grafom (`charon.js` → `renderEmpty()`) | prázdny stav | ❌ **znak vôbec nie je** | — |
+| prázdny dok nad grafom (`charon.js` → `renderEmpty()`) | prázdny stav | ✅ | ✅ zrod (`bc-draw` + `bc-core-in`) na `.charon-sigil`, 32 px, od 1. 9. 2026 |
 
-**Rola „pulz behu" je tým pádom len v raile.** Dve hlavičky, ktoré ju v tabuľke
-majú napísanú, kreslia znak, obtiahnu ho pri načítaní a tým to končí — dýchanie
-`bdie / spí` nenesú, pretože `core-pulse` je zúžený na `#brand-core`. Buď sa im tá
-rola priradí v CSS, alebo sa im v tomto zozname prepíše na to, čo naozaj nesú
-(identita plochy s odkazom domov). **Nepridávaj kvôli tomu piatu rolu** — zoznam
-štyroch rolí je uzavretý a jeho zmena je prepis vety nad ním.
+**ROZHODNUTÉ 1. 9. 2026: rola „pulz behu" zostáva len v raile, `core-pulse` sa
+NEROZŠIRUJE.** Otázka bola do tohto dátumu otvorená; zápis nižšie nahrádza
+predošlú formuláciu „buď sa jej tá rola priradí, alebo sa prepíše zoznam".
 
-**[cieľ V2]** všetkých deväť výskytov má znak a animáciu z jedného generátora —
-nič nad tento zoznam. (`.avatar` tu do 31. 8. 2026 stál ako desiaty výskyt; trieda
-v repe **neexistuje** — potvrdené 31. 8. 2026, `grep` nad `public/css`, `public/js`
-a `resources/views` dáva nula zásahov — patrila mŕtvemu chatu nad grafom, viď §9.)
+Dýchanie nie je dekorácia, ale **jediný nosič stavu `bdie / spí`**, a ten stav
+prepína `updateStateUi()` v `mind/util.js` jedinou cestou:
+`document.getElementById('brand-core').classList.toggle('asleep', …)`. Zmerané:
+`grep -rn asleep public/` dá `util.js`, `mind.css` a jeden komentár v
+`mind.blade.php` — **nič na `/chat` ani `/console`**. Na tých plochách teda nie
+je čo prepnúť: `#brand-core.asleep` (pauza + `--core-glow-asleep` + `opacity .5`)
+by tam nikdy nenastalo a pulz by bežal navždy v jednej fáze — slučka, ktorá nikdy
+nezmení stav, nenesie informáciu, a rozšírenie selektora by z jediného
+informačného pohybu značky urobilo dekoráciu na dvoch z troch plôch. Druhý dôvod:
+`core-pulse` hýbe `filter`om a `#back-to-graph` / `#chat-home` sú 24 px odkazy
+s vlastným hover a fokus stavom — nekonečné dýchanie `drop-shadow`u pod nimi by
+miešalo značkový pohyb s interaktívnym stavom, presne to rozdrobenie, kvôli
+ktorému je zlatá vyhradená značke. Namiesto rozšírenia sa tabuľka vyššie
+**prepísala** na rolu, ktorú tie dve hlavičky (a `.charon-sigil`, ktorý po nich
+dedí zrod bez pulzu) naozaj nesú: **identita plochy s odkazom domov**.
+**Nepridáva sa piata rola** — zoznam štyroch rolí vyššie je uzavretý, mení sa
+len priradenie v tabuľke výskytov.
+
+**[cieľ V2]** všetkých **deviatich** výskytov má znak a animáciu z jedného
+generátora — nič nad tento zoznam. Do 1. 9. 2026 bol deviaty riadok (prázdny dok
+nad grafom) v tabuľke jediný s ❌ — cieľ je od toho dátumu **splnený**, riadok len
+zmenil stav, nepridal sa. (`.avatar` tu do 31. 8. 2026 stál ako desiaty výskyt;
+trieda v repe **neexistuje** — potvrdené 31. 8. 2026, `grep` nad `public/css`,
+`public/js` a `resources/views` dáva nula zásahov — patrila mŕtvemu chatu nad
+grafom, viď §9.)
 
 ### Wordmark
 
@@ -698,7 +731,7 @@ Príklady zmysluplných okamžitých ekvivalentov:
 
 Pomenovaný blok znaku vypína **len zrod** (`bc-draw`, `bc-core-in`); **dýchanie
 (`core-pulse`) zastavuje až plošné pravidlo.** Zmerané 31. 8. 2026 a stále platí:
-tichý blok menuje `.bc-ring` a `.bc-core` (dnes už na piatich rodičoch), ale
+tichý blok menuje `.bc-ring` a `.bc-core` (dnes už na šiestich rodičoch), ale
 `core-pulse` visí na **`#brand-core`**, ktorý v tom bloku nie je. Plošné pravidlo je
 teda pre dýchanie znaku **nosné**, nie kozmetické — keby padlo, znak by dýchal aj
 v tichom režime.
@@ -1845,14 +1878,18 @@ na prehodnotenie je **5 % odpovedí**. Náhľad HTML je `<iframe sandbox>`, nikd
 
 Mini sigil na tmavom disku: `#0e1413` podklad, prstenec `#c4a2f5` (r 36, hrúbka 9),
 jadro `#d8b878` (r 15). Inline SVG v `<link rel="icon">`, **rovnaký na všetkých
-stránkach** — dnes bit-identický (md5 `c0ebff62…` × 3) ✅, ale zapísaný trikrát.
+stránkach** — dnes bit-identický (md5 `c0ebff62…` × 3) ✅. **Od 1. 9. 2026 zapísaný
+raz**, nie trikrát: blok žije v `resources/views/partials/brand-icons.blade.php`
+a tri page blade ho vkladajú `@include('partials.brand-icons')`.
 
-**Jeden zdroj pre favicon aj Electron `.ico` je SPLNENÝ** (27.–28. 8. 2026) a je to
-§2: `tools/brand/build-mark.py` číta `hades-sigil-mini.svg` a vydáva
-`public/favicon.ico`, `electron/assets/hades.ico` **aj** tri data-URI do Blade
-(`build_icos()` zapisuje obe `.ico` z **tých istých bajtov**, `patch_blade_icons()`
-prepisuje v každom blade **jediný riadok** `<link rel="icon">` — regexom, nie
-šablónou, aby generátor nevlastnil celý `<head>`).
+**Jeden zdroj pre favicon aj Electron `.ico` je SPLNENÝ** (27.–28. 8. 2026, partial
+1. 9. 2026) a je to §2: `tools/brand/build-mark.py` číta `hades-sigil-mini.svg`
+a vydáva `public/favicon.ico`, `electron/assets/hades.ico` **aj** data-URI do
+partialu (`build_icos()` zapisuje obe `.ico` z **tých istých bajtov**,
+`patch_icon_partial()` prepisuje v partiale **jediný riadok** `<link rel="icon">`
+— regexom, nie šablónou, aby generátor nevlastnil celý blok — a
+`assert_partial_is_only_truth()` beží pred zápisom a stráži, že žiadne page blade
+si vlastnú kópiu neponechalo).
 
 `electron/assets/build-icon.py` už geometriu **nedrží**: je to zástupca, ktorý cez
 `runpy.run_path()` spustí ten istý generátor. Zostáva preto, že

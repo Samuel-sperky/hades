@@ -7,20 +7,9 @@
          non-GET fetchu (ValidateCsrfToken, §3.5 docs/BEZPECNOST.md). --}}
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Hades — Vedomie</title>
-    {{-- Favicon = súosé kruhy značky (tmavý papier / amethystový prstenec / zlaté jadro).
-         („tealový" tu stálo do 31. 8. 2026 — teal odišiel 19. 8. 2026 a je to dnes
-         farba oblasti *Vývoj & kód*, nie akcentu; nasledujúci odsek toho istého
-         komentára pritom hovoril „amethystový" správne.)
-         Predtým to bol zlatý disk s tenkým prstencom na 40 % alfy — pri 16 px prstenec
-         zmizol a v karte ostala len zlatá škvrna bez identity. Teraz: nepriehľadný
-         tmavý podklad (čitateľné na svetlej aj tmavej liste prehliadača), plný
-         amethystový prstenec a zlaté jadro — geometria je zhodná s public/brand/hades-sigil-mini.svg.
-         Farby sú kánonové (#0e1413 / #c4a2f5 / #d8b878). --}}
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230e1413'/><circle cx='50' cy='50' r='36' fill='none' stroke='%23c4a2f5' stroke-width='9'/><circle cx='50' cy='50' r='15' fill='%23d8b878'/></svg>">
-    {{-- Fallback pre prehliadače, ktoré SVG favicon neberú, a dlaždica pre iOS.
-         .ico je vyrobené z MINI verzie znaku — master by sa pri 16 px zlial. --}}
-    <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
-    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+    {{-- Ikony značky (favicon, .ico fallback, dlaždica iOS) — jedna pravda pre
+         všetky tri plochy. Data-URI v nej prepisuje tools/brand/build-mark.py. --}}
+    @include('partials.brand-icons')
     {{-- Náhľad odkazu (appka je tunelovaná cez ngrok, takže sa reálne zdieľa).
          Cesta je relatívna zámerne: ngrok doména sa mení, absolútna by zastarala.
 

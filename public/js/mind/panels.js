@@ -341,10 +341,13 @@ export function buildLegend() {
     const connEl = $('legend-connections');
     if (connEl) {
         /* Šírky boli 2,2 / 1,3 / 0,8 px v 26×10 boxe a tri tiery sa nedali odlíšiť:
-           0,8 px je POD podlahou, ktorú si projekt už raz zmeral pri prstencoch uzlov
-           (RING_LW = 1,5 px — „pri 1,1 px zoberie antialiasing viac než polovicu
-           kontrastu"). Tá istá fyzika platí aj tu, takže najtenšia čiara sedí na
-           podlahe 1,5 px a ďalšie dva stupne sú jej celé násobky (×2, ×3). Trojnásobok
+           0,8 px je POD podlahou, ktorú si projekt už raz zmeral pri prstencoch uzlov.
+           Referenčná hodnota je `RING_LW_HOT` = 1,7 px z `render.js` — teda podlaha
+           INFORMAČNÉHO obrysu, nie pokojového (`RING_LW` = 1,15 px), pretože čiara
+           v legende informáciu nesie. Tá istá fyzika platí aj tu, takže najtenšia
+           čiara sedí na podlahe 1,5 px a ďalšie dva stupne sú jej celé násobky
+           (×2, ×3). Do 1. 9. 2026 tu stálo „RING_LW = 1,5 px" — tá konštanta takú
+           hodnotu nikdy nemala a citát bol zastaraný. Trojnásobok
            medzi najtenšou a najhrubšou vidí oko bez porovnávania — a každá čiara
            zostáva nad prahom 3:1. Box je 14 px vysoký, aby sa 4,5 px čiara zmestila. */
         const line = (w) =>
