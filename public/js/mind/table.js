@@ -218,9 +218,10 @@ export function moreRow(container, shown, total, onMore) {
    ULOŽENÉ FILTRE (G2) — MECHANIKA JE ODTERAZ V `public/js/shared/filters.js`
 
    Presunuté 31. 8. 2026, pretože konzola si tie isté štyri funkcie napísala
-   druhýkrát (`public/js/console/threadfilter.js`): importovať ich odtiaľto
-   nemôže, `table.js` ťahá `mind/util.js` a s ním celý graf vrátane d3, ktoré
-   na `/console` ani `/chat` nie je načítané.
+   druhýkrát: importovať ich odtiaľto nemôže, `table.js` ťahá `mind/util.js`
+   a s ním celý graf vrátane d3, ktoré na `/console` ani `/chat` nie je načítané.
+   Od 1. 9. 2026 už tá druhá kópia neexistuje — `console/threadfilter.js` berie
+   mechaniku z `shared/filters.js`, takže obe plochy bežia na jednom kóde.
 
    Tu zostáva len RE-EXPORT, a to zámerne: `screens/runy.js`,
    `screens/rozhodnutia.js` a `screens/dennik.js` importujú `renderSavedFilters`

@@ -1,14 +1,22 @@
 /* ===========================================================================
-   Charón — FILTER A ULOŽENÉ FILTRE nad zoznamom vlákien.
+   Charón — FILTER nad zoznamom vlákien.
 
-   Prečo tu a nie importom z `mind/table.js`: mechanika uložených filtrov na `/`
-   (`loadSavedFilters` / `saveFilter` / `removeFilter` / `renderSavedFilters`)
-   žije v `mind/table.js`, ktorý importuje `mind/util.js`, a ten ťahá `anim.js`,
-   `edges.js`, `filters.js`, `render.js`, `sim.js`, `state.js`, `theme.js` — teda
-   CELÝ GRAF vrátane d3, ktoré na `/console` nie je načítané. Ten istý dôvod, pre
-   ktorý má konzola vlastný `http.js` a nie `mind/http.js`. Presun tých štyroch
-   funkcií do `public/js/shared/` je správna oprava, ale `shared/` tento agent
-   nevlastní — je to nahlásené v reporte a tento súbor potom zmizne.
+   ULOŽENÉ FILTRE TU UŽ NEŽIJÚ. Mechanika (`loadSavedFilters` / `saveFilter` /
+   `removeFilter` / `renderSavedFilters`) je v `public/js/shared/filters.js`
+   a tento súbor ju IMPORTUJE. Do 1. 9. 2026 tu stála jej druhá kópia a hlavička
+   sľubovala, že „tento súbor potom zmizne" — nezmizol a zmiznúť nemal: po
+   odčítaní zdieľanej mechaniky tu zostáva to, čo je naozaj len konzolové — stav
+   filtra, predikát vlákna a rad čipov podľa modelu.
+
+   Kópie sa medzitým stihli rozísť (`iconSvg` tu, `iconMarkup` tam, vlastné
+   `currentName()`), hoci obe písali do toho istého kľúča `hades.filters.*` —
+   presne tá pasca, kvôli ktorej `shared/` vzniklo. Tretia kópia sa sem už písať
+   nemá: `shared/filters.js` je zámerne LEAF (jediný import je `icons.js`), takže
+   jeho načítanie NESTIAHNE graf ani d3. To bola jediná vecná námietka proti
+   importu — a platila len pre `mind/table.js`, ktorý naozaj ťahá `mind/util.js`
+   a s ním `anim.js`, `edges.js`, `filters.js`, `render.js`, `sim.js`, `state.js`
+   a `theme.js`, teda celý graf. Ten istý dôvod, pre ktorý má konzola vlastný
+   `http.js` a nie `mind/http.js`.
 
    KRESBA JE POŽIČANÁ, nie napísaná: `.dtl-filter` (rad filtrov), `.chip` /
    `.chip.active` / `.chip-n` (prepínač) a `.rec-saved*` (uložené kombinácie) sú
@@ -26,15 +34,16 @@
                 filter ukazoval na stav, ktorý človek práve prepína)
 
    ULOŽENÉ FILTRE ŽIJÚ V `localStorage`, nie v DB — filter je pohľad na dáta, nie
-   dáta. Kľúč `hades.filters.<obrazovka>` je ten istý menný priestor ako na `/`
-   (Runy a Rozhodnutia), takže konzola si s nimi nevidí do filtrov a slovník
-   kľúčov zostáva jeden.
+   dáta. Menný priestor `console-vlakna` dáva kľúč `hades.filters.console-vlakna`,
+   ten istý slovník ako na `/` (Runy a Rozhodnutia), takže konzola si s nimi
+   nevidí do filtrov. Pri presune sa NEMENIL, inak by ľuďom zmizli uložené filtre.
    =========================================================================== */
 
 import { el } from './dom.js';
-import { iconSvg } from '../shared/icons.js';
+import { renderSavedFilters } from '../shared/filters.js';
 
-const FKEY = 'hades.filters.console-vlakna';
+/* Menný priestor, nie celý kľúč — prefix `hades.filters.` skladá `shared/filters.js`. */
+const FNS = 'console-vlakna';
 
 /* Značka pre „vlákno bez vlastného modelu". Prázdny reťazec sa nedá použiť — je
    to zároveň hodnota „bez filtra", a tie dva stavy hovoria opak. Sentinel začína
@@ -80,37 +89,15 @@ export function clearThreadFilter() {
     F.model = '';
 }
 
-/* ---------- uložené filtre ---------- */
-
-/* Uloženie je bezpečné aj keď je úložisko zamknuté (privátne okno, blokované
-   site data): funkcie vtedy len nič neurobia a appka beží ďalej. */
-export function loadSaved() {
-    try {
-        const raw = localStorage.getItem(FKEY);
-        const list = raw ? JSON.parse(raw) : [];
-
-        return Array.isArray(list) ? list : [];
-    } catch { return []; }
-}
-
-/** Rovnaké meno PREPÍŠE — dva „qwen3:8b" v zozname sú pasca, nie voľba. */
-function save(name, state) {
-    const list = loadSaved().filter((f) => f.name !== name);
-
-    list.push({ name, state });
-
-    try { localStorage.setItem(FKEY, JSON.stringify(list.slice(-12))); } catch { /* nevadí */ }
-}
-
-function remove(name) {
-    try { localStorage.setItem(FKEY, JSON.stringify(loadSaved().filter((f) => f.name !== name))); } catch { /* nevadí */ }
-}
-
 /* MENO SI FILTER NESIE SÁM — natívny `prompt()` by bol jediné modálne okno
    v celej appke, a meno vymyslené z obsahu je presnejšie než meno napísané rukou
-   o týždeň neskôr. Ten istý vzor a to isté zdôvodnenie ako `renderSavedFilters()`
-   na `/`. */
-function currentName() {
+   o týždeň neskôr. Toto je presne ten `current()`, ktorý `renderSavedFilters()`
+   pýta: vracia `{ name, state }`, alebo `null`, keď nie je čo uložiť. Skladanie
+   mena zostáva konzolové, lebo pozná svoje polia (model + hľadanie); zdieľaná je
+   len mechanika okolo neho. */
+function currentSave() {
+    if (!threadFilterActive()) return null;
+
     const bits = [];
 
     if (F.model === NO_MODEL) bits.push('predvolený model');
@@ -118,7 +105,7 @@ function currentName() {
 
     if (F.q !== '') bits.push(`„${F.q}"`);
 
-    return bits.join(' · ');
+    return { name: bits.join(' · '), state: { q: F.q, model: F.model } };
 }
 
 /* ---------- kresba ---------- */
@@ -186,61 +173,26 @@ export function renderThreadFilters(container, threads, onChange) {
         container.append(row);
     }
 
-    const list = loadSaved();
-    const name = threadFilterActive() ? currentName() : '';
+    /* Uložené filtre dostávajú VLASTNÝ obal, a nie je to kozmetika:
+       `renderSavedFilters()` si svoj kontejner pri každom prekreslení (po uložení
+       aj po zmazaní) vyprázdni. Keby dostal `container`, zmazal by pri tom rad
+       čipov nad sebou a po prvom zmazaní filtra by z panela zmizol prepínač
+       modelov. Prázdny `div` je pre kresbu neviditeľný: `.rec-saved` je `flex`
+       bez marginu, takže lišta bez obsahu nezaberá ani pixel a spodnú medzeru
+       drží `.dtl-filter`. */
+    const savedHost = el('div');
+    container.append(savedHost);
 
-    if (!list.length && name === '') return;
-
-    const saved = el('div', 'rec-saved');
-
-    list.forEach((f) => {
-        const pill = el('span', 'rec-saved-chip');
-
-        const apply = el('button', 'rec-saved-apply', f.name);
-        apply.type = 'button';
-        apply.addEventListener('click', () => {
-            F.q = String(f.state?.q ?? '');
-            F.model = String(f.state?.model ?? '');
+    renderSavedFilters(savedHost, FNS, {
+        onApply(state) {
+            F.q = String(state?.q ?? '');
+            F.model = String(state?.model ?? '');
             // Textové pole je druhé zobrazenie tej istej hodnoty — bez tohto by
             // filter platil, ale políčko by tvrdilo niečo iné.
             const find = document.getElementById('thread-find');
             if (find) find.value = F.q;
             onChange?.();
-        });
-
-        const del = el('button', 'rec-saved-del');
-        del.type = 'button';
-        del.setAttribute('aria-label', `Zmazať filter ${f.name}`);
-        const x = iconSvg('x');
-        if (x) { x.setAttribute('aria-hidden', 'true'); del.append(x); }
-        del.addEventListener('click', () => {
-            remove(f.name);
-            renderThreadFilters(container, threads, onChange);
-        });
-
-        pill.append(apply, del);
-        saved.append(pill);
+        },
+        current: currentSave,
     });
-
-    /* „Uložiť" je vidieť LEN keď je čo uložiť: prázdny filter je „všetko", teda
-       stav bez filtra, a uložiť sa nedá zmysluplne. Rovnaké meno prepíše staré,
-       takže uloženie je idempotentné a tlačidlo to priznáva. */
-    if (name !== '') {
-        const exists = list.some((f) => f.name === name);
-        const add = el('button', 'rec-saved-add', exists ? 'Filter je uložený' : `Uložiť: ${name}`);
-        add.type = 'button';
-        add.disabled = exists;
-        add.addEventListener('click', () => {
-            save(name, { q: F.q, model: F.model });
-            renderThreadFilters(container, threads, onChange);
-        });
-        saved.append(add);
-    }
-
-    container.append(saved);
-}
-
-/** Sú v paneli vôbec nejaké filtračné prvky? Používa to prázdny stav zoznamu. */
-export function hasFilterChips(threads) {
-    return modelBuckets(threads).length > 1 || loadSaved().length > 0;
 }

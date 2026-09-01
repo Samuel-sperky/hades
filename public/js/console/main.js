@@ -64,11 +64,11 @@ let listState = 'loading';   // 'loading' | 'ready' | 'error'
 let renaming = null;         // { uuid, value, focused }
 
 /* Lišta filtrov je PRVÝM DIEŤAŤOM `#thread-list`, nie samostatným pásom medzi
-   `.rail-find` a zoznamom — a je to obmedzenie, nie voľba: samostatný pás by
-   potreboval vlastné `padding` a `border-bottom` v `console.css`, ktorý tento
-   agent nevlastní, a inline štýly si appka zakázala. Cena je pomenovaná: lišta
-   skroluje so zoznamom. `#thread-filters` s `position: sticky` v `console.css`
-   je správna oprava a je nahlásená v reporte. */
+   `.rail-find` a zoznamom. Kedysi to bolo obmedzenie a lišta skrolovala so
+   zoznamom; dnes už nie — `#thread-filters` má v `console.css` `position: sticky`
+   spolu s vlastným `padding`, `border-bottom` a záporným `margin-inline`, ktorý
+   ju roztiahne na celú šírku skrolovacej plochy. Zostáva teda prvým dieťaťom,
+   ale pri skrolovaní stojí. */
 function filterBar(list) {
     const bar = el('div');
     bar.id = 'thread-filters';

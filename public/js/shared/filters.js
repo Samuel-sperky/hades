@@ -3,11 +3,17 @@
    ===========================================================================
    Presunuté 31. 8. 2026 z `public/js/mind/table.js`, kde to vzniklo pre Runy
    a Rozhodnutia. Dôvod presunu je zmeraný, nie estetický: konzola si tú istú
-   mechaniku napísala druhýkrát (`public/js/console/threadfilter.js`), pretože
-   importovať ju z `mind/table.js` NEJDE — `table.js` ťahá `mind/util.js`, a ten
-   `anim.js` + `edges.js` + `filters.js` + `render.js` + `sim.js` + `state.js` +
-   `theme.js`, teda celý graf vrátane d3, ktoré na `/console` ani `/chat` nie je
-   načítané. To je ten istý dôvod, pre ktorý má konzola vlastný `http.js`.
+   mechaniku napísala druhýkrát, pretože importovať ju z `mind/table.js` NEJDE —
+   `table.js` ťahá `mind/util.js`, a ten `anim.js` + `edges.js` + `filters.js` +
+   `render.js` + `sim.js` + `state.js` + `theme.js`, teda celý graf vrátane d3,
+   ktoré na `/console` ani `/chat` nie je načítané. To je ten istý dôvod, pre
+   ktorý má konzola vlastný `http.js`.
+
+   OBA VOLAJÚCI SÚ UŽ TU. `mind/table.js` mechaniku re-exportuje pre `/`,
+   `console/threadfilter.js` ju importuje priamo od 1. 9. 2026 — dovtedy tam
+   stála jej kópia, ktorá sa stihla rozísť (`iconSvg` proti `iconMarkup`, vlastné
+   skladanie mena) pri spoločnom kľúči `hades.filters.*`. Kto pridá tretiu plochu,
+   importuje ODTIAĽTO; kópia s tým istým kľúčom je tichý rozchod, nie nezávislosť.
 
    Tento súbor je preto ZÁMERNE LEAF: jediný import je `icons.js` (tiež leaf).
    Nepridávaj sem nič z `mind/**` — prvý taký import vráti d3 na obe plochy,
