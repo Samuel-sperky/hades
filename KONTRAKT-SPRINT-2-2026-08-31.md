@@ -300,8 +300,22 @@ je hodinu zaplatená.
   Odišlo ako samostatná úloha `task_911edace`.
 - **Mobilný hit-test bug na `/console`** (`task_53a6b179`) — hamburger vnútri
   otvoreného panela na 375 px odnavigúje namiesto zatvorenia.
-- **`scatter`** — domov v `panels.js` (štatistiky Grafu), zadanie v needs
-  grafového agenta vyššie.
+- **`scatter` — plánovaný domov NEEXISTUJE.** Zistené 1. 9. 2026: plán aj needs
+  grafového agenta posielali `scatter` do „štatistík Grafu" v `panels.js`, ale
+  ten súbor je panel uzla, legenda a ručné prepájanie hrán — **sekciu štatistík
+  nemá**, a slovo „štatistiky" sa v celom `public/js/mind/` vyskytuje iba
+  v `dnes.js`. Dať mu tam domov teda neznamená pridať volajúceho, ale postaviť
+  novú plochu, čo je iná úloha a iné rozhodnutie.
+
+  Zámerne som nič nepostavil: kontrakt aj zadanie grafového agenta hovoria, že
+  vymyslený graf je horší než nepoužitý, a `flows` domov dostal práve preto, že
+  otázka „oblasť → istota" na obrazovke Dnes reálne existovala.
+
+  Jediný kandidát, ktorý som našiel a ktorý NIE JE vymyslený: **sila × vek uzla**
+  odpovedá na „čo je usadená znalosť, čo je živá práca a čo je kandidát na
+  hygienu". Dáta na to existujú (Knižnica už kreslí stĺpce Vek a Istota), takže
+  by to bol graf nad Knižnicou alebo nad frontou Kontroly. Je to ale zmena
+  produktovej plochy, nie doťah — patrí do zadania, nie do doťahu.
 - **Zastaraný komentár `[cieľ V2]`** v `chat.blade.php` — zrod znaku je hotový,
   komentár tvrdí opak a už raz spôsobil nesprávny zápis do tohto kontraktu.
 - **`/console` a `/chat` mobil** — nezmerané vôbec (žiaden z 5 behov to nepokryl).
