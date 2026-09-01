@@ -189,12 +189,18 @@ sa beh zastaví a rozsah sa prerokuje.**
 
 ## 11. Výsledok
 
-**Stav:** beh 1 dobehol, plán W1–W6 na 30 agentov sa nespustil vcelku — bežalo
-5 agentov (backend, console-a11y, opcache, spotrebitelia, grafy) plus paralelné
-session mimo tohto fan-outu, ktoré postavili tabuľku + panel pre Knižnicu,
-Kontrolu a Smernicu a kresbu `/chat` (commity `d43a975`, `2fea7a9` — nie sú
-súčasťou výsledkov nižšie, len overené v kóde). Šprint **nie je hotový**;
-zvyšok je v §11.1.
+**Stav:** šprint bežal v DVOCH fan-outoch, nie v jednom, a plán W1–W6 na 30
+agentov sa vcelku nespustil.
+
+- **Beh 1** (18 agentov, `wf_1822750c-815`): baseline meranie, doťah brandingu,
+  tabuľka + panel pre Knižnicu, Kontrolu a Smernicu, filtre Denníka, kresba
+  `/chat`. Commity `d43a975` a `2fea7a9`. **Sú to výsledky tohto šprintu** —
+  prvý zápis tejto sekcie ich pripísal „paralelným sessions", pretože ho písal
+  agent behu 2, ktorý reporty behu 1 nevidel.
+- **Beh 2** (8 agentov, `wf_327ff36c-793`): dátové diery, a11y railu konzoly,
+  opcache, overenie, tento zápis. Commit `2b0bb3e`.
+
+Šprint **nie je hotový**; zvyšok je v §11.1.
 
 ### Prestrelenie odhadu
 
@@ -233,8 +239,11 @@ na limite), teda **~2,6×**. Celý šprint bol v §7 odhadnutý na **2,2–2,9 M
    Server aj UI hotové a zmerané (`?sort=duration_ms&dir=desc&limit=3` vrátilo
    riadok mimo predošlého okna — dôkaz, že radí server, nie klient; `?sort=id`
    a SQL injection pokus obe 422). **Radenie sa nedostáva do URL** — rovnaká
-   diera ako u kno/koo/smo (`writeUrl()` ticho zahodí `ruk`/`rud`, chýbajú
-   v `DICT`), k 1. 9. **neopravené** (viď needs nižšie).
+   diera ako u kno/koo/smo (`writeUrl()` ticho zahodí neznámy kľúč) — a je
+   **opravená** v `2b0bb3e`: `ruk` (`vEnum` nad zrkadlom `RunsScreen::SORTS`)
+   a `rud` sú v `DICT`. Zmerané po oprave: klik na hlavičku Trvanie dá
+   `?s=runy&ruk=duration_ms` a prvý riadok sa zmení zo „4 min 23 s" na
+   „16 min 40 s", teda radil server. Kritérium je tým splnené — ✅.
 6. **`flows` a `scatter` majú volajúceho.** ⚠️ Polovica. `flows` ✅ — karta
    „Istota v oblastiach" na Dnes, 20 stúh/9 uzlov na živých dátach, cesta
    `oblasť → projekt` zo zadania nahradená za `oblasť → istota` (jediný joint,
@@ -243,11 +252,14 @@ na limite), teda **~2,6×**. Celý šprint bol v §7 odhadnutý na **2,2–2,9 M
    aj `scatter`. `scatter` **zostáva bez volajúceho** — domov (štatistiky Grafu,
    `panels.js`) je len navrhnutý v needs, nepostavený (súbor je mimo vlastníctva
    tohto behu).
-7. **Znak sa zrodí na 4 plochách, `offline.html` ticho.** ⚠️ `offline.html`
-   je v kóde OPRAVENÝ (kubická krivka namiesto `ease-in-out`, `no-preference`
-   gate) — nebolo súčasťou 5 behov, overené priamym čítaním súboru. Zrod znaku
-   na `#chat-home`/`.ce-mark` **zostáva neurobený**: komentár v
-   `chat.blade.php` ho sám označuje `[cieľ V2]`.
+7. **Znak sa zrodí na 4 plochách, `offline.html` ticho.** ✅ `offline.html`
+   má kubickú krivku namiesto `ease-in-out` a `no-preference` gate.
+   Zrod znaku na `#chat-home` a `.ce-mark` **JE hotový** — urobil ho beh 1
+   a zmerané 1. 9. 2026 na bežiacej ploche: obe nesú `animationName: bc-draw`
+   / `bc-core-in` a `strokeDasharray: 54.29px`, teda presne to isté, čo
+   `#back-to-graph` na `/console`. Prvý zápis tejto sekcie tvrdil opak,
+   pretože čítal `[cieľ V2]` v komentári `chat.blade.php` namiesto merania
+   computed style — komentár je zastaraný, kód nie.
 8. **Výkon pred/po nad tichým stromom, počet dopytov.** ⚠️ Čiastočne.
    `/api/today`, `/api/journal`, `/api/dashboard` zmerané pred/po (opcache):
    medián sa **nehol** (~0,10–0,15 s pred aj po), zmizli chvosty (17/18 → ~5/106
@@ -266,20 +278,32 @@ na limite), teda **~2,6×**. Celý šprint bol v §7 odhadnutý na **2,2–2,9 M
     5 hlásených behov) je overený len namátkovo cez grep/čítanie, nie
     premeraním na bežiacej appke.
 
-**Súhrn:** 2/10 plne ✅, 6/10 čiastočne ⚠️ (funkčné jadro hotové, chýba buď
-URL perzistencia, druhý koniec páru, alebo meranie), 2/10 (č. 7 časť so znakom,
-a implicitne W2/W6 vcelku) sú vyslovene **nedokončené**.
+**Súhrn po oprave troch zastaraných tvrdení:** 5/10 plne ✅ (č. 1, 2, 5, 7, 9),
+4/10 čiastočne ⚠️ (č. 3 a 4 chýba meranie `/chat` mobilu a parity jazyka,
+č. 6 chýba `scatter`, č. 8 chýba dopytová strana), 1/10 rozpracované (č. 10 —
+časť kódu je overená len čítaním, nie premeraním).
+
+Tri z tých pôvodných hodnotení boli zastarané, nie nesprávne meranie: agent
+behu 2 nemal reporty behu 1 a dva body (č. 5, č. 7) medzitým zaplatil beh 2
+sám. Poučenie do ďalšieho šprintu: **agent, ktorý zapisuje výsledok, musí
+dostať reporty VŠETKÝCH behov, nie len svojho** — inak zapíše dieru, ktorá
+je hodinu zaplatená.
 
 ### 11.1 Čo zostáva do ďalšieho behu
 
-- **`urlstate.js` DICT**: doplniť `ruk`/`rud` (Runy radenie) — presný zápis je
-  v potrebe frontendového agenta vyššie v tomto behu, vzor `kno`/`koo`/`smo`.
+- **`.cq` bola PIATA rodina zatváraná atribútom** a `display` nemala za
+  `:not([hidden])`, takže prázdny zoznam zaradených správ zostával v strome
+  prístupnosti a composer bol o 6 px vyšší (123 → 117 px po oprave).
+  Opravené v `2b0bb3e`; commit `d43a975` tvrdil „štyri rodiny" a bolo ich päť.
+- **Duplikát mechaniky filtrov** (`console/threadfilter.js` proti
+  `shared/filters.js`) — kópie sa už rozišli, obe píšu do `hades.filters.*`.
+  Odišlo ako samostatná úloha `task_911edace`.
 - **Mobilný hit-test bug na `/console`** (`task_53a6b179`) — hamburger vnútri
   otvoreného panela na 375 px odnavigúje namiesto zatvorenia.
 - **`scatter`** — domov v `panels.js` (štatistiky Grafu), zadanie v needs
   grafového agenta vyššie.
-- **W2 zvyšok**: zrod znaku na `#chat-home`/`.ce-mark` (`[cieľ V2]` v
-  `chat.blade.php`).
+- **Zastaraný komentár `[cieľ V2]`** v `chat.blade.php` — zrod znaku je hotový,
+  komentár tvrdí opak a už raz spôsobil nesprávny zápis do tohto kontraktu.
 - **`/console` a `/chat` mobil** — nezmerané vôbec (žiaden z 5 behov to nepokryl).
 - **W5 Optimalizácie** — nespustené; opcache vyriešil chvost, nie prípadné N+1.
 - **Dve MariaDB-only zlyhania** v `ScreenDnesDennikTest` (`project_counts` 5 vs 4,

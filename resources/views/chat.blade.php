@@ -101,9 +101,14 @@
                     {{-- Triedy `bc-ring` / `bc-core` sú kánonický tvar znaku v Blade —
                          presne to vydáva `blade_inline_svg()` v tools/brand/build-mark.py,
                          takže markup má tie triedy niesť aj tam, kde ich CSS ešte nečíta.
-                         POZOR: intro animácia je v mind.css zúžená na `#brand-core` a
-                         `#back-to-graph`, takže tu je zatiaľ inertná — rozšíriť selektor
-                         na `#chat-home` a `.ce-mark` je zvyšok [cieľ V2]. --}}
+                         Intro animácia znaku UŽ TU PLATÍ: selektor v mind.css bol
+                         31. 8. 2026 rozšírený z `#brand-core` / `#back-to-graph` aj na
+                         `#chat-home` a `.ce-mark`. Zmerané 1. 9. 2026 na bežiacej
+                         ploche: `animationName` = `bc-draw` / `bc-core-in`,
+                         `strokeDasharray` = 54.29px — to isté, čo `/console`.
+                         Dovtedy tu stálo, že animácia je inertná, a ten zastaraný
+                         komentár stihol spôsobiť nesprávny zápis do kontraktu šprintu
+                         (agent uveril komentáru namiesto computed style). --}}
                     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
                         <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
                         <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
