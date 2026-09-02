@@ -137,7 +137,7 @@ function vLocal(v) {
     return m ? (parseInt(m[1], 10) > 0 ? String(parseInt(m[1], 10)) + '.' + m[2] : null) : null;
 }
 
-/* ---------- kanonický slovník — 37 kľúčov ----------
+/* ---------- kanonický slovník — 54 kľúčov ----------
 
    Poradie riadkov = poradie kľúčov v adrese (manuál §10). `screen` je pole
    obrazovky, ktorá kľúč vlastní — podľa neho `clearScreenKeys()` maže filtre
@@ -176,17 +176,48 @@ const DICT = [
     { k: 'loc', kind: 'one', v: vLocal, def: null, deb: DEB_FILTER },
 
     // E · obrazovky dát (prefix = 2 znaky slugu obrazovky + os)
+    // Dnes: obdobie karty „Rast siete". Pohľadový stav, nie filter — ten istý
+    // druh veci ako `ruk`/`rud` na Runoch, teda pohľad na dáta, ktorý sa dá
+    // poslať odkazom. Default `year` sa z adresy vynecháva, takže cesta
+    // rok → 30 d → rok skončí na čistom `?s=dnes`. `screen: 'dnes'` je tu
+    // podstatný: bez neho kľúč prežije odchod z obrazovky (zmerané pred
+    // doplnením: `?s=kniznica&dng=30d`).
+    { k: 'dng', kind: 'one', v: vEnum(['30d', 'year', 'all']), def: 'year', screen: 'dnes', deb: DEB_FILTER },
     { k: 'dep', kind: 'one', v: vText, def: null, screen: 'dennik', deb: DEB_FILTER },
+    // Klientske osi Denníka: obdobie a zdroj. Server ich neprijíma
+    // (`JournalController::index` → `$request->only`), preosievajú sa nad načítaným
+    // oknom — do adresy ale patria, pretože sú POHĽADOVÝ stav („Súhrny za 7 dní"
+    // je odkaz, ktorý má zmysel poslať). Default je v enume zámerne (vzor `gv`/`gs`):
+    // `?deo=all` z ruky sa prečíta správne a pri najbližšom zápise z adresy vypadne.
+    { k: 'deo', kind: 'one', v: vEnum(['all', 'd0', 'd7', 'd30']), def: 'all', screen: 'dennik', deb: DEB_FILTER },
+    { k: 'dez', kind: 'one', v: vEnum(['all', 'session', 'digest']), def: 'all', screen: 'dennik', deb: DEB_FILTER },
     // Knižnica má zámernú asymetriu: `q` filtruje server, oblasť filtruje KLIENT
     // (server posiela limit=null). `kna` sa nesmie premietnuť do dopytu na server.
     { k: 'kna', kind: 'one', v: vSlug, def: null, screen: 'kniznica', deb: DEB_FILTER },
     // Otvorený playbook v pravom paneli. Trojička k 'roo'/'ruo'.
     { k: 'kno', kind: 'one', v: vInt, def: null, screen: 'kniznica', deb: DEB_FILTER },
+    // Radenie tabuľky Knižnice. Zoznam kľúčov je zrkadlo sortovateľných stĺpcov
+    // `libColumns()` — `tags` a `_pack` v ňom NIE SÚ (`sortable: false`: množina
+    // nemá poradie a akcia nie je údaj). `label` a vzostupne v zozname zámerne
+    // nie sú: sú to defaulty a kľúč s hodnotou rovnou defaultu sa do adresy
+    // nepíše (obrazovka pošle `null`), presne ako `started_at`/`desc` pri `ruk`.
+    { k: 'knk', kind: 'one', v: vEnum(['area', 'certainty', 'age', 'origin']), def: null, screen: 'kniznica', deb: DEB_FILTER },
+    { k: 'knd', kind: 'one', v: vEnum(['desc']), def: null, screen: 'kniznica', deb: DEB_FILTER },
     { k: 'kot', kind: 'one', v: vEnum(['core', 'skill', 'project', 'memory']), def: '', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'koc', kind: 'one', v: vEnum(['overene', 'hypoteza', 'pasca']), def: '', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'koa', kind: 'one', v: vSlug, def: '', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'kol', kind: 'one', v: vStep(100, 100, 500), def: '100', screen: 'kontrola', deb: DEB_FILTER },
     { k: 'koo', kind: 'one', v: vInt, def: null, screen: 'kontrola', deb: DEB_FILTER },
+    // Radenie tabuľky Kontroly (`kok` kľúč · `kod` smer). Zoznam je zrkadlo
+    // zoraditeľných stĺpcov z `kontrolaColumns()` (bez `akcie`, ktoré má
+    // `sortable: false`), NIE zrkadlo servera: `/api/review/queue` parameter
+    // `sort` nemá a radí sa u klienta nad načítaným oknom, takže neplatný kľúč
+    // nechytí 422 — chytá ho `bootSortKey()` a padá na default.
+    // `created_at` a `desc` v zozname zámerne NIE SÚ: sú to defaulty (poradie,
+    // v ktorom fronta prišla zo servera) a kľúč s hodnotou defaultu sa do adresy
+    // nepíše. Rovnaký vzor ako `ruk`/`rud` v Runoch.
+    { k: 'kok', kind: 'one', v: vEnum(['certainty', 'label', 'type', 'area', 'origin']), def: null, screen: 'kontrola', deb: DEB_FILTER },
+    { k: 'kod', kind: 'one', v: vEnum(['asc']), def: null, screen: 'kontrola', deb: DEB_FILTER },
     { k: 'roy', kind: 'one', v: vYear, def: null, screen: 'rozhodnutia', deb: DEB_FILTER },
     { k: 'roa', kind: 'one', v: vInt, def: null, screen: 'rozhodnutia', deb: DEB_FILTER },
     // Otvorené rozhodnutie v pravom paneli (G6). Dvojička k 'ruo' pre Runy —
@@ -208,6 +239,17 @@ const DICT = [
     // (`directives/<meno>.md`) a v DB riadok nemá. Validátor je `vSlugLong`,
     // nie `vSlug` — dôvod je pri jeho definícii.
     { k: 'smo', kind: 'one', v: vSlugLong, def: null, screen: 'smernica', deb: DEB_FILTER },
+    // Filtre uložených smerníc. `q` (nadpis + cesta) je zámerne ZDIEĽANÝ kľúč
+    // vyššie, takže Smernica pridáva len obdobie: hodnota je počet dní a je to
+    // ten istý zápis, aký drží stav obrazovky. `null` = všetky, do adresy sa
+    // nepíše.
+    { k: 'smp', kind: 'one', v: vEnum(['7', '30']), def: null, screen: 'smernica', deb: DEB_FILTER },
+    // Radenie tabuľky uložených smerníc. `saved_at` v zozname zámerne NIE JE:
+    // je to defaultný kľúč a stav rovný defaultu sa nepíše — `?s=smernica`
+    // znamená „najnovšie zhora". `saved_at` vzostupne sa preto zapíše ako
+    // `smd=asc` bez `smk`. Rovnaká asymetria ako `ruk`/`rud` v Runoch.
+    { k: 'smk', kind: 'one', v: vEnum(['title', 'path']), def: null, screen: 'smernica', deb: DEB_FILTER },
+    { k: 'smd', kind: 'one', v: vEnum(['asc']), def: null, screen: 'smernica', deb: DEB_FILTER },
 
     // Prečo pribudli 'kno', 'koo' a 'smo' naraz (31. 8. 2026): Knižnica, Kontrola
     // a Smernica dostali pravý panel v jednej vlne a všetky tri ho postavili
@@ -233,6 +275,16 @@ const DICT = [
     { k: 'hn', kind: 'one', v: vUuid, def: null, deb: DEB_FILTER },
     { k: 'hp', kind: 'one', v: vUuid, def: null, deb: DEB_FILTER },
     { k: 'hl', kind: 'one', v: vStep(1, 1, 500), def: '30', deb: DEB_FILTER },
+
+    // G · /console. Vlákno nesie pathname `/console/<uuid>`, nie kľúč, a voľné
+    // hľadanie v paneli vlákien nesie spoločné `q` (na ploche je najviac jedno).
+    // `cm` je filter podľa modelu nad zoznamom vlákien. Hodnota `~default`
+    // znamená „vlákno bez vlastného modelu": v pamäti je ten sentinel NUL
+    // (`\0default` v `console/threadfilter.js`), a ten sa do adresy zakódovať
+    // nedá (`%00`); `~` v mene ollama modelu (`menovka[:tag]`) nie je.
+    // `screen:` tu NESMIE byť — na `/console` kľúč `s` neexistuje, takže by
+    // `clearScreenKeys()` nemal na čo pripnúť a `cm` by vypadol pri prvom zápise.
+    { k: 'cm', kind: 'one', v: vText, def: null, deb: DEB_FILTER },
 ];
 
 const BY_KEY = new Map(DICT.map((e) => [e.k, e]));

@@ -119,11 +119,66 @@
              súťažilo s hlavičkou. Klik naďalej vycentruje graf — logo, ktoré vracia
              pohľad domov, je zaužívané a nesúperí so žiadnou inou funkciou. --}}
         <button id="brand-core" type="button" title="Hades — Hierarchical Associative Data Embedding System (klik vycentruje graf)" aria-label="Hades — vycentrovať graf">
-            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-                {{-- Geometria je zmenšenina public/brand/hades-sigil-mini.svg (prstenec
-                     r .36, hrúbka .09, jadro r .15 z hrany viewBoxu). Prstenec je
-                     amethyst, jadro zlaté — presne ako znak. --}}
-                <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+            {{-- ZNAK = SIEŤ (rozhodnutie používateľa 1. 9. 2026), ale TENTO nosič kreslí
+                 jej REDUKOVANÝ stupeň. Nie je to opomenutie — je to pravidlo redukcie,
+                 a tu je priznané, čo presne zmizne a prečo.
+
+                 STUPEŇ `core` = JEDEN UZOL: prstenec r 8,64 / obrys 2,16 (amethyst) so
+                 zlatým stredom r 3,6. Zmizli tri satelitné uzly a všetky štyri hrany.
+                 Kresba je bajt na bajt to, čo vydá `sigilNetMarkup(cls, {step:'core'})`
+                 z public/js/mind/util.js — tam je JEDINÝ zdroj výkresu znaku pre celú
+                 rodinu `bc-*` (tabuľka `SIGIL_NET`) a tento markup je jeho ručná kópia,
+                 pretože statická stránka nesmie čakať na JS. Keď sa `SIGIL_NET` zmení,
+                 prepíš tieto tri riadky podľa nej, nie naopak.
+
+                 PREČO REDUKCIA UŽ PRI 24 px, a je to MERANÉ, nie odhad: hrana od jadra
+                 má v tomto viewBoxe 6,50 jednotky, z toho jadro (r 2,60) zakryje 2,60 —
+                 viditeľná stopa je teda 3,90 jednotky = 3,9 px pri 24 px nosiči. Sieť by
+                 sa tu nerozpadla na kašu, ale prestala by hovoriť „sieť": zostali by
+                 stubble okolo jadra. Druhé, nezávislé číslo hovorí to isté z inej strany
+                 — generátor značky má pre svoj diskový stupeň podlahu 48 px, odvodenú
+                 z hrany (3,2 × 0,48 = 1,54 px drží, 3,2 × 0,24 = 0,77 px nie).
+
+                 IDENTITA SA PRI REDUKCII NEROZPADNE práve preto, že redukovaný tvar JE
+                 značka, ktorú appka nosila doteraz, a v jazyku plátna je to poctivý uzol:
+                 prstenec s plným stredom. Zlatý kotúč sám by značka nebol — amethyst
+                 musí prežiť do najmenšieho stupňa, a bez hrán ho nesie len prstenec.
+
+                 ZROD PLATÍ AJ TU a je to celý dôvod, prečo redukcia hovorí `bc-*` a nie
+                 vlastnými menami: `.bc-mark` na `<svg>` je SPÍNAČ zrodu (mind.css, kontrakt
+                 `.bc-mark`), `<g class="bc-nodes">` nesie stupňovanie a `.bc-core` presýtenie.
+                 Fáza „hrany sa dokreslia" tu nemá čo kresliť, takže zrod je dvojfázový:
+                 uzol sa zjaví → jadro sa presýti. Zmerané na bežiacej ploche:
+                 `animationName` = `bc-node-in` / `bc-core-in`. Bez triedy `bc-mark` by sa
+                 znak nezrodil vôbec — presne to sa 31. 8. 2026 stalo na `/chat`.
+
+                 VÝPLŇ JADRA je tu `currentColor`, nie `var(--brand-gold)`: `#brand-core`
+                 nesie `color: var(--brand-gold)` a stav `.asleep` sa vešia na tlačidlo.
+                 Zmerané: `fill` sa počíta na rgb(216, 184, 120) = `--brand-gold` tmavej témy.
+
+                 KDE SIEŤ REÁLNE VIDNO (aby bolo jasné, že nikde nezmizla):
+                   44 px  `.ce-mark` — prázdny stav `/chat`, plná sieť (nižšie v tomto repe
+                          v chat.blade.php) a `errors/401.blade.php`
+                   32 px  `.charon-sigil` — prázdny dok nad grafom (kreslí mind/charon.js)
+                   84 px  electron/states/offline.html — diskový stupeň generátora značky
+                   ≥128px public/brand/** — prstencový master
+                 A kde je naopak jeden uzol: tento rail, `#back-to-graph`, `#chat-home`,
+                 `.load-mark` (26 px), electron topbar (16 px), favicon a `.ico` do 32 px.
+
+                 ⚠ OTVORENÝ BOD, KTORÝ TENTO SÚBOR NEROZHODUJE: `SIGIL_NET` v util.js
+                 a `net_geometry()` v tools/brand/build-mark.py sú DVA rôzne výseky tej
+                 istej siete (iné uhly, iné vzdialenosti, uzol raz prstenec, raz disk).
+                 Je to zapísané aj v tools/brand/DERIVED.md ako otvorený bod. Markup ide
+                 s `SIGIL_NET`, pretože rodinu `bc-*` vlastní util.js; electron ide
+                 s generátorom, pretože jeho regióny generátor prepisuje. Zjednotiť sa to
+                 musí v jednom z tých dvoch, nie tu. Čomu to NEPREKÁŽA: jeden uzol je
+                 v oboch rukách tá istá kresba (36 / 9 / 15 z hades-sigil-mini.svg), takže
+                 favicon, `.ico`, topbar aj tento rail sú konzistentné bez ohľadu na to,
+                 ako sa spor rozhodne. --}}
+            <svg class="bc-mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                <g class="bc-nodes">
+                    <circle class="bc-node" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                </g>
                 <circle class="bc-core" cx="12" cy="12" r="3.6" fill="currentColor"/>
             </svg>
             <span class="bc-word">Hades</span>

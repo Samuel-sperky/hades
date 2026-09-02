@@ -41,8 +41,21 @@
                 {{-- Značka, nie ikona: Charón je obrazovka Hadesa, tak sem patrí znak. Klik
                      vracia do grafu — logo, ktoré vedie domov, je zaužívané. --}}
                 <a href="/" id="back-to-graph" title="Hades — späť do grafu" aria-label="Hades — späť do grafu">
-                    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-                        <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                    {{-- ZNAK v REDUKOVANOM stupni `core` — jeden uzol (prstenec 8,64/2,16
+                         + zlatý stred 3,6), teda bez troch satelitov a štyroch hrán.
+                         Nosič je 24 px a pri tej veľkosti má viditeľná stopa hrany 3,9 px,
+                         takže sieť by prestala hovoriť „sieť". Celé odôvodnenie, pravidlo
+                         redukcie aj to, kde sieť vidno v plnej kresbe, je pri `#brand-core`
+                         v mind.blade.php — tu sa to nekopíruje druhýkrát.
+                         Kresba je bajt na bajt výstup `sigilNetMarkup(cls, {step:'core'})`
+                         z public/js/mind/util.js (tabuľka `SIGIL_NET`). Jediný rozdiel proti
+                         railu: jadro je tu `var(--brand-gold)`, nie `currentColor` —
+                         `#back-to-graph` nemá vlastný `color` a `.asleep` sem nedosiahne.
+                         `class="bc-mark"` je SPÍNAČ zrodu, nie ozdoba. --}}
+                    <svg class="bc-mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                        <g class="bc-nodes">
+                            <circle class="bc-node" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                        </g>
                         <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
                     </svg>
                 </a>

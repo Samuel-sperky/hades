@@ -189,8 +189,10 @@
   <div class="bar">
     <div class="brand" title="Hades — Hierarchical Associative Data Embedding System">
       <!-- ZNAK: generuje tools/brand/build-mark.py zo hades-sigil-mini.svg.
-           Needituj ručne. Znak tu nesie rolu „desktop okno" (identita appky v ráme,
-           ktorý nie je prehliadač), preto sa NEANIMUJE — pulz behu patrí #brand-core. -->
+           Needituj ručne. JEDEN UZOL, nie sieť: `.sigil` je tu 16 px, teda hlboko pod
+           NET_DISC_MIN_PX (48) — hrany by sa zliali. Znak tu nesie rolu „desktop okno"
+           (identita appky v ráme, ktorý nie je prehliadač), preto sa NEANIMUJE —
+           pulz behu patrí #brand-core. -->
       <svg class="sigil" viewBox="0 0 100 100" aria-hidden="true">
         <circle cx="50" cy="50" r="36" fill="none" stroke="var(--accent)" stroke-width="9"></circle>
         <circle cx="50" cy="50" r="15" fill="var(--gold)"></circle>

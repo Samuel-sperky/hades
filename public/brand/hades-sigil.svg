@@ -4,37 +4,28 @@
   <style>
     svg { --acc: #6d3fb5; --gold: #b88a3a; }
     @media (prefers-color-scheme: dark) { svg { --acc: #c4a2f5; --gold: #d8b878; } }
-    path, circle, line { stroke: var(--acc); stroke-linecap: round; fill: none; }
-    .gold-stroke { stroke: var(--gold); }
+    circle, line { stroke: var(--acc); stroke-linecap: round; fill: none; }
+    .edges line { opacity: .8; }
+    .edges .lat { opacity: .5; }
     .gold-fill { fill: var(--gold); stroke: none; }
-    .ticks line { opacity: .45; }
-    .edge { opacity: .75; }
   </style>
-  <!-- vlásková hranica vedomia (r 47): neprerušená, len rám deja -->
-  <circle cx="50" cy="50" r="47" stroke-width="1" opacity=".55"/>
-  <!-- 12 delení po 30°, mlčia v prerušení -->
-  <g class="ticks">
-    <line x1="50" y1="7" x2="50" y2="3" stroke-width="1"/>
-    <line x1="71.5" y1="12.76" x2="73.5" y2="9.3" stroke-width="1"/>
-    <line x1="93" y1="50" x2="97" y2="50" stroke-width="1"/>
-    <line x1="87.24" y1="71.5" x2="90.7" y2="73.5" stroke-width="1"/>
-    <line x1="71.5" y1="87.24" x2="73.5" y2="90.7" stroke-width="1"/>
-    <line x1="50" y1="93" x2="50" y2="97" stroke-width="1"/>
-    <line x1="28.5" y1="87.24" x2="26.5" y2="90.7" stroke-width="1"/>
-    <line x1="12.76" y1="71.5" x2="9.3" y2="73.5" stroke-width="1"/>
-    <line x1="7" y1="50" x2="3" y2="50" stroke-width="1"/>
-    <line x1="12.76" y1="28.5" x2="9.3" y2="26.5" stroke-width="1"/>
-    <line x1="28.5" y1="12.76" x2="26.5" y2="9.3" stroke-width="1"/>
+  <!-- HRANY sa kreslia PRVÉ, aby uzly stáli na nich, nie naopak. Sú zarezané
+       o vonkajší okraj uzla + 1.5, takže sa obruby nedotýkajú.
+       Bočná hrana (.lat) je slabšia — jadro musí zostať tým, na čo sa sieť viaže. -->
+  <g class="edges">
+    <line x1="56.33" y1="34.34" x2="59.59" y2="26.27" stroke-width="1.8"/>
+    <line x1="33.69" y1="45.63" x2="20.34" y2="42.05" stroke-width="1.8"/>
+    <line x1="58.95" y1="64.32" x2="67.71" y2="78.35" stroke-width="1.8"/>
+    <line x1="53.99" y1="20.88" x2="19.87" y2="36.18" stroke-width="1.8" class="lat"/>
   </g>
-  <!-- NOSNÝ PRSTENEC (r 36, hrúbka 9) — TOTOŽNÝ s mini
-       kánonom. Prerušený 34° tam, kde vstupuje uzol. Pod 64 px sa
-       prerušenie zatvára a kreslí sa mini: ten istý prstenec, to isté jadro. -->
-  <path d="M 83.61 37.1 A 36 36 0 1 1 70.65 20.51" stroke-width="9"/>
-  <!-- hrana: uzol viazaný na jadro -->
-  <line x1="73.64" y1="31.53" x2="64.18" y2="38.92" stroke-width="1.6" class="edge"/>
-  <!-- satelit: jeden uzol, prstenec (nie disk), v prerušení NA prstenci -->
-  <circle cx="78.37" cy="27.84" r="5.5" stroke-width="2.5"/>
-  <!-- jadro: obežnica + jediný sýty PLNÝ prvok znaku. r 15 = mini kánon. -->
-  <circle cx="50" cy="50" r="22" stroke-width="1" class="gold-stroke"/>
-  <circle cx="50" cy="50" r="15" class="gold-fill"/>
+  <!-- VEDĽAJŠIE UZLY: prstence bez výplne (priehľadnosť nesie diera, nie alfa).
+       Tri rôzne veľkosti = hĺbka susedstva. Pod 128 px zmiznú spolu s hranami. -->
+  <circle cx="63.49" cy="16.62" r="7.92" stroke-width="1.98"/>
+  <circle cx="11.85" cy="39.78" r="6.48" stroke-width="1.62"/>
+  <circle cx="71.73" cy="84.77" r="5.4" stroke-width="1.35"/>
+  <!-- JADROVÝ UZOL: pomery mini kánonu (0.36 / 0.09 /
+       0.30 boxu) na vlastnom boxe 38. Prstenec je AMETHYST,
+       stred je jediný sýty PLNÝ prvok celého znaku a je ZLATÝ. -->
+  <circle cx="50" cy="50" r="13.68" stroke-width="3.42"/>
+  <circle cx="50" cy="50" r="5.7" class="gold-fill"/>
 </svg>

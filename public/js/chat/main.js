@@ -50,6 +50,11 @@ import { bootAgents, wireAgents } from './agents.js';
    `bootSelects()` musí byť idempotentné, pretože `bootModelSelect()` dopĺňa
    `<option>`y až po fetchi. */
 import { bootRead, wireRead } from './read.js';
+/* Klávesový kurzor nad riadkami panela (vlna parity 2. 9. 2026). Má `wire*()`,
+   takže sem PATRÍ — na rozdiel od `empty.js` a `saved.js`, ktoré nedrôtujú nič
+   a načítajú sa importom od tých, čo ich kreslia. Bez tohto riadka by sa modul
+   nenačítal vôbec: blade má jediný `<script type="module">` a ten vedie sem. */
+import { wireCursor } from './cursor.js';
 import { bootPalette, wirePalette } from './palette.js';
 import { bootSelects } from './selects.js';
 /* Query string. `mind/urlstate.js` je JEDINÉ miesto v repe, ktoré ho číta aj
@@ -746,6 +751,10 @@ export function boot() {
        zavretia palety. */
     wireRead();
     wirePalette();
+    /* Kurzor sa drôtuje PRED `bootThreads()`: jeho listener sedí na paneli
+       (`#chat-threads`), teda na prvku zo statického markupu, ale `paint()`
+       volá `restoreCursor()` a to má fungovať už od prvého vykreslenia. */
+    wireCursor();
 
     bootThreads();
     bootBranches();

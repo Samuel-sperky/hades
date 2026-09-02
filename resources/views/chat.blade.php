@@ -91,19 +91,27 @@
                      Klik vracia do grafu — logo, ktoré vedie domov, je zaužívané.
                      Prstenec je amethyst, jadro zlaté, presne ako v znaku. --}}
                 <a href="/" id="chat-home" title="Hades — späť do grafu" aria-label="Hades — späť do grafu">
-                    {{-- Triedy `bc-ring` / `bc-core` sú kánonický tvar znaku v Blade —
-                         presne to vydáva `blade_inline_svg()` v tools/brand/build-mark.py,
-                         takže markup má tie triedy niesť aj tam, kde ich CSS ešte nečíta.
-                         Intro animácia znaku UŽ TU PLATÍ: selektor v mind.css bol
-                         31. 8. 2026 rozšírený z `#brand-core` / `#back-to-graph` aj na
-                         `#chat-home` a `.ce-mark`. Zmerané 1. 9. 2026 na bežiacej
-                         ploche: `animationName` = `bc-draw` / `bc-core-in`,
-                         `strokeDasharray` = 54.29px — to isté, čo `/console`.
-                         Dovtedy tu stálo, že animácia je inertná, a ten zastaraný
+                    {{-- ZNAK v REDUKOVANOM stupni `core` — jeden uzol, nie sieť: nosič je
+                         24 px a pri tej veľkosti má viditeľná stopa hrany 3,9 px. Pravidlo
+                         redukcie a jeho čísla sú pri `#brand-core` v mind.blade.php.
+                         Plnú sieť nesie na tejto ploche `.ce-mark` (44 px) nižšie.
+
+                         `bc-ring` v tomto markupe UŽ NEEXISTUJE a nedá sa preložiť: „ring"
+                         pomenúval TVAR (jedna zavretá krivka), ktorý v sieti nie je. Aj
+                         redukovaný prstenec je preto `bc-node` — je to UZOL v malorozmerovej
+                         kresbe, nie prstenec ako tvar. Nové mená sú `bc-edge` a `bc-node`;
+                         `bc-core` zostáva.
+
+                         Zrod visí na triede `bc-mark` na `<svg>`, nie na zozname nosičov
+                         v CSS. Dovtedy tu stálo, že animácia je inertná, a ten zastaraný
                          komentár stihol spôsobiť nesprávny zápis do kontraktu šprintu
-                         (agent uveril komentáru namiesto computed style). --}}
-                    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-                        <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                         (agent uveril komentáru, nie computed style) — preto sa to overuje
+                         MERANÍM: `animationName` na `.bc-node` a `.bc-core` nesmie byť
+                         `none` ani na jednej z troch plôch. --}}
+                    <svg class="bc-mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                        <g class="bc-nodes">
+                            <circle class="bc-node" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+                        </g>
                         <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
                     </svg>
                 </a>
@@ -226,11 +234,36 @@
                 {{-- Prázdny stav. Statický, aby plocha nebola biela ešte pred prvým
                      fetchom; vlna 3 ho odstráni, keď má čo kresliť (`#chat-empty`). --}}
                 <div id="chat-empty">
-                    {{-- Tie isté triedy ako v hlavičke a z toho istého dôvodu: znak má
-                         v Blade jeden kánonický tvar. Animácia je aj tu zatiaľ inertná. --}}
-                    <svg class="ce-mark" viewBox="0 0 24 24" width="44" height="44" aria-hidden="true">
-                        <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
-                        <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
+                    {{-- TU JE SIEŤ V PLNEJ KRESBE — a je to jediný nosič plnej siete
+                         v Blade. Nosič je 44 px, takže viditeľná stopa hrany od jadra má
+                         7,2 px (6,50 jednotky mínus jadro r 2,60, × 44/24) a hrana je
+                         hranou, nie stubľou. Pri 24 px by to bolo 3,9 px — preto hlavička
+                         tejto istej plochy kreslí redukovaný stupeň a tento hero plný.
+                         Jeden viewBox (24) pre oba stupne: `pathLength="100"` drží dash
+                         matematiku v percentách dĺžky, takže dokreslenie hrán je nezávislé
+                         od veľkosti aj od budúcej zmeny geometrie.
+
+                         Kresba je bajt na bajt výstup `sigilNetMarkup(cls)` (default
+                         `step: 'full'`) z public/js/mind/util.js — tabuľka `SIGIL_NET` je
+                         jediný zdroj výkresu rodiny `bc-*`. Uzly sú tu PRSTENCE (r 1,9 /
+                         obrys 1,2), presne ako uzly na plátne; jadro je jediný sýty plný
+                         prvok. Chorda je z troch možných spojení satelitov jediná, ktorá
+                         minie jadro (5,63 od stredu proti polomeru 2,60) — sieť tým prestane
+                         byť hviezda.
+
+                         `bc-mark` musí byť aj tu, vedľa `ce-mark` (tá nesie len opacitu
+                         v chat.css): zrod visí na `bc-mark`, nie na zozname nosičov. --}}
+                    <svg class="bc-mark ce-mark" viewBox="0 0 24 24" width="44" height="44" aria-hidden="true">
+                        <path class="bc-edge" pathLength="100" d="M12 12L6.27 8.94" fill="none" stroke="var(--accent)" stroke-width="1.1" stroke-linecap="round"/>
+                        <path class="bc-edge" pathLength="100" d="M12 12L17.74 9.65" fill="none" stroke="var(--accent)" stroke-width="1.1" stroke-linecap="round"/>
+                        <path class="bc-edge" pathLength="100" d="M12 12L13.43 17.93" fill="none" stroke="var(--accent)" stroke-width="1.1" stroke-linecap="round"/>
+                        <path class="bc-edge" pathLength="100" d="M18.9 10.92L15.17 18.14" fill="none" stroke="var(--accent)" stroke-width="1.1" stroke-linecap="round"/>
+                        <g class="bc-nodes">
+                            <circle class="bc-node" cx="4.06" cy="7.76" r="1.9" fill="none" stroke="var(--accent)" stroke-width="1.2"/>
+                            <circle class="bc-node" cx="20.05" cy="8.7" r="1.9" fill="none" stroke="var(--accent)" stroke-width="1.2"/>
+                            <circle class="bc-node" cx="14.02" cy="20.36" r="1.9" fill="none" stroke="var(--accent)" stroke-width="1.2"/>
+                        </g>
+                        <circle class="bc-core" cx="12" cy="12" r="2.6" fill="var(--brand-gold)"/>
                     </svg>
                     <h2>Napíš úlohu pre vedomie</h2>
                     <p>Chat vidí pamäť Hadesa aj súbory projektu. Každý zápis

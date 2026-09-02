@@ -113,223 +113,183 @@ a pomenované inak.
 
 ## 2. Znak
 
-Znak je **sigil zo súosných prstencov** — uzol z plátna povýšený na značku.
-Číta sa ako veta: *uzol vstupuje prerušením hranice a je viazaný na jadro.*
+**Prepísané 2. 9. 2026 (Sprint 3, rozhodnutie používateľa 1. 9. 2026).** Znak
+je **sieť**, nie sústredné prstence — kruhový sigil opísaný nižšie v odseku
+„História" je **preč z appky aj z manuálu ako aktuálny stav**, zostáva zapísaný
+len preto, že staršie rozhodnutia v tomto dokumente (rebrík redukcie, kánon
+farieb, štyri role) sa naň odvolávajú a niekto bude chcieť vedieť, čo sa
+zmenilo. Znak sa číta ako veta: *jadro drží vedomie a siete sa naň viažu
+neúplne rovnomerne — presne ako pamäť.*
 
-### Konštrukcia (viewBox 100 × 100, stred 50 50)
+### Konštrukcia (viewBox 24 × 24, stred 12 12)
 
-**Prepísané 28. 8. 2026** (kontrakt `KONTRAKT-DIZAJN-BRANDING-2026-08-28.md`, A1).
-Predchádzajúca konštrukcia (prstenec A 46/1,5, stupnica 60 delení, B 34/3,5, C 22,
-satelit na r 46, jadro 8,5) **už neplatí** — je vymenená, nie doplnená.
+Jadro je **plný zlatý kotúč bez prstenca** (r 2,6) — obežnica by z jadra
+urobila štvrtý prstencový uzol a „jediný sýty prvok" by prestal byť jediný.
+Tri satelity sú **prstence** (uzol = diera nesie priehľadnosť, ten istý jazyk
+ako plátno Grafu), zámerne **nepravidelne** rozmiestnené — pravidelný
+trojuholník je ornament, sieť pamäti nie je symetrická:
 
-| Prvok | Polomer | Hrúbka | Poznámka |
-|---|---|---|---|
-| Vlásková hranica | 47 | 1,0 | neprerušená, opacity 0,55 — len rám deja |
-| Stupnica | 43–47 | 1,0 | **12 delení po 30°**, kreslených **11** — dvanáste padne do prerušenia a mlčí; opacity 0,45 |
-| **Nosný prstenec** | **36** | **9** | hmota znaku, **prerušená 34°** v smere 52°. **Totožná s mini kánonom.** |
-| Hrana | 30 → 18 | 1,6 | od satelitu k jadru, v smere 52°, opacity 0,75 |
-| Satelit | 5,5 | 2,5 | jeden uzol, **prstenec, nie disk**, v prerušení **na** nosnom prstenci |
-| Obežnica jadra | 22 | 1,0 | zlatá |
-| **Jadro** | **15** | výplň | **jediný plný prvok znaku**, zlaté. **Totožné s mini kánonom.** |
+| Prvok | Súradnice | Polomer | Obrys | Poznámka |
+|---|---|---|---|---|
+| **Jadro** | 12, 12 | 2,6 | výplň | jediný sýty prvok znaku, zlaté |
+| Satelit 1 | 4,06, 7,76 | 1,9 | 1,2 | vzdialenosť od jadra 9,00 |
+| Satelit 2 | 20,05, 8,70 | 1,9 | 1,2 | vzdialenosť od jadra 8,70 |
+| Satelit 3 | 14,02, 20,36 | 1,9 | 1,2 | vzdialenosť od jadra 8,60 |
 
-Uhol 52° od vertikály je jediná asymetria a nesie celý dej — neposúvať ho „aby to
-bolo vyvážené"; symetrický znak stráca vetu.
+Štyri hrany, obrys 1,1: **tri zo stredu jadra** (skryté pod jeho plným
+kotúčom) na okraj každého satelitu, plus **jedna chorda** medzi satelitom 2
+a 3 (18,90 10,92 → 15,17 18,14) — je to z troch možných spojení satelitov
+jediné, ktoré **minie jadro** (chorda prechádza 5,63 jednotky od stredu jadra,
+polomer jadra je 2,60). Bez tejto štvrtej hrany je znak hviezda (všetko vedie
+do stredu); s ňou hovorí presne to, čo robí graf pamäti — uzol vie viesť
+k uzlu, nie len domov.
 
-### Pravidlo redukcie (prečo master a mini konečne súhlasia)
+Zmerané `getTotalLength()` (líšia sa, čo je dôvod, prečo dash matematika nižšie
+používa `pathLength`): **6,496 / 6,202 / 6,100 / 8,127** jednotiek.
 
-Dovtedajšia porucha nebola vzhľad, ale to, že **master a mini boli dva rôzne
-výkresy**: favicon a načítavacia značka kreslili prstenec s pomerom 0,36 boxu,
-master 0,46. Znak vedľa znaku teda nesúhlasil.
+Geometria je zdrojovaná v **troch nezávislých miestach** — `SIGIL_NET` v
+`public/js/mind/util.js` (web), `net_geometry()` v `tools/brand/build-mark.py`
+(statické assety), a kontrakt tried `.bc-mark` v `mind.css` (spína zrod,
+nekreslí súradnice). Do 1. 9. 2026 sa presne tento rozchod stal kruhovému
+znaku (master a mini boli dva rôzne výkresy) — dnes tri cesty súhlasia
+(overené: rovnaké pomery `NET_CORE_BOX`, rovnaké dĺžky hrán), ale nič v kóde
+to nevynucuje. **Zmenu geometrie treba urobiť na oboch miestach naraz a
+overiť meraním na bežiacej appke**, nie čítaním jedného zdroja — presne to
+zaplatil starý znak.
 
-Nový master je **nadmnožina mini** — nosný prstenec r 36 / hrúbka 9 a jadro r 15 sú
-v oboch tie isté hodnoty (overené parsovaním oboch súborov). Rozdiel je len
-v detaile a ten sa **redukuje podľa veľkosti**:
+### Pravidlo redukcie — DVA rebríky, pretože dva rôzne výstupy
 
-| Veľkosť | Čo sa kreslí |
-|---|---|
-| ≥ 64 px | celý master: hranica, 12 delení, prerušenie, hrana, satelit, obežnica, jadro |
-| < 64 px | mini: nosný prstenec (**zatvorený**) + jadro |
+Kruhový znak mal jednu hranicu (64 px). Sieť má **dve nezávislé**, pretože
+statické assety (favicon, PNG, `.ico`) a živé SVG nosiče v appke potrebujú
+inú jemnosť kroku:
 
-Prerušenie a satelit sa v malom **zatvárajú zámerne**, nie z opomenutia, a dôvod je
-technický aj vizuálny. Technický: `Mini` parser generátora prijíma presne dva kruhy,
-raster kreslí prstenec ako anulus dvoma diskami a `.load-mark` je CSS `border` —
-ani jeden z tých troch výstupov prerušenie vyjadriť nedokáže. Vizuálny: pri 16 px má
-34° medzera 3,4 px a satelit obrys 1,8 px, teda detail, ktorý by sa rozpadol na
-antialiasingu. **Keď sa raz mini má prerušiť, musia sa zmeniť všetky tri výstupy
-naraz** — inak sa vráti presne ten rozchod, ktorý toto pravidlo rieši.
+**Webové nosiče (`SIGIL_NET`, `util.js`) — prah 32 px, dva stupne:**
 
-### Jeden zdroj geometrie
-
-**Geometria znaku bola 28. 8. 2026 zapísaná 16× v repe.** Zoznam nižšie je stav PRED
-zjednotením a číta sa ako inventár, nie ako TODO.
-
-**Zmerané 31. 8. 2026 z `main()` generátora:** pod generátorom je dnes **13 zápisov** —
-master, mono, **oba lockupy**, `hades-favicon.svg`, data-URI v partiale, obe `.ico`,
-`apple-touch-icon.png`, topbar a offline — a k nim `tools/brand/DERIVED.md`. Ručným
-zdrojom geometrie zostáva **jediný súbor**, `hades-sigil-mini.svg`. Dve veci, ktoré tu
-do 31. 8. 2026 stáli inak: **lockupy už mimo generátora nie sú** (`build_lockups()`
-v nich vymieňa skupinu `.sig`, wordmark nechá stáť), a pribudol jeden generovaný zápis,
-ktorý tabuľka nemá vôbec — **`public/brand/hades-favicon.svg`** (kompozícia mini na
-atramentovom disku, zdroj data-URI).
-
-**Od 1. 9. 2026 je data-URI zápis JEDEN, nie tri.** Predtým `patch_blade_icons()`
-prepisoval `<link rel="icon">` v troch page blade zvlášť; dnes patrí do
-`resources/views/partials/brand-icons.blade.php` (celý blok: `icon` data-URI,
-`alternate icon`, `apple-touch-icon`), tri page blade ho vkladajú
-`@include('partials.brand-icons')` a generátorová funkcia je `patch_icon_partial()`.
-Počet zápisov generátora ostáva **13** — nezmenilo sa *koľko* súborov generátor píše,
-zmenilo sa, že tri kópie tej istej pravdy nahradil jeden zdroj. `assert_partial_is_only_truth()`
-beží pred zápisom a stráži oba smery: page blade nesmie mať vlastný `<link rel="icon">`
-a MUSÍ mať `@include`; kalibrované 1. 9. 2026 vloženou stray kópiou (padne) aj
-odstráneným `@include` (padne). `errors/401.blade.php` v partiali zámerne nie je —
-nesie iný, od kánonu odlišný výkres (zlatý disk r30 + amethystový prstenec r45 na
-40 % alfy pri 16 px), nie kópiu tejto pravdy.
-
-Manuál tu do 27. 8. 2026 tvrdil „osemkrát" — bolo to podhlásené, pretože počítalo
-len web a Python a nevidelo Electron chrome, offline stav a **CSS prekresbu**
-načítavacej značky. Toto je úplný zoznam a je to vstup pre implementátora znaku:
-
-| # | Miesto | Tvar zápisu |
+| Veľkosť | Stupeň | Čo sa kreslí |
 |---|---|---|
-| 1 | `public/brand/hades-sigil-mini.svg:7–8` | **kánon mini**: viewBox 100, prstenec r 36 / hrúbka 9, jadro r 15; farby z `prefers-color-scheme` |
-| 2 | `public/brand/hades-sigil.svg` | **kánon master**: hranica 47 / 12 delení / nosný prstenec 36–9 prerušený 34° / hrana / satelit 5,5 / obežnica 22 / jadro 15 — **GENEROVANÝ z mini, ručne needituj** |
-| 3 | `public/brand/hades-sigil-mono.svg` | master znovu, jednofarebne (`currentColor`) |
-| 4 | `resources/views/mind.blade.php:16` | data-URI faviconu: disk r 50 `#0e1413`, prstenec r 36/9 `#c4a2f5`, jadro r 15 `#d8b878` |
-| 5 | `resources/views/console.blade.php:20` | to isté, **bajt na bajt** — zmerané 31. 8. 2026 `grep -o "data:image/svg+xml,[^\"]*" resources/views/*.blade.php \| md5sum` (tri rovnaké súčty). Hash `c0ebff62…`, ktorý tu stál, sa **nereprodukuje** ani z riadku, ani z href, ani zo samotného SVG — konkrétna hodnota sa preto neuvádza, uvádza sa spôsob overenia |
-| 6 | `resources/views/chat.blade.php:47` | to isté, **bajt na bajt** |
-| 7 | `resources/views/mind.blade.php:128–129` | viewBox 24: `r 8.64` / `stroke 2.16` / jadro `r 3.6`; `fill="currentColor"`; triedy `bc-ring` / `bc-core` |
-| 8 | `resources/views/console.blade.php:54–55` | tie isté tri čísla; `fill="var(--brand-gold)"`; triedy **sú** |
-| 9 | `resources/views/chat.blade.php:94–95` | tie isté tri čísla; `stroke="var(--accent)"`; triedy **sú** a animácia zrodu je od 31. 8. 2026 **živá** (viď nižšie) |
-| 10 | `resources/views/chat.blade.php:211–212` | tie isté tri čísla, v `.ce-mark`; triedy **sú**, animácia zrodu rovnako živá |
-| 11 | `public/js/console/render.js` → `.empty-sigil` (`ring` / `core`) | tie isté tri čísla, skladané `setAttribute`om v JS |
-| 12 | `public/css/mind.css` → `#brand-core .bc-ring` a `@keyframes bc-draw` | `stroke-dasharray: 54.29` = 2π × 8,64 — **derivát polomeru zapísaný ako konštanta**, na troch riadkoch (`dasharray`, `dashoffset`, `from` v keyframe) |
-| 13 | `public/css/mind.css` → `.empty.empty-loading .load-mark` (+ `::after`) | znak **prekreslený CSS boxmi**, a v **iných proporciách**: 26 px box, `border: 2px` (obrys 0,077 boxu, kánon 0,09), jadro 8 px (0,154 boxu, kánon 0,15), stredný polomer prstenca 0,46 boxu proti kánonickým 0,36 |
-| 14 | `electron/assets/build-icon.py` (celý súbor je 35 riadkov) | **už NIE je zápis geometrie**: zástupca, `runpy.run_path()` volá `tools/brand/build-mark.py`. Do 27. 8. 2026 tu boli hardcoded RGB tuply a prstenec ako anulus r 40,5 mínus r 31,5 — dnes v súbore **nie je ani jedno kreslené číslo**; r 40,5 / 31,5 v ňom ešte stoja, ale len v docstringu, ako veta o tom, čo odtiaľ odišlo |
-| 15 | `electron/chrome/topbar.html` → medzi `ZNAK` markermi | viewBox 100, r 36/9 + r 15, `var(--accent)` / `var(--gold)` — **generované** |
-| 16 | `electron/states/offline.html` → medzi `ZNAK-STYLE` a `ZNAK` markermi | viewBox 100; `r 36` **a jadro `r 15` v markupe**, v `<style>` je `stroke-width: 9` a výplň jadra (zmerané 31. 8. 2026 — manuál tu tvrdil, že `r 15` je v `<style>`, nie je). Navyše **vlastná kópia `core-pulse`** — a jej krivka NIE JE `ease-in-out`, ale `cubic-bezier(.4, 0, .6, 1)` napísaná doslova (tá istá hodnota ako `--ease-pulse`; tokeny do tohto dokumentu nedosiahnu) |
-| — | `public/favicon.ico` | binárka, **dnes ju vydáva `build-mark.py`** (`build_icos()`) |
-| — | `electron/assets/hades.ico` | binárka, ten istý generátor a **tie isté bajty** — nie z #14 |
+| ≥ 32 px | `'full'` | plná sieť: 4 hrany, 3 satelity, jadro |
+| < 32 px | `'core'` | JEDEN uzol — **nie** satelit siete zväčšený, ale bajt na bajt bývalý kruhový znak (prstenec r 8,64 / obrys 2,16 + zlaté jadro r 3,6, pomery 36/9/15 z `hades-sigil-mini.svg` prepočítané do viewBoxu 24) |
 
-**Odkazy do `mind.css`, `render.js` a `charon.js` sú v tejto tabuľke zámerne
-selektorové, nie riadkové** (od 31. 8. 2026). Riadkové čísla do stylesheetov, ktoré
-sa aktívne prepisujú, zhnijú do týždňa — presne tak sa stalo, že #12 ukazovalo na
-blok `core-shadow` a #13 do prázdna. Selektor prežije vloženie riadka nad seba
-a `grep` ho nájde; číslo riadka nerobí ani jedno.
+Prah je pri stubloch, nie pri holom antialiasingu: pri 24 px majú hrany ešte
+1,20/1,10 px obrys (nad plným pixelom), ale viditeľný úsek klesne na
+3,5–3,9 px — znak nezmizne, len prestane hovoriť „sieť". Preto 24 px hlavičkové
+nosiče (`#brand-core`, `#back-to-graph`, `#chat-home`) idú stupňom `'core'`,
+zatiaľ čo 32+ px nosiče (`.load-mark`, `.charon-sigil`, `.ce-mark`) plnou
+sieťou. Amethyst musí prežiť do najmenšieho stupňa — zlatý kotúč sám by
+značka nebol.
 
-**Od 31. 8. 2026 to platí aj pre Electron** — predpoklad „súbory bez priebežného
-prepisovania" tam neobstál: `topbar.html` mal blok znaku na riadkoch 162–169
-a v ten istý deň mu nad znak pribudla vlastná podlaha `prefers-reduced-motion`,
-ktorá ho posunula o ~30 riadkov nižšie (zmerané; nové číslo sa tu zámerne
-nepíše, zhnilo by rovnako). Electron sa preto adresuje **markermi**
-(`ZNAK`, `ZNAK-STYLE`), ktoré do súboru píše ten istý generátor a ktoré sa
-posunutím riadkov nepokazia. Riadkové čísla zostávajú len pri Blade — tam sú
-overené (favicon 16 / 20 / 47, inline znak 128–129, 54–55, 94–95, 211–212;
-zmerané 31. 8. 2026, všetkých sedem sedí).
+**Statické assety (`build-mark.py`) — prah 48 px a 128 px, TRI stupne** (rebrík
+platí na obrys — uzol ako plný disk obrys nemá, takže sieť z diskov drží
+hlboko pod 128 px, čo je tretí stupeň, ktorý webová dvojica nepotrebuje):
 
-Tri veci, ktoré z tabuľky treba vedieť predtým, než sa to začne zlievať:
-
-- **`.load-mark` (#13) nie je znak, je to jeho nepresná citácia.** Proporcia
-  prstenca je 0,46 boxu namiesto 0,36, čo je o 28 % viac — teda načítavanie kreslí
-  iný znak než favicon vedľa neho. Nie je to preklep: 26 px box s 2 px obrysom je
-  hodnota vybraná pre kontrast (komentár nad pravidlom to vysvetľuje a je pravdivý),
-  takže **generátor musí vydať aj tieto tri čísla**, nie ich len prepísať.
-- **`fill="currentColor"` (#7) a `fill="var(--brand-gold)"` (#8, #9) dnes vychádzajú
-  rovnako**, lebo `#brand-core { color: var(--brand-gold) }` — ale sú to dva
-  mechanizmy a jeden z nich zanikne pri prvej zmene farby. Kánon je
-  `var(--brand-gold)`; `currentColor` sa opúšťa.
-- **`electron/states/offline.html` má vlastnú kópiu `core-pulse`.** Krivka je
-  `cubic-bezier(.4, 0, .6, 1)` — teda **správna slučková**, nie `ease-in-out`, ktorý
-  §3 na nekonečnej slučke zakazuje; manuál tu do 31. 8. 2026 tvrdil opak. Hodnota je
-  napísaná doslova, lebo tokeny `mind.css` do samostatného dokumentu nedosiahnu.
-  A práve preto, že `mind.css` chýba, **plošná podlaha `prefers-reduced-motion` ho
-  nekryje** — tichú verziu si musí napísať sám, a robí to gate `no-preference`
-  (základný stav jadra je hotový znak, nie zamrznutá spodná fáza dýchania).
-
-**Jeden generátor, šesť výstupov — stav zmeraný 31. 8. 2026.** Zdroj je
-`hades-sigil-mini.svg` (mini) a z neho vydaný `hades-sigil.svg` (master).
-
-| # | Výstup | Stav |
+| px | Kreslí sa | Najtenší prvok |
 |---|---|---|
-| 1 | SVG assety v `public/brand/` (master, mono, oba lockupy, `hades-favicon.svg`) | **vydáva** |
-| 2 | data-URI faviconu pre `resources/views/partials/brand-icons.blade.php` (tri page blade ho vkladajú `@include`) | **vydáva** (`patch_icon_partial()`, od 1. 9. 2026 — pred tým prepisoval tri blade zvlášť) |
-| 3 | inline `<svg>` znaku pre Blade (viewBox 24, triedy `bc-ring` / `bc-core`) | **nezapisuje** — `blade_inline_svg()` blok len **vypíše do `DERIVED.md`** |
-| 4 | `public/favicon.ico` **a** `electron/assets/hades.ico` | **vydáva**, a oba sú bajt na bajt zhodné (zmerané: md5 `761e7afa…` na oboch) |
-| 5 | `stroke-dasharray` (dnes `54.29` = 2π × 8,64, v CSS na troch miestach) a tri čísla `.load-mark` | **nezapisuje** — čísla idú do `DERIVED.md` |
-| 6 | znak pre Electron chrome a offline stav | **vydáva** (medzi markermi) |
+| < 48 (`NET_DISC_MIN_PX`) | mini — jeden uzol (rovnaký `'core'` výkres ako web) | — |
+| 48–127 | sieť, satelity ako **plné disky** (obrys by nedržal) | 1,54 px pri 48 px |
+| ≥ 128 (`NET_MIN_PX`) | sieť, satelity ako **prstence** (kánon plátna) | 1,73 px pri 128 px |
 
-Štyri zo šiestich teda generátor vlastní a dve (**3 a 5**) len **dokumentuje**
-v `tools/brand/DERIVED.md`. Je to zámerné rozdelenie vlastníctva — generátor nesmie
-zapisovať do `mind.css` ani do markupu blade, ktoré vlastní niekto iný — ale nemení
-to riziko: **kým sú 3 a 5 ručný prepis podľa tabuľky, môžu driftnúť.** Keď vypadne
-ktorýkoľvek z tých šiestich, sedemnásty zápis pribudne znova — už sa to stalo
-šesťnásťkrát. **Vlastníctvo:** `public/favicon.ico` je koreň pre web,
-`electron/assets/hades.ico` pre desktop, a oba vydáva ten istý generátor.
+Hranice sú namerané, nie odhadnuté: pri 32 px má satelit-disk obrys 1,02 px
+(pod podlahou 1,5 px), pri 48 px 1,54 px (nad ňou); pri 64 px by satelit-prstenec
+mal len 0,86 px, teda `NET_MIN_PX = 128`. Dôsledok: `.ico` (16→256 px) nesie
+**tri rôzne výkresy súčasne** — presne na to je multi-size `.ico`.
 
-### Kde znak je a kde má byť
+### Jeden zdroj geometrie — generátor a jeho zápisy
 
-Rozhodnutie 4–5: znak **viac prítomný, ale striedmo — len tam, kde niečo nesie.**
-„Nesie" je v tomto manuáli uzavretý zoznam štyroch rolí a nič sa doň nepridáva bez
-prepisu tejto vety:
+**`hades-sigil-mini.svg` zostáva jediným RUČNÝM zdrojom geometrie** — jeho
+rola sa ale zmenila: nie je to už „celá značka", je to **ten jeden uzol**,
+okolo ktorého sa sieť viaže (kánon `'core'` stupňa vyššie). Master
+(`hades-sigil.svg`) je dnes **výsek siete**, generovaný z mini pomerovo
+(`NET_CORE_BOX = 38`; identita mini↔master je od 1. 9. 2026 **pomerová, nie
+absolútna** — prstenec r 36 v strede boxu 100 nenechá satelitom miesto, takže
+jadrový uzol berie pomery 0,36/0,09/0,30 na vlastnom boxe).
+
+Pod `main()` generátora je dnes **13 zápisov** (nezmenené číslo, zmenil sa
+obsah, nie počet: master, mono, oba lockupy, `hades-favicon.svg`, data-URI
+v partiale `resources/views/partials/brand-icons.blade.php`, obe `.ico`,
+`apple-touch-icon.png`, topbar a offline). `errors/401.blade.php` je zámerne
+mimo partialu — nesie vlastný, od kánonu odlišný výkres (zlatý disk + prstenec
+na 40 % alfy) — **ale jeho SVG markup bol Sprintom 3 ručne prepísaný na tú
+istú sieťovú geometriu** (lokálne triedy `edge`/`node`/`core`, nie `bc-*`, aby
+nekolidovali s kontraktom zrodu), takže vizuálne dnes sedí, len zdroj pravdy
+zostáva ručný, nie generovaný.
+
+**Webové nosiče generátor NEKRESLÍ** — kreslí ich `sigilNetMarkup()`/
+`sigilNetSvg()` v `util.js` a blade markup je ich **ručne prepísaný bajt-na-bajt
+výstup** (dôvod: statický blade musí niesť SVG priamo, JS výmena by ukázala
+stránku najprv bez znaku). Toto je druhé miesto driftu vedľa geometrie vyššie
+— zmenu `SIGIL_NET` treba premietnuť do všetkých blade markupov ručne.
+
+### Nosiče — kde znak je a čo z neho zostáva
+
+Zdroj: `sigilNetMarkup(cls, opts)` / `sigilNetSvg(cls, opts)` v `util.js`,
+`opts.step` je `'full'` (default) alebo `'core'`, `opts.gold` prepíše zlatý
+token. Kontrakt s kresbou (`mind.css`, blok ZROD ZNAKU): `class="bc-mark"` na
+`<svg>` je SPÍNAČ zrodu, `.bc-nodes` musí byť skupina s tromi satelitmi ako
+jedinými deťmi (stupňovanie `:nth-child`), `.bc-edge` je jeden `<path>` na
+hranu s `pathLength="100"` (nie jedna cesta so štyrmi podcestami — hrany majú
+rôznu dĺžku, jedna dash hodnota by jednu dokreslila a ostatné zamrzla
+v polovici), `.bc-core` nesie len zlaté jadro, jeden prvok bez `.bc-node`.
+
+| Nosič | Súbor | Veľkosť | Stupeň | Zrod (`bc-mark`) |
+|---|---|---|---|---|
+| `#brand-core` (rail `/`) | `mind.blade.php` | 24 px | `'core'` | ✅ + `core-pulse` (jediné miesto s dýchaním) |
+| `#back-to-graph` (hlavička `/console`) | `console.blade.php` | 24 px | `'core'` | ✅ len zrod |
+| `#chat-home` (hlavička `/chat`) | `chat.blade.php` | 24 px | `'core'` | ✅ len zrod |
+| `.ce-mark` (prázdny stav `/chat`) | `chat.blade.php` | 44 px | `'full'` | ✅ |
+| `.empty-sigil` (prázdny stav `/console`) | `console/render.js` | 24 px | `'core'` | ✅ |
+| `.charon-sigil` (prázdny dok nad grafom) | `mind/charon.js` → `sigilNetSvg()` | 32 px | `'full'` | ✅ |
+| `.load-mark` (spinner, všetky tri plochy) | `util.js` → `loadingHtml()` | 32 px | `'full'` | ❌ zámerne (viď nižšie) |
+| `.sigil` (401 zamknuté) | `errors/401.blade.php` | 44 px | `'full'` (ručná kópia) | ✅ vlastné `sig-*` keyframy |
+| `.sigil` (Electron offline) | `electron/states/offline.html` | 84 px | diskový stupeň generátora | ✅ + vlastná kópia `core-pulse` |
+| `.sigil` (Electron topbar) | `electron/chrome/topbar.html` | 16 px | mini/`'core'` | ❌ zámerne — „desktop okno" sa neanimuje |
+
+**`.load-mark` prestal byť CSS `border` (1. 9. 2026).** Nosičom je inline
+`<svg>` v obale, ktorý drží rozmer (32×32 px) a dýchanie (`load-breathe`);
+box vyrástol z 26 na 32 px, pretože pod 32 px medzera medzi satelitom a hranou
+mizne. Zrod na `.load-mark` **zámerne nebeží** (`<svg>` nenesie `bc-mark`) —
+spinner sa montuje pri každom načítaní zoznamu a opakovaná dramaturgia zrodu
+by kolidovala s dýchaním. Zlatá je tu `--gold-text` (téme prispôsobená pre
+malé plné prvky), nie `--brand-gold` — nosič rozhoduje, ktorá zlatá.
+
+**24 px hlavičky vedome kreslia iný stupeň než 32+ px prázdne stavy** — to
+NIE JE nedôslednosť, je to pravidlo redukcie z predošlej sekcie uplatnené
+doslova. Rovnako **`#back-to-graph`/`#chat-home` majú len zrod, nie
+`core-pulse`**: dýchanie je jediný nosič stavu „vedomie bdie/spí"
+(`updateStateUi()` prepína `.asleep` výhradne na `#brand-core` — `grep -rn
+asleep public/` nedá na `/chat` ani `/console` nič), takže slučka, ktorá by
+tam nikdy nezmenila fázu, by bola dekorácia presne tam, kde ju kánon zakazuje.
+Táto istá logika platí, aj keď zmenila tvar znaku.
+
+### Štyri role, uzavretý zoznam (nezmenené sieťou)
 
 | Rola | Čo znak hlási |
 |---|---|
 | **načítavanie** | pracuje sa — dýchanie mierkou (`load-breathe`) |
 | **prázdny stav** | toto je Hades a je prázdny, nie rozbitý |
 | **desktop okno** | identita appky v ráme, ktorý nie je prehliadač |
-| **pulz behu** | vedomie bdie / spí (`core-pulse` na `#brand-core`) |
+| **pulz behu** | vedomie bdie / spí (`core-pulse`, výhradne `#brand-core`) |
 
-Mimo týchto štyroch rolí je znak **dekorácia** a nepridáva sa — ani do hlavičky
-karty, ani do toastu, ani k nadpisu sekcie.
+Mimo týchto štyroch rolí je znak dekorácia a nepridáva sa. Zoznam je uzavretý
+od 1. 9. 2026 (rozhodnuté, nie odložené — `core-pulse` sa nikdy nerozšíri
+mimo `#brand-core`, viď §3).
 
-| Výskyt | Rola | Znak | Animuje sa |
-|---|---|---|---|
-Animačný stĺpec je **zmeraný 1. 9. 2026** z CSSOM (`animation` deklarácie
-v `mind.css`, čítané z disku): `bc-draw` a `bc-core-in` majú **šesť** selektorov
-(`#brand-core`, `#back-to-graph`, `.empty-sigil`, `#chat-home`, `.ce-mark`,
-`.charon-sigil` — každý so svojím `.bc-ring` / `.bc-core`), zatiaľ čo `core-pulse`
-má **jediný: `#brand-core`**.
+### História — kruhový znak (do 1. 9. 2026)
 
-| Výskyt | Rola | Znak | Animuje sa |
-|---|---|---|---|
-| rail `/` (`mind.blade.php:128`) | pulz behu | ✅ | ✅ `bc-draw` + `bc-core-in` + **`core-pulse` (jediné miesto)** |
-| hlavička `/console` (`console.blade.php:55`) | identita plochy s odkazom domov | ✅ | ✅ **len zrod** (`bc-draw` + `bc-core-in`), `core-pulse` tu nie je |
-| prázdny stav `/console` (`console/render.js` → `.empty-sigil`) | prázdny stav | ✅ | ✅ zrod |
-| načítavanie (`.empty-loading .load-mark`) | načítavanie | ✅ | ✅ dýchanie (`load-breathe`) |
-| Electron topbar (`topbar.html`, medzi `ZNAK` markermi) | desktop okno | ✅ | ❌ |
-| Electron offline (`offline.html`, medzi `ZNAK` markermi) | desktop okno | ✅ | ✅ vlastná kópia `core-pulse` |
-| hlavička `/chat` (`chat.blade.php:94`) | identita plochy s odkazom domov | ✅ | ✅ **zrod je od 31. 8. 2026 živý** — selektor rozšírený na `#chat-home`; `core-pulse` ani tu nie je |
-| prázdny stav `/chat` (`chat.blade.php:211`) | prázdny stav | ✅ | ✅ zrod (`.ce-mark`) |
-| prázdny dok nad grafom (`charon.js` → `renderEmpty()`) | prázdny stav | ✅ | ✅ zrod (`bc-draw` + `bc-core-in`) na `.charon-sigil`, 32 px, od 1. 9. 2026 |
+Do 1. 9. 2026 bol znak **sigil zo súosných prstencov**: nosný prstenec
+r 36 / hrúbka 9 prerušený 34° v smere 52°, jeden satelit (prstenec r 5,5)
+v prerušení, hrana od satelitu k jadru, obežnica r 22 a plné zlaté jadro
+r 15 — nadstavba (vlásková hranica r 47, 11 z 12 delení stupnice) sa kreslila
+od 64 px vyššie, pod tým sa redukoval na „mini" (nosný prstenec + jadro).
+Vetu niesol ako *uzol vstupuje prerušením hranice a je viazaný na jadro*.
 
-**ROZHODNUTÉ 1. 9. 2026: rola „pulz behu" zostáva len v raile, `core-pulse` sa
-NEROZŠIRUJE.** Otázka bola do tohto dátumu otvorená; zápis nižšie nahrádza
-predošlú formuláciu „buď sa jej tá rola priradí, alebo sa prepíše zoznam".
-
-Dýchanie nie je dekorácia, ale **jediný nosič stavu `bdie / spí`**, a ten stav
-prepína `updateStateUi()` v `mind/util.js` jedinou cestou:
-`document.getElementById('brand-core').classList.toggle('asleep', …)`. Zmerané:
-`grep -rn asleep public/` dá `util.js`, `mind.css` a jeden komentár v
-`mind.blade.php` — **nič na `/chat` ani `/console`**. Na tých plochách teda nie
-je čo prepnúť: `#brand-core.asleep` (pauza + `--core-glow-asleep` + `opacity .5`)
-by tam nikdy nenastalo a pulz by bežal navždy v jednej fáze — slučka, ktorá nikdy
-nezmení stav, nenesie informáciu, a rozšírenie selektora by z jediného
-informačného pohybu značky urobilo dekoráciu na dvoch z troch plôch. Druhý dôvod:
-`core-pulse` hýbe `filter`om a `#back-to-graph` / `#chat-home` sú 24 px odkazy
-s vlastným hover a fokus stavom — nekonečné dýchanie `drop-shadow`u pod nimi by
-miešalo značkový pohyb s interaktívnym stavom, presne to rozdrobenie, kvôli
-ktorému je zlatá vyhradená značke. Namiesto rozšírenia sa tabuľka vyššie
-**prepísala** na rolu, ktorú tie dve hlavičky (a `.charon-sigil`, ktorý po nich
-dedí zrod bez pulzu) naozaj nesú: **identita plochy s odkazom domov**.
-**Nepridáva sa piata rola** — zoznam štyroch rolí vyššie je uzavretý, mení sa
-len priradenie v tabuľke výskytov.
-
-**[cieľ V2]** všetkých **deviatich** výskytov má znak a animáciu z jedného
-generátora — nič nad tento zoznam. Do 1. 9. 2026 bol deviaty riadok (prázdny dok
-nad grafom) v tabuľke jediný s ❌ — cieľ je od toho dátumu **splnený**, riadok len
-zmenil stav, nepridal sa. (`.avatar` tu do 31. 8. 2026 stál ako desiaty výskyt;
-trieda v repe **neexistuje** — potvrdené 31. 8. 2026, `grep` nad `public/css`,
-`public/js` a `resources/views` dáva nula zásahov — patrila mŕtvemu chatu nad
-grafom, viď §9.)
+Toto rozhodli 30 pôvodných rozhodnutí `KONTRAKT-BRANDING-HADES-2026-08-19.md`
+a prepísal ich `KONTRAKT-DIZAJN-BRANDING-2026-08-28.md` (A1). Používateľ ho
+1. 9. 2026 vymenil za sieť — dôvod zapísaný v kontrakte Sprintu 3: appka
+JE sieť pamäti a znak mal odvtedy, čo redizajn ukázal graf ako plátno
+priehľadných prstencov, hovoriť ten istý jazyk ako to, čo predstavuje.
+Kánon farieb (amethyst = hrany/nesýte uzly, zlato = jediný sýty prvok) a
+pravidlo „jeden význam na kanál" prežili bezo zmeny — zmenila sa len
+geometria, ktorú tento jazyk kreslí.
 
 ### Wordmark
 
@@ -358,28 +318,35 @@ medzera v lockupe — tak sa nedá pomýliť).
 
 ### Dve verzie
 
-**Hranica je 64 px a je JEDNA** — tá istá, akú menuje „Pravidlo redukcie" vyššie.
-Tento odsek tu do 31. 8. 2026 hovoril „master od 32 px, mini pod 24 px", teda tri
-čísla na jednu hranicu a medzera 24–64 px bez pravidla. Platí pravidlo redukcie:
+**Prepísané pre sieť (2. 9. 2026) — hranice sú dve, nie jedna, pretože statické
+assety majú tretí medzistupeň, ktorý master/mini dvojica nepokrýva** (viď
+„Pravidlo redukcie" vyššie).
 
-- **Master** (`hades-sigil.svg`) — **od 64 px**: deck, hero, tlač, OG, lockupy.
-- **Mini** (`hades-sigil-mini.svg`) — **pod 64 px**: favicon, rail, hlavička Charóna.
-  Dva prvky: prstenec r 36 / hrúbka 9 a zlaté jadro r 15. Nič viac.
-  **Jedna menovaná výnimka, zmeraná v generátore:** `.ico` a `apple-touch-icon` kreslí
-  `raster()` z **mini** — `.ico` v siedmich veľkostiach (16 / 24 / 32 / 48 / 64 / 128 /
-  256 px) a `apple-touch-icon` v 180 px, teda aj vysoko nad hranicou — z technického dôvodu z pravidla redukcie (raster skládá
-  prstenec dvoma diskami a prerušenie vyjadriť nedokáže).
-  (Zoznam tu do 31. 8. 2026 menoval aj „avatar" — v appke žiadny nie je.)
+- **Master** (`hades-sigil.svg`, plná sieť) — **od 128 px**: deck, hero, tlač,
+  OG, lockupy. Pod touto hranicou satelity ako prstence nedržia obrys
+  (`NET_MIN_PX`).
+- **Mini** (`hades-sigil-mini.svg`, jeden uzol) — **pod 48 px**: favicon, rail,
+  hlavičky Charóna (`NET_DISC_MIN_PX`). Dva prvky, nezmenené oproti kruhovému
+  znaku: prstenec r 36 / hrúbka 9 a zlaté jadro r 15.
+- **Medzistupeň 48–127 px** (sieť so satelitmi ako plné disky) je **len pre
+  raster** (`.ico` rámce 48/64/128 px) — pre návrhový nástroj alebo lockup v
+  tomto rozsahu nie je hotový hand-made súbor, použi master a priznaj, že
+  obrys satelitov je pod podlahou 1,5 px.
 
-Overené renderom v oboch témach na 180 / 64 / 32 / 24 / 16 px. Master pod 32 px
-zapadá do blata — preto existuje mini a preto sa nepoužíva jeden súbor na všetko.
+`.ico` (16→256 px) a `apple-touch-icon` (180 px) kreslí `raster()` **z oboch**
+zdrojov podľa vlastného rebríka (mini pod 48, disky 48–127, prstence od 128) —
+je to jediné miesto, kde sa hranica nerozhoduje ručne pri návrhu, ale
+programovo pri exporte.
 
 ### Čo sa so znakom nerobí
 
 - nedopĺňa sa písmeno H do jadra (jadro je plocha, nie monogram),
-- nemení sa počet prstencov ani ich rytmus,
-- nepridávajú sa satelity (jeden uzol = jeden dej),
-- prerušenie sa nezacelí,
+- jadro nedostáva vlastný prstenec (bol by to štvrtý prstencový uzol a jadro
+  by prestalo byť jediný sýty prvok),
+- nemení sa počet satelitov ani ich zámerne nepravidelné rozostupy —
+  pravidelný trojuholník je ornament,
+- nepridáva sa piata hrana ani sa nemení, ktoré dva satelity spája chorda
+  (musí minúť jadro),
 - znak sa nedáva na farebnú výplň inú než papier (svetlý/tmavý) — na cudzom
   podklade sa použije monochróm.
 
@@ -466,16 +433,16 @@ ktorý drží vlastný literál `4s` zámerne — je to dramaturgia jadra, nie s
 rebríka, viď nižšie.
 
 **Grafové trvania sú tokeny** (od 28. 8. 2026, do vtedy [cieľ V2]) — dôvod bol, že
-760 ms žilo na dvoch miestach a raz by sa rozišlo. Zmerané 1. 9. 2026, **šesť**
-volajúcich — tabuľka nižšie ich vždy menovala šesť (dva na token), len sprievodná
-veta 31. 8. 2026 napočítala piatich; opravené na zhodu s vlastnou tabuľkou — a
-žiadny druhý zápis hodnoty:
+760 ms žilo na dvoch miestach a raz by sa rozišlo. Zmerané 2. 9. 2026 (Sprint 3,
+po odchode `scatter()`): **päť** volajúcich, nie šesť — `--dur-chart-reveal`
+stratilo `.scatter-dots` a zostalo s jediným čitateľom. Predchádzajúca hodnota
+(šesť, dva na token) platila do vtedy:
 
 | Token | Hodnota | Kto ho číta |
 |---|---|---|
 | `--dur-chart-draw` | 760 ms | `bc-draw` (zrod znaku) **a** `transition: stroke-dasharray` segmentu donutu |
 | `--dur-chart-curve` | 900 ms | `transition: stroke-dashoffset` krivky rastu **a** `.flow-ribbons` |
-| `--dur-chart-reveal` | 720 ms | `.heat-grid.heat-reveal` **a** `.scatter-dots` |
+| `--dur-chart-reveal` | 720 ms | `.heat-grid.heat-reveal` (jediný volajúci od Sprintu 3 — `.scatter-dots` odišlo s `scatter()`, viď §9) |
 
 Zostávajú **číslom v komponente** a majú pri sebe komentár: `520 ms + 240 ms`
 oneskorenie (`.chart-fade`), `760 ms` oneskorenie (`.chart-fade-late`),
@@ -525,7 +492,7 @@ niečo, čo v appke reálne nie je jedno.
 
 | Miesto | Pohyb | Trvanie | Nesie |
 |---|---|---|---|
-| Znak (rail, `/console`, `/chat`, prázdne stavy, dok nad grafom) | prstenec sa obtiahne, potom jadro | 760 + 460 ms | značkový podpis |
+| Znak (rail, `/console`, `/chat`, prázdne stavy, dok nad grafom) | uzly sa zjavia (stupňovane 0/80/160 ms) → hrany sa dokreslia (`stroke-dasharray`, 760 ms) → jadro sa presýti | dosadá do 1200 ms | značkový podpis |
 | Jadro v raile | dýchanie = stav vedomia (`bdie` / `spí`) | 4 s, slučka | **informáciu** |
 | Načítavanie (`load-breathe`) | znak dýcha mierkou | `--dur-pulse` | informáciu — „pracuje sa" |
 | Skeleton (`hades-shimmer`) | jeden sweep cez plochu | `--dur-pulse` | informáciu — skeleton žije |
@@ -538,14 +505,19 @@ niečo, čo v appke reálne nie je jedno.
 | Beh je živý (`sync-pulse`) | pulz bodky stavu | `--dur-pulse` | **informáciu** |
 | Správa v Charónovi | `msg-in` — len pri živom pribudnutí | `--dur-base` | **informáciu** |
 
-**Zrod znaku má dnes ŠESŤ nosičov, nie dva.** `bc-draw` (obtiahnutie) a
-`bc-core-in` (jadro) bežia na `#brand-core` (rail), `#back-to-graph` a
-`.empty-sigil` (`/console`), `#chat-home` a `.ce-mark` (`/chat`) — a od
-1. 9. 2026 aj na **`.charon-sigil`**, 32 px, prázdny dok nad grafom
-(`charon.js` → `renderEmpty()`); do toho dátumu dok znak nemal vôbec, hoci
-markup triedy `bc-ring`/`bc-core` už niesol. Plný zoznam s rolami je v §2
-(„Kde znak je a kde má byť") — tu ide len o pohyb: všetkých šesť nosičov zdieľa
-JEDEN pár keyframes a JEDEN token trvania, takže obtiahnutie vyzerá rovnako
+**Zrod znaku má dnes ŠESŤ nosičov triedy `bc-mark`.** `bc-node-in` (uzly),
+`bc-draw` (hrany) a `bc-core-in` (jadro) bežia na `#brand-core` (rail),
+`#back-to-graph` a `.empty-sigil` (`/console`), `#chat-home` a `.ce-mark`
+(`/chat`), `.charon-sigil` (dok nad grafom) a `.load-mark` **nemá** zrod
+zámerne (viď §2 — spinner sa montuje opakovane, zrod je jednorazová veta).
+**Sprint 3 zmenil tvar znaku, nie počet nosičov ani mená keyframov**: `bc-draw`
+a `bc-core-in` zostali (ten istý pohyb „čiara sa kreslí" / „jadro sa presýti",
+teraz nad N krátkymi úsečkami namiesto jednej kružnice), pribudlo
+`bc-node-in`. Triedy na `<svg>` sa premenovali (`bc-ring`→`bc-edge`+`bc-node`,
+`bc-core` zostáva) — kto v repe ešte hľadá `bc-ring`, hľadá triedu, ktorá
+**v appke od 1. 9. 2026 neexistuje**. Plný zoznam nosičov s rolami je v §2 —
+tu ide len o pohyb: všetky nosiče zdieľajú JEDEN trojpár keyframes a JEDEN
+token trvania (`--dur-chart-draw` pre hrany), takže zrod vyzerá rovnako
 na 24 px v hlavičke aj na 44 px v prázdnom stave.
 
 **Dýchanie (`core-pulse`) nededí — zostáva zámerne len na `#brand-core`.**
@@ -704,12 +676,14 @@ označený ako nezmerané, nie odhadnuté.
 Pomenované tiché verzie, ktoré **existujú** — **selektorový** zoznam, potvrdený
 CSSOM aj textovým skenom zhodne:
 
-- `mind.css` (7 pravidiel, 6 skupín): znak (`#brand-core`, `#back-to-graph`,
-  `.empty-sigil`, `#chat-home`, `.ce-mark`, `.charon-sigil` × `.bc-ring` /
-  `.bc-core` — dve pravidlá: `animation: none` a `stroke-dashoffset: 0`),
-  `.empty.empty-loading .load-mark`, `.skel::after`
-  (`display: none`, teda pokojná plocha — nie zastavený sweep),
-  `.status-dot[data-status="running"]`, `.inline-ok`, `.scatter-dots, .flow-ribbons`;
+- `mind.css` (7 pravidiel, 6 skupín): znak — **od Sprintu 3 JEDEN kompaktný
+  selektor `.bc-mark .bc-node, .bc-mark .bc-edge, .bc-mark .bc-core` namiesto
+  šiestich ID/triedových kópií** (dve pravidlá: `animation: none` a
+  `.bc-mark .bc-edge { stroke-dashoffset: 0 }`), `.empty.empty-loading
+  .load-mark`, `.skel::after` (`display: none`, teda pokojná plocha — nie
+  zastavený sweep), `.status-dot[data-status="running"]`, `.inline-ok`,
+  `.flow-ribbons` (do Sprintu 3 `.scatter-dots, .flow-ribbons` — prvý selektor
+  odišiel s `scatter()`, pravidlo samo zostalo);
 - `console.css` (5): `.msg.is-new` / `.tool-call.is-new` / `.notice.is-new`, `.think-dot`,
   `.sk-row`, `.tr-acts`, `.tool-call.running .tool-state`;
 - `charon.css` (1): `.charon-dot`;
@@ -816,9 +790,12 @@ Príklady zmysluplných okamžitých ekvivalentov:
 
 #### Kde je manuál a kód dnes rozdielny
 
-Pomenovaný blok znaku vypína **len zrod** (`bc-draw`, `bc-core-in`); **dýchanie
-(`core-pulse`) zastavuje až plošné pravidlo.** Zmerané 31. 8. 2026 a stále platí:
-tichý blok menuje `.bc-ring` a `.bc-core` (dnes už na šiestich rodičoch), ale
+Pomenovaný blok znaku vypína **len zrod** (`bc-node-in`, `bc-draw`,
+`bc-core-in`); **dýchanie (`core-pulse`) zastavuje až plošné pravidlo.**
+Zmerané 2. 9. 2026 (Sprint 3) a stále platí: tichý blok od Sprintu 3 menuje
+jediný kompaktný selektor `.bc-mark .bc-node, .bc-mark .bc-edge,
+.bc-mark .bc-core` (predtým `.bc-ring`/`.bc-core` na šiestich rodičoch zvlášť
+— tá zmena je čisto úspora zápisu, kryje presne tie isté nosiče), ale
 `core-pulse` visí na **`#brand-core`**, ktorý v tom bloku nie je. Plošné pravidlo je
 teda pre dýchanie znaku **nosné**, nie kozmetické — keby padlo, znak by dýchal aj
 v tichom režime.
@@ -2468,8 +2445,13 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/<cesta>
 - [ ] titulok `Hades — <obsah>`
 
 **Znak a ikony**
-- [ ] znak: master nad 32 px, mini pod 24 px, nikdy naopak
-- [ ] geometria znaku pochádza z jedného generátora (§2: šesť výstupov)
+- [ ] znak je sieť (jadro + tri nepravidelné satelity + štyri hrany), nie
+      sústredné prstence — kruhový sigil je len História v §2
+- [ ] webové nosiče: `'full'` od 32 px, `'core'` (jeden uzol) pod 32 px;
+      statické assety: prstencové satelity od 128 px, disky 48–127 px, mini
+      pod 48 px — dva rebríky, nepliesť
+- [ ] geometria znaku je zdrojovaná na troch nezávislých miestach (`SIGIL_NET`,
+      `net_geometry()`, `.bc-mark` kontrakt) a musí sa meniť na všetkých naraz
 - [ ] jeden význam = jedna ikona; sada je obrysová a jediný plný prvok je jadro
 - [ ] názov ikony je zo `ICON_NAMES`; `window.HADES._iconMiss` je prázdne
 - [ ] žiadne `.textContent = '<ligatúra>'` a žiadne `classList.add('ms')` — výmena
@@ -2569,7 +2551,6 @@ Kontrakt F1 hovoril „d3 + vlastný štýl" a d3 je na `/` naozaj načítané (
 | donut | `donut(el, segs, opts)` | Dnes — Istota |
 | kumulatívna krivka | `growthLine(el, series)` | Dnes — Rast siete |
 | sparkline | `sparkline(el, values, opts)` | KPI karty (vlna V4) |
-| scatter | `scatter(el, points, opts)` | **bez volajúceho** — viď nižšie |
 | toky | `flows(el, {links}, opts)` | Dnes — karta „Istota v oblastiach" (od 31. 8. 2026) |
 
 **`flows` dostalo domov 31. 8. 2026: karta „Istota v oblastiach" na Dnes**
@@ -2579,20 +2560,31 @@ znelo „oblasť → projekt", ale **spoločné rozdelenie oblasť × projekt ne
 žiadny endpoint** — `per_area` je marginál istoty, `top_projects` marginál
 projektu, z dvoch marginálov sa joint nedá dopočítať bez vymýšľania. `flows`
 teda kreslí jediný joint, ktorý server naozaj posiela. Pri napájaní sa opravila
-latentná chyba spoločná so `scatter`: `nextFrame()` bolo pri skrytom dokumente
-zaparkované navždy (rAF v skrytej karte nikdy nevystrelí), takže obe kresby
-zostávali na `opacity: 0` donekonečna — dnes pri `document.hidden` dosadá
-`nextFrame` okamžite.
+latentná chyba, spoločná aj s tým, čo bol vtedy `scatter`: `nextFrame()` bolo pri
+skrytom dokumente zaparkované navždy (rAF v skrytej karte nikdy nevystrelí),
+takže obe kresby zostávali na `opacity: 0` donekonečna — dnes pri
+`document.hidden` dosadá `nextFrame` okamžite.
 
-**Scatter zatiaľ nemá kto volať a je to priznané, nie zamlčané.** Je
-súčasťou jazyka, pretože kontrakt F2 ho vymenoval, a je **overený meraním**
-(5 bodov, 5 liniek mriežky, os aj popis). Nie je napojený, pretože žiadna
-obrazovka dnes dvojrozmerný pohľad nežiada a vymýšľať si preň kartu je
-rozhodnutie o produkte, ktoré sekcia E kontraktu nekryje — navrhnutý domov je
-štatistiky Grafu (`panels.js`, vek uzla × sila, farba cez `mutedColor()`,
-filtrované cez `filterPass()`), zatiaľ nepostavený. Platí tu tá istá veta
-ako pri škále veľkostí: **diera v jazyku je horšia než nepoužitý typ** — ďalší
-človek by si na jeho mieste nakreslil vlastný.
+**`scatter` je od Sprintu 3 ZMAZANÝ, nie len bez volajúceho — a rozhodlo
+meranie, nie vkus.** Do vtedy platilo, že je súčasťou jazyka, pretože kontrakt
+F2 ho vymenoval a bol overený meraním (5 bodov, 5 liniek mriežky). Sprint 3
+zmeral typ nad jediným reálnym kandidátom na dvojrozmerný tvar — „sila × vek
+uzla" z `/api/mind`: **1 223 uzlov, plocha grafu 320×180 mínus okraje = 40 896 px²,
+bod r=4 = 50,3 px²** → 1 223 bodov je 1,5× plocha grafu, a na odlíšiteľnú
+(polovičnú pixelovú) pozíciu padne len 232 z 1 223 (**81 % bodov
+nerozoznateľných**). To už nie je scatter, ale hustotná mapa v inom kabáte —
+iný typ grafu, nie tento. Naviac `bindTip` viazal 3 listenery na bod, teda
+3 669 listenerov na jednu kartu. Navrhnutý domov (štatistiky Grafu,
+`panels.js`) **neexistuje** — ten súbor je panel uzla, legenda a ručné
+prepájanie hrán, sekciu štatistík nemá, takže dať mu tam domov by nebol
+doťah, ale nová plocha. `gridLines()` (spoločná mriežka helper) odišla
+s `scatter()` — bola jej jedinou volajúcou.
+
+**Ak sa `scatter` niekedy vráti, vráť ho s volajúcim a s agregáciou naraz**
+(hexbin/binning nad 1 223+ bodmi), nie v pôvodnom tvare — návrat bez oboch je
+ten istý defekt znova, len skrytý za iným typom grafu. Rozhodnutie o vymyslení
+nového typu na prázdnu obrazovku platí ďalej: **vymyslený graf je horší než
+žiadny** — presne preto vymazanie namiesto ponechania nepoužitého kódu.
 
 Ak by k `top_projects` niekedy pribudlo spoločné rozdelenie oblasť × projekt
 (vlastný kľúč na serveri, nie odvodenina z dvoch marginálov), `flows` má
@@ -2600,9 +2592,12 @@ prepínač `periodSwitch` hotový na to, aby druhú veličinu ponúkol vedľa is
 
 ### Spoločné prvky — nový graf ich MUSÍ použiť
 
+`gridLines()` je od Sprintu 3 **preč** (bola jedinou volajúcou `scatter()`,
+viď vyššie) — nový typ grafu s vlastnou mriežkou si ju napíše znova alebo si
+požičia z `heatmap`/`donut`, nie z mŕtveho helpera.
+
 | Helper | Kreslí |
 |---|---|
-| `gridLines(svg, W, H, pad, ticks)` | vodorovná mriežka, token `--chart-grid` |
 | `axisRow(container, labels)` | `.chart-axis` — mono, 11 px, `--muted` |
 | `legendRow(container, items)` | `.chart-legend`, swatch je **prstenec** |
 | `bindTip(node, fn)` | hover tooltip, jeden prvok na dokument |
@@ -2651,6 +2646,6 @@ Dáta taký tvar naozaj majú — 2 041 uzlov pribudlo v jednom mesiaci.
 
 Kreslenie je prechod `opacity` na triedach `.in`, takže plošná podlaha
 `prefers-reduced-motion` v `mind.css` ho skráti na `.01 ms` a graf je hotový
-**okamžite, nie nenakreslený**. `.scatter-dots` a `.flow-ribbons` majú navyše
-pripnuté `opacity: 1 !important` pre prípad, že by trieda `.in` nepribehla —
-`requestAnimationFrame` mimo obrazovky Graf stojí.
+**okamžite, nie nenakreslený**. `.flow-ribbons` (do Sprintu 3 aj `.scatter-dots`)
+má navyše pripnuté `opacity: 1 !important` pre prípad, že by trieda `.in`
+nepribehla — `requestAnimationFrame` mimo obrazovky Graf stojí.

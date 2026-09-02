@@ -4,10 +4,46 @@ import { openNodeFromAnywhere, setScreen } from '../screens.js';
 import { setJournalProject } from './dennik.js';
 import { showToast } from '../toasts.js';
 import { mutedColor } from '../theme.js';
-import { $, busy, deferSkeleton, emptyCardHtml, errorHtml, esc, fmtNum, getJson, prettyLabel, renderError, timeAgo } from '../util.js';
+/* Cyklus `dnes.js` ↔ `certainty.js` je tu ZÁMERNE a je bezpečný: `certainty.js`
+   importuje `originBadge` odtiaľto už dlho a obe strany vyvážajú hoistované
+   `export function`, takže väzba je pri instanciácii modulu hotová. Druhá kópia
+   odznaku istoty by bola horšia než cyklus — bol by to štvrtý výkres tej istej
+   veci (donut, legenda, `.cert` pilulka na Kontrole). */
+import { certBadge } from '../certainty.js';
+import { urlValue, registerUrlApply, writeUrl } from '../urlstate.js';
+import { $, busy, deferSkeleton, emptyCardHtml, esc, fmtNum, getJson, prettyLabel, renderError, timeAgo } from '../util.js';
 import { iconMarkup } from '../../shared/icons.js';
 
-/* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ---------- */
+/* ---------- obrazovka Dnes (dashboard: /api/today + /api/dashboard) ----------
+
+   ČO TÁTO OBRAZOVKA ZÁMERNE NEMÁ (matica schopností, 2. 9. 2026). Nie je to
+   zoznam nedodelávok — je to zoznam rozhodnutí, aby sa každá ďalšia vlna
+   nemusela ptať znova:
+
+   · FILTRE a ULOŽENÉ FILTRE nie sú a nebudú. Dnes je SNAPSHOT: jedno volanie,
+     jeden okamih, celé vedomie. Filter je zúženie množiny, ale tu je množina
+     samotná odpoveď („koľko toho je, čo pribudlo, čo čaká") — zúžená by prestala
+     odpovedať na svoju otázku. Kto chce zúžiť, má na to Knižnicu, Kontrolu
+     a Denník, a Dnes tam vedie prekliknutím (čipy projektov → Denník s `dep`).
+     Preto ani `hades.filters.dnes` v `localStorage` neexistuje.
+   · „ĎALŠÍCH N" pre zoznamy Naposledy / Posledné záznamy nie je: strop drží
+     server (`DnesScreen::RECENT_SESSIONS`) a je to snapshot, nie stránkovaný
+     zoznam. Jediné miesto, kde má priznanie počtu zmysel, je fronta na
+     rozhodnutie — a tam JE (`.focus-more` z `focus.review_total`, viď `focusHtml`).
+   · KLÁVESOVÝ KURZOR (j/k) nie je. Na Kontrole ho má fronta, pretože je to
+     jedna homogénna os riadkov. Dnes je päť rôznych zoskupení (fokus, dva
+     zoznamy, čipy, karty grafov) a kurzor by musel prvý definovať, čo je
+     „nasledujúca položka" naprieč nimi. Kurzorom je tu poradie tabulátora —
+     každý ovládač je natívny `<button>`/`<a>`, teda dosiahnuteľný aj bez myši.
+   · VLASTNÝ PANEL DETAILU (`#rec-panel`) nie je: riadok Dnes nie je záznam
+     obrazovky, ale UZOL, a jeho čítačom je panel uzla Grafu
+     (`openNodeFromAnywhere`) — ten istý, do ktorého posielajú Denník aj Knižnica.
+     Druhý čítač toho istého uzla by bol druhá pravda o jeho obsahu.
+   · ČÍTACÍ REŽIM nie je, pretože tu nie je dlhý text: `snippet` prichádza už
+     skrátený zo servera a plné telo je za panelom uzla.
+   Čo naopak Dnes MÁ a čo sa nesmie stratiť: pohľadový stav v adrese (`dng`,
+   obdobie rastu), jeden chybový komponent s jednou akciou, prázdny stav
+   s vlastným predmetom v každej sekcii aj karte. */
 
 // Origin badge — brain (.md, zdroj pravdy) vs session (DB). §4.8 ikony menu_book/bolt.
 // „brain" je názov z backendu; v UI má stáť slovo, ktoré appka používa inde —
@@ -77,13 +113,19 @@ export async function renderToday() {
         // KPI rad aj všetky štyri karty a zostal jediný riadok o týždni — vyzeralo to
         // ako prázdne vedomie, nie ako chyba. Zvyšok (z /api/today) je platný, takže
         // sa nezahadzuje; chýbajúca časť to o sebe povie sama.
-        /* `errorHtml`, nie `renderError`: skládame reťazec do zvyšku obrazovky,
-           takže tu nie je kam napojiť listener — a tlačidlo „Skúsiť znova" bez
-           listenera by bolo mŕtve. Vetu skládá helper, RADU si drží toto miesto:
-           priznanie „Zvyšok obrazovky je aktuálny" je jediné svojho druhu v appke
-           a zjednotenie chýb ho nesmie zošúchať na generické „Server neodpovedá". */
+        /* Do 2. 9. 2026 tu stálo `errorHtml()`, teda chyba BEZ akcie — s odôvodnením,
+           že sa skládá reťazec a nie je kam napojiť listener. To odôvodnenie neplatí:
+           `body.innerHTML` sa nastavuje o pár riadkov nižšie a nad hotovým DOM sa
+           listener napojiť dá. Chyba tak mala jednu z dvoch povinných častí („jeden
+           komponent"), a druhú („jedna akcia") nie — a rada „skús obnoviť stránku"
+           je celá stránka za jednu chýbajúcu časť.
+           Preto sa tu emituje len PRÁZDNY nosič a vyplní ho `renderError()` po
+           nastavení innerHTML (viď `degradedEl` nižšie). Vetu aj tak skládá helper;
+           RADU si drží toto miesto, pretože priznanie „Zvyšok obrazovky je aktuálny"
+           je jediné svojho druhu v appke a zjednotenie chýb ho nesmie zošúchať na
+           generické „Server neodpovedá". */
         h += weekLine(wb);
-        h += errorHtml('súhrnné čísla', 'Zvyšok obrazovky je aktuálny — skús obnoviť stránku.');
+        h += '<div id="dash-degraded"></div>';
     }
 
     // ---- Naposledy / záznamy / projekty (z /api/today) ----
@@ -135,6 +177,14 @@ export async function renderToday() {
 
     // Charty + Sync wiring — kontajnery sú už v DOM po nastavení innerHTML.
     if (dash) renderDashboardBlocks(dash);
+    else {
+        /* Degradovaná časť dostane TEN ISTÝ komponent ako celostránková chyba
+           (`.empty--error`) aj jednu akciu, ktorá naozaj beží. `renderToday` ako
+           retry je bezpečné z toho istého dôvodu ako pri celostránkovej chybe:
+           číta `/api/today`, nie DOM, ktorý sa práve prepíše. */
+        renderError($('dash-degraded'), 'súhrnné čísla', renderToday,
+            'Zvyšok obrazovky je aktuálny — skús to znova.');
+    }
 
     // Jediné číslo na obrazovke, s ktorým sa dá niečo urobiť, vedie na Kontrolu.
     const reviewBtn = $('hero-review');
@@ -213,6 +263,19 @@ function focusHtml(dash) {
                    `undefined` ako projekt. */
                 + '<span class="focus-title">' + esc(prettyLabel(r.label)) + '</span>'
                 + (r.area ? '<span class="focus-area">' + esc(r.area) + '</span>' : '')
+                /* ŠTVRTÝ kľúč, ktorý serializér posiela, a do 2. 9. 2026 ho nikto
+                   nečítal. `DnesScreen::focus()` zúžil riadok fronty zo 17 polí na
+                   ŠTYRI s odôvodnením „obrazovka viac než tieto štyri polia ani
+                   nekreslí" — kreslila TRI, takže `certainty` bola mŕtva váha
+                   v každom otvorení Dnes aj v kontexte AI. Na fronte je to pritom
+                   práve tá informácia, ktorá povie, aké rozhodnutie čaká (hypotéza
+                   sa overuje, pasca sa číta) — Kontrola ju má ako stĺpec.
+                   Odznak je ZDIEĽANÝ `certBadge()`, nie štvrtý výkres istoty:
+                   `.cert.cert--icon` v `mind.css` už existuje, takže táto zmena
+                   žiadnu novú kresbu nepotrebuje. Ikonový variant zámerne —
+                   riadok je hustý (zmerané 293×16 px pri 375 px) a plná pilulka
+                   s textom by mu vzala šírku titulku. */
+                + certBadge(r.certainty, true)
                 + '</button>'
                 /* Dve akcie, obe cez existujúce endpointy Kontroly — Dnes si
                    nevymýšľa tretiu cestu k tej istej fronte. */
@@ -295,13 +358,25 @@ async function focusDecide(row, id, kind) {
            inline overení zastaraný až do najbližšieho prekreslenia Kontroly. */
         setRailBadge('kontrola', next);
         if (next === 0) {
+            // Nie `remove()`: prázdna fronta je STAV, ktorý sa hlási, nie chýbajúci
+            // prvok. Ten istý výkres, aký by nakreslilo prvé vykreslenie s nulou.
             const btn = $('hero-review');
-            if (btn) btn.remove();
+            if (btn) btn.outerHTML = heroClearHtml();
         }
     }
     // Sekcia bez riadkov a bez čipov už nemá čo hlásiť.
     const sec = document.querySelector('.focus-sec');
     if (sec && !sec.querySelector('.focus-row') && !sec.querySelector('.focus-chip')) sec.remove();
+}
+
+/* Pokojný stav pravej polovice hero — JEDEN výkres pre dve cesty, ako sa doň
+   dostaneme: prvé vykreslenie s prázdnou frontou (`dashboardHtml`) a vyriešenie
+   poslednej položky priamo na Dnes (`focusDecide`). Kým to bolo len v prvej,
+   druhá cesta tlačidlo iba ODSTRÁNILA — hero tým stratil pravú polovicu a
+   obrazovka nepovedala, či je pokoj, alebo sa niečo pokazilo. */
+function heroClearHtml() {
+    return '<div class="hero-action is-clear">' + iconMarkup('check-circle')
+        + '<span class="ha-lbl">Nič nečaká na overenie</span></div>';
 }
 
 // Veta o týždni — podtitul hlavného čísla (a záložný riadok, keď /api/dashboard padne).
@@ -371,8 +446,7 @@ export function dashboardHtml(dash, wb) {
               + '<span class="ha-val">' + num(review) + '</span>'
               + '<span class="ha-lbl">' + plural(review, 'poznatok', 'poznatky', 'poznatkov')
               + ' čaká na overenie</span></button>'
-            : '<div class="hero-action is-clear">' + iconMarkup('check-circle')
-              + '<span class="ha-lbl">Nič nečaká na overenie</span></div>')
+            : heroClearHtml())
         + '</section>';
 
     h += focusHtml(dash);
@@ -590,11 +664,52 @@ const GROWTH_PERIODS = [
     { key: 'year', label: 'rok' },
     { key: 'all', label: 'všetko' },
 ];
-// Voľba prežije prekreslenie dashboardu, ale nie reload — je to pohľad na graf,
-// nie nastavenie appky, takže do localStorage nepatrí.
-let growthPeriod = 'year';
+const GROWTH_KEYS = GROWTH_PERIODS.map((p) => p.key);
+const GROWTH_DEF = 'year';
+
+/* OBDOBIE RASTU IDE DO ADRESY (`dng`). Do 2. 9. 2026 tu stálo, že voľba „prežije
+   prekreslenie dashboardu, ale nie reload — je to pohľad na graf, nie nastavenie
+   appky, takže do localStorage nepatrí". Prvá polovica platí (do `localStorage`
+   naozaj nepatrí), druhá bola nedopovedaná: pohľadový stav má domov, a je to
+   ADRESA. Presne tak to má radenie tabuľky Runy (`ruk`/`rud`) — pohľad na dáta,
+   ktorý sa dá poslať odkazom („pozri, za 30 dní to vyzerá inak"). Zmerané pred
+   zmenou: klik na „30 d" prehodil `aria-pressed`, ale `location.search` zostal
+   prázdny a `HADES._urlWrites` na 0, takže reload vrátil ročný pohľad.
+
+   `dng` je JEDINÝ kľúč tejto obrazovky a je to zámer, nie začiatok skupiny:
+   filtre Dnes nemá (viď hlavička súboru) a fokus ani zoznamy nemajú stav.
+
+   POZOR na jednu vec, ktorá je tu inak než na ostatných obrazovkách: sestry
+   používajú stráž `readUrl().s === '<obrazovka>'`, aby si nezobrali kľúč
+   z adresy patriacej niekomu inému. Tu sa použiť NEDÁ — `s` má v slovníku
+   `def: 'dnes'`, takže sa z adresy vynecháva a `readUrl().s` je na Dnes
+   `undefined` (zmerané: `location.search` je pri štarte prázdny reťazec).
+   Plot drží samotný slovník: `screen: 'dnes'` na `dng` znamená, že
+   `clearScreenKeys()` kľúč pri odchode z Dnes zmaže sám. */
+let growthPeriod = (() => {
+    const v = urlValue('dng');
+    return v && GROWTH_KEYS.includes(v) ? v : GROWTH_DEF;
+})();
+
+/* Posledná odpoveď, aby Späť / Dopredu prekreslili graf BEZ nového dopytu.
+   Adresa je vstup, nie dôvod na sieťovú prácu — a `dng` nemení dáta, len
+   veličinu, ktorú z tých istých dát počíta `growthSeries()`. */
+let lastDash = null;
+
+/* Späť / Dopredu. Kľúč, ktorý v adrese NIE JE, znamená DEFAULT — nie „nechaj,
+   ako je": Späť na `?s=dnes` musí vrátiť ročný pohľad, inak adresa lže.
+   Prekresľuje sa LEN karta rastu; `renderToday()` by tu bol nový dopyt a nové
+   `innerHTML` celej obrazovky za zmenu jedného grafu. */
+registerUrlApply('dnes', (url) => {
+    const next = url.dng && GROWTH_KEYS.includes(url.dng) ? url.dng : GROWTH_DEF;
+    if (next === growthPeriod) return;
+    growthPeriod = next;
+    const el = $('dash-growth');
+    if (el && lastDash) renderGrowth(el, lastDash);
+});
 
 export function renderGrowth(container, dash) {
+    lastDash = dash;
     const draw = () => {
         container.innerHTML = '';
         const series = growthSeries(dash, growthPeriod);
@@ -610,6 +725,11 @@ export function renderGrowth(container, dash) {
         container.appendChild(HadesCharts.periodSwitch(GROWTH_PERIODS, growthPeriod, (k) => {
             growthPeriod = k;
             draw();
+            /* `push`, nie `replace`: prepnutie obdobia je gesto človeka a Späť
+               ho má vidieť. Default (`year`) sa z adresy vynecháva sám
+               (`flush()` v `urlstate.js`), takže cesta rok → 30 d → rok skončí
+               na čistom `?s=dnes` a nie na `?s=dnes&dng=year`. */
+            writeUrl({ dng: k }, 'push');
         }));
     };
     draw();

@@ -38,7 +38,19 @@ class ThreadController extends Controller
         'title.string' => 'Názov vlákna musí byť text.',
         'title.max' => 'Názov vlákna presahuje 200 znakov.',
         'auto_accept.boolean' => 'Stav brány zápisov musí byť áno alebo nie.',
+        'pinned.boolean' => 'Pripnutie vlákna musí byť áno alebo nie.',
+        'archived.boolean' => 'Archivácia vlákna musí byť áno alebo nie.',
+        'offset.integer' => 'Posun v zozname musí byť celé číslo.',
+        'offset.min' => 'Posun v zozname nemôže byť negatívny.',
+        'offset.max' => 'Posun v zozname je mimo rozsahu.',
     ];
+
+    /**
+     * Strop jednej strany zoznamu. Klient (`THREAD_LIMIT` v
+     * `public/js/console/main.js`) ho zrkadlí ako konštantu, takže je to číslo,
+     * ktoré sa nesmie meniť ticho — je súčasťou kontraktu, nie detail dopytu.
+     */
+    public const PAGE = 100;
 
     /**
      * Zoznam pre bočný panel — bez správ, len to, čo sa vypisuje v riadku.
@@ -49,15 +61,38 @@ class ThreadController extends Controller
      * vlákno z tohto zoznamu, takže bez filtra by sa dalo zaradiť do poradia
      * zadanie, ktoré server pri odoslaní odmietne, a človek by dostal chybu za
      * niečo, čo mu rozhranie samo ponúklo.
+     *
+     * **`counts.total` je nad TÝM ISTÝM rozsahom, aký zoznam vracia** — teda nad
+     * `conversations()` a vrátane archivovaných. Bez tej rovnosti by „N z M" na
+     * ploche lhalo, a lož o počte je horšia než chýbajúci počet (ten istý zákon
+     * drží `moreRow()` v `public/js/mind/table.js`). Kto archivované z výpisu
+     * skrýva (`/chat`), nesmie `total` použiť ako svojho menovateľa — musí
+     * počítať z toho, čo mu naozaj prišlo.
+     *
+     * Hľadanie a filter modelu sú na oboch plochách **klientské** nad načítaným
+     * oknom, takže `total` bez filtrov je jediné číslo, ktoré server vie povedať
+     * bez toho, aby tie filtre poznal — a je správne práve v stave bez filtra.
+     *
+     * `offset` dotiahne ďalšiu stranu. Radenie preto **musí byť úplné** (až po
+     * `id`), inak by sa strany prekrývali a to isté vlákno by v raile vyšlo
+     * dvakrát.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $data = $request->validate([
+            'offset' => 'sometimes|integer|min:0|max:100000',
+        ], self::MESSAGES);
+
         $threads = ConsoleThread::query()
             ->conversations()
+            // Pripnuté navrch — inak by bolo pripnutie tichým no-opom: čip
+            // „pripnuté" by v riadku pribudol, ale vlákno by zostalo tam, kde bolo.
+            ->orderByRaw('CASE WHEN pinned_at IS NULL THEN 1 ELSE 0 END')
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
-            ->limit(100)
-            ->get(['uuid', 'title', 'provider', 'model', 'auto_accept', 'last_message_at'])
+            ->offset((int) ($data['offset'] ?? 0))
+            ->limit(self::PAGE)
+            ->get(['uuid', 'title', 'provider', 'model', 'auto_accept', 'last_message_at', 'pinned_at', 'archived_at'])
             ->map(fn (ConsoleThread $t) => [
                 'uuid' => $t->uuid,
                 'title' => $t->title ?? 'Nové vlákno',
@@ -65,9 +100,16 @@ class ThreadController extends Controller
                 'model' => $t->model,
                 'auto_accept' => $t->auto_accept,
                 'last_message_at' => $t->last_message_at?->toIso8601String(),
+                // Boolean, nie timestamp: dátum pripnutia nesie len poradie a to
+                // je už zaplatené v radení vyššie. Klient by z neho nič nekreslil.
+                'pinned' => $t->pinned_at !== null,
+                'archived' => $t->archived_at !== null,
             ]);
 
-        return response()->json(['threads' => $threads]);
+        return response()->json([
+            'threads' => $threads,
+            'counts' => ['total' => ConsoleThread::query()->conversations()->count()],
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -92,7 +134,16 @@ class ThreadController extends Controller
         return response()->json($this->payload($thread));
     }
 
-    /** Prepnutie modelu / poskytovateľa a „auto-accept" na sedenie. */
+    /**
+     * Prepnutie modelu / poskytovateľa, „auto-accept" na sedenie, pripnutie
+     * a archivácia.
+     *
+     * `pinned` / `archived` prichádzajú ako **boolean a do DB sa píše timestamp**
+     * — presne ako v {@see ProjectController::update()}: `null` = nepripnuté,
+     * dátum navyše nesie poradie pripnutých. Klient tak nemusí posielať čas a
+     * server nemusí veriť tomu, ktorý mu pošle. Preto sa tie dva kľúče do
+     * `fill()` nedostanú (stĺpce sa menujú inak) a sadajú sa ručne.
+     */
     public function update(Request $request, ConsoleThread $thread): JsonResponse
     {
         $data = $request->validate([
@@ -100,7 +151,21 @@ class ThreadController extends Controller
             'model' => 'sometimes|nullable|string|max:120',
             'title' => 'sometimes|nullable|string|max:200',
             'auto_accept' => 'sometimes|boolean',
+            'pinned' => 'sometimes|boolean',
+            'archived' => 'sometimes|boolean',
         ], self::MESSAGES);
+
+        // Opakované pripnutie čas NEPREPISUJE: poradie pripnutých je poradie
+        // pripnutia, nie poradie posledného kliku na už pripnuté vlákno.
+        if (array_key_exists('pinned', $data)) {
+            $thread->pinned_at = $data['pinned'] ? ($thread->pinned_at ?? now()) : null;
+            unset($data['pinned']);
+        }
+
+        if (array_key_exists('archived', $data)) {
+            $thread->archived_at = $data['archived'] ? ($thread->archived_at ?? now()) : null;
+            unset($data['archived']);
+        }
 
         // Bránu zápisov sa vo vlákne PODAGENTA nedá vypnúť touto cestou. `index()`
         // vlákna podagentov nevypisuje (scope `conversations()`), takže z UI sa
@@ -137,6 +202,11 @@ class ThreadController extends Controller
             'provider' => $thread->provider,
             'model' => $thread->model,
             'auto_accept' => $thread->auto_accept,
+            // Ten istý tvar ako v `index()` — a je to práve odpoveď na `PATCH
+            // {pinned:true}`, takže klient si nový stav nemusí domýšľať z toho,
+            // čo poslal.
+            'pinned' => $thread->pinned_at !== null,
+            'archived' => $thread->archived_at !== null,
             // Systémová správa sa NEPOSIELA. Je to konfigurácia behu (systémový
             // prompt, ktorý `AgentRunner` zapíše raz na vlákno), nie krok
             // konverzácie — a klient ju vypisoval ako 1 370-znakovú bublinu

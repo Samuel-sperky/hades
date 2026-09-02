@@ -30,3 +30,7 @@ Homestead.yaml
 Thumbs.db
 /.claude/
 /skills.zip
+
+# Python bytecode z generátorov značky
+__pycache__/
+*.pyc

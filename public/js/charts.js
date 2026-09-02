@@ -6,15 +6,34 @@
    via getComputedStyle, so the charts stay theme-aware (light / dark) for free.
 
    API — window.HadesCharts:
-     heatmap(el, data)      365-day activity grid (GitHub-style, teal ramp)
-     donut(el, segs, opts)  certainty split ring + centre total
-     growthLine(el, series) cumulative growth area+line
+     heatmap(el, data, opts)     365-day activity grid (GitHub-style, teal ramp)
+     donut(el, segs, opts)       certainty split ring + centre total
+     growthLine(el, series,opts) cumulative growth area+line
+     sparkline(el, values, opts) trend shape beside a KPI number (no axis, no tip)
+     flows(el, data, opts)       two-layer ribbon flow („sankey" bez závislosti)
 
    Data contracts (dashboard payload §4.4):
      heatmap: { weeks: [[{date,count,level}|null, …7], …≤53], months:{col:"aug"}, total }
      donut:   segs = [{cert:"overene|hypoteza|pasca|bez", value, label?}]
               opts = { total?, centerLabel?, size?, thickness? }
      growth:  series = { labels:["2025-08", …], values:[12,34, …] }  // cumulative
+     flows:   data = { links: [{source, target, value, color?}] }
+
+   PRÁZDNY STAV MÁ KAŽDÝ TYP a je to `emptyChart()`, nie vlastná kresba: bez dát
+   sa kreslí jedna veta na mieste, kde by bola kresba. Volajúci smie vetu prepísať
+   cez `opts.empty` — slová sú jeho, tvar je náš. Do 2. 9. 2026 to tak nebolo a
+   tri typy z piatich hovorili inak (zmerané): heatmapa nakreslila PRÁZDNU mriežku
+   s legendou „menej — viac" nad ničím, donut šedý prstenec s číslom 0 a
+   growthLine nechala kontejner PRÁZDNY (0 potomkov). Prvé dve boli kresba bez
+   údaja, tretia mlčanie — a kým to volajúci obchádzal vlastným `emptyCardHtml`,
+   platilo to len na obrazovke, ktorá si to pamätala.
+
+   JEDNA POMENOVANÁ VÝNIMKA: `sparkline`. Slot `.kpi-spark` je vysoký 24 px
+   (computed style), `.chart-empty` má `min-height: 90px` — veta by KPI kartu
+   roztiahla o 66 px a stála by vedľa čísla, ktoré tú istú nulu už hovorí
+   (SVG je `aria-hidden`, hodnotu nesie text karty). Sparkline preto kontejner
+   len vyprázdni. Nie je to zabudnutý typ; je to jediný typ, ktorý nie je graf
+   na čítanie hodnôt.
    =========================================================================== */
 (function () {
     'use strict';
@@ -119,8 +138,9 @@
      *
      * SKRYTÝ DOKUMENT DOSTANE CIEĽOVÝ STAV OKAMŽITE, bez rAF. Pri
      * `document.hidden` je `requestAnimationFrame` podľa špecifikácie zaparkované,
-     * takže trieda `.in` nepribehne NIKDY — a `.flow-ribbons` aj `.scatter-dots`
-     * majú v mind.css `opacity: 0` do jej príchodu, čiže kresba by bola prázdne
+     * takže trieda `.in` nepribehne NIKDY — a `.flow-ribbons` má v mind.css
+     * `opacity: 0` do jej príchodu (to isté platilo o `.scatter-dots`, kým
+     * 2. 9. 2026 scatter neodišiel), čiže kresba by bola prázdne
      * miesto, ktoré sa po prepnutí na tab dokreslí. Zmerané v Browser pane, kde
      * je tab trvalo `document.hidden`: rAF nevystrelil ani po 900 ms a stuhy
      * stáli na `opacity: 0`. Komentár pri `@media (prefers-reduced-motion)`
@@ -252,7 +272,7 @@
         return box;
     }
 
-    function heatmap(container, data) {
+    function heatmap(container, data, opts) {
         if (!container) return;
         container.__hcCell = null;
         container.innerHTML = '';
@@ -260,6 +280,14 @@
         const weeks = Array.isArray(data.weeks) ? data.weeks : [];
         const months = data.months || {};
         const cols = weeks.length;
+
+        /* Bez stĺpcov sa kreslí VETA, nie prázdna mriežka. Zmerané pred touto
+           zmenou: `heatmap(el, {weeks: []})` vyrobilo `.heat > .heat-grid`
+           s nula bunkami a pod ním legendu „menej — viac", teda stupnicu farby
+           nad ničím. Legenda bez údaja je horšia než priznanie, že údaj nie je.
+           `days === 0` pri prítomných stĺpcoch je iný prípad (kalendár existuje,
+           len je v ňom nula) a zostáva kresbou — vtedy mriežka nesie čas. */
+        if (!cols) { emptyChart(container, (opts && opts.empty) || 'Zatiaľ bez dát'); return; }
 
         // Súhrn pre popis a textovú alternatívu — počíta sa v tom istom prechode,
         // ktorý skladá mriežku. Druhýkrát a z DOM by to boli tie isté čísla
@@ -387,7 +415,8 @@
     /* -----------------------------------------------------------------------
        DONUT — certainty split ring. .donut > svg (circles) + .donut-total.
        Colours per segment from --cert-<key> (bez/none → --cert-none).
-       total=0 → track ring only, centre number 0.
+       sum=0 → `emptyChart()` (viď hlavičku súboru); track ring sa kreslí len pod
+       skutočné segmenty, takže vnútorný `if (sum > 0)` je odteraz už len stráž.
        ----------------------------------------------------------------------- */
     function certColor(key) {
         const k = (key === 'bez' || key === 'none' || !key) ? 'none' : key;
@@ -408,6 +437,14 @@
 
         const sum = segs.reduce((a, s) => a + (+s.value || 0), 0);
         const total = (opts.total != null) ? +opts.total : sum;
+
+        /* Nula segmentov = veta, nie šedý prstenec s číslom 0. Do 2. 9. 2026
+           tu bola vlastná kresba prázdna (track ring + „0 uzlov") a komentár
+           nad `certColor` ju priznával ako zámer — je to však druhý slovník
+           prázdneho stavu v jazyku, ktorý má `emptyChart()`. Rozhoduje `sum`,
+           nie `opts.total`: keď súčet segmentov je nula, kresliť sa NEDÁ nič
+           bez ohľadu na to, aké číslo príde do stredu. */
+        if (sum <= 0) { emptyChart(container, opts.empty || 'Zatiaľ bez dát'); return; }
 
         const wrap = el('div', 'donut');
         const svg = svgEl('svg', {
@@ -482,14 +519,19 @@
        GROWTH LINE — cumulative area+line. Responsive: viewBox + width:100%,
        non-scaling stroke so the line stays crisp at any width.
        ----------------------------------------------------------------------- */
-    function growthLine(container, series) {
+    function growthLine(container, series, opts) {
         if (!container) return;
         container.innerHTML = '';
         series = series || {};
         const values = Array.isArray(series.values) ? series.values.map((v) => +v || 0) : [];
         const labels = Array.isArray(series.labels) ? series.labels : [];
         const n = values.length;
-        if (!n) return;
+        /* Prázdna séria hlási, nemlčí. `renderGrowth()` v `dnes.js` si vetu
+           kreslí sám PRED volaním (a smie — slová sú jeho), takže sa tieto dva
+           stavy nemôžu zraziť: keď si ju nakreslí, sem sa nedostane. Zmerané
+           pred zmenou: `growthLine(el, {values: []})` nechalo kontejner s nula
+           potomkami, takže každý ĎALŠÍ volajúci by dostal ticho. */
+        if (!n) { emptyChart(container, (opts && opts.empty) || 'Zatiaľ bez dát'); return; }
 
         const W = 300, H = 90, pad = 6;
         const max = Math.max.apply(null, values.concat([1]));
@@ -665,19 +707,21 @@
         container.appendChild(box);
     }
 
-    /* ---- mriežka a os ----------------------------------------------------
-       Vodorovná mriežka: `ticks` liniek vrátane nuly. Kreslí sa POD dáta a
-       nesie `--chart-grid` (nie `--line-soft`): mriežka je súčasť jazyka grafov
-       a musí sa dať posunúť bez toho, aby sa pohli rámy kariet. */
-    function gridLines(svg, W, H, pad, ticks) {
-        const g = svgEl('g', { class: 'chart-grid' });
-        for (let i = 0; i <= ticks; i++) {
-            const y = pad + (i / ticks) * (H - pad * 2);
-            g.appendChild(svgEl('line', { x1: pad, y1: y, x2: W - pad, y2: y }));
-        }
-        svg.appendChild(g);
-        return g;
-    }
+    /* ---- mriežka ---------------------------------------------------------
+       `gridLines(svg, W, H, pad, ticks)` ODIŠLA 2. 9. 2026 SPOLU SO `scatter`
+       (dôvod nižšie), pretože scatter bol jej JEDINÝ volajúci — heatmapa,
+       donut, growthLine, sparkline ani flows mriežku nekreslia, a nekreslia ju
+       zámerne: growthLine je 300×90 kumulatívna krivka bez čítania hodnôt,
+       donut a flows sú podiely, sparkline je tvar. Nechať helper bez volajúceho
+       by bola presne tá chyba, ktorú tento súbor týmto sprintom platí.
+
+       Keď pribudne typ s HODNOTOVOU OSOU, mriežka sa vráti ako prvá — je to
+       12 riadkov `<line>` v skupine `.chart-grid`. Vráť ju **spolu s volajúcim**,
+       nie pred ním, a nechaj ju kresliť POD dáta v tokene `--chart-grid` (nie
+       `--line-soft`), aby sa dala posunúť bez toho, aby sa pohli rámy kariet.
+       Kresba `.chart-grid line` v `mind.css` odchádza v tej istej vlne ako
+       `.scatter-*` (report), takže sa vracia spolu s ňou — mŕtve pravidlo, ktoré
+       „na niečo čaká", je tá istá chyba o úroveň nižšie. */
 
     /** Textová os pod grafom — tá istá kresba pre všetky typy (`.chart-axis`). */
     function axisRow(container, labels) {
@@ -746,7 +790,13 @@
        Bez osí, bez mriežky, bez tooltipu: je to TVAR trendu vedľa čísla, nie
        graf na čítanie hodnôt. Preto ani nedostáva `role="img"` s popisom —
        hodnotu aj zmenu nesie text karty vedľa neho, a druhá kópia tej vety by
-       čítačku len zdržala. */
+       čítačku len zdržala.
+
+       A práve preto je to JEDINÝ typ bez `emptyChart()` — pomenovaná výnimka
+       s číslami, nie opomenutie: slot `.kpi-spark` má computed `height: 24px`,
+       `.chart-empty` má `min-height: 90px`, takže veta by kartu roztiahla o 66 px
+       a povedala nulu, ktorú číslo v karte hovorí presnejšie. Bez dvoch bodov
+       teda kontejner len vyprázdnime — trend, ktorý neexistuje, nemá tvar. */
     function sparkline(container, values, opts) {
         if (!container) return;
         container.innerHTML = '';
@@ -778,48 +828,43 @@
         container.appendChild(svg);
     }
 
-    /* ---- scatter (F2) -----------------------------------------------------
-       Body sú PRSTENCE, nie disky — tá istá vizuálna sémantika ako na plátne
-       grafu (priehľadnosť nesie diera, nie nízka alfa), takže sa prekrývajúce
-       body dajú čítať. */
-    function scatter(container, points, opts) {
-        if (!container) return;
-        container.innerHTML = '';
-        const pts = Array.isArray(points) ? points : [];
-        if (!pts.length) { emptyChart(container, (opts && opts.empty) || 'Zatiaľ bez dát'); return; }
-        opts = opts || {};
-        const W = 320, H = 180, pad = 18;
-        const xs = pts.map((p) => +p.x || 0);
-        const ys = pts.map((p) => +p.y || 0);
-        const xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs) || 1;
-        const yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys) || 1;
-        const xSpan = (xMax - xMin) || 1, ySpan = (yMax - yMin) || 1;
-        const xAt = (v) => pad + ((v - xMin) / xSpan) * (W - pad * 2);
-        const yAt = (v) => H - pad - ((v - yMin) / ySpan) * (H - pad * 2);
+    /* ---- scatter: ZMAZANY 2. 9. 2026, a toto je jeho verdikt ------------
+       `scatter(el, points, opts)` tu zil od vlny 28. 8. 2026 BEZ VOLAJUCEHO
+       a manual to priznaval ("bez volajuceho"). Priznana nepouzita kresba je
+       lepsia nez zamlcana, ale tretim stavom byt neprestala: kresba, ktoru nikto
+       nevola, sa neda udrziavat ani overit - jej jedinym testom bolo, ze sa nacita.
 
-        const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img' });
-        svg.setAttribute('aria-label', opts.label
-            || (pts.length + ' bodov, ' + (opts.xLabel || 'x') + ' proti ' + (opts.yLabel || 'y')));
-        gridLines(svg, W, H, pad, 4);
-        const dots = svgEl('g', { class: 'scatter-dots' });
-        for (const p of pts) {
-            const c = svgEl('circle', {
-                cx: xAt(+p.x || 0).toFixed(1),
-                cy: yAt(+p.y || 0).toFixed(1),
-                r: p.r || 4,
-                class: 'scatter-dot',
-            });
-            if (p.color) c.style.stroke = p.color;
-            bindTip(c, () => '<b>' + esc(p.label || '') + '</b><br>'
-                + esc(opts.xLabel || 'x') + ': ' + fmtNum(p.x) + '<br>'
-                + esc(opts.yLabel || 'y') + ': ' + fmtNum(p.y));
-            dots.appendChild(c);
-        }
-        svg.appendChild(dots);
-        container.appendChild(svg);
-        axisRow(container, [String(opts.xLabel || ''), String(opts.yLabel || '')]);
-        nextFrame(() => dots.classList.add('in'));
-    }
+       ROZHODLO MERANIE, nie vkus. Jedine data s dvojrozmernym tvarom "sila x vek
+       uzla" posiela `/api/mind` (krmi platno Grafu): zmerane 2. 9. 2026 - 1 223
+       uzlov, VSETKY nesu `strength` aj `created_at`, sila 1-25, vek 0-49 dni.
+       Ten graf sa v TEJTO kresbe nakreslit NEDA:
+         - plocha `viewBox` 320x180 minus `pad` 18 = 284x144 = 40 896 px2,
+           bod `r = 4` = 50,3 px2 -> 1 223 bodov je 1,5x plocha grafu, teda
+           150 % pretazenie farbou;
+         - na odlisitelnu (polovicnu pixelovu) poziciu padne 232 z 1 223 bodov,
+           cize 81 % uzlov je nerozoznatelnych - to uz nie je scatter, to je
+           skvrna a odpoved by musela byt hustotna (hexbin), teda INY typ;
+         - `bindTip` viaze 3 listenery na bod -> 3 669 listenerov na jednu kartu.
+
+       A DOMOV NEBOL ANI PRE TU SKVRNU. "Statistiky Grafu" v `panels.js`
+       neexistuju (grep `kpi-card|chart-|statist` v tom subore = 0 zasahov; je to
+       panel uzla, legenda a rucne prepajanie hran). `kontrola.js` frontu ako
+       domov ZAMERNE odmieta a pise preco ("`/api/review/queue` posiela len
+       `needs_review` podmnozinu, takze by graf odpovedal na inu otazku, nez aku
+       fronta klade"). Kniznica `strength` v riadku vobec nema. Dnes je jedina
+       obrazovka postavena na kartach grafov, ale per-uzlovu silu ani vek
+       nedostava - to by bol novy agregat na serveri, teda nove zadanie.
+
+       CO ODISLO S NIM: `gridLines()` (scatter bol jej jediny volajuci, vid
+       komentar pri osi) a nic ine - `axisRow`, `legendRow`, `bindTip`,
+       `emptyChart` aj `periodSwitch` maju zivych volajucich. V `mind.css`
+       zostavaju `.scatter-dots` / `.scatter-dot` a jedna zmienka v podlahe
+       `prefers-reduced-motion`; tento subor ich needituje (nevlastni ich) -
+       odchadzaju v reporte vlny spolu s riadkami manualu.
+
+       KED SA VRATI: vrat ho SPOLU s obrazovkou, ktora ho vola, a pre 1 000+
+       uzlov s hustotou (agregacia do buniek) a JEDNYM delegovanym tooltipom nad
+       skupinou, nie s tromi listenermi na bod. */
 
     /* ---- toky (F2, „sankey") ---------------------------------------------
        DVOJVRSTVOVÝ tok, nie všeobecný sankey. Rozhodnutie s dôvodom: `d3-sankey`
@@ -929,8 +974,8 @@
         svg.appendChild(nodes);
         container.appendChild(svg);
         /* Os menuje STĹPCE, nie uzly — `.chart-axis` je `space-between`, takže
-           prvý popisok sedí pod ľavým a druhý pod pravým stĺpcom. Rovnaká deľba
-           ako v scatteri: kresba je v SVG, slová v HTML. */
+           prvý popisok sedí pod ľavým a druhý pod pravým stĺpcom. Deľba platí
+           pre celý súbor: kresba je v SVG, slová v HTML. */
         if (opts.sourceLabel || opts.targetLabel) {
             axisRow(container, [String(opts.sourceLabel || ''), String(opts.targetLabel || '')]);
         }
@@ -991,11 +1036,12 @@
     }
 
     /* Export: jeden objekt, jeden jazyk. Nový typ grafu sa PRIDÁVA sem a musí
-       použiť spoločné helpery (gridLines, axisRow, legendRow, bindTip, emptyChart) —
+       použiť spoločné helpery (axisRow, legendRow, bindTip, emptyChart,
+       periodSwitch; mriežku vráť podľa komentára pri osi) —
        inak sa jazyk osí a legiend rozíde presne tak, ako sa rozišiel pred vlnou 1. */
     window.HadesCharts = {
         heatmap: heatmap, donut: donut, growthLine: growthLine,
-        sparkline: sparkline, scatter: scatter, flows: flows,
+        sparkline: sparkline, flows: flows,
         periodSwitch: periodSwitch, emptyChart: emptyChart, legend: legendRow,
         /* `certColor` je vystavené preto, aby slovník istoty mal JEDNU farbu na
            celej appke: donut si ju rozhoduje sám (dostáva `cert` kľúč), ale toky

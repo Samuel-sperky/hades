@@ -1,12 +1,14 @@
 import { mdToHtml } from '../md.js';
 import { setScreen } from '../screens.js';
 import { showToast } from '../toasts.js';
-import { $, busy, deferSkeleton, emptyCardHtml, esc, getJson, inlineOk, loadingHtml, plainText, renderEmpty, renderError, renderLoading } from '../util.js';
+import { $, busy, deferSkeleton, emptyCardHtml, esc, getJson, inlineOk, loadingHtml, plainText, renderEmpty, renderError, renderFilterEmpty, renderLoading, timeAgo } from '../util.js';
 // Ozbrojené potvrdenie (prvý klik sa spýta, druhý do 3 s maže) je JEDEN vzor pre
 // celú appku, tak sa neduplikuje. Býva v rozhodnutiach len dočasne — patrí do
 // util.js, ktorý táto vlna nevlastní.
 import { armDelete } from './rozhodnutia.js';
-import { ASC, DESC, moreRow, renderTable, sortRows } from '../table.js';
+/* `renderSavedFilters` je RE-EXPORT z `public/js/shared/filters.js` — jedna
+   mechanika uložených filtrov pre všetky tri plochy; druhá kópia sa nepíše. */
+import { ASC, DESC, moreRow, renderSavedFilters, renderTable, sortRows } from '../table.js';
 import { closeRecPanel, onRecPanelClose, openRecPanel, recOpenId, updateRecPanel } from '../recpanel.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { iconMarkup } from '../../shared/icons.js';
@@ -30,13 +32,25 @@ import { iconMarkup } from '../../shared/icons.js';
    (názov + súbor) a človek v nej hľadá jeden riadok, nie príbeh. Kartová mriežka
    navyše radila len tak, ako prišla zo servera, a nedala sa zoradiť podľa mena.
 
-   ČO TABUĽKA NEMÁ A PREČO: stĺpec „Kedy". `SmernicaScreen::saved()` si `mtime`
-   načíta, zoradí ním (najnovšie prvé) a potom ho z riadka `unset`-ne, takže
-   z odpovede je poradie, ale nie hodnota. Dopočítať dátum v prehliadači sa
-   nedá — a preto je aj DEFAULT bez zoradeného stĺpca (`sortKey: null`): tabuľka
-   kreslí serverové poradie a `aria-sort` na ňu neklame, že ju zoradil niektorý
-   z jej stĺpcov. Kým `mtime` nie je v serializéri, stĺpec nie je (ten istý dôvod,
-   pre ktorý Rozhodnutia nemajú „Projekt").
+   STĹPEC „KEDY" UŽ JE (2. 9. 2026). Do 1. 9. 2026 tu stálo, že byť nemôže:
+   `SmernicaScreen::saved()` si `mtime` prečítal, zoradil ním a potom ho z riadka
+   `unset`-ol, takže z odpovede bolo poradie, ale nie hodnota — a dopočítať dátum
+   v prehliadači sa nedá. Serializér odvtedy posiela `saved_at` (ISO 8601), takže
+   stĺpec má z čoho žiť a DEFAULTNÉ RADENIE je odteraz priznané (`saved_at`,
+   zostupne) namiesto `sortKey: null`. Je to to isté poradie, aké posiela server,
+   ale `aria-sort` ho teraz hlási — tabuľka, ktorá je zoradená a tvári sa, že nie,
+   je tichá lož.
+
+   ČO TABUĽKA NEMÁ A PREČO: graf. Uložené smernice sú súbory v priečinku (dnes 1,
+   zmerané) a jediný číselný rozmer, ktorý majú, je čas uloženia — „koľko súborov
+   za deň" nad jednociferným priečinkom je šum, nie tvar. Kým nie sú desiatky,
+   graf tu nie je opomenutie, ale rozhodnutie (ten istý dôvod ako pri Denníku).
+
+   DVE FILTRAČNÉ OSI, presne tie, ktoré dáta majú: text (`q`, nadpis + cesta)
+   a obdobie (`smp`, 7 / 30 dní podľa `saved_at`). Oboje filtruje KLIENT —
+   `/api/directives` posiela celý priečinok jedným volaním, takže dopyt na server
+   by za tú istú odpoveď zaplatil druhýkrát. Preto je aj priznanie počtu po filtri
+   pravdivé: celok je známy, nie odhadnutý.
 
    Detail (celý markdown smernice) žije v PRAVOM PANELI a doťahuje ho
    `/api/directive/{name}` — dovtedy klik na kartu prepísal náhľad VEDĽA
@@ -55,16 +69,31 @@ export let directiveManaging = false;    // režim „Upraviť zoznam" — až v
 
 /* Koľko riadkov tabuľky sa kreslí naraz (G3). `/api/directives` posiela VŠETKY
    uložené smernice jedným volaním (glob nad priečinkom, žiadny limit), takže
-   „Ďalších 50" je okno nad úplnými dátami a celkový počet je známy — priznanie
-   počtu teda nelže ani pri filtri, pretože táto obrazovka filter nemá. */
+   „Ďalších 50" je okno nad úplnými dátami a celkový počet je známy — a keďže
+   filtruje klient nad tým istým poľom, je známy AJ PO FILTRI. Priznanie počtu
+   preto nelže ani so zapnutým filtrom (v Runoch sa práve preto vynecháva:
+   `/api/runs` posiela `counts` nad celou tabuľkou). */
 const PAGE = 50;
 
-/* Triedenie tabuľky. `key: null` = serverové poradie (najnovšie prvé) a žiadny
-   stĺpec sa ním nechváli — viď komentár k stĺpcu „Kedy" vyššie. V adrese
-   triedenie NIE JE: slovník `urlstate.js` pre ňu kľúč nemá a vymyslieť si ho tu
-   by bol kľúč, ktorý nikto nevaliduje. */
-export let directiveSort = { key: null, dir: ASC };
+/* Triedenie tabuľky. Default je `saved_at` zostupne — teda to isté poradie, aké
+   posiela server, ale PRIZNANÉ v `aria-sort`. Kľúč sa píše do adresy (`smk`
+   kľúč, `smd` smer, presne ako `ruk`/`rud` v Runoch), a default sa nepíše:
+   `?s=smernica` znamená „najnovšie zhora". */
+const DEF_SORT = { key: 'saved_at', dir: DESC };
+export let directiveSort = { key: DEF_SORT.key, dir: DEF_SORT.dir };
 export let directiveShown = PAGE;
+
+/* Klávesový kurzor tabuľky (j/k, šípky). `idx` je index do PRÁVE KRESLENEJ
+   stránky, nie do `directiveSaved` — filter aj „Ďalších 50" množinu menia
+   a index do zdroja by po ich zmene ukazoval na iný riadok, než na ktorý sa
+   človek pozerá. Trieda `.selected` nesie kurzor a `aria-current` otvorený
+   panel: sú to dva rôzne stavy a `mind.css` ich kreslí zvlášť (0-3-0 vs 0-2-0).
+
+   POZOR: klávesy vešia `shortcuts.js`, ktorý táto vlna NEVLASTNÍ — dnes je teda
+   `dirMove()` API bez volajúceho, presne ako bol `smo` kľúč pred doplnením do
+   `DICT`. Kód je celý; po pridaní šiestich riadkov do `shortcuts.js` (sú
+   v hlásení) začne kurzor chodiť bez zmeny tu. */
+export let directiveCursor = -1;
 
 /* Markdown otvorenej smernice, podľa mena. Cache je zámerná: panel sa otvára
    klikom aj z adresy a druhé otvorenie toho istého riadka nemá platiť ďalší
@@ -75,16 +104,44 @@ export const directiveDetails = new Map();
    a `roo` pre Rozhodnutia — pri prepnutí obrazovky ho `urlstate.js` zahodí sám
    a dva panely sa v jednej adrese otvoriť nedajú.
 
-   POZOR: kľúč `smo` v slovníku `DICT` (`urlstate.js`) ZATIAĽ NIE JE a ten súbor
-   táto vlna nevlastní. `writeUrl` neznámy kľúč ticho preskočí a `urlValue` naň
-   vráti null, takže kód je celý a bez neho len nezapíše adresu; po doplnení
-   riadku do `DICT` začne deep link fungovať bez zmeny tu. */
+   `smo` je v `DICT` od `2b0bb3e` (1. 9. 2026); dovtedy tu stálo, že kľúč chýba
+   a adresa sa nezapíše. Zmerané po doplnení: klik na riadok dá
+   `?s=smernica&smo=automatizacia-na-seo-agent`. */
 const PANEL_URL_KEY = 'smo';
+
+/* Filtre uložených smerníc. `q` je ZDIEĽANÝ kľúč adresy (jediná výnimka
+   z dvojznakových prefixov — na obrazovke je najviac jedno voľné hľadanie),
+   `smp` je obdobie v dňoch. Filtruje sa nad `directiveSaved`, teda nad tým, čo
+   už v prehliadači je. */
+export const directiveFilter = { q: '', per: null };
+
+/* Obdobia. Hodnota je počet dní a je to zároveň hodnota v adrese — jeden zápis
+   pre stav aj pre odkaz. `null` = všetky (default, do adresy sa nepíše). */
+const DIR_PERIODS = [
+    { v: null, label: 'Všetky' },
+    { v: '7', label: '7 dní' },
+    { v: '30', label: '30 dní' },
+];
+
+/* Boot z adresy. Číta sa LEN keď je v adrese naša obrazovka: `q` je zdieľané,
+   takže bez tejto stráže by hľadanie z Knižnice naplnilo filter Smernice. */
+const BOOT_MINE = readUrl().s === 'smernica';
+const bootKey = (k) => (BOOT_MINE ? urlValue(k) : null) || null;
+
+directiveFilter.q = bootKey('q') || '';
+directiveFilter.per = DIR_PERIODS.some((p) => p.v === bootKey('smp')) ? bootKey('smp') : null;
+/* Radenie z adresy. Kľúč sa overuje AJ TU, nie len v `DICT`: slovník je jeden
+   zdroj pravdy pre tvar adresy, ale radiaci kľúč mimo stĺpcov by `sortRows`
+   nechal bez `sortValue` a tabuľka by sa zoradila podľa neexistujúceho poľa,
+   teda vôbec — a `aria-sort` by pritom tvrdil, že je zoradená. */
+const DIR_SORTS = ['title', 'path', 'saved_at'];
+if (DIR_SORTS.includes(bootKey('smk'))) directiveSort = { key: bootKey('smk'), dir: bootKey('smd') === 'asc' ? ASC : DESC };
+else if (bootKey('smd') === 'asc') directiveSort = { key: DEF_SORT.key, dir: ASC };
 
 /* Meno smernice, ktorá má byť otvorená, ale riadky ešte nie sú načítané (boot
    z adresy alebo Späť). Panel otvorí `renderDirectiveSaved()`, keď dáta prídu —
    otvárať detail z mena, ktoré v odpovedi nemusí byť, nemá čo ukázať. */
-let dirPendingOpen = readUrl().s === 'smernica' ? urlValue(PANEL_URL_KEY) : null;
+let dirPendingOpen = BOOT_MINE ? urlValue(PANEL_URL_KEY) : null;
 
 export const DIR_SECTIONS = [
     { key: 'skills', title: 'Skilly', icon: 'bolt' },
@@ -122,6 +179,15 @@ export function renderDirective(prefillTask) {
         + '<section class="dir-saved-sec"><h2>Uložené smernice</h2>'
         + '<button type="button" id="dir-manage" class="chip hidden">'
         + iconMarkup('pencil') + 'Upraviť zoznam</button>'
+        /* Filtračný rad a uložené filtre stoja NAD tabuľkou a MIMO `#dir-saved`:
+           to je kontejner, ktorý sa prekresľuje (`innerHTML`) pri každom filtri,
+           radení aj „Ďalších 50" — filter vnútri neho by si pri písaní zabíjal
+           vlastný `<input>` a fokus by po prvom znaku spadol na `<body>`.
+           `#dir-saved-filters` je z toho istého dôvodu vlastný obal: lišta
+           uložených filtrov musí zostať dosiahnuteľná aj vtedy, keď filter nič
+           nenašiel — práve tam ju človek potrebuje najviac. */
+        + '<div class="dtl-filter" id="dir-filter"></div>'
+        + '<div id="dir-saved-filters"></div>'
         /* Obal tabuľky je HOLÝ `<div>`: trieda `.dir-saved` je mriežka kariet
            (`grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))`) a
            `<table>` by v nej dostala 300 px stĺpec. Kresba tabuľky je `.rec-table`
@@ -401,6 +467,20 @@ export async function loadDirectiveSaved() {
         if (!directiveSaved.length) directiveManaging = false;
         syncDirManageBtn();
         renderDirectiveSaved();
+        /* FILTER SA MUSÍ DO ADRESY ZAPÍSAŤ ZNOVA a práve TU, nie v `renderDirective()`.
+           `clearScreenKeys()` v `urlstate.js` maže pri prepnutí obrazovky všetky
+           `scoped` kľúče — a `q` je zdieľané, teda `scoped`. Zmerané: `?s=smernica&q=gama`
+           filter naozaj nasadilo, ale `location.search` zostalo `?s=smernica`, takže
+           obnovenie stránky by ten istý odkaz už nenačítalo. Knižnica to robí rovnako
+           (`writeUrl` po nasadení filtra).
+
+           Prečo za `await`om: pri bootovaní beží `renderDirective()` VNÚTRI `applyUrl`,
+           kde je `writeUrl` no-op — zápis odtiaľ by ticho zmizol (a zmizol: prvá
+           verzia ho mala tam a `q` sa do adresy nevrátilo). Tu sme už po sieti, teda
+           mimo toho okna; pri Späť/Dopredu je adresa správna už zo vstupu, takže
+           idempotentný `replace` nemá čo pokaziť. */
+        writeDirFilterUrl();
+        writeDirSortUrl();
     } catch (e) {
         cancelSkeleton();
         /* Chyba sa tu do 27. 8. 2026 kreslila ako PRÁZDNO (tichý riadok karty) —
@@ -426,19 +506,187 @@ export function syncDirManageBtn() {
         + (directiveManaging ? 'Hotovo' : 'Upraviť zoznam');
 }
 
+/* ---------- filtre uložených smerníc (dve osi) ----------
+
+   JEDNA smernica nie je čo filtrovať, tak sa rad nekreslí — to isté pravidlo
+   ako „jedna oblasť nie je filter, len šum" v Knižnici a Rozhodnutiach. Rad je
+   `.dtl-filter`, čipy sú `.chip`: rovnaká kresba ako filtre Runov, Rozhodnutí
+   a Kontroly, žiadny nový slovník. */
+export function renderDirFilter() {
+    const wrap = $('dir-filter');
+    if (!wrap) return;
+    if (directiveSaved.length < 2) { wrap.innerHTML = ''; return; }
+
+    const q = directiveFilter.q || '';
+    wrap.innerHTML =
+        '<input type="search" id="dir-q" class="dir-find" autocomplete="off"'
+        + ' placeholder="Hľadať v uložených…" aria-label="Hľadať v uložených smerniciach"'
+        + ' value="' + esc(q) + '">'
+        + DIR_PERIODS.map((p) => '<button type="button" class="chip'
+            + ((directiveFilter.per || null) === p.v ? ' active' : '') + '"'
+            + ' data-dir-per="' + (p.v == null ? '' : p.v) + '"'
+            + ' aria-pressed="' + ((directiveFilter.per || null) === p.v ? 'true' : 'false') + '">'
+            + esc(p.label) + '</button>').join('');
+
+    const inp = $('dir-q');
+    if (inp) {
+        /* Písanie prekresľuje LEN tabuľku (`#dir-saved`), nie tento rad — inak by
+           si `<input>` pri každom znaku zahodil sám seba a fokus by po prvom
+           znaku spadol na `<body>`. Debounce nie je: dáta sú v prehliadači
+           a zápis adresy debouncuje `urlstate.js` (DEB_FILTER). */
+        inp.oninput = () => {
+            directiveFilter.q = inp.value;
+            directiveShown = PAGE;
+            writeDirFilterUrl();
+            renderDirTableOnly();
+        };
+    }
+    wrap.querySelectorAll('[data-dir-per]').forEach((b) => {
+        b.onclick = () => {
+            const v = b.dataset.dirPer || null;
+            /* Klik na aktívne obdobie ho VYPNE (rovnako ako čipy Runov): chip je
+               prepínač a „Všetky" je jeho vypnutý stav. */
+            directiveFilter.per = (directiveFilter.per || null) === v ? null : v;
+            directiveShown = PAGE;
+            writeDirFilterUrl();
+            // Nasadenie filtra je viditeľná zmena plochy, takže sa NEHLÁSI.
+            renderDirectiveSaved();
+        };
+    });
+}
+
+/* Text hľadá v NADPISE aj v CESTE — sú to práve tie dve veci, ktoré sú v tabuľke
+   vidieť, a človek si pamätá raz jedno, raz druhé. `toLocaleLowerCase('sk')`,
+   nie `toLowerCase()`: hľadanie „Č" musí trafiť „č" aj v slovenskom texte. */
+export function dirFiltered() {
+    const q = (directiveFilter.q || '').trim().toLocaleLowerCase('sk');
+    const per = directiveFilter.per ? parseInt(directiveFilter.per, 10) : 0;
+    const from = per ? Date.now() - per * 86400000 : 0;
+    return directiveSaved.filter((it) => {
+        if (q) {
+            const hay = (dirSavedTitle(it) + ' ' + (it.path || '')).toLocaleLowerCase('sk');
+            if (!hay.includes(q)) return false;
+        }
+        if (from) {
+            /* Riadok bez `saved_at` (súbor, ktorému sa nedal prečítať `mtime`)
+               filtru obdobia NEVYHOVUJE: „neviem kedy" nie je „bolo to nedávno". */
+            const t = Date.parse(it.saved_at || '');
+            if (!Number.isFinite(t) || t < from) return false;
+        }
+        return true;
+    });
+}
+
+export function clearDirFilter() {
+    directiveFilter.q = '';
+    directiveFilter.per = null;
+    directiveShown = PAGE;
+    writeDirFilterUrl();
+    renderDirectiveSaved();
+}
+
+/* Uložený filter (G2) — mechanika je JEDNA pre celú appku
+   (`public/js/shared/filters.js`, re-export cez `table.js`). Meno si filter
+   nesie SÁM, poskladané z vlastného obsahu („seo · 7 dní"): natívny `prompt()`
+   by bol jediné modálne okno v celej appke a meno vymyslené z obsahu je
+   presnejšie než meno napísané rukou o týždeň neskôr.
+
+   Do stavu ide `q` a `per`, NIE radenie ani `directiveShown`: filter je to, čo
+   z množiny vyberám; podľa čoho som ju zoradil a koľko som si dolistoval, je
+   poloha v zozname. */
+export function currentDirFilter() {
+    const bits = [];
+    const q = (directiveFilter.q || '').trim();
+    if (q) bits.push(q);
+    if (directiveFilter.per) {
+        const p = DIR_PERIODS.find((x) => x.v === directiveFilter.per);
+        bits.push(p ? p.label : directiveFilter.per + ' dní');
+    }
+    if (!bits.length) return null;
+    return { name: bits.join(' · '), state: { q: q, per: directiveFilter.per } };
+}
+
+export function renderDirSavedFilters() {
+    const host = $('dir-saved-filters');
+    if (!host) return;
+    /* Lišta ide s filtračným radom, nie zvlášť: pri jednej smernici sa rad nekreslí,
+       takže uložený čip by ponúkal nasadenie filtra, ktorý nemá kde byť vidieť
+       (zmerané: `#dir-filter` bol prázdny a čip „čerpanie · 7 dní" nad ním svietil).
+       `localStorage` sa NEMAŽE — smernice môžu pribudnúť a filter je pohľad, nie dáta. */
+    if (directiveSaved.length < 2) { host.innerHTML = ''; return; }
+    renderSavedFilters(host, 'smernica', {
+        onApply: (state) => {
+            const s = state || {};
+            directiveFilter.q = s.q || '';
+            directiveFilter.per = s.per || null;
+            directiveShown = PAGE;
+            writeDirFilterUrl();
+            renderDirectiveSaved();
+        },
+        current: currentDirFilter,
+    });
+}
+
+/* Adresa: filter aj radenie sú POHĽAD na dáta, takže `replace` a nie `push` —
+   Späť sa má vracať na obrazovku, nie prehrávať každý napísaný znak. Default sa
+   nepíše (`null`), aby `?s=smernica` znamenalo „všetko, najnovšie zhora". */
+function writeDirFilterUrl() {
+    writeUrl({
+        q: (directiveFilter.q || '').trim() || null,
+        smp: directiveFilter.per || null,
+    }, 'replace');
+}
+
+function writeDirSortUrl() {
+    writeUrl({
+        smk: directiveSort.key === DEF_SORT.key ? null : directiveSort.key,
+        smd: directiveSort.dir === DESC ? null : 'asc',
+    }, 'replace');
+}
+
+/* Prekreslenie zoznamu. `renderDirectiveSaved()` obnoví AJ filtračný rad,
+   `renderDirTableOnly()` len tabuľku pod ním — a to je rozdiel, ktorý drží
+   hľadanie: prekreslenie radu pri každom znaku by zahodilo `<input>`, do ktorého
+   sa práve píše, a fokus by spadol na `<body>`. */
 export function renderDirectiveSaved() {
+    renderDirFilter();
+    renderDirTableOnly();
+}
+
+export function renderDirTableOnly() {
     const box = $('dir-saved');
     if (!box) return;
+    renderDirSavedFilters();
     /* Sekcia sa menuje „Uložené smernice" — prázdny stav ju nemá prehovoriť znova.
        `empty` z `renderTable()` sa tu zámerne nepoužíva: veta nesie, ČO s tým
        človek urobí, kým tabuľka vie povedať jednu krátku. */
     if (!directiveSaved.length) {
         box.innerHTML = emptyCardHtml('Zatiaľ žiadne — poskladanú smernicu môžeš uložiť a vrátiť sa k nej.');
+        directiveCursor = -1;
         return;
     }
 
     const cols = dirSavedColumns();
-    const sorted = sortRows(directiveSaved, directiveSort.key, directiveSort.dir, cols);
+    const rows = dirFiltered();
+
+    /* Prázdno Z FILTRA je iná správa než „zatiaľ žiadne" a má vlastný predmet aj
+       jedinú akciu. `.empty--filter` vlastnú kresbu zámerne NEMÁ (manuál §8) — líši
+       sa vetou, a tá hovorí o SMERNICI, nie o „záznamoch": obrazovka vie, čo v nej
+       človek hľadá. `renderFilterEmpty` sa smie ponúknuť len s filtrom, ktorý naozaj
+       skrýva dáta — tu je to zaručené tým, že bez filtra je `rows` celé pole. */
+    if (!rows.length) {
+        renderFilterEmpty(
+            box,
+            'Filtru nevyhovuje ani jedna smernica',
+            'Skús kratší výraz alebo dlhšie obdobie.',
+            clearDirFilter,
+            'Zruš filter',
+        );
+        directiveCursor = -1;
+        return;
+    }
+
+    const sorted = sortRows(rows, directiveSort.key, directiveSort.dir, cols);
     const page = sorted.slice(0, directiveShown);
     renderTable(box, cols, {
         rows: page,
@@ -447,24 +695,26 @@ export function renderDirectiveSaved() {
         onSort: sortDirSaved,
         onOpen: openDirectivePanel,
         openId: recOpenId('smernica'),
-        /* Identita riadka je slug súboru — ten istý kľúč, akým sa smernica pýta
+        /* Identita riadka je slug súboru — ten istý klúč, akým sa smernica pýta
            servera (`/api/directive/{name}`) aj adresy. Druhý identifikátor by tu
            bol tretie meno pre jednu vec. */
         idKey: 'name',
         caption: 'Uložené smernice',
     });
 
-    /* Celok je ZNÁMY: `/api/directives` posiela celý priečinok jedným volaním
-       (glob bez limitu), takže `directiveSaved.length` je počet uložených
-       smerníc, nie počet načítaných riadkov — priznanie počtu tu teda nelže.
-       Keby endpoint raz začal stránkovať, tento riadok sa musí prepočítať zo
-       serverového počtu, inak by sľuboval riadky, čo v odpovedi nie sú. */
-    moreRow(box, Math.min(page.length, directiveSaved.length), directiveSaved.length, () => {
+    /* Celok je ZNÁMY aj po filtri: `/api/directives` posiela celý priečinok jedným
+       volaním (glob bez limitu) a filtruje sa nad tým istým poľom v prehliadači,
+       takže `rows.length` je počet vyhovujúcich smerníc, nie počet načítaných riadkov.
+       Priznanie počtu tu teda nelže — keď by endpoint raz začal stránkovať, tento
+       riadok sa musí prepočítať zo serverového počtu (a pri filtri MLČŤ, ako to
+       robia Runy: tam server hlási `counts` nad celou tabuľkou). */
+    moreRow(box, Math.min(page.length, rows.length), rows.length, () => {
         directiveShown += PAGE;
-        renderDirectiveSaved();
+        renderDirTableOnly();
     });
 
     wireDirSavedTable(box);
+    paintDirCursor();
     consumeDirPendingOpen();
 }
 
@@ -499,6 +749,32 @@ export function dirSavedColumns() {
             sortValue: (it) => it.path || '',
             titleFrom: (it) => it.path || '',
         },
+        {
+            /* Šírka je v `rem`, nie v percentách: obsah cely nerastie (`timeAgo`
+               dáva „5 d" alebo „23. júl"), takže percento by pri `table-layout:
+               fixed` bralo hlavnému stúlpcu šírku podľa okna, nie podľa obsahu. */
+            key: 'saved_at', label: 'Kedy', width: '6rem',
+            cell: (it) => {
+                const when = timeAgo(it.saved_at);
+                if (!when) return '—';
+                return '<span title="' + esc(dirSavedWhenTitle(it)) + '">' + esc(when) + '</span>';
+            },
+            /* SORTOVACÍ KľÚČ JE KANONICKÉ UTC ISO, nie surový reťazec zo servera.
+               `saved_at` nesie OFFSET (`2026-07-23T13:04:22+00:00`), takže jeho
+               abecedné poradie nie je chronologické, len sa tak tvári — dnes majú
+               všetky riadky `+00:00`, ale súbor uložený v inom offsete by sa zoradil
+               o hodinu vedľa. `kind: 'num'` stúlpec NIE JE (dátum nepatrí vpravo do
+               mono), takže `sortRows` porovnáva cez `localeCompare` — a to je pre
+               čísla správne len náhodou, kým majú rovnaký počet číslic. Pevná šírka
+               a `Z` z `toISOString()` robia lexikografické poradie chronologickým.
+               (Ten istý vzor ako `libAgeSort()` v Knižnici.) */
+            sortValue: (it) => {
+                const t = Date.parse(it.saved_at || '');
+                return Number.isFinite(t) ? new Date(t).toISOString() : '';
+            },
+            // Cela hlási relatívny vek; presný dátum sa z neho zistiť nedá.
+            titleFrom: (it) => dirSavedWhenTitle(it),
+        },
     ];
 
     if (directiveManaging) {
@@ -523,6 +799,65 @@ export function dirSavedTitle(it) {
     return (it && (it.title || '').trim()) || (it && it.name) || '';
 }
 
+/* Plný dátum do `title`. Cela hlási relatívny vek („5 d"), ktorý je na prehľad
+   lepší, ale nedá sa z neho zistiť, KEDY to bolo — a pri smernici je presný
+   dátum práve to, čo človek chce vedieť, keď sa rozhoduje, či je ešte platná.
+   Slovo „Uložené" je tu, nie v serializéri: formát dátumu a popisok sú SLOVÁ. */
+export function dirSavedWhenTitle(it) {
+    const t = Date.parse((it && it.saved_at) || '');
+    if (!Number.isFinite(t)) return '';
+    return 'Uložené ' + new Date(t).toLocaleString('sk', {
+        day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+}
+
+/* ---------- klávesový kurzor (j/k) ----------
+
+   Kresba `.rec-row.selected` je v `mind.css` už dnes (0-3-0, teda silnejšia než
+   `:hover`) — nie je to nová kresba, len druhý volajúci tej istej.
+
+   Kurzor sa nemá čo zachovať medzi prekresleniami: `renderTable()` stavia riadky
+   nanovo a filter aj radenie menia, KTORÝ riadok je n-tý. Preto sa po prekreslení
+   namieri iba to, čo ešte existuje (`paintDirCursor`), a index sa inak drží na -1
+   = žiadny kurzor. */
+function dirRows() {
+    const box = $('dir-saved');
+    return box ? box.querySelectorAll('.rec-row[data-rec]') : [];
+}
+
+export function paintDirCursor() {
+    const rows = dirRows();
+    if (directiveCursor >= rows.length) directiveCursor = rows.length ? rows.length - 1 : -1;
+    rows.forEach((el, i) => el.classList.toggle('selected', i === directiveCursor));
+    return rows;
+}
+
+/* Posun kurzora. Prvý stisk nasadí prvý riadok (nie druhý), pretože žiadny
+   kurzor nie je pozícia -1, ale „pred zoznamom". Fokus ide S KURZOROM: `<tr>` má
+   od `renderTable()` `tabIndex = 0`, takže bez toho by čítač obrazovky ani
+   prstenec fokusu nemali čo sledovať a Tab by začínal odznova. */
+export function dirMove(delta) {
+    const rows = dirRows();
+    if (!rows.length) return;
+    directiveCursor = directiveCursor < 0
+        ? (delta > 0 ? 0 : rows.length - 1)
+        : (directiveCursor + delta + rows.length) % rows.length;
+    paintDirCursor();
+    const cur = rows[directiveCursor];
+    if (!cur) return;
+    cur.focus({ preventScroll: true });
+    cur.scrollIntoView({ block: 'nearest' });
+}
+
+/* Riadok pod kurzorom ako dáta, nie ako DOM: `shortcuts.js` chce otvoriť panel,
+   nie ťukať do tabuľky. */
+export function dirCursorRow() {
+    const rows = dirRows();
+    const el = rows[directiveCursor];
+    if (!el) return null;
+    return directiveSaved.find((it) => it.name === el.dataset.rec) || null;
+}
+
 /* Klik na tú istú hlavičku obracia smer, klik na inú nasadí vzostupne: oba
    stĺpce sú text a „od A" je to, čo človek pri menách hľadá. Prekresľuje sa LEN
    tabuľka — triedenie nie je dopyt na server (priečinok prišiel naraz). */
@@ -533,7 +868,10 @@ export function sortDirSaved(key) {
         directiveSort.key = key;
         directiveSort.dir = ASC;
     }
-    renderDirectiveSaved();
+    /* Radenie IDE DO ADRESY (`smk`/`smd`) — je to pohľad na dáta, ktorý sa dá
+       zdieľať, a `replace` preto, že sa nemení, NA ČO sa pozerám. */
+    writeDirSortUrl();
+    renderDirTableOnly();
     /* Prekreslenie zahodilo `<th>` aj s tlačidlom, na ktoré človek práve klikol,
        takže fokus by spadol na `<body>` a Tab by začínal od začiatku dokumentu. */
     const again = document.querySelector('#dir-saved .rec-sort[data-sort="' + key + '"]');
@@ -588,7 +926,13 @@ export function openDirectivePanel(it) {
 }
 
 export function dirPanelHtml(it, md) {
-    const head = '<p><span class="tag muted">' + esc(it.path || '') + '</span></p>';
+    /* Cesta A ČAS uloženia. Panel nesie celý záznam — to je podmienka, pod ktorou
+       sa `col-saved_at` na mobile smie skryť („Nič sa nestráca", `mind.css`
+       ≤768 px). Dátum je tu PLNÝ, nie relatívny: v tabuľke je „5 d" lepší na
+       prehľad, v detaile chce človek vedieť, KEDY to bolo. */
+    const when = dirSavedWhenTitle(it);
+    const head = '<p><span class="tag muted">' + esc(it.path || '') + '</span>'
+        + (when ? '<span class="tag muted">' + esc(when) + '</span>' : '') + '</p>';
 
     /* Načítavanie NIE JE prázdny stav. Dýchajúci znak, nie kostra: smernica má od
        piatich riadkov po sto, takže jej tvar sa predkresliť nedá. */
@@ -704,6 +1048,24 @@ function consumeDirPendingOpen() {
    no-op — otvorenie panelu si tým adresu neprepíše samo pod sebou. */
 registerUrlApply('smernica', (url) => {
     if (url.s !== 'smernica') return;
+
+    /* Filter a radenie z adresy. Prekresluje sa LEN keď sa niečo naozaj zmenilo:
+       `applyUrl` beží pri každom `popstate`, teda aj keď sa menil iba `smo`, a
+       prekreslenie tabuľky by vtedy zahodilo `<tr>`, ktorý si `recpanel.js`
+       odložil ako `document.activeElement`. */
+    const nq = url.q || '';
+    const nper = DIR_PERIODS.some((pp) => pp.v === (url.smp || null)) ? (url.smp || null) : null;
+    const nkey = DIR_SORTS.includes(url.smk) ? url.smk : DEF_SORT.key;
+    const ndir = url.smd === 'asc' ? ASC : DESC;
+    if (nq !== directiveFilter.q || nper !== directiveFilter.per
+        || nkey !== directiveSort.key || ndir !== directiveSort.dir) {
+        directiveFilter.q = nq;
+        directiveFilter.per = nper;
+        directiveSort = { key: nkey, dir: ndir };
+        directiveShown = PAGE;
+        renderDirectiveSaved();
+    }
+
     const want = url[PANEL_URL_KEY] || null;
     const open = recOpenId('smernica');
     if (!want) {

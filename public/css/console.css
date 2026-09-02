@@ -238,6 +238,21 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     padding: var(--sp-1);
 }
 
+/* Priznanie počtu na konci zoznamu („všetkých 95", resp. „26 z 95"). Kresbu
+   nesie `.rec-more` z mind.css a je stavaná pre ŠIROKÚ tabuľku — je to
+   ľavo-zarovnaný flex, takže v 260 px raile stojí text na ľavom okraji
+   (zmerané: left 8 px vnútri `#thread-list`, teda na jeho paddingu) a pod
+   riadkami vlákien, ktoré majú vlastný rám, vyzerá ako odseknutý začiatok
+   ďalšieho riadka. V úzkom stĺpci číta na stred lepšie.
+   Je to KOZMETIKA, nie oprava: riadok je čitateľný aj bez tohto pravidla a
+   `.rec-more` v mind.css sa nemení — tabuľky na `/` si ľavé zarovnanie držia.
+   Vodorovný `padding` je odsadenie od rámu riadkov nad ním; `--sp-0` je tá istá
+   hodnota, akú má medzera medzi akciami riadka. */
+#thread-list .rec-more {
+    justify-content: center;
+    padding-inline: var(--sp-0);
+}
+
 /* Riadok už NIE JE jedno tlačidlo: nesie otvorenie vlákna a dve akcie, a
    <button> vnorený do <button> je neplatné HTML — parser ho rozbije na
    súrodencov a akcie by vypadli mimo riadok. */
@@ -546,7 +561,20 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 
 /* Znak v prázdnom stave — jediné miesto v Charónovi, kde má značka priestor.
    Dýchanie sem NEIDE: prázdny stav je ticho pred prácou, nie stav vedomia.
-   Intro (bc-ring / bc-core v mind.css) sa dedí, takže znak sa aj tu zrodí. */
+
+   ZROD SA TU DNES NEDEDÍ a ten predpoklad bol do 2. 9. 2026 zapísaný ako fakt
+   („Intro bc-ring / bc-core v mind.css sa dedí, takže znak sa aj tu zrodí").
+   Zmerané na bežiacej ploche: `.empty-sigil` nesie deti `bc-ring` a `bc-core`
+   a `animationName` je na OBOCH `none`. Príčina je v mind.css: znak sa
+   prekreslil zo prstenca na sieť, `bc-ring` zanikol bez prekladu (nové mená sú
+   `bc-node` a `bc-edge`) a spínačom zrodu je trieda `bc-mark` na `<svg>`.
+   Markup tohto znaku skládá `sigilMark()` v `public/js/console/render.js`, teda
+   nie tento súbor — potreba je nahlásená jeho vlastníkovi. Sem nepatrí ani
+   náhradná animácia: druhá kresba zrodu by bola presne ten rozchod, ktorý
+   `bc-mark` zaviedol, aby už nemohol vzniknúť.
+   Kalibrácia pre toho, kto to opraví: `#back-to-graph` v hlavičke TEJ ISTEJ
+   plochy `bc-mark` má a meria sa na ňom `bc-node-in` / `bc-core-in` — ten istý
+   dopyt teda vie hlásiť aj kladný prípad. */
 .empty-sigil {
     width: 44px; height: 44px;
     display: block;
@@ -1596,18 +1624,35 @@ button:where(.tr-open, .tool-head, #send, #stop) {
        naozaj platí. `position: relative` je tu preto, že bez neho je
        `z-index` na statickom prvku bez účinku.
        ------------------------------------------------------------------ */
-    #rail-toggle { display: inline-flex; position: relative; z-index: 30; }
+    /* Rozmer 44 × 44 je súčasťou tohto pravidla a nie skupiny cieľov nižšie:
+       prepínač je jediný prvok, ktorého veľkosť je zviazaná s odsadením
+       `.rail-top` hneď za ním (16 + 44 + 8 = 68), takže obe čísla musia stáť
+       na dohľad. `padding: 0` je nutné — základ má `var(--sp-0) 6px`, čo by
+       pri pevnej šírke ubralo z 44 px stopy 12 px na výplň ikony. */
+    #rail-toggle {
+        display: inline-flex;
+        position: relative;
+        z-index: 30;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+    }
 
     /* Roh vľavo nahore patrí v režime prekryvu prepínaču, tak mu ho panel
        uvoľní. Bez tohto riadku by zdvihnutý hamburger (x 16–48, y 6–38)
        kreslil priamo na znaku `#back-to-graph` (x 10–56, y 10–48) — dva
        glyfy na sebe. Číslo nie je voľné: vodorovný padding hlavičky je
        `--sp-2` (16 px), tlačidlo je 32 px široké a 8 px je medzera, aby sa
-       hamburger a znak nedotýkali → 16 + 32 + 8 = 56.
+       hamburger a znak nedotýkali → 16 + 44 + 8 = 68.
+       ČÍSLO SA 2. 9. 2026 ZMENILO Z 56 NA 68, pretože prepínač vyrástol z 32
+       na 44 px (dotykový cieľ, pravidlo nad ním). Je to zviazaná dvojica: keď
+       sa pohne šírka prepínača, MUSÍ sa pohnúť aj toto číslo, inak hamburger
+       kreslí na znaku. Zmerané po zmene pri 375 px: prepínač x 16–60, znak
+       `#back-to-graph` začína na x 68.
        Platí v CELOM režime prekryvu, nie len pri `.rail-open`: keby sa
        odsadenie zapínalo otvorením, znak by pri každom vysunutí panela
        poskočil o 46 px do strany. */
-    .rail-top { padding-left: 56px; }
+    .rail-top { padding-left: 68px; }
 
     #console-header { flex-wrap: wrap; padding: 6px var(--sp-2); }
     .ch-right { gap: 10px; }
@@ -1620,7 +1665,7 @@ button:where(.tr-open, .tool-head, #send, #stop) {
        s labelom. Číslo drží `min-height: var(--control-h)` a 2 × `--sp-1`
        vodorovný padding okolo 13 px políčka prehliadača. */
     .auto-accept .lbl { display: none; }
-    #model-select { max-width: 130px; }
+    #model-select { max-width: 130px; min-height: 44px; }
     #stream { padding: var(--sp-2) 12px var(--sp-1); }
     #composer { padding: 10px 12px 8px; }
     /* Nápoveda sa pod 900 px NEskrýva, len sa zúži. `display: none` tu bol do
@@ -1629,4 +1674,97 @@ button:where(.tr-open, .tool-head, #send, #stop) {
        klávesové kombinácie (na dotyku aj tak nemajú význam) a veta o `/` ostane. */
     #composer-hint .hint-keys { display: none; }
     #composer-hint { font-size: var(--fs-micro); margin-top: 6px; }
+
+    /* ------------------------------------------------------------------
+       CIEĽ 44 px NA DOTYKU.
+
+       `/chat` túto podlahu má od 31. 8. 2026 (blok „CIEĽ 44 px NA DOTYKU"
+       v `chat.css`), `/console` ju do 2. 9. 2026 nemal ani pre jeden
+       ovládač — a je to tá istá plocha toho istého behu, len druhé okno.
+       Zmerané pri 375 × 812 s otvoreným panelom, PRED zmenou (výška TOHO
+       prvku, nie priemer z kontejnera):
+         #back-to-graph      46 × 38      #new-thread     179 × 33,5
+         #thread-find       257 × 34      .chip (×4)     91–148 × 32
+         .rec-saved-apply  67,5 × 21,2    .rec-saved-del   26 × 26
+         .tr-act (×190)      28 × 26      #rail-toggle     32 × 32
+         #cmdk-trigger       40 × 32      #model-select   130 × 34
+         #send / #stop       30 × 32      .auto-accept     xx × 32
+       Teda KAŽDÝ ovládač plochy pod cieľom, presne ako to bolo na `/chat`.
+
+       Zdvíha sa `min-height` (u pevných rozmerov `height`/`width`), nie
+       `padding`: padding by v 300 px prekryve ubral text titulku vlákna.
+       Vodorovne sa dvíhajú len ikonové gombíky — u prvkov so slovom nesie
+       šírku obsah a tá je zmerane nad cieľom.
+
+       Prečo `@media (max-width: 900px)` a nie `@media (hover: none)`: pod
+       900 px je panel prekryv na celú výšku, teda plocha sa ovláda prstom
+       bez ohľadu na to, čo prehliadač o hoveri tvrdí. Je to zároveň tá istá
+       hranica, akú má na to `chat.css` — dve Charónove okná nesmú mať dva
+       rôzne názory na to, čo je „úzko". A desktop v úzkom okne sa tým
+       nepokazí: 44 px cieľ sa myšou trafí tiež.
+
+       KALIBRÁCIA (aby merač nemohol „nemerať nič"): po zmene musí byť pri
+       375 px na `/console` NULA ovládačov pod 44 px v oboch osiach —
+       s výnimkou samotného `<input type="checkbox">` `#auto-accept`, ktorý
+       je 13 × 13 px kresba PREHLIADAČA; cieľom je jeho `<label>`
+       `.auto-accept` a ten sa dvíha nižšie. A pri 1440 px musí `.tr-act`
+       zostať na 26 px a `#send` na 30 × 30 — ak sa zdvihnú aj tam,
+       pravidlo uteklo z media query a zriedilo hustotu konzoly.
+       ------------------------------------------------------------------ */
+
+    /* Prvky so slovom: rastie len výška. `#back-to-graph` a `#new-thread` majú
+       ID (1-0-0), pretože ich základ je `.rail-top :is(a, button)` (0-1-1) —
+       skupinové pravidlo s triedou by prehralo. */
+    #back-to-graph,
+    #new-thread,
+    #thread-find,
+    .auto-accept,
+    #thread-filters .chip { min-height: 44px; }
+
+    /* BRÁNA ZÁPISOV je jediný prvok tej skupiny, ktorému výška NESTAČÍ. Pod
+       900 px jej zmizne `.lbl` (pravidlo vyššie) a zostane 13 px políčko
+       prehliadača v 2 × `--sp-1` paddingu — zmerané PO zdvihnutí výšky:
+       29 × 44 px pri 375 px, teda jediný ovládač plochy, ktorý ešte nebol
+       v cieli. Je to zároveň presne to miesto, kde brána zápisov 21. 8. 2026
+       spadla na 13 × 13 px, takže sa dvíhajú obe osi.
+       `justify-content: center` patrí do toho istého pravidla: základ je
+       `inline-flex` bez zarovnania v hlavnej osi, takže bez neho by políčko
+       zostalo na ľavom okraji 44 px plochy a cieľ by sa mieril inde, než kde
+       je kresba. Nad 900 px pravidlo neplatí a hustota hlavičky zostáva
+       nedotknutá (kalibrácia: pri 1440 px má prvok s labelom 144,2 × 32 px). */
+    .auto-accept {
+        min-width: 44px;
+        justify-content: center;
+    }
+
+    /* Uložené filtre. Kresba je zdieľaná s `/` (`.rec-saved*` v mind.css), tak
+       sa dvíhajú SCOPOVANE — rozhodnutie o dotykovej podlahe pre tabuľky na `/`
+       patrí vlastníkovi `mind.css`, nie konzole. `min-height` stačí: `button`
+       má v resete `inline-flex` + `align-items: center`, takže text zostane na
+       strede a pilulka `.rec-saved-chip` (`align-items: center`) narastie s ním.
+       Krížik potrebuje aj šírku — je 26 px a slovo v ňom nie je. */
+    #thread-filters :is(.rec-saved-apply, .rec-saved-del, .rec-saved-add) { min-height: 44px; }
+    #thread-filters .rec-saved-del { min-width: 44px; }
+
+    /* Ikonové gombíky. `.tr-act` má v základe `height: 26px` a `min-height: 0`,
+       takže `min-height` by naň nemalo účinok — pevnú výšku prebije jedine
+       pevná výška. Riadok vlákna tým narastie na 44 px, čo je zhodou okolností
+       presne to, čo `/chat` má na `.ct-open`. */
+    .tr-act {
+        min-width: 44px;
+        height: 44px;
+    }
+
+    #send,
+    #stop {
+        width: 44px;
+        height: 44px;
+    }
+
+    /* Paleta má v mind.css vlastné ID (1-0-0), takže skupinové pravidlo
+       s triedou by ju minulo. Šírka 40 px je pod cieľom, preto obe osi. */
+    #cmdk-trigger {
+        min-width: 44px;
+        min-height: 44px;
+    }
 }

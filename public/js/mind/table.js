@@ -151,6 +151,65 @@ export function renderTable(container, columns, opts) {
     }
 }
 
+/* ---------------------------------------------------------------------------
+   KLÁVESOVÝ KURZOR — j/k a strelky nad riadkami tabuľky
+
+   Kresba `.rec-row.selected` v `mind.css` (0-3-0, silnejšia než `:hover`) tu
+   bola už predtým; nová je len tretia a štvrtá obrazovka, ktorá ju používa.
+
+   KURZOR JE STAV V DOM, NIE PREMENNÁ. Index v module by bol druhý zdroj pravdy
+   nad tým istým riadkom a musel by sa dorovnávať po každom prekreslení,
+   filtrovaní a triedení — presne to sa už raz stalo dvakrát nezávisle
+   (`kontrolaState.idx` + `paintKontrolaCursor()`, `directiveCursor` +
+   `paintDirCursor()`). Čítanie polohy z `.selected` sa rozísť nemôže: keď
+   `renderTable()` prepíše `innerHTML`, kurzor zmizne S riadkami a ďalší stisk
+   začne od začiatku — čo je poctivé, lebo filter aj radenie menia, KTORÝ riadok
+   je n-tý.
+
+   POSUN NEPREKRESĽUJE. Prepne triedu na dvoch riadkoch a posunie fokus. Keby
+   posun šiel cez `renderTable()`, odložený `document.activeElement`
+   v `recpanel.js` by bol po prekreslení odpojený (`isConnected === false`)
+   a Esc by fokus nevrátil nikam.
+
+   FOKUS IDE S KURZOROM, pretože `<tr>` má od `renderTable()` `tabIndex = 0`:
+   bez toho by čítačka nemala čo ohlásiť, prstenec fokusu by stál inde než
+   podfarbenie a Enter by musel mať druhú obsluhu (takto ho obslúži riadkový
+   `onkeydown` vyššie v tomto súbore).
+   --------------------------------------------------------------------------- */
+
+/** Riadky tabuľky v `root` (element tabuľky alebo jej kontejner). */
+export function tableRows(root) {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('.rec-row[data-rec]'));
+}
+
+/** Riadok pod kurzorom, alebo `null`. */
+export function tableCursorRow(root) {
+    return tableRows(root).find((r) => r.classList.contains('selected')) || null;
+}
+
+/**
+ * Posunie kurzor o `delta` riadkov a vráti nový riadok (alebo `null`).
+ *
+ * Prvý stisk nasadí PRVÝ riadok pri `delta > 0` a posledný pri `delta < 0`:
+ * „žiadny kurzor" nie je nulová pozícia, ale „pred zoznamom". Posun je
+ * cyklický — rovnako ako vo fronte Kontroly, aby dlhá tabuľka nemala tichý
+ * konec.
+ */
+export function moveTableCursor(root, delta) {
+    const rows = tableRows(root);
+    if (!rows.length) return null;
+    const at = rows.findIndex((r) => r.classList.contains('selected'));
+    const next = at < 0
+        ? (delta > 0 ? 0 : rows.length - 1)
+        : (at + delta + rows.length) % rows.length;
+    rows.forEach((r, i) => r.classList.toggle('selected', i === next));
+    const cur = rows[next];
+    cur.focus({ preventScroll: true });
+    cur.scrollIntoView({ block: 'nearest' });
+    return cur;
+}
+
 /**
  * Zoradí riadky. Neporovnáva „naslepo": stĺpec `num` sa porovnáva ČÍSELNE
  * a ostatné cez `localeCompare` so slovenským locale — bez toho by „Č" skončilo

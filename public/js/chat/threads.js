@@ -52,6 +52,18 @@ import { emptyBlock, errorBlock, filterBlock } from './empty.js';
 /* Obálka natívneho `<select>` so strieškou. Kresbu nesie `chat.css`; tu ide
    o štruktúru, ktorú `appearance: none` potrebuje a `select::after` nedá. */
 import { dressSelect } from './selects.js';
+/* Uložené filtre hľadania. Cyklus `threads ↔ saved` je reálny (tento súbor
+   kreslí rad, `saved.js` číta a nasadzuje filtre odtiaľ) a je to presne ten
+   prípad, pre ktorý sú v celom chate hoistované `export function`.
+
+   `saved.js` sa do `main.js` NEIMPORTUJE a je to ten istý zámer ako u
+   `empty.js`: nemá čo drôtovať, kreslí ho ten, kto kreslí filtre, a import bez
+   `wire*()` by v bootstrape vyzeral ako zabudnutá inicializácia. Načíta sa
+   odtiaľto — `threads.js` v `main.js` importovaný je. */
+import { hasChatSaved, renderChatSaved } from './saved.js';
+/* Klávesový kurzor. Odtiaľto sa berie len obnova fokusu po prekreslení —
+   listener si modul drôtuje sám z `main.js` (`wireCursor()`). */
+import { restoreCursor } from './cursor.js';
 import { iconMarkup, iconSvg } from '../shared/icons.js';
 
 /* ---------------------------------------------------------------------------
@@ -288,6 +300,44 @@ export function threadsSnapshot() {
 /** @returns {Array<object>} projekty vrátane archivovaných (tie nesú `archived`). */
 export function projectsSnapshot() {
     return T.projects.slice();
+}
+
+/**
+ * Snímka filtrov hľadania pre `saved.js` — tie tri osi, ktoré NEZÁVISIA od
+ * dopytu. `thread` a `project` sa tu zámerne nevystavujú: sú to zúženia
+ * konkrétneho zásahu, `onQuery()` ich ruší, a uložiť sa preto nedajú (dôvod je
+ * rozpísaný v hlavičke `saved.js`).
+ *
+ * Nová objekt, nie referencia na `T.filters` — volajúci ho nemá meniť.
+ *
+ * @returns {{role: string, from: string, to: string}}
+ */
+export function searchFilterState() {
+    return { role: T.filters.role, from: T.filters.from, to: T.filters.to };
+}
+
+/**
+ * Nasadí uložený filter a spustí hľadanie nad NEZMENENÝM dopytom.
+ *
+ * Hodnoty prechádzajú tou istou validáciou ako pri čítaní z adresy
+ * (`ROLES.includes` a `isDay`), pretože prichádzajú z `localStorage` — teda
+ * z miesta, ktoré mohol prepísať kto chce a ktoré prežije aj zmenu slovníka
+ * rolí. Neznáma rola by inak zúžila dopyt na hodnotu, ktorú server nepozná.
+ *
+ * Zúženie na vlákno a projekt sa RUŠÍ: uložený filter je širší pohľad, a
+ * ponechané zúženie predošlého zásahu by z neho urobilo prázdny výsledok bez
+ * viditeľnej príčiny.
+ */
+export function applySearchFilters(state) {
+    const s = state && typeof state === 'object' ? state : {};
+
+    T.filters.role = ROLES.includes(s.role) ? s.role : '';
+    T.filters.from = isDay(s.from);
+    T.filters.to = isDay(s.to);
+    T.filters.thread = '';
+    T.filters.project = '';
+
+    runSearch();
 }
 
 /**
@@ -745,6 +795,11 @@ export function paint() {
     }
 
     focusRename(host);
+    /* Prekreslenie práve zahodilo riadok s fokusom. `restoreCursor()` ho vráti
+       LEN keď ho naozaj zahodilo (fokus skončil na `body`) — inak by obnova
+       zoznamu vytrhla kurzor z composera. Ohlásený krok, nie observer nad
+       dôsledkom: štvrtá cesta k prekresleniu by observer prekvapila. */
+    restoreCursor();
 }
 
 function busy() {
@@ -752,6 +807,49 @@ function busy() {
 }
 
 /* ---------- prehliadanie ---------- */
+
+/* ---------------------------------------------------------------------------
+   DVE PRÁZDNE CELY MATICE, KTORÉ SÚ ZÁMER — nie zabudnutá práca
+
+   Zmerané 2. 9. 2026 na živých dátach (95 vlákien, `GET /api/console/threads`,
+   `GET /api/console/projects`).
+
+   1 · FILTER NAD PREHLIADANÍM (osi vlákna) — NENASADENÝ.
+
+   Zoznam vlákien nesie zo servera práve `uuid`, `title`, `provider`, `model`,
+   `auto_accept` a `last_message_at`. Z toho má viac než jednu hodnotu jediná
+   os: `model` (67× bez modelu = predvolený, 26× `qwen3:8b`, 2×
+   `qwen3-coder:30b`). `provider` je 95× `ollama`, `auto_accept` 94× `false` —
+   filter s jedinou hodnotou nefiltruje nič, presne ako to zmeral a zapísal
+   `console/threadfilter.js`.
+
+   Tú jednu použiteľnú os sme NENASADILI, a dôvod je v tvare tohto panela, nie
+   v dátach: zoznam je STROM. Vlákna zložiek sa načítavajú až po rozbalení
+   (`T.open`, `loadProjectThreads()`), takže čip „qwen3:8b · 26" by počítal len
+   plochú sekciu „Vlákna" plus tie zložky, ktoré má človek práve otvorené —
+   teda číslo, ktoré s obsahom panela nesúhlasí. Priznať menší počet než realita
+   je ten istý druh tichej lži, ktorý audit našiel na Kontrole
+   (`total ?? items.length`) a v `data-more` Knižnice. Filter nad prehliadaním
+   má teda zmysel až vtedy, keď zoznam vlákien príde plochý alebo keď server
+   pošle počty na zložku — a je to zadanie, nie doťah.
+
+   Os, ktorú tento panel NAOZAJ má, je text — a tú nesie pole hľadania. Hľadá
+   ale v TEXTE SPRÁV, nie v názvoch vlákien (`GET /api/console/search`), a druhé
+   textové pole hneď nad ním by boli dva rovnaké ovládače s rôznym významom.
+
+   2 · GRAF — NENASADENÝ, dáta na to nemajú tvar.
+
+   Nad vláknami neexistuje ani jeden číselný pár. Riadok nesie jediný číselný
+   údaj a je to čas (`last_message_at`), takže „aktivita v čase" by kreslila to
+   isté, čo už nesie poradie zoznamu a popisky „dnes / včera". Počet správ,
+   tokeny ani trvanie zoznam nenesie — tie žijú v `runs` a majú vlastnú
+   obrazovku na `/` (a tam je diera vo grafoch, nie tu). Zásah hľadania nesie
+   `matches`, ale to je počet zásahov jedného dopytu, nie vlastnosť vlákna:
+   graf z neho by opisoval dopyt, ktorý o minútu neplatí.
+
+   Kreslenie grafu z jedného časového stĺpca by teda bola nová plocha
+   s vymysleným obsahom preto, aby bola matica plná — čo kontrakt zakazuje.
+   --------------------------------------------------------------------------- */
 
 function browseView() {
     const frag = document.createDocumentFragment();
@@ -1141,6 +1239,7 @@ function searchView() {
 
     box.append(countsLine(data));
     box.append(filterBar());
+    box.append(savedBar());
 
     const items = Array.isArray(data.items) ? data.items : [];
 
@@ -1303,6 +1402,28 @@ function filterBar() {
         off.addEventListener('click', clearSearchFacets);
         bar.append(off);
     }
+
+    return bar;
+}
+
+/**
+ * Rad uložených kombinácií filtrov (`hades.filters.chat-historia`).
+ *
+ * Prázdny fragment, kým nie je ani jedna uložená kombinácia a ani čo uložiť —
+ * inak by pod filtrami stál prázdny rad s odsadením, teda dieru vidno namiesto
+ * toho, aby nebola.
+ *
+ * Hostiteľ nesie `ct-facets`, nie vlastnú triedu: ten rad má presne to, čo tento
+ * potrebuje (flex, zalomenie, odsadenie od okraja panela) a `.rec-saved` vnútri
+ * si kresbu berie z `mind.css`. Nula nových CSS pravidiel — a `chat.css` tento
+ * agent nevlastní.
+ */
+function savedBar() {
+    if (!hasChatSaved()) return document.createDocumentFragment();
+
+    const bar = el('div', 'ct-facets');
+
+    renderChatSaved(bar);
 
     return bar;
 }

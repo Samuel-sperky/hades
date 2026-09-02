@@ -492,7 +492,7 @@
        zdržiaval, takže sú to rolové tokeny s vlastným stropom, nie ďalšie stupne.
 
        PREČO tokeny a nie čísla, hoci sú to značkové hodnoty: --dur-chart-draw
-       žije na DVOCH miestach naraz (obtiahnutie prstenca znaku `bc-draw`
+       žije na DVOCH miestach naraz (dokreslenie hrán znaku `bc-draw`
        a segmentov donutu `.seg-draw`) a raz by sa tie dva zápisy rozišli.
        Manuál ich §3 menuje ako tokeny; do 28. 8. 2026 tu stálo, že tokenmi
        zámerne nie sú — to rozhodnutie je prepísané, nie opomenuté.
@@ -594,10 +594,11 @@
          `--row-pad-x` je dnes 10 px a `--gutter` 20 px, takže o časti tejto
          medziškály rozhoduje úloha HUSTOTY (vydrôtovať `--row-pad-*`,
          `--card-pad*`, `--section-gap` do pravidiel), nie táto.
-       - `margin: -4px 0 0 -4px` na `.empty-loading .load-mark::after` — nie je to
-         odstup, ale vycentrovanie: je to polovica `width`/`height` toho istého
-         prvku (8 px), teda `-50%` napísané v px. Väzba vedie na rozmer bodky,
-         nie na škálu, a token by ju rozpojil.
+       - 32 px na `.empty-loading .load-mark` — je to ROZMER kresby, nie odstup;
+         škála odstupov o veľkosti znaku nerozhoduje. (Do 1. 9. 2026 tu stálo
+         `margin: -4px 0 0 -4px` na `::after` toho istého prvku ako vycentrovanie
+         zlatej bodky. Ten pseudoprvok už neexistuje: nosičom je inline SVG a
+         jadro je v ňom kruh, takže sa centruje geometriou viewBoxu.)
        - `padding-inline: clamp(16px, 2vw, 48px)` na `#screens` — vzorec, ktorého
          horná hranica je mimo škály; pomenovať polovicu vzorca nič nevysvetlí.
        - `--chart-gap: 3px`, `--fs-h1: 28px` — každé z nich má vlastný komentár,
@@ -621,10 +622,13 @@
        medzi škálami naozaj líšia.
 
        Čo hustota ZÁMERNE nemení:
-       - --control-h / --field-h (zásahové ciele). Kompaktné zobrazenie nesmie
-         zmenšiť klikaciu plochu — to je nález prístupnosti, ktorý ide proti
-         hustote, a prístupnosť vyhráva. Tokeny existujú preto, aby 32/34 px
-         mali jedno pomenované miesto (audit menoval konflikt 32 vs 30 px).
+       - --control-h / --field-h / --target-min (zásahové ciele). Kompaktné
+         zobrazenie nesmie zmenšiť klikaciu plochu — to je nález prístupnosti,
+         ktorý ide proti hustote, a prístupnosť vyhráva. Tokeny existujú preto,
+         aby 32/34/24 px mali jedno pomenované miesto (audit menoval konflikt
+         32 vs 30 px). `--target-min` je z tej trojice dno, nie rozmer, a preto
+         ho hustota nesmie zmenšiť ANI o pixel: pod 24 px prestane platiť
+         WCAG 2.5.8 a to nie je vec vkusu.
        - typografickú škálu a --lh-* (to je R7/R3, iná úloha) — hustota je
          priestor, nie veľkosť písma. Keby menila oboje, nedalo by sa merať,
          čo z posunu spôsobil ktorý prepínač. */
@@ -677,6 +681,54 @@
        rytmus (34px), aby text nesedel na ráme. */
     --control-h: 32px;
     --field-h: 34px;
+    /* PODLAHA ZÁSAHOVEJ PLOCHY (WCAG 2.5.8, AA) — tretie číslo tejto trojice
+       a jediné, ktoré NIE JE rozmer ovládača. Je to DNO pre prvky, ktoré sa
+       z `--control-h` vedome odhlásili, pretože ich kresba je textová alebo
+       chrómová a 32 px by ju rozhodilo. Tie prvky mali do 2. 9. 2026
+       `min-height: auto`, teda ŽIADNE dno, a päť obrazoviek to v jednej vlne
+       nezávisle namerali ako prekročené. Zmerané VÝŠKY samotných prvkov pri
+       1440 px (nie ich obalu; `elementFromPoint` v strede trafí u všetkých sám
+       seba, takže nič nie je zakryté — sú len malé):
+
+         .focus-more      13,2 px      .rec-sort         21,2 px
+         .focus-act       19,2 px      .rec-saved-apply  21,2 px
+         .chart-period    19,2 px      .rec-saved-add    23,2 px
+         .focus-open      21,6 px      .rec-saved-del    28,0 px  (vyhovuje)
+
+       NIE JE TO MOBILNÉ PRAVIDLO a nie je to 44 px. Obe veci boli navrhnuté
+       a obe sú odmietnuté vedome:
+         · 44 px je WCAG 2.5.5 (AAA). Latka, ktorú si tento súbor sám deklaroval,
+           je 2.5.8 (AA) = 24 px — stojí to v komentári pri `button.switch` aj
+           pri `.rec-sort`, ale ani jedno miesto ju nevynucovalo. Zdvih na 44 px
+           je teda POSUN LATKY, nie oprava, a je to rozhodnutie o hustote každej
+           tabuľky, ktorú vlna 1 redizajnu stavala zámerne. Navyše sa nedá
+           spraviť bez škody: v stĺpci akcií Kontroly majú tri ozbrojené
+           tlačidlá pri 44 px potrebu 44+44+82 + 2 medzery + 2×8 paddingu
+           = 194 px proti 172 px, ktoré cela na mobile dostáva — potvrdzovací
+           text „Preskočiť?" by sa odsekol presne v okamihu, keď ho človek musí
+           prečítať. (Lišta uložených filtrov 44 px NA DOTYKU dostáva, pretože
+           v riadku tabuľky nestojí — pravidlo je v mobilnom bloku na konci.)
+         · Mobilná hranica by bola nepravdivá: tie prvky nemajú 19 px len na
+           telefóne, majú ich aj na 1440 px. Chyba prístupnosti sa nezmenšuje
+           tým, že je pri nej myš.
+
+       DNO SA PÍŠE NA MIESTO `auto`, NIE ako druhé pravidlo nad tými istými
+       selektormi. Druhé pravidlo by bolo osem dvojíc „selektor + vlastnosť"
+       s inou hodnotou, teda presne to, čo `w4dup.js` počíta ako A a čo tento
+       súbor stlačil na nulu. Preto je token a osem hodnôt, nie osem prepisov.
+
+       DISPLAY SA NIKDE NEDOPISUJE: bare `button` je `display: inline-flex;
+       align-items: center; justify-content: center` (RESET & BASE), takže
+       `min-height` obsah vycentruje sám — zmerané na všetkých ôsmich. Návrhy,
+       ktoré k `min-height` pridávali `display: inline-flex; align-items:
+       center`, by len zopakovali základ. `.focus-open` má `align-items:
+       baseline` zámerne (názov a oblasť sedia na jednej účiare) a rast o 2,4 px
+       ich neposúva.
+
+       ŠÍRKA sa nedopĺňa: najužší nameraný prvok je `.rec-sort` s 29,7 px a jeho
+       šírku dáva text hlavičky stĺpca, takže `min-width` by v `table-layout:
+       fixed` pretlačil stĺpec. */
+    --target-min: 24px;
     /* Priehľadnosť VYPNUTÉHO prvku — jedno miesto pre celú appku (nález D22).
        Do 24. 8. 2026 mala appka tri hodnoty (.45 `button:disabled`, .5 `.pc-btn`,
        .45 `#send`) a štvrtá, `.72` na `.perm-card.denied`, sa medzi ne strácala.
@@ -1417,79 +1469,154 @@ button.close:active { background: var(--accent-soft); }
 #brand-core.asleep svg { opacity: .5; }
 
 /* ZROD ZNAKU — intro animácia (rozhodnutie 15 v docs/BRAND-HADES.md).
-   Prstenec sa obtiahne, potom sa rozsvieti jadro: znak vzniká v tom poradí, v akom
-   ho číta veta značky — najprv hranica vedomia, potom jadro.
+   PREKRESLENÉ 1. 9. 2026 do jazyka NOVÉHO znaku: znak už nie je prstenec s jadrom,
+   ale sieť — 3 nesýte uzly (amethyst) + 1 sýte jadro (zlato) spojené hranami.
+   Poradie zrodu je poradím, v akom sieť čítame: UZLY sa zjavia → HRANY sa medzi
+   nimi dokreslia → JADRO sa presýti. Prvé dve fázy hovoria „miesta existujú a sú
+   spojené", tretia „jedno z nich je vedomie".
 
    Beží RAZ (`1 both`), nie v slučke. Appka je SPA, takže „raz pri načítaní" naozaj
    znamená raz za sedenie a nie pri každom prekliku obrazovky — presne ako to žiada
-   manuál. Dýchanie (`core-pulse`) beží na tlačidle a hýbe `filter`om, takže sa
-   s týmto nebije: intro animuje deti SVG, nie tlačidlo.
+   manuál. Dýchanie (`core-pulse`) beží na tlačidle a hýbe `filter`om na ňom, takže
+   sa s týmto nebije: intro animuje deti SVG, nie tlačidlo.
 
-   Obvod prstenca je 2π × 8,64 = 54,29 — keď zmeníš polomer znaku, prepočítaj aj
-   dasharray, inak sa obtiahnutie zastaví v polovici alebo skočí.
+   MENÁ TRIED — čo sa preložilo a čo nie:
+     `bc-core`  ZOSTÁVA. Jadro je jadro, rola aj meno sedia.
+     `bc-draw`  ZOSTÁVA ako meno keyframu. Je to ten istý pohyb „čiara sa kreslí"
+                a ten istý token `--dur-chart-draw`, len ho teraz nesie N krátkych
+                úsečiek namiesto jednej kružnice.
+     `bc-ring`  ZANIKÁ a NEDÁ sa preložiť: „ring" pomenúva TVAR (jedna zavretá
+                krivka), ktorý v novom znaku neexistuje. Ponechať ho pre hranu by
+                znamenalo, že meno triedy tvrdí o kresbe niečo nepravdivé — a na
+                plátne `mutedColor()`/prstence to slovo drží iný, živý význam
+                (uzol grafu je prstenec). Nové mená sú `bc-edge` a `bc-node`.
 
-   JEDNA hodnota stačí na všetky nosiče znaku, aj keď sa kreslia v rôznej veľkosti
-   (24 px v hlavičkách, 32 px v doku, 44 px v prázdnych stavoch). `stroke-dasharray` aj
-   `transform-origin` sa v SVG merajú v UŽÍVATEĽSKÝCH jednotkách viewBoxu, nie
-   v obrazovkových px, a všetkých päť nosičov má `viewBox="0 0 24 24"` s `r="8.64"`.
-   Zmerané 31. 8. 2026: `getTotalLength()` dá na 24 px aj 44 px znaku rovnakých
-   53,94 (Chrome aproximuje kružnicu bezierom, preto nie presných 54,29), kým
-   `getBoundingClientRect().width` sa líši 17,28 vs 31,68 px. Druhá hodnota
-   dasharray by teda nebola presnejšia, ale rozbitá.
+   SELEKTOR JE `.bc-mark`, NIE ŠESŤ ENUMEROVANÝCH NOSIČOV. Do 1. 9. 2026 tu stál
+   zoznam `#brand-core, #back-to-graph, .empty-sigil, #chat-home, .ce-mark,
+   .charon-sigil` × `.bc-ring`/`.bc-core`, teda 12 selektorov v troch blokoch — a
+   dvakrát sa ukázalo, že to je pasca: /chat mal markup a nemal selektor (znak sa
+   tam nezrodil), dok znak nemal vôbec. Nový kontrakt je opačný: **znak nesie
+   `class="bc-mark"` na svojom `<svg>`** a zrod platí všade, kde ten atribút je.
+   Siedmy nosič sa tým už nemôže zabudnúť. Cena je, že markup musí tú triedu
+   naozaj mať — preto ju vynúť MERANÍM, nie prečítaním blade. A meraj `.bc-node`
+   / `.bc-core`, NIE `.bc-edge`: do 2. 9. 2026 tu stálo „`animationName` na
+   `.bc-edge` nesmie byť `none` na žiadnej z troch plôch" a to je dnes
+   NESPLNITEĽNÉ tvrdenie. Pravidlo redukcie v `mind/util.js` posiela 24 px nosiče
+   (`#brand-core`, `#back-to-graph`, `#chat-home`) na stupeň `'core'`, ktorý
+   kreslí JEDEN uzol a NULA hrán — zmerané na `#brand-core`: `.bc-node` 1,
+   `.bc-core` 1, `.bc-edge` 0. Fáza „hrany sa dokreslia" tam teda nemá čo kresliť
+   a zrod je dvojfázový (uzol sa zjaví → jadro sa presýti). Kto by tú starú vetu
+   vzal doslovne, „opravil" by funkčný stav. Živé kritérium: `animationName` je
+   `bc-node-in` na `.bc-node` a `bc-core-in` na `.bc-core` na každom nosiči,
+   a `bc-draw` na `.bc-edge` tam, kde hrany vôbec sú (32 px a viac — zmerané na
+   `.charon-sigil`).
 
-   Nosičov je ŠESŤ a znak sa má zrodiť na KAŽDEJ ploche: `#brand-core` (/),
-   `#back-to-graph` a `.empty-sigil` (/console — druhý kreslí `console/render.js`,
-   preto trieda a nie id), `#chat-home` a `.ce-mark` (/chat) a `.charon-sigil`
-   (prázdny dok nad grafom, kreslí `mind/charon.js`). Do 31. 8. 2026 tu stáli len
-   prvé dva, takže /chat dával `animationName: none` a znak tam nevznikal — hoci
-   markup triedy `bc-ring`/`bc-core` už niesol; dok znak nemal VÔBEC do 1. 9. 2026.
-   Keď pridáš siedmy nosič, pridaj ho do OBOCH zoznamov nižšie aj do podlahy
-   `prefers-reduced-motion`; selektor bez podlahy je znak, ktorý sa človeku
-   s vypnutým pohybom nikdy nedokreslí. Rozmer si každý nosič drží u seba
-   (`.charon-sigil` v charon.css, `.empty-sigil` v console.css) — tu je len pohyb.
+   `stroke-dasharray: 100` NIE JE obvod ničoho — je to `pathLength="100"`, ktoré
+   nesie KAŽDÁ hrana v markupe. Hrany majú rôznu dĺžku (6,10–8,13 jednotky),
+   takže jediná konštanta odvodená z geometrie by platila pre jednu z nich a ostatné
+   by sa zastavili v polovici alebo skočili. `pathLength` premení dash matematiku na
+   percentá dĺžky, takže JEDNA hodnota platí pre všetky hrany, všetky veľkosti
+   (24 / 32 / 44 px) aj pre akúkoľvek budúcu zmenu geometrie.
+   Zmerané 1. 9. 2026, kalibrované z oboch strán na úsečke dĺžky 20 jednotiek
+   vykreslenej na 120 px (dasharray 100, dashoffset 90 → má byť nakreslených 10 %):
+     s `pathLength="100"`  → nakreslených 9–10 px z 100 px stopy  ✅ (= 10 %)
+     bez `pathLength`      → nakreslených 49 px                    ❌ (= 50 %)
+   A `getTotalLength()` `pathLength` IGNORUJE (vracia geometrickú dĺžku), takže sa
+   ním táto vlastnosť overiť NEDÁ — preto ten pixelový odpočet.
+   ČÍSLA SÚ Z REPA, nie z prototypu (prepísané 2. 9. 2026 — dovtedy tu stálo
+   „7,3–10,4" a „8,161 pre hranu jadro–uzol 1", teda geometria, ktorú `SIGIL_NET`
+   v `public/js/mind/util.js` nikdy nemala). Zmerané `getTotalLength()` na živom
+   `.charon-sigil`: 6,496 / 6,202 / 6,100 (tri hrany jadro–satelit) a 8,127
+   (chorda 2↔3). Tie hodnoty sú v JEDNOTKÁCH viewBoxu (24), nie v px, a preto sa
+   s veľkosťou nosiča NEMENIA — na tom istom 32 px nosiči má prvá hrana
+   `getTotalLength()` 6,496, ale `getBoundingClientRect()` 7,64 × 4,08 px
+   (= 5,73 × 3,06 jednotky × 32/24). Jednotky viewBoxu sú teda naozaj to, čo dash
+   číta. Overiť to na troch veľkostiach naraz sa už NEDÁ — pod 32 px kreslí znak
+   stupeň `'core'` bez hrán (viď vyššie).
 
-   Trvanie obtiahnutia je --dur-chart-draw, ten istý token, aký nesú segmenty
-   donutu: je to jeden pohyb „čiara sa kreslí" na dvoch miestach, a kým to boli
-   dve čísla 760 ms, čakalo sa len na to, ktoré z nich sa zmení samo. */
-#brand-core .bc-ring,
-#back-to-graph .bc-ring,
-.empty-sigil .bc-ring,
-#chat-home .bc-ring,
-.ce-mark .bc-ring,
-.charon-sigil .bc-ring {
-    stroke-dasharray: 54.29;
-    stroke-dashoffset: 54.29;
-    /* od 12 hodín, nie od 3 — inak znak vzniká zboku */
-    transform: rotate(-90deg);
-    transform-origin: 12px 12px;
-    animation: bc-draw var(--dur-chart-draw) var(--ease) 100ms 1 both;
+   `transform-box: fill-box` MUSÍ byť na každom uzle. V SVG je počiatočná hodnota
+   `view-box` a `transform-origin` `0 0`, takže `scale()` na kruhu bez tejto dvojice
+   škáluje okolo rohu viewBoxu a uzol prilieta z ľava-hora namiesto toho, aby vyrástol
+   na mieste. S `fill-box` + `center` je počiatok stredom vlastného bounding boxu
+   kruhu — teda to isté pre každý uzol BEZ toho, aby CSS poznalo jeho `cx`/`cy`.
+   Zmerané (2. 9. 2026, dnešné polomery zo `SIGIL_NET`; do toho dňa tu stálo
+   `2.4px 2.4px` pre `r="2.4"`, čo je polomer, ktorý v repe nemá pôvod):
+     plná sieť (32 px `.charon-sigil`)  satelit `r 1,9` → `1.9px 1.9px`
+                                        jadro   `r 2,6` → `2.6px 2.6px`
+     stupeň `'core'` (24 px hlavičky)   uzol    `r 8,64` → `8.64px 8.64px`
+                                        jadro   `r 3,6` → `3.6px 3.6px`
+   Mechanika je teda tá istá pre všetky štyri a práve o tom to pravidlo je:
+   hodnota je vždy `r r`, čísla sa líšia podľa stupňa redukcie a CSS o nich
+   nemusí vedieť. Preto sa tu ani jedno z nich nezadrôtováva.
+
+   ČASOVANIE (celý zrod 1200 ms, o 120 ms dlhší než predošlý prstencový):
+     uzly   0 / 80 / 160 ms, 220 ms každý   → posledný dosadne na 380 ms
+     hrany  200 ms, --dur-chart-draw        → dokreslené na 960 ms
+     jadro  160 ms, 1040 ms                 → presýtené na 1200 ms
+   Hrany sa NEstupňujú medzi sebou (kreslia sa naraz): pri štyroch hranách by
+   stupňovanie po 90 ms pridalo 270 ms na koniec a zrod by presiahol 1,5 s.
+   Na 24 px nosičoch je zrod DVOJFÁZOVÝ (uzol → jadro), pretože prostredná fáza
+   nemá čo kresliť — celkové trvanie 1200 ms tým ale zostáva, drží ho jadro.
+
+   ZLATÚ SI VYBERÁ NOSIČ, NIE VÝKRES, a je to jediné miesto, kde sa dva nosiče
+   toho istého výkresu legitímne líšia farbou: značkové nosiče `--brand-gold`,
+   spinner `--gold-text` (téme prispôsobená zlatá pre malé plné prvky — dôvod je
+   pri pravidle `.load-mark`), rail `currentColor`. Rozhoduje o tom `opts.gold`
+   v `sigilMarkup()`, takže CSS tu farbu jadra NESMIE napísať ani prepísať —
+   prepisom by sa všetky tri nosiče zliali do jedného a spinner by na svetlej
+   téme spadol pod prah kontrastu. */
+.bc-mark .bc-node {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: bc-node-in 220ms var(--ease) 1 both;
 }
-#brand-core .bc-core,
-#back-to-graph .bc-core,
-.empty-sigil .bc-core,
-#chat-home .bc-core,
-.ce-mark .bc-core,
-.charon-sigil .bc-core {
-    transform-origin: 12px 12px;
-    animation: bc-core-in 460ms var(--ease) 620ms 1 both;
+.bc-mark .bc-nodes .bc-node:nth-child(2) { animation-delay: 80ms; }
+.bc-mark .bc-nodes .bc-node:nth-child(3) { animation-delay: 160ms; }
+.bc-mark .bc-edge {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    animation: bc-draw var(--dur-chart-draw) var(--ease) 200ms 1 both;
+}
+/* Jadro má JEDNU animáciu na celé svoje trvanie, nie dve zložené (zjavenie +
+   presýtenie). Dve by sa bili o `transform`: tá druhá by so `both` počas svojho
+   oneskorenia vypĺňala dozadu vlastný `from` a prepísala dosadnutie prvej.
+   Preto jedna dlhá dráha s plató v strede: jadro sa zjaví ako BLEDÝ uzol spolu
+   s ostatnými, počká, kým sa dokreslia hrany, a až potom sa presýti — čo je
+   presne tá veta, ktorú má znak povedať.
+   `filter: saturate()` a nie výmena farby: zlatá je v markupe (`var(--brand-gold)`,
+   resp. `currentColor` v raile) a CSS ju nesmie duplikovať ani ju nesmie napísať
+   surovo. `saturate(.08)` z nej urobí svetlú šedú v ľubovoľnej téme — teda uzol,
+   ktorý ešte nie je jadrom — bez jediného hexa mimo `:root`. */
+.bc-mark .bc-core {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: bc-core-in 1040ms var(--ease) 160ms 1 both;
+}
+@keyframes bc-node-in {
+    from { opacity: 0; transform: scale(.4); }
+    70%  { opacity: 1; transform: scale(1.12); }
+    to   { opacity: 1; transform: scale(1); }
 }
 @keyframes bc-draw {
-    from { stroke-dashoffset: 54.29; }
+    from { stroke-dashoffset: 100; }
     to   { stroke-dashoffset: 0; }
 }
 @keyframes bc-core-in {
-    from { transform: scale(0); }
-    62%  { transform: scale(1.14); }
-    to   { transform: scale(1); }
+    0%   { opacity: 0; transform: scale(.4);  filter: saturate(.08); }
+    21%  { opacity: 1; transform: scale(1);   filter: saturate(.08); }
+    62%  { opacity: 1; transform: scale(1);   filter: saturate(.08); }
+    84%  { opacity: 1; transform: scale(1.16); filter: saturate(1); }
+    to   { opacity: 1; transform: scale(1);   filter: saturate(1); }
 }
-/* Bez pohybu je znak rovno hotový — nie neviditeľný. */
+/* Bez pohybu je znak rovno hotový — nie neviditeľný, nie polonakreslený.
+   Pomenovaný blok tu ZOSTÁVA, hoci plošná podlaha (.01 ms + delay 0 + `both`)
+   by dnes sama dosadla na koncové snímky všetkých troch keyframov: `animation:
+   none` je silnejšie tvrdenie, ktoré prežije aj to, keby niektorý keyframe
+   v budúcnosti prestal končiť v pokojnom stave. `stroke-dashoffset: 0` je nutné —
+   základná hodnota hrany je 100, teda NENAKRESLENÁ. */
 @media (prefers-reduced-motion: reduce) {
-    #brand-core .bc-ring, #back-to-graph .bc-ring, .empty-sigil .bc-ring,
-    #chat-home .bc-ring, .ce-mark .bc-ring, .charon-sigil .bc-ring,
-    #brand-core .bc-core, #back-to-graph .bc-core, .empty-sigil .bc-core,
-    #chat-home .bc-core, .ce-mark .bc-core, .charon-sigil .bc-core { animation: none; }
-    #brand-core .bc-ring, #back-to-graph .bc-ring, .empty-sigil .bc-ring,
-    #chat-home .bc-ring, .ce-mark .bc-ring, .charon-sigil .bc-ring { stroke-dashoffset: 0; }
+    .bc-mark .bc-node, .bc-mark .bc-edge, .bc-mark .bc-core { animation: none; }
+    .bc-mark .bc-edge { stroke-dashoffset: 0; }
 }
 
 /* PROČ MÁ `core-pulse` JEDINÝ SELEKTOR `#brand-core` (rozhodnuté 1. 9. 2026).
@@ -1805,8 +1932,10 @@ body[data-rail="slim"] #rail #rail-collapse { align-self: center; }
    značka žije v raile (#brand-core). Hlavička nesie len kontext a nástroje, takže
    breadcrumb začína na ľavej hrane a v 44 px sa už netlačí s dvojriadkovým lockupom.
    Koruna sa zo chrómu stiahla celá: dva rôzne znaky tej istej značky (koruna +
-   súosé kruhy) boli o jeden viac. Vrátiť ju znamená doplniť <span class="bc-mark">♛
-   do #brand-core a dať mu font-stack so „Segoe UI Symbol" (Geist glyf U+265B nemá). */
+   znak siete) boli o jeden viac. Vrátiť ju znamená doplniť do #brand-core vlastný
+   <span> s font-stackom so „Segoe UI Symbol" (Geist glyf U+265B nemá) — a NIE
+   s triedou `bc-mark`, ako tu stálo do 1. 9. 2026: `.bc-mark` je odteraz ŽIVÝ
+   selektor zrodu znaku a nesie ho `<svg>` samotného znaku. */
 #breadcrumb {
     display: flex; align-items: center; gap: 2px;
     min-width: 0;
@@ -3055,32 +3184,67 @@ pre.code code {
    neexistuje a kresba `.ic` nemá ako padnúť na text. */
 .msg-error .ic { color: var(--danger); flex: none; }
 
-/* Načítavanie — súosé kruhy značky (amethystový prstenec + zlaté jadro), ktoré dýchajú.
-   Ten istý motív nesie favicon aj #brand-core, takže čakanie vyzerá ako Hades,
-   nie ako generický spinner. Prstenec drží 3:1 voči papieru v oboch témach,
-   pretože je kreslený tokenmi akcentu, nie priehľadnou šedou. */
-/* Prstenec je JEDINÝ nositeľ informácie „pracujem", takže musí sám držať WCAG
-   1.4.11 (3:1) — preto PLNÝ --accent, nie --border-accent (ten je poloprehľadný
-   dekoratívny okraj: na tmavej dával 2,7:1 a na svetlej 1,5:1).
+/* Načítavanie — ZNAK ZNAČKY, ktorý dýcha. Ten istý motív nesie favicon aj
+   #brand-core, takže čakanie vyzerá ako Hades, nie ako generický spinner.
+
+   NOSIČ SA 1. 9. 2026 ZMENIL Z CSS `border` NA INLINE SVG a nebolo to voliteľné:
+   kruh sa dá nakresliť rámom, zhluk uzlov spojených hranami nie. Dovtedy tu stál
+   `border: 2px solid var(--accent)` + `::after` so zlatou bodkou (súosé kruhy).
+   Ten `::after` je preto ZMAZANÝ — jadro je odteraz kruh v SVG, nie pseudoprvok.
+   (Dôsledok pre poznámku o surových px v bloku ŠKÁLA ODSTUPOV: `margin: -4px 0 0
+   -4px` už neexistuje, tam je to prepísané.)
+
+   PREČO TU ZROD (`bc-*`) NEBEŽÍ: `.load-mark` ZÁMERNE nenesie `class="bc-mark"`
+   na svojom `<svg>`. Zrod je jednorazová veta „znak vzniká", kým toto je stav
+   „pracujem" a montuje sa opakovane pri každom načítaní zoznamu — kreslenie hrán
+   nanovo pri každom refreshi by z jednorazovej dramaturgie urobilo druhý,
+   konkurenčný pohyb nad tým istým znakom. Praktický dôsledok, ktorý treba poznať:
+   `stroke-dasharray`/`-dashoffset` hrán je deklarované LEN v `.bc-mark .bc-edge`,
+   takže hrany sú tu od začiatku CELÉ nakreslené. Keby sa tá deklarácia niekedy
+   presunula na samotné `.bc-edge`, spinner by zostal bez hrán — over `strokeDasharray`
+   na `.load-mark .bc-edge` (musí byť `none`).
+
+   KONTRAST: znak je JEDINÝ nositeľ informácie „pracujem", takže musí sám držať
+   WCAG 1.4.11 (3:1) — preto markup farbí hrany a uzly PLNÝM `var(--accent)`,
+   nie `--border-accent` (poloprehľadný dekoratívny okraj: na tmavej dával 2,7:1,
+   na svetlej 1,5:1), a jadro `var(--gold-text)` (téme prispôsobená zlatá pre malé
+   plné prvky — na svetlej #8a6417, na tmavej #d8b878).
    Animácia hýbe LEN mierkou. Keď dýchala aj opacitou, v spodnej fáze (.55) klesol
    kontrast na svetlej téme na 2,3:1 — teda prvok padal pod prah v polovici cyklu. */
 .empty.empty-loading .load-mark {
-    position: relative;
-    width: 26px; height: 26px;
-    border-radius: var(--r-pill);
-    border: 2px solid var(--accent);
+    display: block;
+    /* 32 px, nie 26 ako prstencová verzia — a je to PRAVIDLO REDUKCIE, nie kozmetika.
+       Pod ~32 px sa hrany siete zlejú do kaše, preto tam znak spadá na jediný uzol
+       (stupeň `'core'` v `mind/util.js`). Spinner ale MUSÍ zostať sieťou: je to
+       značkový znak v prázdnom stave, kde je jediným obsahom plochy, a jeden zlatý
+       bod by bol generický spinner — presne to, čomu sa tu vyhýbame. Zväčšenie
+       o 6 px je lacnejšie než druhá, zjednodušená kresba znaku pre jeden nosič.
+
+       ČÍSLA PREPÍSANÉ 2. 9. 2026 — sú odvodené zo `SIGIL_NET` (viewBox 24, teda
+       26 px = ×1,0833 a 32 px = ×1,3333), nie z prototypu. Do toho dňa tu stálo
+       „hrana 1,52 / uzol 5,0 px" pri 26 px a „1,87 / 6,1 px" pri 32 px; ani jedno
+       z tých štyroch čísel z dnešného výkresu nevychádza.
+         obrys hrany         1,10 jednotky → 1,19 px (26) · 1,47 px (32)
+         vonkajší ⌀ uzla     5,00 jednotky → 5,42 px (26) · 6,67 px (32)
+                             (r 1,9 + polovica obrysu 1,2)
+         VIDITEĽNÝ ÚSEK hrany medzi jadrom (plný kotúč r 2,6) a prstencom
+         satelitu: 3,90 jednotky → 4,23 px (26) · 5,20 px (32)
+       Rozhodnutie „32, nie 26" NESTOJÍ na tom, že by medzera pri 26 px zmizla —
+       nezmizne. Stojí na tej poslednej dvojici: 4,23 px stubla už znak ako sieť
+       nečíta, 5,20 px áno. Prah sa určuje zo stubli, nie z obrysov — to je ten
+       istý argument, aký je rozpísaný po stupňoch v `SIGIL_NET`. */
+    width: 32px; height: 32px;
     /* Slučka → --ease-pulse (symetrická). Tichú verziu nesie pomenované pravidlo
-       nižšie: prstenec stojí na PLNEJ mierke, nie v spodnej fáze. */
+       nižšie: znak stojí na PLNEJ mierke, nie v spodnej fáze. */
     animation: load-breathe var(--dur-pulse) var(--ease-pulse) infinite;
 }
-.empty.empty-loading .load-mark::after {
-    content: "";
-    position: absolute;
-    left: 50%; top: 50%;
-    width: 8px; height: 8px;
-    margin: -4px 0 0 -4px;
-    border-radius: var(--r-pill);
-    background: var(--gold-text);
+/* Rozmer drží CSS, nie volajúci: rozmer napísaný do SVG atribútov v JS je pre
+   CSSOM neviditeľný a žiadna asercia ho nenájde (ten istý dôvod, prečo kostra
+   `.skel*` nedostáva rozmery z JS). `display: block` zabíja spodný baseline odstup
+   inline SVG, ktorý by dýchanie posúval mimo stred. */
+.empty.empty-loading .load-mark > svg {
+    display: block;
+    width: 100%; height: 100%;
 }
 /* ---------------------------------------------------------------------------
    ZROD GRAFOV — dáta sa kreslia, nie zjavujú.
@@ -3093,7 +3257,7 @@ pre.code code {
    Trvania sú ZNAČKOVÉ, ale od 28. 8. 2026 sú to TOKENY (--dur-chart-draw /
    -curve / -reveal, deklarované v :root za rebríkom rozhrania) — nie preto, aby
    sa schovali, ale preto, že 760 ms tu žilo na dvoch miestach naraz (`bc-draw`
-   znaku a `.seg-draw` donutu) a raz by sa tie dva zápisy rozišli. Rebrík
+   hrán znaku a `.seg-draw` donutu) a raz by sa tie dva zápisy rozišli. Rebrík
    rozhrania končí na --dur-ambient (400 ms); graf smie ísť ďalej, lebo kreslí
    dej, ale nad ~900 ms by zdržiaval, a to je aj celý strop tejto trojice.
 
@@ -5129,8 +5293,10 @@ button.hero-action:hover { border-color: var(--accent); }
    živými selektormi v zdieľaných zoznamoch (tá istá situácia ako `.dtl-*` po
    prechode Rozhodnutí) a plošné mazanie by tam trafilo funkčný kód. Je to
    samostatná úloha; kým nepríde, platí tento nadpis.
-   Kresba klávesového kurzora žije pri `.rec-row.selected`, nie tu — riadok
-   tabuľky ľavý border nemá, takže `.queue-item.selected` sa preň nedal použiť. */
+   Kresba klávesového kurzora žije pri `.rec-row.selected` / `.record.selected`,
+   nie tu — riadok tabuľky ľavý border nemá, takže `.queue-item.selected` sa preň
+   nedal použiť a karta Denníka ho naopak má, takže si tam jednu deklaráciu
+   dopisuje. */
 /* Fluidná mriežka — fronta je krátka, ale karta je text + 3 akcie: v jednom stĺpci
    na 2560 zostalo ~1800px prázdna. Poradie j/k ide po DOM = po riadkoch mriežky.
    520px je nižšie než u Denníka: text fronty sa ZALAMUJE (2 riadky), takže stĺpec
@@ -6082,25 +6248,23 @@ button, input, select {
 /* ===========================================================================
    GRAFY — SPOLOČNÝ JAZYK (kontrakt 28. 8. 2026, F1–F5)
    ===========================================================================
-   `.chart-axis` (vyššie) bola prvá spoločná časť; toto je zvyšok. Mriežka,
-   legenda, tooltip, prázdny stav a prepínač období majú JEDNU kresbu pre
-   všetky typy grafov. Nový graf ich použije — vlastná os alebo vlastná legenda
-   je presne to, čím sa tri grafy pred vlnou 1 rozišli.
+   `.chart-axis` (vyššie) bola prvá spoločná časť; toto je zvyšok. Legenda,
+   tooltip, prázdny stav a prepínač období majú JEDNU kresbu pre všetky typy
+   grafov. Nový graf ich použije — vlastná os alebo vlastná legenda je presne
+   to, čím sa tri grafy pred vlnou 1 rozišli.
 
-   TOKEN MRIEŽKY je vlastný (`--chart-grid`), nie `--line-soft`: mriežka je
-   súčasť jazyka grafov a musí sa dať posunúť bez toho, aby sa pohli rámy
-   kariet. Hodnota je dnes zhodná — a to je v poriadku, alias s dôvodom nie je
-   duplicita.
+   MRIEŽKA TU UŽ NIE JE (2. 9. 2026). Token `--chart-grid` a pravidlo
+   `.chart-grid line` odišli spolu s `gridLines()` a `scatter()` z
+   `public/js/charts.js` — `scatter` bol jediný volajúci `gridLines()` a
+   `gridLines()` jediný pisateľ skupiny `.chart-grid`, takže po ich odchode tu
+   zostávalo pravidlo, ktoré nemá čo obarviť. To je práve tá chyba o úroveň
+   nižšie, ktorú `charts.js` menuje pri osi: mŕtve pravidlo „čakajúce na niečo"
+   vyzerá ako podpora, ktorá tu je, a nie je. Keď sa mriežka vráti, vráti sa
+   SPOLU s volajúcim a token s ňou — postup je zapísaný v `charts.js` nad
+   miestom, kde `gridLines()` stála.
    =========================================================================== */
 :root {
-    --chart-grid: var(--line-soft);
     --chart-tip-bg: var(--surface-2);
-}
-
-.chart-grid line {
-    stroke: var(--chart-grid);
-    stroke-width: 1;
-    vector-effect: non-scaling-stroke;
 }
 
 /* ---- legenda ---- */
@@ -6165,7 +6329,7 @@ button, input, select {
     font-size: var(--fs-chart-axis);
     line-height: var(--lh-control);
     padding: 2px var(--sp-1);
-    min-height: auto;
+    min-height: var(--target-min); /* dno zásahovej plochy — dôvod pri tokene */
     color: var(--muted);
     background: none;
     border: 1px solid transparent;
@@ -6198,19 +6362,6 @@ button, input, select {
 .spark[data-trend="down"] .spark-line { stroke: var(--trend-down); }
 .spark[data-trend="down"] .spark-area { fill: var(--trend-down); }
 
-/* ---- scatter ----
-   Body sú PRSTENCE (fill: none), nie disky — priehľadnosť nesie diera, takže sa
-   prekrývajúce body dajú prečítať. Je to to isté pravidlo ako na plátne grafu. */
-.scatter-dots { opacity: 0; transition: opacity var(--dur-chart-reveal) var(--ease); }
-.scatter-dots.in { opacity: 1; }
-.scatter-dot {
-    fill: none;
-    stroke: var(--accent);
-    stroke-width: 1.5;
-    vector-effect: non-scaling-stroke;
-}
-.scatter-dot:hover { stroke: var(--accent-ink); stroke-width: 2.5; }
-
 /* ---- toky ----
    Stuha je OBTAH s veľkou hrúbkou, nie výplň: hrúbka = hodnota, takže sa
    nemusí počítať obrys plochy a stuha drží šírku aj pri zmene viewBoxu. */
@@ -6230,7 +6381,7 @@ button, input, select {
    istom rámci — tu preto stačí PRIPNÚŤ konečný stav pre prípad, že by trieda
    `.in` z nejakého dôvodu nepribehla (napr. rAF stojí mimo Grafu). */
 @media (prefers-reduced-motion: reduce) {
-    .scatter-dots, .flow-ribbons { opacity: 1 !important; transition: none !important; }
+    .flow-ribbons { opacity: 1 !important; transition: none !important; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -6297,7 +6448,7 @@ button, input, select {
     flex: 1 1 auto; min-width: 0;
     display: flex; align-items: baseline; gap: var(--sp-1);
     background: none; border: none; padding: 0;
-    min-height: auto;
+    min-height: var(--target-min); /* dno zásahovej plochy — dôvod pri tokene */
     text-align: left;
     color: var(--text);
 }
@@ -6318,7 +6469,7 @@ button, input, select {
     font-size: var(--fs-caption);
     line-height: var(--lh-control);
     padding: 2px var(--sp-1);
-    min-height: auto;
+    min-height: var(--target-min); /* dno zásahovej plochy — dôvod pri tokene */
 }
 
 /* „a ďalších N v Kontrole" je pokračovanie zoznamu, nie tlačidlo akcie —
@@ -6328,7 +6479,7 @@ button, input, select {
     margin-top: var(--sp-0h);
     padding: 0;
     background: none; border: none;
-    min-height: auto;
+    min-height: var(--target-min); /* dno zásahovej plochy — dôvod pri tokene */
     font-size: var(--fs-caption);
     color: var(--accent-ink);
     text-decoration: underline;
@@ -6397,12 +6548,16 @@ button, input, select {
 }
 
 /* Triediace tlačidlo je celá hlavička, nie ikona v nej: cieľ 24 × 24 px je na
-   dotyku minimum a text stĺpca je najprirodzenejšie miesto, kam človek klikne. */
+   dotyku minimum a text stĺpca je najprirodzenejšie miesto, kam človek klikne.
+   Do 2. 9. 2026 to bola len VETA — `min-height: auto` nechávalo tlačidlo na
+   21,2 px (zmerané), teda pod cieľom, ktorý tento komentár menuje. Dnes ho
+   drží `--target-min`. Výška je z ôsmich prvkov jediná, ktorú token dvíha;
+   šírku dáva text hlavičky a najužšia nameraná je 29,7 px. */
 .rec-sort {
     display: inline-flex; align-items: center; gap: 2px;
     background: none; border: none;
     padding: var(--sp-0) 0;
-    min-height: auto;
+    min-height: var(--target-min); /* dno zásahovej plochy — dôvod pri tokene */
     font: inherit;
     color: inherit;
     letter-spacing: inherit;
@@ -6445,24 +6600,46 @@ button, input, select {
 .rec-row { cursor: pointer; transition: background var(--dur-fast) var(--ease); }
 .rec-row:hover { background: var(--accent-hover-wash); }
 .rec-row:focus-visible { background: var(--accent-focus-wash); }
-/* KLÁVESOVÝ KURZOR fronty Kontroly (j/k) je iný stav než „otvorené v paneli"
-   (`aria-current`): fronta sa dá prechádzať aj so zavretým panelom, a výber sa
+/* KLÁVESOVÝ KURZOR zoznamu (j/k) je iný stav než „otvorené v paneli"
+   (`aria-current`): zoznam sa dá prechádzať aj so zavretým panelom, výber sa
    presúva aj myšou (`mousedown` bez fokusu) a prežíva prekreslenie tabuľky —
    takže `:focus-visible` sám ho neunesie (zmerané: riadok s `.selected` a bez
    fokusu bol vizuálne identický s bežným, `background: rgba(0,0,0,0)`,
    `box-shadow: none`).
    Kresba musí byť ODLÍŠITEĽNÁ od `aria-current`, ktorý nesie akcentový pruh
    vľavo — preto tu len podfarbenie a vnútorný obrys, bez pruhu. Vzor je pôvodné
-   `.queue-item.selected`, len bez `border-left-color` (riadok tabuľky ľavý
-   border nemá).
-   Selektor je zámerne 0-3-0, teda silnejší než `.rec-row:hover` (0-2-0): hover
-   nad INÝM riadkom nesmie kurzor prebiť. `aria-current` (0-2-0) je slabší, takže
-   otvorený a zároveň vybraný riadok vyzerá ako vybraný — a to je správne
-   poradie, kurzor je to, čo sa hýbe. */
-.rec-table .rec-row.selected {
+   `.queue-item.selected`.
+
+   DVA NOSIČE, JEDNA KRESBA (`.record` pribudol 2. 9. 2026 s klávesovou obsluhou
+   Denníka). Denník je kartový zámerne, takže tú istú vetu musí povedať karta aj
+   riadok tabuľky — a keby si každá obrazovka nakreslila svoj kurzor, rozišli by
+   sa presne ako tri grafy pred vlnou 1. Zmerané pred touto zmenou: `.record` +
+   `.selected` mal proti bežnej karte IDENTICKÉ `background`, `box-shadow`,
+   `border-left-color`, `outline-color` aj `outline-width` (5/5 zhodných), teda
+   nová schopnosť bola neviditeľná.
+   Rozdiel medzi nosičmi je jedna deklarácia a je pod pravidlom: karta ľavý
+   border MÁ (v pokoji `--border-accent`, na hover `--accent`), riadok tabuľky
+   nie.
+
+   ŠPECIFICITA: `.rec-table .rec-row.selected` je 0-3-0 a `.record.selected`
+   0-2-0, teda každý o stupeň nad hoverom svojho nosiča (`.rec-row:hover` 0-2-0,
+   `.record:hover` 0-1-1). Hover nad INÝM prvkom tak nesmie kurzor prebiť.
+   `aria-current` (0-2-0) je pri tabuľke slabší, takže otvorený a zároveň vybraný
+   riadok vyzerá ako vybraný — a to je správne poradie, kurzor je to, čo sa hýbe.
+
+   POZOR PRI OVEROVANÍ: `.rec-row` aj `.record` nesú `transition` na `background`,
+   a v Browser pane stojí časová os dokumentu (zmerané: `document.timeline
+   .currentTime` = 0 a nehýbe sa, `requestAnimationFrame` nevystrelí, CSSTransition
+   ostane na `currentTime: 0` v stave `running`). Pridanie triedy a odmeranie
+   `backgroundColor` preto vráti `rgba(0,0,0,0)` aj pri úplne funkčnom pravidle.
+   Meraj na ČERSTVOM prvku (`document.createElement` + trieda), alebo si vlastnosť
+   najprv odpoj (`el.style.transition = 'none'`) — obe dávajú správnu hodnotu. */
+.rec-table .rec-row.selected,
+.record.selected {
     background: var(--accent-softer);
     box-shadow: inset 0 0 0 1px var(--border-accent);
 }
+.record.selected { border-left-color: var(--accent); }
 /* Otvorený riadok nesie stav v `aria-current`, takže CSS ho číta ODTIAĽ —
    jeden nosič stavu a je aj v strome prístupnosti. Trieda `.open` zostáva pre
    prípad, že by riadok mal byť zvýraznený bez toho, aby bol „aktuálny". */
@@ -6510,7 +6687,7 @@ button, input, select {
 .rec-saved-del,
 .rec-saved-add {
     background: none; border: none;
-    min-height: auto;
+    min-height: var(--target-min); /* dno zásahovej plochy — dôvod pri tokene */
     font-size: var(--fs-caption);
     color: var(--text-secondary);
     padding: var(--sp-0) var(--sp-1);
@@ -6525,6 +6702,16 @@ button, input, select {
     border-radius: var(--r-pill);
 }
 .rec-saved-add:disabled { opacity: var(--disabled-opacity); }
+/* Odstup lišty od obsahu si dopisuje LEN Kontrola. Knižnica, Runy, Rozhodnutia
+   a Denník majú lištu v mriežke, ktorá odstup dáva sama (`#library-body` &co.
+   nesú `gap`, zmerané 24 px), kým `#kontrola-saved` stojí medzi radom čipov
+   a tabuľkou bez mriežky — zmerané 30 px vysoká lišta a 0 px k `#kontrola-list`,
+   takže sa naň nalepí.
+   `:not(:empty)` je PODMIENKA, nie kozmetika: `renderSavedFilters()` vkladá
+   `.rec-saved` VŽDY, aj keď v ňom nie je čo kresliť — vtedy má 0 detí, matchuje
+   `:empty` a je 0 px vysoká (obe zmerané), takže plošný margin by vyrobil mŕtvu
+   medzeru na obrazovke bez uložených filtrov. */
+#kontrola-saved .rec-saved:not(:empty) { margin-bottom: var(--sp-2); }
 
 /* Rad odznakov v detaile uzla (origin + istota + čakanie na overenie + značky).
    Kresba je TU a nie v JS: certainty.js element len vytvorí a pomenuje. Inline
@@ -6789,11 +6976,19 @@ button, input, select {
            KONTEXT, nie identifikátor riadka.
          `col-type`, `col-created_at` (Kontrola) — typ je aj v paneli, čas nesie
            na telefóne najmenej.
+         `col-saved_at` (Smernica, 2. 9. 2026) — ten istý dôvod ako pri
+           `col-created_at`, ale zaplatený druhýkrát: `col-path` je už skrytý
+           a `width: auto !important` nižšie delí šírku rovnomerne medzi
+           VIDITEĽNÉ stĺpce, takže „Kedy" dostalo 155,5 px z 311 px a hlavný
+           identifikátor riadka presne polovicu — presne tá situácia, pre ktorú
+           tam `col-path` pribudol. V režime „Upraviť zoznam" je to horšie:
+           title 103,7 / Kedy 103,7 / kôš 103,7 (zmerané). Plný dátum nesie
+           panel detailu („Uložené 2. septembra 2026 o 09:59").
        Nič sa nestráca: celý záznam vrátane všetkých týchto polí otvára ten istý
        pravý panel. */
     .rec-table :is(th, td):is(.col-model, .col-tool_profile, .col-tokens_out,
                               .col-origin, .col-path, .col-tags, .col-certainty,
-                              .col-type, .col-created_at) {
+                              .col-type, .col-created_at, .col-saved_at) {
         display: none;
     }
 
@@ -6835,6 +7030,38 @@ button, input, select {
        Poradie ZA pravidlom `width: auto !important` je nutné — obe majú
        `!important` a rovnakú špecificitu, takže vyhráva to neskoršie. */
     .rec-table :is(th, td).col-akcie { width: 10.75rem !important; }
+
+    /* LIŠTA ULOŽENÝCH FILTROV DOSTÁVA NA DOTYKU 44 px, tabuľka nie — a ten
+       rozdiel je celý argument. Pilulka uloženého pohľadu NIE JE v riadku
+       tabuľky: stojí ako samostatná lišta nad ňou (`#kontrola-saved`,
+       `#library-saved`, …), takže sa dá zväčšiť bez toho, aby narástol riadok.
+       Zdvih na `.rec-sort` alebo `.act-*` by naopak prerobil hustotu každej
+       tabuľky a v stĺpci akcií by odsekol potvrdzovací text (počty sú pri
+       tokene `--target-min`).
+       Základ 24 px nesie komponent z toho tokenu; toto je druhý stupeň pre prst.
+
+       PRECEDENS, KTORÝ TO NASTAVIL, NIE JE MÔJ: `/chat` (`#chat-threads`,
+       31. 8. 2026) a `/console` (`#thread-filters`, 2. 9. 2026) zdvihli presne
+       tento trojlístok na presne 44 px, oba scopovane, a oba pri tom nechali
+       zapísané, že rozhodnutie pre plochy s tabuľkami patrí vlastníkovi
+       `mind.css`. Toto je ten rozhodnutý zvyšok — nie nová hodnota.
+       Dôsledok, ktorý treba poznať: `mind.css` sa načítava na všetkých troch
+       plochách, takže pod 768 px platí toto pravidlo aj na `/console` a `/chat`.
+       Ich vlastné zdvihy tam nezaniknú (ID je silnejšie) a nesú TÚ ISTÚ hodnotu,
+       takže sa nič nerozchádza — sú pod 768 px len nadbytočné. Nad 768 px až
+       900 px drží cieľ výhradne ich pravidlo, preto sa nedajú zmazať.
+
+       Hranica je 768 px, tá istá ako pre skrývanie stĺpcov a `.focus-row`
+       vyššie. Nie 900 px z konzoly: štvrtý zdroj pravdy o tom, čo je „mobil",
+       je horší než o 132 px iná hranica pre jeden komponent.
+       `min-height` samo stačí — `button` je v RESET & BASE `inline-flex` +
+       `align-items: center` (zmerané `display: flex` po blokifikácii vo flexovej
+       lište), takže text zostane na strede a `.rec-saved-chip` narastie s ním.
+       Krížik potrebuje aj šírku: má 28 px a slovo v ňom nie je. */
+    .rec-saved :is(.rec-saved-apply, .rec-saved-del, .rec-saved-add) {
+        min-height: 44px;
+    }
+    .rec-saved .rec-saved-del { min-width: 44px; }
 }
 
 /* „Viac" je piaty stĺpec spodnej lišty a NIKDE INDE neexistuje. Skrýva ho CSS

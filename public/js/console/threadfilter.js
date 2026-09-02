@@ -1,46 +1,64 @@
 /* ===========================================================================
    Charón — FILTER A ULOŽENÉ FILTRE nad zoznamom vlákien.
 
-   Prečo tu a nie importom z `mind/table.js`: mechanika uložených filtrov na `/`
-   (`loadSavedFilters` / `saveFilter` / `removeFilter` / `renderSavedFilters`)
-   žije v `mind/table.js`, ktorý importuje `mind/util.js`, a ten ťahá `anim.js`,
-   `edges.js`, `filters.js`, `render.js`, `sim.js`, `state.js`, `theme.js` — teda
-   CELÝ GRAF vrátane d3, ktoré na `/console` nie je načítané. Ten istý dôvod, pre
-   ktorý má konzola vlastný `http.js` a nie `mind/http.js`. Presun tých štyroch
-   funkcií do `public/js/shared/` je správna oprava, ale `shared/` tento agent
-   nevlastní — je to nahlásené v reporte a tento súbor potom zmizne.
+   MECHANIKA ULOŽENÝCH FILTROV JE ODTERAZ ZDIEĽANÁ (2. 9. 2026). Do 31. 8. 2026
+   tu žila DRUHÁ KÓPIA (`FKEY` / `loadSaved` / `save` / `remove` + vlastná kresba
+   `.rec-saved`), pretože importovať tie štyri funkcie z `mind/table.js` NEJDE —
+   `table.js` ťahá `mind/util.js` a s ním celý graf vrátane d3, ktoré na
+   `/console` nie je načítané. Medzitým ich paralelná session presunula do
+   `public/js/shared/filters.js` (zámerne LEAF, jediný import je `icons.js`),
+   takže druhá kópia už nemá dôvod existovať a je zmazaná. Kľúč
+   `hades.filters.console-vlakna` sa NEMENIL — inak by ľuďom zmizli uložené
+   filtre.
+
+   Zostáva tu presne to, čo je konzolové: čo sa filtruje (`F`), sentinel pre
+   „vlákno bez vlastného modelu", počty čipov a zápis do adresy.
 
    KRESBA JE POŽIČANÁ, nie napísaná: `.dtl-filter` (rad filtrov), `.chip` /
    `.chip.active` / `.chip-n` (prepínač) a `.rec-saved*` (uložené kombinácie) sú
    všetky v `mind.css`, ktorý sa na `/console` načítava prvý. Ani jeden riadok
    CSS tu nevzniká.
 
-   ČO SA FILTRUJE A PREČO PRÁVE TO — zmerané na živých dátach 31. 8. 2026
-   (`GET /api/console/threads`, 94 vlákien):
-     · model:   3 hodnoty (66× bez modelu = predvolený, 26× qwen3:8b,
+   ČO SA FILTRUJE A PREČO PRÁVE TO — zmerané na živých dátach 31. 8. 2026,
+   preverené 2. 9. 2026 (`GET /api/console/threads`, 95 vlákien):
+     · model:   3 hodnoty (67× bez modelu = predvolený, 26× qwen3:8b,
                 2× qwen3-coder:30b) → filter má čo deliť, nasadený je
-     · provider: 1 hodnota (94× ollama) → filter s jedinou hodnotou nefiltruje
+     · provider: 1 hodnota (95× ollama) → filter s jedinou hodnotou nefiltruje
                 nič, NENASADENÝ
-     · auto_accept: 1 z 94 → prepínač, ktorý zo zoznamu urobí jeden riadok,
+     · auto_accept: 1 z 95 → prepínač, ktorý zo zoznamu urobí jeden riadok,
                 NENASADENÝ (a hodnota vlákna sa dá zmeniť v hlavičke, takže by
                 filter ukazoval na stav, ktorý človek práve prepína)
 
    ULOŽENÉ FILTRE ŽIJÚ V `localStorage`, nie v DB — filter je pohľad na dáta, nie
-   dáta. Kľúč `hades.filters.<obrazovka>` je ten istý menný priestor ako na `/`
-   (Runy a Rozhodnutia), takže konzola si s nimi nevidí do filtrov a slovník
-   kľúčov zostáva jeden.
+   dáta. Menný priestor je ten istý slovník ako na `/` (Runy, Rozhodnutia,
+   Denník), takže konzola si s nimi nevidí do filtrov.
+
+   FILTER JE V ADRESE (2. 9. 2026). `q` je spoločný kľúč slovníka
+   `mind/urlstate.js` (na ploche je najviac jedno voľné hľadanie — tu je to
+   `#thread-find`), `cm` je konzolový model. `urlstate.js` je ZÁMERNE leaf modul
+   nad `URLSearchParams` bez jediného importu, takže ho `/console` môže použiť
+   rovnako ako `/chat` (`chat/threads.js`) — graf sa tým nestiahne. Zápis je
+   `replace`: filter nie je navigácia (rozhodnutie 10).
    =========================================================================== */
 
 import { el } from './dom.js';
-import { iconSvg } from '../shared/icons.js';
+import { loadSavedFilters, renderSavedFilters } from '../shared/filters.js';
+import { urlValue, writeUrl } from '../mind/urlstate.js';
 
-const FKEY = 'hades.filters.console-vlakna';
+/** Menný priestor uložených filtrov. Kľúč je `hades.filters.` + toto. */
+const NS = 'console-vlakna';
 
 /* Značka pre „vlákno bez vlastného modelu". Prázdny reťazec sa nedá použiť — je
    to zároveň hodnota „bez filtra", a tie dva stavy hovoria opak. Sentinel začína
    znakom NUL (ten istý trik ako zástupné znaky v `shared/markdown.js`): meno
    modelu ho obsahovať nemôže, takže sa nedá „prehovoriť" cez dáta zo servera. */
 const NO_MODEL = '\u0000default';
+
+/* Do adresy NUL ísť nemôže (`URLSearchParams` ho zakóduje na `%00` a odkaz je
+   neprečítateľný), takže v URL má sentinel vlastnú podobu. Vlnovka je bezpečná
+   z toho istého dôvodu ako NUL v pamäti: meno ollama modelu má tvar
+   `menovka[:tag]` a `~` v ňom nie je. */
+const NO_MODEL_URL = '~default';
 
 /* Stav filtra je JEDEN objekt a nie dve premenné: uložený filter musí vedieť
    obnoviť oboje naraz, a dva zdroje by dovolili polovičný stav, ktorý sa nedá
@@ -51,8 +69,39 @@ export function threadFilter() {
     return F;
 }
 
+/* ---------- adresa ----------
+
+   Do adresy ide KĽÚČ filtra, nie jeho vyhodnotenie: hľadanie je klientské nad
+   už načítanými vláknami, takže dopyt na server sa nemení. Default (prázdno) sa
+   vynecháva — čistý stav je `/console/<uuid>` bez query stringu. */
+
+function pushFilterUrl() {
+    writeUrl({
+        q: F.q || null,
+        cm: F.model === '' ? null : (F.model === NO_MODEL ? NO_MODEL_URL : F.model),
+    });
+}
+
+/**
+ * Boot: URL → stav. Volá sa RAZ pred prvým vykreslením zoznamu.
+ *
+ * Návratová hodnota je hodnota pre `#thread-find` — políčko je druhé zobrazenie
+ * tej istej pravdy a bez nej by filter platil, ale políčko by tvrdilo niečo iné.
+ * Nezapisuje sa nič: čo prišlo z odkazu, už v adrese je, a `replaceState` bez
+ * zmeny hodnoty by len prepísal adresu sám sebou.
+ */
+export function applyThreadFilterFromUrl() {
+    F.q = urlValue('q') || '';
+
+    const model = urlValue('cm');
+    F.model = model == null ? '' : (model === NO_MODEL_URL ? NO_MODEL : model);
+
+    return F.q;
+}
+
 export function setThreadQuery(value) {
     F.q = String(value ?? '').trim();
+    pushFilterUrl();
 }
 
 /** Porovnanie bez diakritiky — kto hľadá „zaznam", má nájsť aj „záznam". */
@@ -78,47 +127,7 @@ export function threadFilterActive() {
 export function clearThreadFilter() {
     F.q = '';
     F.model = '';
-}
-
-/* ---------- uložené filtre ---------- */
-
-/* Uloženie je bezpečné aj keď je úložisko zamknuté (privátne okno, blokované
-   site data): funkcie vtedy len nič neurobia a appka beží ďalej. */
-export function loadSaved() {
-    try {
-        const raw = localStorage.getItem(FKEY);
-        const list = raw ? JSON.parse(raw) : [];
-
-        return Array.isArray(list) ? list : [];
-    } catch { return []; }
-}
-
-/** Rovnaké meno PREPÍŠE — dva „qwen3:8b" v zozname sú pasca, nie voľba. */
-function save(name, state) {
-    const list = loadSaved().filter((f) => f.name !== name);
-
-    list.push({ name, state });
-
-    try { localStorage.setItem(FKEY, JSON.stringify(list.slice(-12))); } catch { /* nevadí */ }
-}
-
-function remove(name) {
-    try { localStorage.setItem(FKEY, JSON.stringify(loadSaved().filter((f) => f.name !== name))); } catch { /* nevadí */ }
-}
-
-/* MENO SI FILTER NESIE SÁM — natívny `prompt()` by bol jediné modálne okno
-   v celej appke, a meno vymyslené z obsahu je presnejšie než meno napísané rukou
-   o týždeň neskôr. Ten istý vzor a to isté zdôvodnenie ako `renderSavedFilters()`
-   na `/`. */
-function currentName() {
-    const bits = [];
-
-    if (F.model === NO_MODEL) bits.push('predvolený model');
-    else if (F.model !== '') bits.push(F.model);
-
-    if (F.q !== '') bits.push(`„${F.q}"`);
-
-    return bits.join(' · ');
+    pushFilterUrl();
 }
 
 /* ---------- kresba ---------- */
@@ -149,6 +158,21 @@ function chip(label, count, active, on) {
     return btn;
 }
 
+/* MENO SI FILTER NESIE SÁM — natívny `prompt()` by bol jediné modálne okno
+   v celej appke, a meno vymyslené z obsahu je presnejšie než meno napísané rukou
+   o týždeň neskôr. Ten istý vzor a to isté zdôvodnenie ako `renderSavedFilters()`
+   na `/`; odteraz je to naozaj tá istá funkcia. */
+function currentFilter() {
+    const bits = [];
+
+    if (F.model === NO_MODEL) bits.push('predvolený model');
+    else if (F.model !== '') bits.push(F.model);
+
+    if (F.q !== '') bits.push(`„${F.q}"`);
+
+    return { name: bits.join(' · '), state: { q: F.q, model: F.model } };
+}
+
 /**
  * Vykreslí rad filtrov aj lištu uložených kombinácií do `container`.
  * `onChange` je prekreslenie zoznamu — filter sám o riadkoch nič nevie.
@@ -171,6 +195,7 @@ export function renderThreadFilters(container, threads, onChange) {
 
         row.append(chip('Všetky', (threads || []).length, F.model === '', () => {
             F.model = '';
+            pushFilterUrl();
             onChange?.();
         }));
 
@@ -179,6 +204,7 @@ export function renderThreadFilters(container, threads, onChange) {
                 // Klik na už zapnutý čip filter VYPÍNA — inak je jediná cesta späť
                 // „Všetky", teda dva kliky za jedno prepnutie.
                 F.model = F.model === key ? '' : key;
+                pushFilterUrl();
                 onChange?.();
             }));
         });
@@ -186,61 +212,39 @@ export function renderThreadFilters(container, threads, onChange) {
         container.append(row);
     }
 
-    const list = loadSaved();
-    const name = threadFilterActive() ? currentName() : '';
+    /* Lišta uložených filtrov je VLASTNÉ DIEŤA, nie ten istý prvok: zdieľaná
+       `renderSavedFilters()` si svoj kontejner vyprázdňuje (a pri mazaní chipu
+       sa do neho prekresľuje sama), takže spoločný prvok by pri prvom zmazaní
+       zmietol rad čipov modelu nad ním.
 
-    if (!list.length && name === '') return;
+       Kreslí sa len keď je čo kresliť: prázdna `.rec-saved` je flex kontejner
+       s `gap`, teda prázdny riadok v 260 px paneli, o ktorý je zoznam nižší. */
+    if (!loadSavedFilters(NS).length && !threadFilterActive()) return;
 
-    const saved = el('div', 'rec-saved');
+    const saved = el('div');
+    container.append(saved);
 
-    list.forEach((f) => {
-        const pill = el('span', 'rec-saved-chip');
+    renderSavedFilters(saved, NS, {
+        current: () => {
+            const cur = currentFilter();
 
-        const apply = el('button', 'rec-saved-apply', f.name);
-        apply.type = 'button';
-        apply.addEventListener('click', () => {
-            F.q = String(f.state?.q ?? '');
-            F.model = String(f.state?.model ?? '');
+            return cur.name ? cur : null;
+        },
+        onApply: (state) => {
+            F.q = String(state?.q ?? '');
+            F.model = String(state?.model ?? '');
             // Textové pole je druhé zobrazenie tej istej hodnoty — bez tohto by
             // filter platil, ale políčko by tvrdilo niečo iné.
             const find = document.getElementById('thread-find');
             if (find) find.value = F.q;
+            pushFilterUrl();
             onChange?.();
-        });
-
-        const del = el('button', 'rec-saved-del');
-        del.type = 'button';
-        del.setAttribute('aria-label', `Zmazať filter ${f.name}`);
-        const x = iconSvg('x');
-        if (x) { x.setAttribute('aria-hidden', 'true'); del.append(x); }
-        del.addEventListener('click', () => {
-            remove(f.name);
-            renderThreadFilters(container, threads, onChange);
-        });
-
-        pill.append(apply, del);
-        saved.append(pill);
+        },
     });
-
-    /* „Uložiť" je vidieť LEN keď je čo uložiť: prázdny filter je „všetko", teda
-       stav bez filtra, a uložiť sa nedá zmysluplne. Rovnaké meno prepíše staré,
-       takže uloženie je idempotentné a tlačidlo to priznáva. */
-    if (name !== '') {
-        const exists = list.some((f) => f.name === name);
-        const add = el('button', 'rec-saved-add', exists ? 'Filter je uložený' : `Uložiť: ${name}`);
-        add.type = 'button';
-        add.disabled = exists;
-        add.addEventListener('click', () => {
-            save(name, { q: F.q, model: F.model });
-            renderThreadFilters(container, threads, onChange);
-        });
-        saved.append(add);
-    }
-
-    container.append(saved);
 }
 
-/** Sú v paneli vôbec nejaké filtračné prvky? Používa to prázdny stav zoznamu. */
-export function hasFilterChips(threads) {
-    return modelBuckets(threads).length > 1 || loadSaved().length > 0;
-}
+/* `hasFilterChips()` tu bolo do 2. 9. 2026 a je ZMAZANÉ, nie presunuté: jeho
+   docblock tvrdil „používa to prázdny stav zoznamu", ale `filterEmptyNote()`
+   v `main.js` si vetu skládá z `threadFilter()` a túto funkciu nevolal nikto
+   (grep nad `public/js` a `resources/views` dal jediný zásah — jej vlastnú
+   definíciu). Mŕtvy export s nepravdivým komentárom je horší než chýbajúci. */

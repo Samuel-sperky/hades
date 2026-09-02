@@ -32,12 +32,18 @@ import { wireComposer, paintSend } from './composer.js';
 import { wireSlash, closePalette } from './slash.js';
 import { wireModels, paintModels } from './models.js';
 import { emptyBox, errorBox } from './empty.js';
-import { wirePalette } from './palette.js';
-import { setRail, wireRail } from './rail.js';
-import { wireReader } from './reader.js';
+import { paletteOpen, wirePalette } from './palette.js';
+import { railOpen, railOverlay, setRail, wireRail } from './rail.js';
+import { readerOpen, wireReader } from './reader.js';
+/* Kľúče adresy. `mind/urlstate.js` je jediné miesto v repe, ktoré query string
+   číta aj píše (rozhodnutie 31), a je to ZÁMERNE leaf modul nad
+   `URLSearchParams` bez jediného importu — takže ho `/console` môže použiť
+   rovnako ako `/chat`, bez toho, aby si stiahol graf a d3. */
 import {
-    clearThreadFilter, renderThreadFilters, setThreadQuery, threadFilter, threadPass,
+    applyThreadFilterFromUrl, clearThreadFilter, renderThreadFilters, setThreadQuery, threadFilter,
+    threadFilterActive, threadPass,
 } from './threadfilter.js';
+
 import { iconSwap } from '../shared/icons.js';
 import { iconSvg } from '../shared/icons.js';
 
@@ -120,8 +126,50 @@ export function renderThreadList() {
     }
 
     rows.forEach((t) => list.append(threadRow(t)));
+    list.append(countRow(rows.length));
 
     if (renaming) focusRename(list);
+}
+
+/* POČET JE PRIZNANIE, nie ozdoba — a priznať sa dá len to, čo je pravda.
+
+   `/api/console/threads` posiela `limit(100)` a ŽIADNY celkový počet, takže sú
+   to dva rôzne stavy a nie jeden:
+
+     · pod stropom (zmerané 2. 9. 2026: 95 vlákien) server poslal VŠETKO, takže
+       celok JE známy a je to `C.threads.length`. Bez filtra „všetkých 95",
+       s filtrom „12 z 95" — pomer PO filtri, tak ako to žiada matica.
+     · na strope (100) je celok NEZNÁMY. Vtedy sa číslo netvrdí: veta priznáva
+       rez („zobrazených je 100 najnovších") a nič nesľubuje. To je ten istý
+       zákon ako `moreRow()` v `mind/table.js`, ktorý pri neznámom celku
+       nekreslí „N z M" — lož o počte je horšia než chýbajúci počet.
+
+   Tlačidlo „Ďalších N" tu preto NIE JE a nie je to opomenutie: dotiahnuť sa
+   nedá, kým `/api/console/threads` nemá `offset` ani `total`. Serverová potreba
+   je nahlásená v reporte; kým nie je, je poctivé priznať strop a nepredstierať
+   stránkovanie, ktoré endpoint neponúka.
+
+   Kresba je požičaná (`.rec-more` / `.rec-more-n` v `mind.css`, ktorý sa na
+   `/console` načítava prvý) — ani jeden riadok CSS tu nevzniká. */
+const THREAD_LIMIT = 100;   // zrkadlo `limit(100)` v ConsoleThreadController::index
+
+function countRow(shown) {
+    const loaded = C.threads.length;
+    const box = el('div', 'rec-more');
+
+    if (loaded >= THREAD_LIMIT) {
+        box.append(el('span', 'rec-more-n', threadFilterActive()
+            ? `${shown} zo ${THREAD_LIMIT} najnovších`
+            : `zobrazených je ${THREAD_LIMIT} najnovších`));
+
+        return box;
+    }
+
+    box.append(el('span', 'rec-more-n', threadFilterActive()
+        ? `${shown} z ${loaded}`
+        : (loaded === 1 ? '1 vlákno' : `všetkých ${loaded}`)));
+
+    return box;
 }
 
 function threadRow(t) {
@@ -257,7 +305,10 @@ export async function deleteThread(uuid) {
     if (next) {
         await openThread(next.uuid);
     } else {
-        history.pushState({}, '', '/console');
+        // Query string PREŽIJE navigáciu: filter zoznamu je pohľad na plochu,
+        // nie vlastnosť vlákna, a bez `location.search` by ho každé prepnutie
+        // vlákna ticho zmazalo z adresy (zmerané: `?q=` zmizlo prvým klikom).
+        history.pushState({}, '', '/console' + location.search);
         const title = $('#thread-title');
         if (title) title.textContent = 'Charón';
         const auto = $('#auto-accept');
@@ -481,7 +532,8 @@ export async function openThread(uuid) {
     if (!data) return;
 
     C.thread = data;
-    if (location.pathname !== `/console/${uuid}`) history.pushState({}, '', `/console/${uuid}`);
+    // `location.search` sa nesie ďalej — viď komentár pri `deleteThread()`.
+    if (location.pathname !== `/console/${uuid}`) history.pushState({}, '', `/console/${uuid}${location.search}`);
     $('#thread-title').textContent = data.title;
     $('#auto-accept').checked = !!data.auto_accept;
     renderThreadList();
@@ -534,7 +586,7 @@ export async function newThread(options = {}) {
         // Server práve odpovedal, takže prípadné hlásenie o nenačítanom zozname
         // už neplatí — inak by nad novým vláknom svietila stará chyba.
         listState = 'ready';
-        history.pushState({}, '', `/console/${data.uuid}`);
+        history.pushState({}, '', `/console/${data.uuid}${location.search}`);
         $('#thread-title').textContent = data.title;
         $('#auto-accept').checked = !!data.auto_accept;
         renderThreadList();
@@ -557,6 +609,100 @@ export async function ensureThread() {
     if (C.thread) return C.thread;
 
     return newThread({ blank: false });
+}
+
+/* ---------- klávesový kurzor nad zoznamom vlákien ----------
+
+   KURZOR JE SKUTOČNÝ FOKUS, nie vlastná trieda. `.thread-row.on` už znamená
+   „otvorené vlákno" a druhý, len vizuálny kurzor by hovoril tretiu vec bez toho,
+   aby o nej vedela čítačka. Fokus na `.tr-open` (je to `<button>`) dá naraz
+   štyri veci bez jediného riadku CSS: prsteň z globálneho `:focus-visible`,
+   `Enter`/`Space` = otvoriť z natívneho tlačidla, ohlásenie titulku čítačkou
+   a správne chovanie v pasci fokusu mobilného prekryvu (`rail.js`).
+
+   Ten istý slovník ako fronta Kontroly (`mind/screens/kontrola.js`):
+   `j`/`ArrowDown` dole, `k`/`ArrowUp` hore. `Home`/`End` sú navrch, pretože
+   zoznam má 95 riadkov a skok na konec inak stojí 95 stlačení.
+
+   ŠTYRI BRÁNY, každá zaplatená inde v tejto appke:
+     1. modifikátory — `Ctrl+K` je paleta, `Ctrl+N` nové vlákno;
+     2. písacie pole — `j` v `#prompt` alebo v premenovaní musí napísať „j".
+        Výnimkou je `#thread-find`, ktoré má šípky VLASTNÉ (skok z hľadania do
+        prvého výsledku), a preto tento handler pri ňom mlčí;
+     3. paleta a čítačka — sú modálne a majú vlastné šípky (`palette.js`,
+        `reader.js`); dvaja kurzory naraz sú vždy chyba;
+     4. zatvorený mobilný prekryv — panel je vtedy `inert`, takže `focus()` na
+        riadok v ňom prehliadač ODMIETNE (zmerané v `rail.js`) a klávesa by
+        ticho nerobila nič. Vtedy je poctivejšie kláves nebrať.
+
+   Kurzor sa NEUKLÁDÁ do premennej: zdroj pravdy je `document.activeElement`.
+   Uložený index by po prekreslení zoznamu (beží po každom ťahu) ukazoval na
+   riadok, ktorý už neexistuje. */
+
+function threadOpeners() {
+    return $$('#thread-list .thread-row .tr-open');
+}
+
+function focusThreadAt(list, index) {
+    const target = list[Math.max(0, Math.min(index, list.length - 1))];
+    if (!target) return;
+
+    target.focus();
+    // `nearest` a nie `center`: skákajúci zoznam pod prstom je horší než riadok
+    // pri okraji, ktorý je celý vidieť.
+    target.scrollIntoView({ block: 'nearest' });
+}
+
+function typingIn(node) {
+    if (!node) return false;
+    const tag = node.tagName;
+
+    return tag === 'INPUT' || tag === 'TEXTAREA' || node.isContentEditable;
+}
+
+function wireThreadKeys() {
+    /* Šípka z hľadania do zoznamu. Je to jediné miesto, kde sa kurzor púšťa
+       z písacieho poľa, a preto to nesie handler poľa a nie dokument. */
+    $('#thread-find')?.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown') return;
+
+        const rows = threadOpeners();
+        if (!rows.length) return;
+
+        event.preventDefault();
+        focusThreadAt(rows, 0);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        if (typingIn(event.target)) return;
+        if (paletteOpen() || readerOpen()) return;
+        if (railOverlay() && !railOpen()) return;
+
+        const step = (event.key === 'j' || event.key === 'ArrowDown') ? 1
+            : (event.key === 'k' || event.key === 'ArrowUp') ? -1 : 0;
+
+        const rows = threadOpeners();
+        if (!rows.length) return;
+
+        const at = rows.indexOf(document.activeElement);
+
+        if (step !== 0) {
+            event.preventDefault();
+            // Mimo zoznamu je prvá klávesa VSTUP do zoznamu, nie posun: `j` má
+            // vziať prvý riadok, `k` posledný.
+            focusThreadAt(rows, at < 0 ? (step > 0 ? 0 : rows.length - 1) : at + step);
+
+            return;
+        }
+
+        // Home/End berú len ten, kto v zozname naozaj je — inak by prepisovali
+        // skok na začiatok toku správ.
+        if (at < 0) return;
+
+        if (event.key === 'Home') { event.preventDefault(); focusThreadAt(rows, 0); }
+        if (event.key === 'End') { event.preventDefault(); focusThreadAt(rows, rows.length - 1); }
+    });
 }
 
 function wireShell() {
@@ -605,6 +751,8 @@ function wireShell() {
         }
     });
 
+    wireThreadKeys();
+
     // Tlačidlo späť v prehliadači má prepnúť vlákno, nie nechať na obrazovke cudzí tok.
     window.addEventListener('popstate', () => {
         const uuid = location.pathname.match(/^\/console\/([\w-]+)/)?.[1];
@@ -626,6 +774,14 @@ async function init() {
     wirePalette();
     wireReader();
     closePalette();
+
+    /* ADRESA JE VSTUP, a to PRED prvým vykreslením zoznamu: filter nasadený až
+       po ňom by ukázal celý zoznam a hneď ho prekreslil. Políčko hľadania je
+       druhé zobrazenie tej istej pravdy, preto sa plní z návratovej hodnoty —
+       inak by filter platil a políčko tvrdilo niečo iné. */
+    const find = $('#thread-find');
+    const q = applyThreadFilterFromUrl();
+    if (find && q) find.value = q;
 
     const fromUrl = document.querySelector('meta[name="console-thread"]')?.content || '';
 

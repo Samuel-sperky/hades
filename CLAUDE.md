@@ -174,6 +174,62 @@ bežiacej stránke.
 `font-display: block` pre ikony (nie `swap`): krátky prázdny priestor je lepší než
 blik surových ligatúrových názvov, čo je presne tá porucha, ktorú tu riešime.
 
+### Znak — SIEŤ, nie prstenec (od 1. 9. 2026, Sprint 3)
+
+**Kruhový sigil je preč z appky, nie len z manuálu.** Znak je dnes jadro (plný
+zlatý kotúč) + tri nepravidelne rozmiestnené satelity (amethystové prstence) +
+štyri hrany (tri od jadra, jedna chorda medzi dvoma satelitmi, aby to nebola
+hviezda). Kánon farby a tvaru sa nemenil (amethyst = hrany/uzly, zlato = jediný
+sýty prvok = jadro; uzol = priehľadný prstenec, diera nesie priehľadnosť) — mení
+sa len geometria. Detailná konštrukcia, redukcia po veľkostiach a zoznam nosičov
+sú v `docs/BRAND-HADES.md` §2; toto sú len pasce pre kód.
+
+**Jediný zdroj geometrie pre WEBOVÉ nosiče je `SIGIL_NET` v `public/js/mind/util.js`**
+(exporty `sigilNetMarkup()` / `sigilNetSvg()`, hoistované `export function`, vzor
+identický `iconMarkup()`/`iconSvg()`). ViewBox je vždy 24 — dash aj
+`transform-origin` matematika sa počíta v jednotkách viewBoxu, takže jeden výkres
+platí na 16, 24, 32 aj 44 px bez druhej sady čísel. Volá ho `charon.js` (dok nad
+grafom) a markup v `mind.blade.php` / `console.blade.php` / `chat.blade.php` je
+jeho **ručne prepísaný bajt-na-bajt výstup** (statický blade musí niesť SVG priamo,
+nie čakať na JS výmenu — inak stránka najprv ukáže prázdno). `errors/401.blade.php`
+kreslí tú istú geometriu vlastnými lokálnymi triedami (`edge`/`node`/`core`, nie
+`bc-*`) — je to jediný nosič mimo `bc-mark` kontraktu a je to zámer, nie diera
+(401 je statický dokument, ktorý appka nevydáva cez router).
+
+**TRI NEZÁVISLÉ VÝPOČTY tej istej geometrie existujú súčasne a to je známe
+riziko, nie omyl:** `SIGIL_NET` v `util.js` (web), `net_geometry()` v
+`tools/brand/build-mark.py` (SVG/PNG/ICO assety), a kontrakt tried `.bc-mark` v
+`mind.css` (spína zrod, nekreslí tvar). Predtým (do 28. 8. 2026, kruhový znak) to
+boli tie isté tri cesty a **rozišli sa** — presne preto `hades-sigil-mini.svg`
+vtedy nesúhlasil s master výkresom. Dnes súhlasia (obe strany merané: rovnaké
+pomery `NET_CORE_BOX`, rovnaký `getTotalLength()`), ale nič v kóde to nevynucuje
+— zmenu geometrie treba urobiť na oboch miestach a overiť **meraním na bežiacej
+appke**, nie čítaním jedného zdroja.
+
+**Pravidlo redukcie má PRAH 32 px, nie 64 px ako mal kruh.** Nad 32 px sa kreslí
+plná sieť (4 hrany + 3 satelity + jadro), pod 32 px stupeň `'core'` — a to NIE JE
+sieťový uzol zmenšený, je to bajt na bajt bývalý kruhový znak (prstenec r 8,64 /
+obrys 2,16 + zlaté jadro r 3,6, teda pomery 36/9/15 z `hades-sigil-mini.svg`
+prepočítané do viewBoxu 24). `opts.step: 'core'` v `sigilNetMarkup()`/`sigilNetSvg()`
+prepína medzi nimi; 24 px hlavičkové nosiče (`#brand-core`, `#back-to-graph`,
+`#chat-home`) idú stupňom `'core'`, 32+ px nosiče (`.load-mark`, `.charon-sigil`,
+`.ce-mark`) plnou sieťou. Amethyst musí prežiť do najmenšieho stupňa — zlatý
+kotúč sám by značka nebola.
+
+**`.load-mark` (spinner) prestal byť CSS `border`.** Je to inline `<svg>`
+(`sigilNetMarkup(null, {gold:'var(--gold-text)'})`) v obale, ktorý drží rozmer
+32×32 px a dýchanie (`load-breathe`). Box vyrástol z 26 na 32 px zámerne — pod
+32 px sa medzera medzi satelitom a hranou stráca. Zrod (`bc-mark` spínač) na
+`.load-mark` **zámerne NIE JE**: spinner sa montuje pri každom načítaní zoznamu
+a opakovaná dramaturgia zrodu by s dýchaním kolidovala.
+
+**`pathLength="100"` na KAŽDEJ hrane je podmienka, nie štýl.** Hrany majú rôznu
+geometrickú dĺžku (6,10–8,13 jednotky vo viewBoxe 24) a `stroke-dasharray`/
+`stroke-dashoffset` v CSS sú jedno číslo pre všetky štyri naraz — bez `pathLength`
+by jedna hrana dokreslila a ostatné zamrzli v polovici. `getTotalLength()` v JS
+`pathLength` IGNORUJE (vracia geometrickú dĺžku), takže overiť dash % sa dá len
+pixelovým odpočtom rasterizovanej hrany, nie tou funkciou.
+
 ### CSS
 
 **Značka má vlastný manuál: `docs/BRAND-HADES.md`** — identita, znak, farebná rampa
@@ -337,6 +393,42 @@ naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva r�
 + 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
 hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
+**Podlaha zásahovej plochy je `--target-min: 24px`, nie 44px (Sprint 3, 1. 9. 2026).**
+44 px je WCAG 2.5.5 (AAA); tento súbor si sám deklaruje latku 2.5.8 (AA) = 24 px
+a Sprint 3 ju konečne aj vynútila (osem selektorov, `min-height: auto` nahradené
+tokenom **na mieste**, nie ako sedemnáste pravidlo nad tými istými selektormi —
+to by bola nová dvojica pre `w4dup.js`). Zdvih na 44 px bol Sprintu 3 navrhnutý
+štyrikrát a **odmietnutý**: rozbíja stĺpec akcií Kontroly na mobile (tri tlačidlá
+pri 44 px potrebujú 194 px, cela má 172), a bol by nepravdivo „len mobilný" —
+prvky majú menej než 24 px aj na desktope. **Jediná menovaná výnimka je 44 px**:
+lišta uložených filtrov (`.rec-saved-apply`/`.rec-saved-del`/pilulka) pod 768 px,
+rovnaká hodnota akú si `/chat` a `/console` dali samostatne o pár dní skôr.
+Ak niekedy príde tlak zdvihnúť viac než tento jeden riadok na 44 px, nie je to
+lokálna oprava jedného selektora, ale zmena tokenu — priznaj to ako také.
+
+**Klávesový kurzor tabuliek je JEDEN modul, nie štvrtá kópia (Sprint 3).**
+`public/js/mind/table.js` exportuje `tableRows()`/`tableCursorRow()`/
+`moveTableCursor(root, delta)` a `shortcuts.js` ich volá pre Runy, Rozhodnutia
+a Knižnicu (Kontrola a Denník majú **vlastnú**, staršiu implementáciu a sú
+zámerne nedotknuté — Kontrola má inú sémantiku štartu, Denník nemá `<table>`).
+Kurzor je **stav v DOM** (`.rec-row.selected`), nie premenná — po
+`renderTable()` prekreslení netreba nič dorovnávať. Strážca:
+`listKeysBlocked()` zastaví `j`/`k` keď je fokus v poli hľadania alebo v
+`#rec-panel`. Enter na fokusovanom riadku otvára panel BEZ propagácie do
+skratky grafu (`case 'Enter'` v `shortcuts.js`) — bez `preventDefault`+`return`
+na tomto mieste by jeden stisk Enter súčasne otvoril panel aj prepol filter
+grafu na `node:1` (spiaca chyba, zaplatená týmto sprintom).
+
+**`charts.js` prišiel o `scatter()` (Sprint 3) — je to zmerané rozhodnutie, nie
+diera.** Jediné dáta s tvarom „sila × vek uzla" (`/api/mind`) preťažili plochu
+320×180: 1 223 bodov na graf s plochou pre ~800 odlíšiteľných pozícií (81 %
+bodov nerozoznateľných), 3 669 tooltip listenerov. `gridLines()` odišla s ním
+(bola jej jediná volajúca). Ak sa `scatter` niekedy vráti, vráť ho **s
+volajúcim a s agregáciou** (hexbin/binning), nie v pôvodnom tvare — návrat bez
+oboch je ten istý defekt znova. Aktuálny export `window.HadesCharts`:
+`heatmap, donut, growthLine, sparkline, flows, periodSwitch, emptyChart,
+legend, certColor`.
+
 ## Charón (`/chat`, `/console` a dok nad grafom)
 
 **Tri vstupy, JEDEN beh** (od 25. 8. 2026). Od `/chat` a `/chat/<uuid>` je Charón
@@ -385,6 +477,32 @@ stave, takže by bol pri otváraní sám fokusovo mŕtvy) ani zdvihnutie celej h
 `10`) a `.rail-top` v prekryve `padding-left: 56px`, aby znak neprekryl posunutý
 hamburger. V ceste od `#rail-toggle` po `html` nevytvára stacking context žiadny
 predok, takže poradie súťaží v koreňovom kontexte a `z-index: 30` naozaj vyhrá.
+
+**`GET /api/console/threads` nesie `counts.total`, `offset` a `pinned`/`archived`
+(Sprint 3).** Riadok posiela pripnutie a archiváciu ako **boolean**, DB drží
+timestamp (`pinned_at`/`archived_at`) — poradie pripnutých nesie radenie
+(`CASE WHEN pinned_at IS NULL THEN 1 ELSE 0 END` pred `last_message_at DESC`),
+klient by z holého dátumu nič nekreslil. `PATCH` opakované pripnutie čas
+**neprepisuje** (`$thread->pinned_at ?? now()`) — mutant, ktorý na to zabudne,
+testy chytia (`ConsoleThreadListTest`). **`counts.total` platí len BEZ filtra**:
+je to `count()` nad tým istým rozsahom, aký zoznam vracia (vrátane
+archivovaných, bez podagentov), a hľadanie aj filter modelu sú na `/console`
+aj `/chat` klientské nad načítaným oknom — kto archivované skrýva (`/chat`),
+nesmie `counts.total` použiť ako menovateľ vlastného filtrovaného pohľadu.
+Strop strany je `ThreadController::PAGE = 100` (zrkadlo `THREAD_LIMIT` v
+`console/main.js`); `offset` mimo `0–100000` dá `422`, nesanituje sa.
+
+**URL kľúče doplnené do `DICT` (Sprint 3, 2. 9. 2026): `dng`, `deo`, `dez`, `knk`,
+`knd`, `kok`, `kod`, `smp`, `smk`, `smd`, `cm` — 11 kľúčov, `urlstate.js` DICT má
+teraz 54 riadkov, nie 43.** Toto zatvára presne tú triedu chyby, ktorú tento
+súbor už vymenoval päťkrát (`kno`/`koo`/`smo`/`ruk`/`rud`): obrazovka postaví
+zápis do `writeUrl()` správne, ale `writeUrl()` neznámy kľúč **ticho zahodí**
+(`if (!e) continue`), takže UI funguje a adresa ho nenesie — nič nespadne, nájde
+sa to len meraním `location.search`. Nový pohľadový stav (obdobie, radenie,
+filter modelu…) **musí** dostať riadok v `DICT` v tom istom commite, ktorý ho
+zavádza — inak je to ten istý dlh znova. Enum každého kľúča je odvodený grepom
+nad živým kódom (stĺpce `sortable`, `PERIODS`/`SOURCES` polia), nie zo zadania —
+over to rovnako, ak enum niekedy meníš.
 
 **Podagenti: `spawn_agent` a parkovanie prenášané nahor.** Profil `orchestrator`
 (`mind_recall` + `spawn_agent`, 626 tok proti stropu 680) je jediný, ktorý ten tool
@@ -843,9 +961,9 @@ cudziu farbu (dávalo to falošné 1,01:1 na bielom texte na akcentovej výplni)
 
 ## Testy
 
-`docker compose exec app php artisan test` — **606 testov** (45 preskočených na sqlite,
-stav 1. 9. 2026; +10 oproti staršej báze 596 z paralelnej práce na Denníku a Runoch),
-všetko PHP (backend, MCP,
+`docker compose exec app php artisan test` — **616 testov** (45 preskočených na sqlite,
+stav 2. 9. 2026, Sprint 3; +8 oproti 608 zo Sprintu 2 — nové `ConsoleThreadListTest`
+pre `counts`/`offset`/`pinned`/`archived`), všetko PHP (backend, MCP,
 API). Frontend testy nie sú; UI sa overuje prekliknutím v prehliadači.
 
 **Zelená sada na sqlite NEZNAMENÁ overený recall.** `phpunit.xml` beží na sqlite

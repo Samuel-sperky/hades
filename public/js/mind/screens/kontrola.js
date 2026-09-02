@@ -5,7 +5,7 @@ import { openNodeDetail, openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
 import { closeRecPanel, onRecPanelClose, openRecPanel, recOpenId } from '../recpanel.js';
 import { S } from '../state.js';
-import { ASC, DESC, moreRow, renderTable, sortRows } from '../table.js';
+import { ASC, DESC, moreRow, renderSavedFilters, renderTable, sortRows } from '../table.js';
 import { showToast, showUndoToast } from '../toasts.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, busy, deferSkeleton, esc, getJson, plainBlock, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo, typeName } from '../util.js';
@@ -50,7 +50,20 @@ import { iconMarkup, iconSwap } from '../../shared/icons.js';
    fronty. Nie je to však slepá ulica: istota, typ aj oblasť sa filtrujú NA
    SERVERI, takže „ukáž pasce" sa dá povedať čipom a vtedy je zoradenie nad
    celou množinou (kým `matching <= shown`, čo hlási `moreRow`). Serverový
-   `sort` je zmena mimo tohto súboru. */
+   `sort` je zmena mimo tohto súboru. Radenie IDE DO ADRESY (`kok`/`kod`) — je to
+   pohľad na dáta, takže odkaz na „frontu podľa istoty" musí byť zdieľateľný,
+   presne ako `ruk`/`rud` v Runoch.
+
+   GRAF SA NA KONTROLE ZÁMERNE NEKRESLÍ a je to rozhodnutie, nie prázdne miesto.
+   Fronta má tri číselné osi (`by_type`, `by_certainty`, `areas`) a všetky tri sú
+   UŽ VIDIEŤ — nesú ich filtračné čipy s počtom, ktoré sú navyše OVLÁDANIE, nie
+   obrázok. Donut nad tými istými troma číslami by bol druhá kresba jednej pravdy
+   a klikať by sa v ňom nedalo. Meranie, ktoré tvar na graf má, na tejto obrazovke
+   jedno je — záťaž tried odpadu — a kreslí ho sekcia Hygiena (`.dbar`, šírka
+   z `burden`). `HadesCharts.*` sa preň nepoužíva zámerne: je to jeden vodorovný
+   bar na riadok, nie os s mierkou. Sila × vek uzla (kandidát na `scatter`) patrí
+   nad CELÚ sieť, nie nad frontu: `/api/review/queue` posiela len `needs_review`
+   podmnožinu, takže by graf odpovedal na inú otázku, než akú fronta kladie. */
 
 /* Strop jednej stránky. Musí sedieť s `KontrolaScreen::DEFAULT_LIMIT` — je to
    to isté číslo na dvoch stranách drôtu a nesie ho aj popisok „Ďalších N". */
@@ -62,7 +75,8 @@ const KONTROLA_PAGE = 100;
 const KONTROLA_MAX = 500;
 
 /* Boot z URL (slovník §6): `kot` typ · `koc` istota · `koa` oblasť · `kol` strop ·
-   `koo` otvorený uzol v paneli · `q` hľadanie. Číta sa pri načítaní modulu, teda
+   `koo` otvorený uzol v paneli · `kok`/`kod` radenie tabuľky · `q` hľadanie.
+   Číta sa pri načítaní modulu, teda
    pred prvým dopytom — odkaz tak pošle na server rovno ten filter, ktorý v ňom
    stojí, a nie dvojicu dopytov.
 
@@ -71,12 +85,24 @@ const KONTROLA_MAX = 500;
    odpoveďou a `pruneKontrolaFilters()` nad ňou. Druhá kópia zoznamu tu by sa raz
    rozišla s tou serverovou a filter by sa zhodil za zlý dôvod.
 
-   POZOR — `koo` V SLOVNÍKU `urlstate.js` EŠTE NIE JE. Ten súbor nie je vlastníctvom
-   tejto vlny a `writeUrl()` neznámy kľúč ticho zahodí (`if (!e) continue`), takže
-   panel dnes funguje, ale ADRESU NENESIE. Kód je napísaný tak, aby sa to zapnulo
-   pridaním jedného riadka do `DICT` — nič tu sa pri tom nemení. Dovtedy sa
-   `urlValue('koo')` vracia null a `readUrl().koo` je undefined, čo je presne
-   „panel je zavretý". */
+   `koo` UŽ V SLOVNÍKU JE (`urlstate.js`, pribudlo 31. 8. 2026 spolu s `kno`/`smo`)
+   a je to zmerané: klik na riadok pripíše `&koo=<id>`. Komentár tu do 2. 9. 2026
+   tvrdil, že kľúč chýba — to bolo tvrdenie z čias, keď chýbal, nie stav.
+
+   `kok`/`kod` (radenie) sú posledná dvojica tejto obrazovky, ktorá do slovníka
+   ešte len patrí. Kým tam nie sú, `writeUrl()` ich TICHO ZAHODÍ
+   (`if (!e) continue`): tabuľka sa zoradí, ale adresa to nenesie a `urlValue('kok')`
+   vráti null, čo je presne „predvolené radenie". Zmerané: po kliku na hlavičku
+   Istota má `<th>` `aria-sort="ascending"` a riadky sú preradené, ale
+   `location.search` zostal `?s=kontrola` — čiže dôkaz, že chýba slovník, nie kód.
+   Presné riadky do `DICT` odchádzajú v reporte tejto vlny.
+
+   Jeden dôsledok tej medzery treba poznať, aby sa nehľadal ako chyba: `registerUrlApply`
+   číta radenie z adresy, takže kým kľúč v slovníku nie je, Späť/Dopredu ho vráti
+   na default aj vtedy, keď si ho človek prekliknutím zmenil. Po doplnení slovníka
+   to prestane — vtedy adresa nesie kľúč a Späť dosadí to, čo v nej stojí. Na tejto
+   obrazovke to je aj tak okrajové: filtre aj radenie píšu `replace`, takže história
+   sa tu tvorí len prepnutím obrazovky. */
 const BOOT_MINE = readUrl().s === 'kontrola';
 const bootKey = (k) => (BOOT_MINE ? urlValue(k) : null) || '';
 
@@ -91,6 +117,18 @@ function clampKontrolaLimit(value) {
     return Math.min(KONTROLA_MAX, Math.max(KONTROLA_PAGE, steps * KONTROLA_PAGE));
 }
 
+/* Radenie z adresy. Zoznam je zrkadlo stĺpcov, ktoré sa naozaj dajú zoradiť
+   (`kontrolaColumns()` bez `akcie`), a `created_at` v ňom zámerne NIE JE: je to
+   default, a kľúč s hodnotou rovnou defaultu sa do adresy nepíše. Neznámy kľúč
+   padá na default namiesto toho, aby zhodil kresbu — adresa je cudzí vstup a na
+   rozdiel od Runov ho tu nechytí server (radí sa u klienta, žiadnych 422). */
+const KONTROLA_SORTS = ['certainty', 'label', 'type', 'area', 'origin'];
+
+function bootSortKey() {
+    const k = bootKey('kok');
+    return KONTROLA_SORTS.indexOf(k) >= 0 ? k : 'created_at';
+}
+
 export const kontrolaState = {
     items: [], idx: 0, total: 0,
     /* `total` je celá fronta (nesie ho rail a je zámerne nefiltrovaný),
@@ -102,8 +140,13 @@ export const kontrolaState = {
     f: { type: bootKey('kot'), certainty: bootKey('koc'), area: bootKey('koa'), q: bootKey('q') },
     /* Východzie triedenie je to, v ktorom fronta prišla zo servera
        (`created_at DESC`). Keby sa líšilo, prvé vykreslenie by riadky preusporiadalo
-       bez toho, aby o to niekto požiadal — a `moreRow` by dopĺňal do stredu. */
-    sortKey: 'created_at', sortDir: DESC,
+       bez toho, aby o to niekto požiadal — a `moreRow` by dopĺňal do stredu.
+
+       Adresa ten default PREBÍJA (`kok`/`kod`), a je to zámer: odkaz „fronta podľa
+       istoty" má po otvorení ukázať frontu podľa istoty, nie ju najprv nakresliť
+       podľa času. Poradie `items` je pritom poradie riadkov (viď `rerenderKontrola`),
+       takže j/k idú po tom, čo je vidieť. */
+    sortKey: bootSortKey(), sortDir: bootKey('kod') === 'asc' ? ASC : DESC,
     /* `open` NIE JE stav panelu, je to JEDNORAZOVÉ prianie z adresy („otvor mi
        tento uzol"), ktoré `applyKontrolaOpenWish()` spotrebuje a zahodí. Stav
        panelu vlastní `recpanel.js` (`recOpenId('kontrola')`), pretože zavrieť sa
@@ -124,18 +167,28 @@ registerUrlApply('kontrola', (url) => {
     const next = { type: url.kot || '', certainty: url.koc || '', area: url.koa || '', q: url.q || '' };
     const nextLimit = clampKontrolaLimit(url.kol);
     const nextOpen = url.koo || null;
+    /* Radenie sa z histórie dosadzuje BEZ nového dopytu: server ho nepozná
+       (`/api/review/queue` parameter `sort` nemá), takže je to prehádzanie už
+       načítaného okna — poloha čitateľa, nie filter. Ten istý dôvod ako `koo`. */
+    const nextSortKey = KONTROLA_SORTS.indexOf(url.kok || '') >= 0 ? url.kok : 'created_at';
+    const nextSortDir = url.kod === 'asc' ? ASC : DESC;
+    const sortSame = nextSortKey === kontrolaState.sortKey && nextSortDir === kontrolaState.sortDir;
     const same = next.type === f.type && next.certainty === f.certainty
         && next.area === f.area && next.q === f.q && nextLimit === kontrolaState.limit;
-    if (same && String(nextOpen) === String(recOpenId('kontrola'))) return;
+    if (same && sortSame && String(nextOpen) === String(recOpenId('kontrola'))) return;
     kontrolaState.f = next;
     kontrolaState.limit = nextLimit;
     kontrolaState.open = nextOpen;
+    kontrolaState.sortKey = nextSortKey;
+    kontrolaState.sortDir = nextSortDir;
     /* Toolbar sa prestavuje len pri zmene OSÍ (inak by zmizlo pole, do ktorého sa
        práve píše), takže po Späť v ňom zostane starý výraz — dosaď ho ručne. */
     const qEl = $('kontrola-q');
     if (qEl) qEl.value = next.q;
     if (document.body.dataset.screen !== 'kontrola') return;
     if (!same) { renderKontrola(true); return; }
+    // Zmenilo sa LEN radenie: prekresli tabuľku, dopyt netreba.
+    if (!sortSame) rerenderKontrola(false);
     applyKontrolaOpenWish();
 });
 
@@ -190,6 +243,13 @@ function syncKontrolaUrl() {
         koa: f.area || null,
         kol: kontrolaState.limit > KONTROLA_PAGE ? String(kontrolaState.limit) : null,
         q: f.q || null,
+        /* Radenie ide do adresy spolu s filtrom, ale DEFAULT SA NEPÍŠE: `created_at`
+           zostupne je poradie, v ktorom fronta prišla zo servera, takže `?s=kontrola`
+           samo znamená „najnovšie zhora" a kľúč s hodnotou defaultu by bol v odkaze
+           šum. Ten istý zápis má `sortKontrola()` — je to jedno pravidlo použité na
+           dvoch miestach, nie dva rôzne preklady. */
+        kok: kontrolaState.sortKey === 'created_at' ? null : kontrolaState.sortKey,
+        kod: kontrolaState.sortDir === ASC ? 'asc' : null,
     }, 'replace');
 }
 
@@ -297,6 +357,7 @@ export function rerenderKontrola(moveFocus) {
     setRailBadge('kontrola', kontrolaState.total);
     ensureKontrolaShell(body);
     syncKontrolaFilter();
+    renderKontrolaSaved();
     // Musí to byť TU, nie za tabuľkou: pri prázdnej fronte sa nižšie vracia
     // skoro, a sekcia hygieny by po prestavbe shellu zostala prázdna práve vtedy,
     // keď je jediné, čo obrazovka ešte má čo povedať.
@@ -387,16 +448,20 @@ function ensureKontrolaShell(body) {
        práca, hygiena je stav. `aria-live` je tu preto, že obsah dobehne sám
        (meranie beží sekundy) — bez neho by čítačka o výsledku nevedela.
 
-       Odstup je INLINE a je to dlh, nie zámer: `.kbd-hints` pod frontou má
-       margin-top, ale nie margin-bottom, takže karta by sa nalepila na pás
-       skratiek. Patrí to do `mind.css` ako
-       `#kontrola-hygiene { margin-top: var(--gutter) }` a presúva sa to jedným
-       riadkom. Zostalo to tu, pretože `mind.css` nie je vlastníctvom tejto vlny
-       a dvaja pisatelia do jedného súboru sa ticho prepíšu. */
-    body.innerHTML = '<div id="kontrola-filter"></div><div id="kontrola-list"></div>'
+       Odstup hygieny je ODTERAZ V CSS (`#kontrola-hygiene { margin-top: var(--gutter) }`
+       v `mind.css`) a inline `style` odtiaľto odišiel — dovtedy tu bol a komentár
+       ho priznával ako dlh. Rozmer napísaný v JS je pre CSSOM neviditeľný, takže
+       žiadna asercia ho nenájde; po presune ho hlási stylesheet a `margin-top`
+       zostal ten istý (zmerané: 20 px pred aj po).
+
+       `#kontrola-saved` je lišta uložených filtrov a stojí MEDZI čipmi a tabuľkou:
+       ukladá sa pohľad zložený z čipov a hľadania, takže patrí k nim — a keď filter
+       nič nenájde, prázdny stav ide do `#kontrola-list`, takže lišta zostane
+       dosiahnuteľná práve vtedy, keď ju človek potrebuje najviac (vzor `runy.js`). */
+    body.innerHTML = '<div id="kontrola-filter"></div><div id="kontrola-saved"></div>'
+        + '<div id="kontrola-list"></div>'
         + '<div id="kontrola-hints">' + kontrolaHintsHtml() + '</div>'
-        + '<div class="dash-card" id="kontrola-hygiene" style="margin-top:var(--gutter)"'
-        + ' aria-live="polite"></div>';
+        + '<div class="dash-card" id="kontrola-hygiene" aria-live="polite"></div>';
     $('kontrola-filter').innerHTML = kontrolaFilterHtml();
     wireKontrolaFilter();
     wireKontrolaEnterGuard($('kontrola-list'));
@@ -501,6 +566,81 @@ function syncKontrolaFilter() {
         el.classList.toggle('active', on);
         el.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+}
+
+/* ---------- uložené filtre (`hades.filters.kontrola`) ----------
+
+   MECHANIKA JE JEDNA a žije v `shared/filters.js` (re-export cez `table.js`, tak
+   ako ju berú Runy, Rozhodnutia a Denník). Druhá sa tu nepíše: `localStorage`,
+   `try/catch` na každom prístupe (zamknuté úložisko v privátnom okne) aj strop
+   dvanástich mien sú tam.
+
+   PREČO TU VÔBEC SÚ: fronta má štyri osi a všetky štyri sú serverové, takže
+   „pasce v oblasti X" je dopyt, ktorý sa opakuje a odklikať ho treba trikrát.
+   To je presne pohľad, ktorý sa má dať uložiť — a filter je pohľad na dáta, nie
+   dáta, preto `localStorage` a nie DB.
+
+   Lišta sa prekresľuje z `rerenderKontrola()`, teda aj po každom rozhodnutí vo
+   fronte. Je to bezpečné a nie je to zbytočné: `<input>` v nej nie je (ten je
+   v toolbare, ktorý prekreslenie prežíva), a menovka „Uložiť: …" sa musí meniť
+   so filtrom — inak by ponúkala uloženie pohľadu, ktorý už nie je nasadený. */
+function renderKontrolaSaved() {
+    renderSavedFilters($('kontrola-saved'), 'kontrola', {
+        onApply: applyKontrolaSavedFilter,
+        current: currentKontrolaFilter,
+    });
+}
+
+/* `null` = nie je čo uložiť, a vtedy `renderSavedFilters()` tlačidlo vôbec
+   nevykreslí. Uložiť stav bez filtra by znamenalo uložiť „celú frontu", teda
+   pohľad, ktorý sa dosiahne aj bez uloženia.
+
+   MENO SI FILTER SKLÁDA SÁM, nedáva ho dialóg (natívny `prompt()` by bol jediné
+   modálne okno v appke). Skládá sa z toho, ČO ČLOVEK VIDÍ na čipoch, nie zo
+   surových kľúčov: „Pasca · Skill · Vývoj & kód · „docker"" a nie
+   „pasca · skill · vyvoj-kod". Je to ten istý dôvod ako `sortValue` pri stĺpcoch —
+   uložený pohľad sa hľadá očami. Oblasť má v stave SLUG a v mene NÁZOV, ktorý
+   dáva server (`kontrolaState.areas`); keď v odpovedi nie je, ostáva slug —
+   výmysel by bol horší než technické slovo. */
+function currentKontrolaFilter() {
+    if (!kontrolaFiltersActive()) return null;
+    const f = kontrolaState.f;
+    const bits = [];
+    if (f.certainty) bits.push((CERT_META[f.certainty] || [])[1] || f.certainty);
+    if (f.type) bits.push(typeName(f.type));
+    if (f.area) {
+        const hit = (kontrolaState.areas || []).find((a) => a.slug === f.area);
+        bits.push(hit ? hit.name : f.area);
+    }
+    if (f.q) bits.push('„' + f.q + '"');
+    return {
+        name: bits.join(' · '),
+        /* Do stavu ide LEN os filtra. Strop (`kol`) ani radenie (`kok`/`kod`) v ňom
+           zámerne nie sú: uložený pohľad je „ktoré uzly", nie „koľko ich načítaj
+           a v akom poradí". Strop sa pri nasadení vracia na prvú stránku, tak ako
+           pri každej inej zmene filtra. */
+        state: { type: f.type, certainty: f.certainty, area: f.area, q: f.q },
+    };
+}
+
+/* Nasadenie je VIDITEĽNÁ ZMENA PLOCHY, takže sa NEHLÁSI (politika notifikácií
+   §8): čipy sa prepnú, tabuľka sa prekreslí, priznanie počtu sa zmení. Zlyhanie
+   dopytu ohlási `renderKontrola()` svojím chybovým stavom.
+
+   Pole hľadania sa dosadzuje RUČNE z toho istého dôvodu ako po Späť: toolbar sa
+   prestavuje len pri zmene osí, takže by v ňom zostal výraz, ktorý už nefiltruje.
+   Debounce sa ruší — inak by dobehol so starým obsahom poľa a prepísal práve
+   nasadený `q`. */
+function applyKontrolaSavedFilter(state) {
+    const s = state || {};
+    clearTimeout(kontrolaQTimer);
+    kontrolaState.f = {
+        type: s.type || '', certainty: s.certainty || '', area: s.area || '', q: s.q || '',
+    };
+    kontrolaState.limit = KONTROLA_PAGE;
+    const q = $('kontrola-q');
+    if (q) q.value = kontrolaState.f.q;
+    renderKontrola(true);
 }
 
 /* Filter, ktorý po novom načítaní nemá vo svojej osi čip, je pasca: rady sa
@@ -767,7 +907,9 @@ function whenTitle(iso) {
 /* Prvý klik na stĺpec nasadí smer, ktorý má pre stĺpec zmysel: čas od
    najnovšieho (zostupne), slová od A (vzostupne) a ISTOTA OD NAJNALIEHAVEJŠEJ
    (vzostupne v poradí váhy — `pasca` je index 0). Druhý klik obracia.
-   Triedenie do adresy neide — slovník `urlstate.js` pre ňu kľúč nemá. */
+   TRIEDENIE IDE DO ADRESY (`kok`/`kod`) — pohľad na dáta má byť zdieľateľný.
+   Zápis je `replace`, nie `push`: preklikanie štyroch stĺpcov by inak nechalo
+   v histórii štyri kroky späť. Dopyt sa NEPOSIELA, radí sa načítané okno. */
 function sortKontrola(key) {
     if (kontrolaState.sortKey === key) {
         kontrolaState.sortDir = kontrolaState.sortDir === ASC ? DESC : ASC;
@@ -775,6 +917,10 @@ function sortKontrola(key) {
         kontrolaState.sortKey = key;
         kontrolaState.sortDir = key === 'created_at' ? DESC : ASC;
     }
+    writeUrl({
+        kok: kontrolaState.sortKey === 'created_at' ? null : kontrolaState.sortKey,
+        kod: kontrolaState.sortDir === ASC ? 'asc' : null,
+    }, 'replace');
     rerenderKontrola(false);
     /* Prekreslenie zahodilo `<th>` aj s tlačidlom, na ktoré človek práve klikol,
        takže fokus by spadol na `<body>` a Tab by začal od začiatku dokumentu.
@@ -862,9 +1008,11 @@ export function wireKontrola(list) {
 
    Trieda `.selected` nesie KLÁVESOVÝ KURZOR a je to iný stav než `aria-current`
    (ten nesie „tento riadok je otvorený v paneli") — j/k prechádza frontou aj
-   vtedy, keď panel nie je otvorený vôbec. Kresbu `.rec-row.selected` v
-   `mind.css` treba doplniť; dnes ju nesie len `:focus-visible`, čo je viditeľné
-   po klávese, ale nie po myšacom presune výberu. */
+   vtedy, keď panel nie je otvorený vôbec. Kresba `.rec-table .rec-row.selected`
+   v `mind.css` UŽ EXISTUJE (podfarbenie `--accent-softer` + vnútorný obrys, 0-3-0,
+   teda silnejšia než `.rec-row:hover`); komentár tu do 2. 9. 2026 tvrdil, že ju
+   treba doplniť, a bolo to tvrdenie z čias, keď chýbala. Zmerané: vybraný riadok
+   sa odlišuje pozadím aj bez fokusu, teda aj po myšacom presune výberu. */
 function paintKontrolaCursor() {
     const rows = document.querySelectorAll('#kontrola-list .rec-row');
     rows.forEach((el, i) => el.classList.toggle('selected', i === kontrolaState.idx));
@@ -1270,30 +1418,86 @@ export async function loadHygiena(force) {
    prestavil, a vtedy sa kreslí vždy. */
 let hygRendered = '';
 
+/* Chybový stav nekreslí STRING, ale `renderError()` — jeden komponent pre celú
+   appku — takže cache posledného obsahu preň potrebuje značku. `\x00` v HTML
+   vzniknúť nemôže, takže sa so žiadnou kresbou nezhodne. */
+const HYG_ERROR = '\x00hygiena-error';
+
+/* FOKUSOVÝ DLH SEKCIE. `renderHygiena()` prepíše telo karty za jednu akciu aj
+   DVAKRÁT (meranie → výsledok) a v tom prvom prepise je jediný ovládač zakázaný:
+   `focus()` na `disabled` tlačidle NEROBÍ NIČ — zmerané, `activeElement` spadol na
+   `<body>`. Dlh sa preto nesie v module a nie v premennej jedného behu, inak by sa
+   stratil presne pred prepisom, po ktorom prichádza chyba a jej JEDINÁ akcia.
+   Nuluje sa až vtedy, keď fokus naozaj sedí v karte, nie keď sa oň požiadalo. */
+let hygFocusOwed = false;
+
+/* Ktorý ovládač držal fokus. Vracia ZNAČKU, nie prvok — prvok prepis zahodí.
+   `act` je akcia chybového stavu (`.empty-act`) a jej ekvivalentom po úspešnom
+   meraní je tlačidlo v hlavičke: je to tá istá vec („zmeraj znovu") v inej
+   kresbe, takže sa fokus vracia tam, a nie na začiatok dokumentu. */
+function hygFocusMark(el) {
+    const a = document.activeElement;
+    if (!a || !el.contains(a)) return '';
+    if (a.classList && a.classList.contains('empty-act')) return 'act';
+    if (a.dataset && a.dataset.hyg) return 'hyg:' + a.dataset.hyg;
+    return a.id || '';
+}
+
+/* Vracia, či fokus po pokuse naozaj sedí v karte — `disabled` cieľ ho neprijme
+   a tichý `false` je jediné, čo drží dlh ďalej. */
+function hygRestoreFocus(el, mark) {
+    if (!mark) return false;
+    let t = null;
+    if (mark === 'act') t = el.querySelector('.empty-act') || el.querySelector('#hygiena-refresh');
+    else if (mark.startsWith('hyg:')) t = el.querySelector('[data-hyg="' + mark.slice(4) + '"]');
+    else t = el.querySelector('#' + mark);
+    if (!t || t.disabled) return false;
+    t.focus();
+    return el.contains(document.activeElement);
+}
+
 export function renderHygiena() {
     const el = $('kontrola-hygiene');
     if (!el) return;
-    const html = hygienaHtml();
+    const html = hygienaState.error ? HYG_ERROR : hygienaHtml();
     if (el.innerHTML !== '' && html === hygRendered) return;
     /* Fokus musí prežiť prepis. „Zmerať znovu" je vnútri prepisovaného tela, takže
        kliknutie klávesnicou zničí práve ten prvok, ktorý fokus drží — a meranie
        trvá sekundy, takže by človek zostal na `<body>` a druhý render (po dobehnutí)
        by ho tam nechal. Je to tá istá trieda nálezu ako P3 (fokus po rozhodnutí
        o zápise), len na inej obrazovke. Vzor je `runy.js`: zapamätaj, prekresli,
-       vráť. */
-    const hadFocus = el.contains(document.activeElement)
-        ? document.activeElement.id || (document.activeElement.dataset?.hyg ? 'hyg:' + document.activeElement.dataset.hyg : '')
-        : '';
+       vráť — len s dlhom v module, viď `hygFocusOwed`. */
+    const mark = hygFocusMark(el);
+    if (mark) hygFocusOwed = true;
     hygRendered = html;
     el.setAttribute('aria-busy', hygienaState.loading ? 'true' : 'false');
+    if (html === HYG_ERROR) {
+        /* CHYBA MÁ JEDEN KOMPONENT A VLASTNÝ PREDMET (manuál §8). Do 2. 9. 2026
+           tu stálo `<p class="dash-note">Hygienu sa nepodarilo zmerať.</p>`: veta
+           bez ikony, bez roly v strome prístupnosti a s akciou schovanou v hlavičke
+           karty ako „Zmerať znovu" — teda tretí chybový vzor v appke, ktorá má
+           jeden. Zvyšok Kontroly hovorí `renderError(list, 'frontu', …)` a Hygiena
+           hovorila niečím iným o tej istej poruche.
+
+           `renderError()` prepíše CELÚ kartu vrátane hlavičky, a to je zámer:
+           hlavička nesie druhé tlačidlo tej istej akcie a dve cesty k jednému
+           „skús to znova" sú horšie než jedna. Predmet („hygienu") skládá helper,
+           takže veta znie ako na ostatných obrazovkách, a serif je v chybe
+           zakázaný — o to sa stará `.empty--error`, nie tento súbor. */
+        renderError(el, 'hygienu', () => loadHygiena(true));
+        /* Fokus zničil prepis rovnako ako pri úspešnej kresbe, len cieľ je iný:
+           tlačidlo v hlavičke tu už nie je a jediná akcia je `.empty-act`. Bez
+           tohto riadka je jediná cesta z chyby dosiahnuteľná len myšou — zmerané:
+           po klávesovom „Zmerať znovu" bol `activeElement` `<body>`. */
+        if (hygFocusOwed && hygRestoreFocus(el, 'act')) hygFocusOwed = false;
+        return;
+    }
     el.innerHTML = html;
     wireHygiena(el);
-    if (hadFocus) {
-        const back = hadFocus.startsWith('hyg:')
-            ? el.querySelector('[data-hyg="' + hadFocus.slice(4) + '"]')
-            : el.querySelector('#' + hadFocus);
-        back?.focus();
-    }
+    /* `mark || 'act'`: keď fokus medzitým spadol na `<body>` (zakázané tlačidlo
+       počas merania), značka je prázdna, ale dlh trvá — a ekvivalent akcie je
+       v hlavičke. Bez tej náhrady by sa fokus po dobehnutí merania nevrátil. */
+    if (hygFocusOwed && hygRestoreFocus(el, mark || 'act')) hygFocusOwed = false;
 }
 
 function hygienaHtml() {
@@ -1308,9 +1512,6 @@ function hygienaHtml() {
     if (hygienaState.loading) {
         // Neosobne (docs/BRAND-HADES.md §1) — dovtedy tu bolo jediné „ja" tejto sekcie.
         return head + '<p class="dash-note">Prechádza sa celá sieť, chvíľu to trvá.</p>';
-    }
-    if (hygienaState.error) {
-        return head + '<p class="dash-note">Hygienu sa nepodarilo zmerať.</p>';
     }
     if (!d) {
         return head + '<p class="dash-note">Ešte nezmerané.</p>';

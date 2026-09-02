@@ -49,6 +49,18 @@ import { iconMarkup } from '../../shared/icons.js';
      3. os je „všetko × celý denník", čo je presne `filtered_total` zo servera.
 
    Kde dôkaz nie je, počet sa nekreslí. Radšej nič než lož.
+
+   GRAF NA TEJTO OBRAZOVKE NIE JE a je to rozhodnutie, nie prázdne miesto.
+   `/api/journal` posiela záznamy (`created_at`, `label`, `source`, `project`,
+   `file_count`, `commit_count`) — jediná číselná os, ktorá by z nich vyšla, je
+   POČET ZÁZNAMOV PO DŇOCH. A ten sa tu nakresliť nedá pravdivo: okno je 50
+   z 153, takže krivka by opisovala okno, nie denník, a najstarší deň v okne je
+   odrezaný — to je presne nález M6 prenesený z čipu do grafu. Ten istý údaj
+   navyše už kreslí obrazovka Dnes (`heatmap`), a to zo SERVEROVÝCH per-dňových
+   počtov nad celým korpusom, teda z čísel, ktoré Denník nemá.
+   Spúšťač na prehodnotenie je konkrétny: keď `DennikScreen` začne posielať
+   `days[]` s počtom nad celým dňom (to isté číslo, ktoré chýba „+N poznatkov"
+   v hlavičke dňa nižšie), je sparkline nad ním legitímny.
    ============================================================================ */
 export const SK_MONTHS_GEN = ['januára', 'februára', 'marca', 'apríla', 'mája', 'júna',
     'júla', 'augusta', 'septembra', 'októbra', 'novembra', 'decembra'];
@@ -117,14 +129,38 @@ registerUrlApply('dennik', (url) => {
     if (url.s !== 'dennik') return;
     const next = url.dep || null;
     const nextQ = url.q || '';
-    if (next === journalProject && nextQ === journalQ) return;
+    /* Kľúč, ktorý v adrese NIE JE, znamená DEFAULT — `readUrl()` defaulty zámerne
+       nedopisuje, aby sa „nie je" a „je na defaulte" dalo rozlíšiť, ale pre stav
+       obrazovky sú to tie isté dve slová. Preto `|| 'all'`, nie „nechaj ako je":
+       Späť na adresu bez `deo` musí klientsku os naozaj vypnúť. */
+    const nextPer = url.deo || 'all';
+    const nextSrc = url.dez || 'all';
+    const serverChanged = next !== journalProject || nextQ !== journalQ;
+    if (!serverChanged && nextPer === journalPeriod && nextSrc === journalSource) return;
     journalProject = next;
     journalQ = nextQ;
-    /* Serverová os sa zmenila, takže načítané okná platia pre inú množinu —
-       späť na prvé. Bez toho by Späť z tretej strany hľadania načítal tri okná
-       nového dopytu, o ktoré nikto nepýtal. */
-    journalPages = 1;
-    if (document.body.dataset.screen === 'dennik') renderJournal();
+    journalPeriod = nextPer;
+    journalSource = nextSrc;
+    if (document.body.dataset.screen !== 'dennik') {
+        // Mimo obrazovky stačí stav; kreslenie si vyžiada `setScreen()`. Okná ale
+        // treba zhodiť rovnako, inak by sa načítali tri okná nového dopytu.
+        if (serverChanged) journalPages = 1;
+        return;
+    }
+    if (serverChanged) {
+        /* Serverová os sa zmenila, takže načítané okná platia pre inú množinu —
+           späť na prvé. Bez toho by Späť z tretej strany hľadania načítal tri okná
+           nového dopytu, o ktoré nikto nepýtal. */
+        journalPages = 1;
+        renderJournal();
+        return;
+    }
+    /* Zmenili sa len KLIENTSKE osi — dopyt na server je ten istý, takže sa
+       nerefetchuje (3–4 s pri plnom denníku za nulovú zmenu dát). Prekreslí sa
+       lišta (počty na čipoch ostatných osí sú počítané z okna a filtrom sa menia)
+       a zoznam. Ten istý postup má klik na čip nižšie. */
+    renderJournalFilter();
+    renderJournalList();
 });
 // Projektov je bežne ~23 — všetky naraz sa lámu na dva riadky chipov nad obsahom.
 // Preto zbalený rad: najčastejšie projekty + „viac".
@@ -134,11 +170,22 @@ export const JOURNAL_CHIPS_TOP = 8;
 /* ---------------------------------------------------------------------------
    KLIENTSKE OSI: obdobie a zdroj
 
-   V ADRESE NIE SÚ a je to zámer. Slovník kľúčov v `urlstate.js` má pre Denník
-   `dep` (projekt) a spoločné `q` (hľadanie); dopisovať doň ďalšie dva by bola zmena súboru,
-   ktorý táto obrazovka nevlastní. Ten istý dôvod a to isté riešenie má triedenie
-   v `rozhodnutia.js` (kľúč pre `sortKey` v slovníku nie je). Trvalosť nesú
-   ULOŽENÉ FILTRE, nie adresa.
+   V ADRESE SÚ (od 2. 9. 2026) pod kľúčmi `deo` (obdobie) a `dez` (zdroj) a je to
+   ZMENA ROZHODNUTIA, nie doplnenie opomenutia. Do tejto vlny tu stálo, že v adrese
+   zámerne nie sú, pretože slovník `urlstate.js` táto obrazovka nevlastní — to bol
+   argument o vlastníctve súboru, nie o tvare adresy. Matica schopností má „URL stav"
+   definovaný ako KAŽDÝ pohľadový stav, a obdobie so zdrojom pohľadový stav sú:
+   „Súhrny za 7 dní" je presne ten odkaz, ktorý má zmysel poslať.
+
+   Kľúč, ktorý v `DICT` nie je, `writeUrl()` TICHO ZAHODÍ (`if (!e) continue`) —
+   panel/filter funguje a adresu nenesie. Preto sa to overuje `location.search`,
+   nie tým, že sa UI zmenilo. Presné riadky do `DICT` sú v reporte tejto vlny
+   (`urlKeys`); kým ich vlastník `urlstate.js` nedoplní, chová sa obrazovka presne
+   ako predtým: stav funguje lokálne, adresa ho nenesie.
+
+   Trvalosť POMENOVANÉHO pohľadu nesú ďalej ULOŽENÉ FILTRE — adresa nesie jeden
+   aktuálny pohľad, uložený filter pomenovanú sadu. Sú to dve rôzne role, nie
+   dva mechanizmy toho istého.
 
    `days` je počet dní VRÁTANE dneška, takže `7 dní` je dnes a šesť dní dozadu —
    nie „pred 168 hodinami". Hranica je lokálna polnoc, ten istý idióm ako
@@ -158,8 +205,12 @@ export const JOURNAL_SOURCES = [
     { key: 'digest', label: 'Súhrny' },
 ];
 
-export let journalPeriod = 'all';
-export let journalSource = 'all';
+/* Boot z adresy, ten istý idióm a to isté `BOOT_MINE` ako `dep`: kľúč z odkazu na
+   CUDZIU obrazovku sa neprevezme, pretože `setScreen()` ho pri prepnutí maže —
+   inak by filter svietil bez toho, aby bol v adrese. `urlValue()` vracia už
+   validovanú hodnotu alebo `null`, takže „neznáme = žiadne" platí aj tu. */
+export let journalPeriod = (BOOT_MINE ? urlValue('deo') : null) || 'all';
+export let journalSource = (BOOT_MINE ? urlValue('dez') : null) || 'all';
 
 function midnightOf(d) {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -297,7 +348,8 @@ export async function renderJournal() {
 
            `replace`, nikdy `push` (rozhodnutie 10): tlačidlo Späť patrí
            obrazovkám a vláknam, nie klikaniu do radu čipov. */
-        writeUrl({ dep: journalProject, q: journalQ || null }, 'replace');
+        writeUrl({ dep: journalProject, q: journalQ || null,
+            deo: journalPeriod, dez: journalSource }, 'replace');
 
         renderJournalFilter();
         renderJournalList();
@@ -423,12 +475,13 @@ export function renderJournalFilter() {
     if (more) more.onclick = () => { journalChipsOpen = !journalChipsOpen; renderJournalFilter(); };
 
     /* Klientske osi neplatia serverový dopyt, takže sa nerefetchuje — len sa
-       prekreslí lišta (počty ostatných osí sa filtrom menia) a zoznam. */
+       zapíše adresa, prekreslí lišta (počty ostatných osí sa filtrom menia)
+       a zoznam. */
     wrap.querySelectorAll('.chip[data-period]').forEach((chip) => {
-        chip.onclick = () => { journalPeriod = chip.dataset.period; renderJournalFilter(); renderJournalList(); };
+        chip.onclick = () => setJournalPeriod(chip.dataset.period);
     });
     wrap.querySelectorAll('.chip[data-source]').forEach((chip) => {
-        chip.onclick = () => { journalSource = chip.dataset.source; renderJournalFilter(); renderJournalList(); };
+        chip.onclick = () => setJournalSource(chip.dataset.source);
     });
 
     wrap.querySelectorAll('.chip[data-project]').forEach((chip) => {
@@ -514,6 +567,35 @@ export function setJournalProject(key) {
     renderJournal();
 }
 
+/**
+ * Obdobie (klientska os) — stav, adresa, prekreslenie.
+ *
+ * `journalPages` sa NEZHADZUJE a `renderJournal()` sa NEVOLÁ: dopyt na server je
+ * ten istý (`/api/journal` obdobie ani zdroj neprijíma), takže refetch by stál
+ * 3–4 s za nulovú zmenu dát a navyše by zahodil dolistované okná — teda by
+ * klientsky filter na tretej strane vyzeral, akoby zoznam zmizol.
+ *
+ * `replace`, nikdy `push` (rozhodnutie 10): filter je „AKO sa pozerám".
+ */
+export function setJournalPeriod(key) {
+    const k = JOURNAL_PERIODS.some((p) => p.key === key) ? key : 'all';
+    if (k === journalPeriod) return;
+    journalPeriod = k;
+    writeUrl({ deo: journalPeriod }, 'replace');
+    renderJournalFilter();
+    renderJournalList();
+}
+
+/** Zdroj (klientska os). To isté ako `setJournalPeriod()`, druhá os. */
+export function setJournalSource(key) {
+    const k = JOURNAL_SOURCES.some((s) => s.key === key) ? key : 'all';
+    if (k === journalSource) return;
+    journalSource = k;
+    writeUrl({ dez: journalSource }, 'replace');
+    renderJournalFilter();
+    renderJournalList();
+}
+
 /* ---------------------------------------------------------------------------
    ULOŽENÉ FILTRE
 
@@ -590,6 +672,10 @@ export function applyJournalFilter(st) {
     const q = typeof s.q === 'string' ? s.q : journalQ;
     const qChanged = q !== journalQ;
     journalQ = q;
+    /* Klientske osi idú do adresy TU, jedným zápisom pred vetvením. `writeUrl()`
+       zbiera zápisy jednej úlohy do jednej dávky, takže spolu s `dep`/`q` nižšie
+       je z celého nasadenia uloženého filtra JEDEN záznam histórie — nie tri. */
+    writeUrl({ deo: journalPeriod, dez: journalSource }, 'replace');
     if (project !== journalProject || qChanged) {
         /* Obe osi sú SERVEROVÉ, takže sa dopyt platí RAZ: `q` do adresy tu
            a `dep` + načítanie nechá na `setJournalProject()`. Dva `renderJournal()`
@@ -701,6 +787,142 @@ async function loadMoreJournal(btn) {
     }
 }
 
+/* ---------------------------------------------------------------------------
+   KLÁVESOVÝ KURZOR (2. 9. 2026)
+
+   Do tejto vlny bola Kontrola JEDINÁ obrazovka s kurzorom po riadkoch a Denník
+   mal len tab-order: 50 kariet = 50 Tabov po ceste na najstarší záznam.
+
+   POLOHU NESIE ID ZÁZNAMU, nie index. Denník je živý a rastie NAHORE (`ws.js`
+   volá `renderJournal()` pri každom novom `session` uzle), takže index by po
+   zrode uzla ukazoval o riadok vedľa — na susedný záznam, ticho. Kontrola drží
+   index (`kontrolaState.idx`), pretože jej fronta sa mení len rozhodnutím
+   človeka; tu je zdroj zmeny niekto iný.
+
+   KURZOR SA NEOTÁČA (clamp), na rozdiel od Kontroly, ktorá po poslednom riadku
+   pokračuje prvým. Dôvod je tvar plochy, nie nekonzistencia: fronta je zavretá
+   množina, kým denník je OKNO (50 z 153) s tlačidlom „Ďalších 50" pod sebou —
+   preskok z najstaršieho načítaného záznamu na dnešný najnovší by čitateľa
+   presunul o celé okno bez toho, aby o to požiadal.
+
+   AKTIVÁCIA IDE PRESNE TOU CESTOU, AKOU IDE KLIK (`cards[i].click()`), takže
+   detail otvára jeden `openNodeDetail()` a nie druhá kópia zloženého odkazu na
+   uzol. Keď je fokus už na karte kurzora, `<button>` si Enter obslúži sám —
+   vtedy sa nezdvojuje (to je tá istá pasca, akú si `kontrola.js` drží
+   riadkovým `onkeydown`).
+
+   Kresba `.selected` je v `mind.css` a je súčasťou potreby tejto vlny
+   (`cssNeeds`): bez nej nesie kurzor len `:focus-visible`, teda nič v okamihu,
+   keď výber posunie myš alebo prekreslenie.
+   --------------------------------------------------------------------------- */
+let journalCursorId = null;
+
+function journalCards() {
+    return Array.from(document.querySelectorAll('#journal-list .record'));
+}
+
+function journalCursorIndex(cards) {
+    if (journalCursorId == null) return -1;
+    return cards.findIndex((el) => el.dataset.id === String(journalCursorId));
+}
+
+/** Nasadí triedu kurzora bez toho, aby bral fokus alebo scrolloval. */
+function paintJournalCursor() {
+    const cards = journalCards();
+    const i = journalCursorIndex(cards);
+    cards.forEach((el, n) => el.classList.toggle('selected', n === i));
+    return cards;
+}
+
+function markJournalCursor(focus) {
+    const cards = paintJournalCursor();
+    const cur = cards[journalCursorIndex(cards)];
+    if (!cur) return;
+    if (focus) cur.focus({ preventScroll: true });
+    /* `block: 'nearest'` — kurzor pri okraji dorolluje o riadok, nie doprostred
+       obrazovky. Ten istý argument aj volanie ako `markKontrolaSelected()`. */
+    cur.scrollIntoView({ block: 'nearest' });
+}
+
+export function moveJournalCursor(delta) {
+    const cards = journalCards();
+    if (!cards.length) return;
+    const cur = journalCursorIndex(cards);
+    // Prvý stisk bez kurzora chytá KONIEC, z ktorého sa vychádza: `j` prvú
+    // kartu, `k` poslednú. Inak by `k` na začiatku nerobilo nič.
+    const next = cur < 0
+        ? (delta > 0 ? 0 : cards.length - 1)
+        : Math.min(cards.length - 1, Math.max(0, cur + delta));
+    journalCursorId = cards[next].dataset.id;
+    markJournalCursor(true);
+}
+
+/* Kedy klávesy NEPATRIA zoznamu. Dve podmienky, obe merateľné:
+
+   1. otvorený modál (`[role="dialog"][aria-modal="true"]` bez `.hidden`) — paleta,
+      pomocník aj čítačka markdownu majú vlastnú klávesnicu;
+   2. fokus v ovládači, ktorý písmená konzumuje — pole hľadania, alebo pravý panel
+      (drží si Esc a tab-cyklus).
+
+   Čipy filtra ZÁMERNE blokované nie sú: `j` hneď po kliknutí na čip má posunúť
+   zoznam, nie mlčať. */
+function journalKeysBlocked() {
+    if (document.querySelector('[role="dialog"][aria-modal="true"]:not(.hidden)')) return true;
+    const a = document.activeElement;
+    if (!a || a === document.body) return false;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable) return true;
+    return !!a.closest('#node-panel, #rec-panel');
+}
+
+/* Vlastný `keydown` a nie riadok v `shortcuts.js`: dispatcher skratiek nie je
+   vlastníctvom tejto vlny (dvaja pisatelia do jedného súboru sa ticho prepíšu)
+   a Kontrola má rovnaké delenie — LOGIKA kurzora žije v module obrazovky,
+   `shortcuts.js` len volá `kontrolaMove()`. Riadok do `SHORTCUTS` a presun
+   dispatchu je nahlásený v reporte (`otherNeeds`).
+
+   Listener sa registruje pri načítaní modulu, teda PRED `setupShortcuts()`
+   (main.js ho volá až v `boot()`), takže `stopImmediatePropagation()` naozaj
+   zastaví globálnu skratku — `Enter` inak nad Denníkom zameruje uzol v grafe.
+   Strážca obrazovky je prvý riadok: mimo Denníka sa nepočíta nič. */
+window.addEventListener('keydown', (e) => {
+    if (document.body.dataset.screen !== 'dennik') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (journalKeysBlocked()) return;
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopImmediatePropagation();
+        moveJournalCursor(1);
+        return;
+    }
+    if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopImmediatePropagation();
+        moveJournalCursor(-1);
+        return;
+    }
+    if (e.key === 'Enter') {
+        const cards = journalCards();
+        const i = journalCursorIndex(cards);
+        if (i < 0) return;
+        // Fokus je na tej istej karte — `<button>` Enter obslúži sám a druhé
+        // `click()` by detail otvorilo dvakrát.
+        if (document.activeElement === cards[i]) return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        cards[i].click();
+    }
+});
+
+/* Pás skratiek. Trieda `.kbd-hints` / `.kh` / bare `kbd` je tá istá kresba, akú
+   nesie Kontrola — jedna kresba, dva slovníky obsahu (Denník nemá `v`/`r`/`Del`,
+   pretože nad záznamom denníka niet čo rozhodnúť). */
+function journalHintsHtml() {
+    const kh = (keys, label) => '<span class="kh">'
+        + keys.map((k) => '<kbd>' + esc(k) + '</kbd>').join('') + ' ' + esc(label) + '</span>';
+    return '<div class="kbd-hints">'
+        + kh(['j', 'k'], 'posun')
+        + kh(['Enter'], 'detail')
+        + kh(['Esc'], 'zavrieť detail')
+        + '</div>';
+}
+
 export function renderJournalList() {
     const list = $('journal-list');
     const visible = visibleJournalRecords();
@@ -795,9 +1017,28 @@ export function renderJournalList() {
        a skok na Graf zostal ako sekundárna akcia v pätičke overlayu. */
     list.querySelectorAll('.record').forEach((el) => {
         el.onclick = () => openNodeDetail({ id: el.dataset.id, label: el.dataset.label, type: 'memory' });
+        /* Kurzor ide za myšou aj za Tabom — inak by mal človek dva rôzne „tu som"
+           naraz. `mousedown` (nie `click`) preto, že `click` prichádza až po
+           otvorení detailu. Ani jeden nekreslí `markJournalCursor(true)`: fokus
+           už je tam, kam ho človek dal, a scroll patrí jemu. */
+        el.addEventListener('mousedown', () => { journalCursorId = el.dataset.id; paintJournalCursor(); });
+        el.addEventListener('focusin', () => {
+            if (journalCursorId === el.dataset.id) return;
+            journalCursorId = el.dataset.id;
+            paintJournalCursor();
+        });
     });
     bindPackButtons(list);
     /* Pätička ide AŽ SEM, po `innerHTML` a po napojení — `innerHTML` by ju inak
        zmazal a `appendChild` pred ním by zmizol bez chyby. */
     renderJournalFooter(list, sorted.length);
+    /* Pás skratiek stojí POD pätičkou: „Ďalších 50" je akcia nad zoznamom,
+       skratky sú návod. Ide tou istou cestou ako pätička, teda po `innerHTML`. */
+    const hints = document.createElement('div');
+    hints.innerHTML = journalHintsHtml();
+    list.appendChild(hints.firstChild);
+    /* Kurzor prežil prekreslenie (nesie ho ID záznamu, nie index), takže sa len
+       prekreslí trieda. BEZ fokusu: prekresliť môže filter alebo WS zrod uzla
+       a v tom okamihu je fokus v poli hľadania — vzor `rerenderKontrola(false)`. */
+    paintJournalCursor();
 }

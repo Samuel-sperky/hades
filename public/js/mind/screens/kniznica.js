@@ -4,7 +4,7 @@ import { bindPackButtons, packBtn } from '../pack.js';
 import { closeRecPanel, onRecPanelClose, openRecPanel, recOpenId } from '../recpanel.js';
 import { openNodeFromAnywhere } from '../screens.js';
 import { originBadge } from './dnes.js';
-import { ASC, DESC, moreRow, renderTable, sortRows } from '../table.js';
+import { ASC, DESC, moreRow, renderSavedFilters, renderTable, sortRows } from '../table.js';
 import { mutedColor } from '../theme.js';
 import { readUrl, registerUrlApply, urlValue, writeUrl } from '../urlstate.js';
 import { $, deferSkeleton, esc, getJson, plainInline, plainText, renderEmpty, renderError, renderFilterEmpty, timeAgo } from '../util.js';
@@ -48,7 +48,19 @@ import { iconMarkup } from '../../shared/icons.js';
    DÔSLEDOK PRE TRIEDENIE, ktorý stojí za to povedať nahlas: `sortRows()` tu ide
    nad CELÝM výsledkom, nie nad načítaným oknom, práve preto, že `limit => null`
    pošle všetko. `PAGE` je okno kresby nad zoradeným poľom, nie stránka zo servera.
-   (Runy to tak nemajú — `/api/runs` sort nepodporuje a je to známa diera.) */
+   (Runy to tak nemajú — `/api/runs` sort nepodporuje a je to známa diera.)
+
+   GRAF TU NIE JE A JE TO ROZHODNUTIE, nie prázdne miesto. Riadok Knižnice nesie
+   `certainty` (ordinálna, 3 stupne, 484 z 1671 prázdna), `origin` (2 hodnoty),
+   oblasť a dvojicu dátumov — teda JEDNU spojitú os (vek) a zvyšok kategórie.
+   `strength` v odpovedi NIE JE (`KniznicaScreen::skill()`), takže „sila × vek",
+   čo je jediný nevymyslený kandidát na `HadesCharts.scatter`, sa z týchto dát
+   postaviť nedá; jeho dáta žijú v `/api/mind`, teda pod Grafom. A agregát, ktorý
+   by z tohto riadka zmysel dal — oblasť × istota — už DOMOV MÁ: je to karta
+   „Istota v oblastiach" na Dnes (`renderCertaintyFlows()`), a druhá kresba tej
+   istej vety na druhej obrazovke je presne ten rozchod dvoch implementácií,
+   ktorý si tento repo platí najčastejšie. Kým Knižnica nedostane od servera
+   spojité číslo, graf sem nepatrí. */
 
 /* Koľko riadkov sa kreslí naraz (G3). Okno nad UŽ ZORADENÝMI dátami; „Ďalších N"
    nie je druhý dopyt. Pri 1671 riadkoch je vykreslenie všetkého naraz zbytočná
@@ -63,15 +75,35 @@ const PAGE = 50;
    Asymetria zostáva zámerná (viď blok vyššie): `q` ide na server, `kna` nie.
    Do URL idú OBA, pretože URL nesie polohu čitateľa, nie dopyt.
 
-   POZOR — `kno` ZATIAĽ V SLOVNÍKU `urlstate.js` NIE JE a ten súbor nevlastním.
-   Kým sa doň nepridá (`{ k: 'kno', kind: 'one', v: vInt, def: null,
-   screen: 'kniznica', deb: DEB_FILTER }`), `writeUrl` neznámy kľúč ticho zahodí
-   („neznámy kľúč sa nezavádza adresou") a `urlValue('kno')` vráti null. Kód je
-   napísaný tak, ako keby kľúč žil: je to jeden riadok v cudzom súbore a všetko
-   ostatné (otvorenie, zavretie, obnova z adresy) je hotové a otestované. Tvar
-   `ruo` / `roo` sa tým drží do bodky. */
+   `kno` v slovníku UŽ JE (doplnený `2b0bb3e`, 1. 9. 2026) — panel teda adresu
+   naozaj nesie, nie len funguje.
+
+   POZOR — `knk` a `knd` (radenie tabuľky) V SLOVNÍKU `urlstate.js` ZATIAĽ NIE SÚ
+   a ten súbor nevlastním. Kým sa doň nepridajú, `writeUrl` neznámy kľúč ticho
+   zahodí („neznámy kľúč sa nezavádza adresou") a `urlValue('knk')` vráti null,
+   takže radenie zostane lokálne a nič nespadne. Kód je napísaný tak, ako keby
+   kľúče žili — je to presne ten istý stav, v akom tu pred `2b0bb3e` čakal `kno`,
+   a presne tá istá chyba, ktorú si repo zaplatil päťkrát: nesmie sa to overiť
+   tým, že sa UI zmenilo, ale meraním `location.search`. */
 const BOOT_MINE = readUrl().s === 'kniznica';
 const bootKno = BOOT_MINE ? parseInt(urlValue('kno') || '', 10) : NaN;
+
+/* Kľúče triedenia, ktoré adresa smie niesť. Je to zrkadlo `libColumns()` —
+   `tags` a `_pack` v ňom zámerne NIE SÚ (`sortable: false`, množina nemá poradie
+   a akcia nie je údaj), takže `?knk=tags` je neplatná hodnota a padá na default.
+   Zoznam existuje aj tu, nie len v slovníku `urlstate.js`: adresa môže prísť
+   z odkazu staršieho, než je aktuálna sada stĺpcov, a obrazovka sa nesmie
+   spoliehať na to, že ju za ňu prefiltroval niekto iný. */
+const LIB_SORTS = ['label', 'area', 'certainty', 'age', 'origin'];
+
+function bootSortKey() {
+    const k = BOOT_MINE ? urlValue('knk') : null;
+    return k && LIB_SORTS.includes(k) ? k : 'label';
+}
+
+function bootSortDir() {
+    return BOOT_MINE && urlValue('knd') === 'desc' ? DESC : ASC;
+}
 
 export const libraryState = {
     /* `areas` je FILTRAČNÁ OS (názov, slug, farba, počet) a `rows` sú riadky
@@ -81,11 +113,23 @@ export const libraryState = {
     areas: [], rows: [], total: 0, truncated: false,
     areaSlug: (BOOT_MINE ? urlValue('kna') : null) || null,
     q: '',
-    /* Triedenie je LOKÁLNE a v adrese NIE JE — rovnako ako v Runách a
-       Rozhodnutiach. Default je názov vzostupne, teda presne poradie, v akom
-       riadky posiela server (`Node::orderBy('label')`), len naprieč oblasťami:
-       obrazovka sa načíta v poradí, ktoré tabuľka priznáva v `aria-sort`. */
-    sortKey: 'label', sortDir: ASC,
+    /* TRIEDENIE IDE DO ADRESY (`knk` kľúč, `knd` smer). Do 2. 9. 2026 tu stálo
+       „triedenie je lokálne a v adrese nie je — rovnako ako v Runách", a tá veta
+       bola nepravdivá dvakrát: Runy medzitým `ruk`/`rud` dostali, teda cudzia
+       obrazovka bola vzatá ako dôvod pre to, čo už nerobí. Zoradený zoznam JE
+       pohľad na dáta a odkaz naň má obnoviť to, čo posielateľ videl.
+
+       Default je názov vzostupne, teda presne poradie, v akom riadky posiela
+       server (`Node::orderBy('label')`), len naprieč oblasťami — a defaulty sa
+       do adresy nepíšu, takže čistý stav je `?s=kniznica`. Smer je v adrese
+       ABSOLÚTNY (`knd=desc`), nie „prirodzený pre stĺpec": klik na Vek nasadzuje
+       DESC, ale `?knk=age` bez `knd` znamená vzostupne a je to tak preto, aby
+       jedna adresa mala jeden význam nezávisle od toho, ktorý stĺpec si kedy
+       zmenil svoj prednastavený smer.
+
+       `shown` v adrese NIE JE: koľko riadkov som si dolistoval je poloha
+       v zozname, nie pohľad na dáta (to isté rozhodnutie ako v Runách). */
+    sortKey: bootSortKey(), sortDir: bootSortDir(),
     shown: PAGE,
 };
 
@@ -110,10 +154,28 @@ registerUrlApply('kniznica', (url) => {
     const inp = $('library-search');
     const curQ = inp ? ((inp.value || '').trim()) : libraryState.q;
     const sameFilter = nextArea === libraryState.areaSlug && nextQ === curQ;
+    /* Radenie sa dosadí PRED filtrom, nie za ním: keď sa mení oboje, `renderLibrary()`
+       nižšie už kreslí novým poradím a druhé prekreslenie by bolo práca do prázdna.
+
+       ADRESA JE VSTUP AJ VTEDY, KEĎ KĽÚČ CHÝBA: kľúč, ktorý v adrese nie je, JE
+       default (`urlstate.js` defaulty do adresy nepíše). Popstate na čistú adresu
+       teda radenie vracia na „Playbook vzostupne" — zmerané: po kliku na Vek je
+       `aria-sort="descending"` na `.col-age`, po popstate na `?s=kniznica` je
+       `ascending` na `.col-label`. Je to ZMENA CHOVANIA proti stavu pred touto
+       vlnou (dovtedy popstate radenia nesiahal) a je zámerná; kým `knk`/`knd`
+       nie sú v slovníku, znamená to, že Späť radenie zhodí na default vždy. */
+    const nextSortKey = url.knk && LIB_SORTS.includes(url.knk) ? url.knk : 'label';
+    const nextSortDir = url.knd === 'desc' ? DESC : ASC;
+    const sortChanged = nextSortKey !== libraryState.sortKey || nextSortDir !== libraryState.sortDir;
+    libraryState.sortKey = nextSortKey;
+    libraryState.sortDir = nextSortDir;
     if (!sameFilter) {
         libraryState.areaSlug = nextArea;
         if (inp) inp.value = nextQ; else libraryBootQ = nextQ;
         if (document.body.dataset.screen === 'kniznica') renderLibrary();
+    } else if (sortChanged && document.body.dataset.screen === 'kniznica' && $('library-list')) {
+        // Späť len po poradí: dáta sú v ruke, prekresľuje sa výhradne tabuľka.
+        renderLibraryList();
     }
     /* Panel je SAMOSTATNÁ os adresy, preto stojí ZA `sameFilter`, nie v ňom:
        Späť smie zavrieť detail bez toho, aby sa hýbal filter — a keby to viselo
@@ -331,26 +393,92 @@ export function renderLibraryView() {
        radu čipov, ktorý server neobťažuje vôbec. Jedno miesto, jeden zápis.
        `replace` — filter do histórie nepatrí (rozhodnutie 10). */
     writeUrl({ kna: libraryState.areaSlug, q: q || null }, 'replace');
-    if (!areas.length) {
-        // Niet ani osi, z ktorej by sa dal poskladať filter — prázdno berie celé telo.
-        libraryAxisSig = null;
-        /* Prázdno z HĽADANIA je iná správa než prázdna knižnica a má jednu akciu.
-           Akcia sa dá ponúknuť len pri `q`: oblasť sem nedosiahne (filtruje sa nad
-           `areas`, a keď je pole prázdne, `pruneLibraryArea()` slug už zhodil), takže
-           bez výrazu naozaj nie je čo zrušiť.
-           Popisok je „Zruš hľadanie", nie „Zruš filter" — je to iné gesto a stojí
-           na inom prvku (`#library-search`, ktoré je mimo tohto kontejnera). */
-        if (q) {
-            renderFilterEmpty(body, 'Nič sa nenašlo', 'Skús kratší výraz.', clearLibrarySearch, 'Zruš hľadanie');
-        } else {
-            renderEmpty(body, 'book', 'Knižnica je prázdna',
-                'Playbooky sa tu objavia, keď ich Hades dostane.');
-        }
-        return;
-    }
     ensureLibraryShell(body);
     syncLibraryFilter();
+    renderLibrarySaved();
+    if (!areas.length) {
+        /* Niet ani osi, z ktorej by sa dal poskladať filter — ale prázdno ide DO
+           `#library-list`, nie namiesto celého tela. Dôvod je vzor z Runov:
+           uložené filtre musia zostať dosiahnuteľné práve vtedy, keď filter nič
+           nenašiel — tam ich človek potrebuje najviac. Do 2. 9. 2026 tu prázdno
+           prepisovalo celé telo, takže lišta zmizla presne v tom okamihu. */
+        libraryEmpty($('library-list'), q);
+        return;
+    }
     renderLibraryList();
+}
+
+/* PRÁZDNO MÁ DVE PRÍČINY a každá vlastný predmet aj vlastnú akciu — jeden
+   producent pre obe call-site (telo bez osi oblastí a tabuľka bez riadkov),
+   inak sa tie dve vety rozídu. Presne tak sa to už raz stalo Smernici.
+
+   Akcia sa dá ponúknuť len pri `q`: oblasť sem nedosiahne (filtruje sa nad
+   `areas`, a keď je pole prázdne, `pruneLibraryArea()` slug už zhodil), takže bez
+   výrazu naozaj nie je čo zrušiť. Popisok je „Zruš hľadanie", nie „Zruš filter" —
+   je to iné gesto a stojí na inom prvku (`#library-search`, ktoré je mimo tohto
+   kontejnera). `.empty--filter` vlastnú kresbu nemá a mať nemá (manuál §8). */
+function libraryEmpty(container, q) {
+    if (!container) return;
+    if (q) {
+        renderFilterEmpty(container, 'Nič sa nenašlo', 'Skús kratší výraz.', clearLibrarySearch, 'Zruš hľadanie');
+    } else {
+        renderEmpty(container, 'book', 'Knižnica je prázdna',
+            'Playbooky sa tu objavia, keď ich Hades dostane.');
+    }
+}
+
+/* ULOŽENÝ FILTER (G2). Knižnica bola do 2. 9. 2026 jediná tabuľková obrazovka
+   bez uložených filtrov, a nebolo to nikde zapísané ako zámer — teda diera, nie
+   rozhodnutie. Mechanika je JEDNA a je v `shared/filters.js` (`table.js` ju len
+   re-exportuje), kľúč je `hades.filters.kniznica`.
+
+   DO STAVU IDÚ OBE OSI, hoci sa vyhodnocujú na dvoch rôznych miestach (`q`
+   filtruje server SK-aware enginom, oblasť filtruje klient): pre človeka je to
+   jeden pohľad a rozdeliť ho na „serverovú" a „klientskú" polovicu by znamenalo
+   dva čipy na jeden filter. Triedenie ani `shown` v ňom NIE SÚ — to prvé nesie
+   adresa (`knk`/`knd`), to druhé je poloha v zozname.
+
+   Meno si filter skládá z vlastného obsahu („Vývoj & kód · „docker""), nie
+   z dialógu: natívny `prompt()` by bol jediné modálne okno v appke. Výraz môže
+   obsahovať čokoľvek a `renderSavedFilters()` kreslí `textContent`om, takže sa
+   escapovať nemusí — je to napísané pri tej funkcii a platí to aj tu. */
+function currentLibraryFilter() {
+    const slug = libraryState.areaSlug;
+    const inp = $('library-search');
+    const q = ((inp && inp.value) || '').trim();
+    const bits = [];
+    if (slug) {
+        const a = libraryState.areas.find((x) => x.slug === slug);
+        bits.push((a && a.name) || slug);
+    }
+    // Slovenské úvodzovky sú „takto“ (dolné + horné otočené), nie „takto" —
+    // druhý znak je iný než ten prvý a preklep v ňom je v mene filtra vidieť.
+    if (q) bits.push('„' + q + '“');
+    if (!bits.length) return null;      // „všetko" je stav bez filtra, nie filter
+    return { name: bits.join(' · '), state: { area: slug, q: q } };
+}
+
+function renderLibrarySaved() {
+    renderSavedFilters($('library-saved'), 'kniznica', {
+        onApply: (state) => {
+            const s = state || {};
+            libraryState.areaSlug = s.area || null;
+            /* Výraz sa dosadí DO POĽA, nie do stavu: `renderLibrary()` si ho
+               odtiaľ čita sám a druhý zdroj pravdy by sa s ním rozišiel. Keď pole
+               ešte nie je v DOM (uloženie z odkazu pred prvým renderom), padne to
+               do tej istej jednorazovej premennej ako boot z adresy. */
+            const inp = $('library-search');
+            if (inp) inp.value = s.q || ''; else libraryBootQ = s.q || '';
+            libraryState.shown = PAGE;
+            /* `renderLibrary()`, nie `renderLibraryView()`: `q` filtruje SERVER,
+               takže uložený filter s iným výrazom sa bez nového dopytu nasadiť
+               nedá. Nasadenie filtra je VIDITEĽNÁ zmena plochy, takže sa nehlási
+               (politika §8); zlyhanie dopytu ohlási `renderLibrary()` svojím
+               `.empty--error` s vlastným predmetom. */
+            renderLibrary();
+        },
+        current: currentLibraryFilter,
+    });
 }
 
 /* Čipy a tabuľka sú dva bloky, nie jeden innerHTML: klik do filtra prekresľuje
@@ -367,7 +495,13 @@ function ensureLibraryShell(body) {
     const sig = libraryAxisSignature();
     if ($('library-list') && libraryAxisSig === sig) return;
     libraryAxisSig = sig;
-    body.innerHTML = '<div id="library-filter"></div><div id="library-list"></div>';
+    /* Tri bloky, nie jeden: čipy sa stavajú len pri zmene OSI, lišta uložených
+       filtrov pri každom renderi pohľadu (musí vedieť o zmene filtra, inak by
+       tlačidlo „Uložiť: …" nieslo staré meno) a tabuľka pri každom triedení.
+       `#library-saved` stojí MEDZI nimi, nie pod tabuľkou — uložený filter sa
+       nasadzuje pred čítaním, nie po ňom. */
+    body.innerHTML = '<div id="library-filter"></div><div id="library-saved"></div>'
+        + '<div id="library-list"></div>';
     $('library-filter').innerHTML = libraryFilterHtml();
     wireLibraryFilter();
 }
@@ -550,6 +684,13 @@ export function sortLibrary(key) {
         libraryState.sortKey = key;
         libraryState.sortDir = key === 'age' ? DESC : ASC;
     }
+    /* Poradie do adresy. `replace` — je to zmena toho, AKO sa pozerám, nie NA ČO
+       (rozhodnutie 10), takže Späť patrí filtru a panelu, nie každému kliknutiu
+       do hlavičky. Defaulty sa vynechávajú, aby čistý stav nemal query string. */
+    writeUrl({
+        knk: libraryState.sortKey === 'label' ? null : libraryState.sortKey,
+        knd: libraryState.sortDir === DESC ? 'desc' : null,
+    }, 'replace');
     renderLibraryList();
     /* Prekreslenie zahodilo `<th>` aj s tlačidlom, na ktoré človek práve klikol,
        takže fokus by spadol na `<body>` a Tab by začal od začiatku dokumentu.
@@ -571,12 +712,7 @@ export function renderLibraryList() {
        takže prázdno z neho je nedosiahnuteľné — ale hľadanie sa neprune-uje
        a s prázdnou osou by sme sem ani nedošli, takže táto vetva patrí hľadaniu. */
     if (!rows.length) {
-        if (libraryState.q) {
-            renderFilterEmpty(list, 'Nič sa nenašlo', 'Skús kratší výraz.', clearLibrarySearch, 'Zruš hľadanie');
-        } else {
-            renderEmpty(list, 'book', 'Knižnica je prázdna',
-                'Playbooky sa tu objavia, keď ich Hades dostane.');
-        }
+        libraryEmpty(list, libraryState.q);
         return;
     }
 
@@ -614,7 +750,67 @@ export function renderLibraryList() {
     // Dokresba: pack tlačidlá (stopPropagation je v `bindPackButtons`, takže klik
     // na ne neotvorí aj panel).
     bindPackButtons(list);
+    wireLibraryCursor(list);
     consumePendingOpen();
+}
+
+/* ---------- klávesový kurzor v tabuľke (j / k / ↑ / ↓ / Home / End) ----------
+
+   Tabuľka mala do 2. 9. 2026 len to, čo dáva `table.js`: `tabindex` na riadku
+   a Enter/medzerník na otvorenie. Pri 1671 riadkoch to znamená, že sa medzi
+   susednými riadkami klávesnicou hýbať nedá inak než Tabom cez celý riadok.
+
+   KURZOR JE SCOPE-NUTÝ NA `#library-list`, nie na dokument — a to je vedomý
+   rozdiel proti Kontrole, ktorej globálny kurzor žije v `shortcuts.js`. Nad
+   tabuľkou Knižnice stojí textové pole hľadania: globálne `j` by pri písaní buď
+   skákalo v tabuľke, alebo by potrebovalo strážcu na každý vstup v appke.
+   Kontrola je fronta na rozhodovanie (ruky mimo textu), Knižnica je zoznam,
+   v ktorom sa hľadá slovom. Preto nie druhá kópia globálneho dispatchera.
+
+   Fokus je JEDINÝ zdroj pravdy o polohe kurzora — žiadny `libraryState.idx`.
+   Tabuľka sa prekresľuje (triedenie, „Ďalších N"), takže vlastný index by po
+   prekreslení ukazoval na riadok, ktorý na tom mieste už nestojí; `document.
+   activeElement` po prekreslení neexistuje a kurzor tým čestne zmizne. */
+function libraryRows(list) {
+    return list ? Array.from(list.querySelectorAll('.rec-row')) : [];
+}
+
+function wireLibraryCursor(list) {
+    list.onkeydown = (e) => {
+        /* Kurzor sa hýbe LEN keď fokus stojí NA riadku. Cely nesú tlačidlá
+           („Do rozhovoru"), a `j` na tlačidle nie je pohyb v tabuľke — je to ten
+           istý strážca, aký si `table.js` píše pre Enter/medzerník, a z tej istej
+           príčiny: bez neho by `preventDefault()` zhltol klávesy prvku v cele. */
+        const el = e.target;
+        if (!el || !el.classList || !el.classList.contains('rec-row')) return;
+        const rows = libraryRows(list);
+        const i = rows.indexOf(el);
+        if (i < 0) return;
+        let to;
+        switch (e.key) {
+            case 'j': case 'ArrowDown': to = i + 1; break;
+            case 'k': case 'ArrowUp': to = i - 1; break;
+            case 'Home': to = 0; break;
+            case 'End': to = rows.length - 1; break;
+            default: return;
+        }
+        e.preventDefault();
+        if (to < 0) return;
+        if (to >= rows.length) {
+            /* Kurzor na poslednom NAKRESLENOM riadku dotiahne ďalšie okno, a to je
+               celý dôvod, prečo tá vetva existuje: bez nej sa klávesnicou dá prejsť
+               50 riadkov z 1671 a zvyšok patrí len myši. `shown` nie je stav
+               pohľadu, takže adresa sa tým nemení — mení sa poloha v zozname,
+               presne ako pri tlačidle „Ďalších N". */
+            if (libraryState.shown >= visibleRows().length) return;
+            libraryState.shown += PAGE;
+            renderLibraryList();
+            const grown = libraryRows($('library-list'));
+            if (grown[to]) grown[to].focus();
+            return;
+        }
+        rows[to].focus();
+    };
 }
 
 /* ---------- detail v pravom paneli ----------

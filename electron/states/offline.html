@@ -71,23 +71,102 @@
         /* ZNAK-STYLE: generuje tools/brand/build-mark.py zo hades-sigil-mini.svg.
            Needituj ručne — pri najbližšom behu generátora sa zmena stratí.
            Dôvod, prečo je geometria aj tu: tento dokument sa zobrazuje, KEĎ SERVER
-           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/. */
-        .sigil .ring { fill: none; stroke: var(--accent); stroke-width: 9; }
+           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/.
+           ZNAK JE SIEŤ (1. 9. 2026): prstenec (`.ring`) je retirovaný — v sieti nie je
+           zavretá krivka, ktorú by pomenoval. Uzly sú tu PLNÉ DISKY, nie prstence:
+           pri 84 px by obrys uzla mal 1.13 px, teda pod podlahou 1.5 px. */
+        .sigil .edge { fill: none; stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; opacity: .8; }
+        .sigil .edge--lat { opacity: .5; }
+        .sigil .node { fill: var(--accent); }
         .sigil .core { fill: var(--gold); transform-origin: 50px 50px; }
         /* /ZNAK-STYLE */
 
-        /* Základný stav jadra je PLNÁ mierka a plná farba, takže tichá verzia
-           (`prefers-reduced-motion: reduce`) nie je „vypnuté", ale hotový znak —
-           nikdy nezamrzne v spodnej fáze dýchania. Plošná podlaha z mind.css tento
-           dokument nekryje (nenačítava ho), preto je gate `no-preference` jediný
-           nositeľ tichej verzie a musí zostať. */
+        /* ── POHYB ZNAKU. Stojí ZÁMERNE MIMO markerov ZNAK-STYLE: generátor vlastní
+           geometriu, nie dramaturgiu, a keby bola vnútri, prvý beh generátora by
+           ju zmazal.
+
+           Poradie zrodu je poradie, v akom sieť čítame — to isté, čo `.bc-mark`
+           v mind.css, len s lokálnymi menami (mind.css sem nedosiahne):
+             uzly 0 / 80 / 160 ms → hrany 200 ms → jadro sa presýti na 1200 ms.
+
+           `transform-box: fill-box` MUSÍ byť na UZLOCH. V SVG je počiatočná hodnota
+           `view-box` a `transform-origin` `0 0`, takže `scale()` na kruhu bez tejto
+           dvojice škáluje okolo rohu viewBoxu a uzol prilieta z ľava-hora namiesto
+           toho, aby vyrástol na mieste. Uzly majú tri rôzne stredy, takže konštantu
+           by CSS muselo poznať trikrát — `fill-box` + `center` to vyrieši bez `cx`/`cy`.
+
+           JADRO TU NIE JE a je to zámer, nie opomenutie: jadro stojí v strede, takže
+           mu počiatok dáva generátor priamo v ZNAK-STYLE (`transform-origin: 50px
+           50px`, view-box súradnice). Napísať mu tu druhú dvojicu by znamenalo mať tú
+           istú pravdu na dvoch miestach — a to je presne to, čo sa pri prvej zmene
+           geometrie rozíde.
+
+           `pathLength="100"` na každej hrane je v markupe nižšie: hrany majú rôznu
+           dĺžku (36,00 / 39,50 / 41,00 / 56,60 jednotky — prvé tri sú `NET_SATS`
+           vzdialenosti, lebo hrana ide od stredu jadra do stredu uzla), takže bez neho
+           by jedna konštanta `stroke-dasharray` dokreslila jednu hranu a ostatné
+           zastavila v polovici. */
+        .sigil .node {
+            transform-box: fill-box;
+            transform-origin: center;
+        }
+
+        /* Základný stav je HOTOVÝ ZNAK: plná mierka, plná farba, hrany nakreslené.
+           Tichá verzia (`prefers-reduced-motion: reduce`) tým nie je „vypnuté", ale
+           dosadnutý znak — nikdy nezamrzne v spodnej fáze dýchania ani na polovične
+           dokreslenej hrane. Plošná podlaha z mind.css tento dokument nekryje
+           (nenačítava ho), preto je táto dvojica jediný nositeľ tichej verzie
+           a musí zostať. */
+        .sigil .node,
         .sigil .core { transform: scale(1); opacity: 1; }
+        .sigil .edge { stroke-dashoffset: 0; }
 
         @media (prefers-reduced-motion: no-preference) {
-            /* Slučková krivka, nie `ease-in-out`: príchodová krivka na nekonečnej
+            .sigil .edge {
+                stroke-dasharray: 100;
+                stroke-dashoffset: 100;
+                animation: sig-draw 760ms cubic-bezier(.22, 1, .36, 1) 200ms 1 both;
+            }
+            .sigil .node { animation: sig-node-in 220ms cubic-bezier(.22, 1, .36, 1) 1 both; }
+            .sigil .nodes .node:nth-child(2) { animation-delay: 80ms; }
+            .sigil .nodes .node:nth-child(3) { animation-delay: 160ms; }
+            /* Jadro nesie DVE animácie v JEDNOM zápise a poradie je nosné: zrod
+               (jedna dlhá dráha s plató v strede — zjaví sa ako bledý uzol, počká na
+               hrany, potom sa presýti) a až po ňom dýchanie. `core-pulse` stojí
+               v zozname DRUHÉ, takže po 1200 ms prebíja dosadnutie zrodu, a kým beží
+               jeho oneskorenie, nevypĺňa nič (nemá `both`) a zrod má voľné pole.
+               Dve samostatné pravidlá by sa o `transform` bili a druhé by so `both`
+               počas oneskorenia prepísalo dosadnutie prvého.
+               Slučková krivka, nie `ease-in-out`: príchodová krivka na nekonečnej
                slučke kulhá — spomalí a skočí. Rovnaká hodnota ako `--ease-pulse`
                v mind.css; tu je napísaná doslova, lebo tokeny sem nedosiahnu. */
-            .sigil .core { animation: core-pulse 4s cubic-bezier(.4, 0, .6, 1) infinite; }
+            .sigil .core {
+                animation:
+                    sig-core-in 1040ms cubic-bezier(.22, 1, .36, 1) 160ms 1 both,
+                    core-pulse 4s cubic-bezier(.4, 0, .6, 1) 1200ms infinite;
+            }
+        }
+
+        @keyframes sig-draw {
+            from { stroke-dashoffset: 100; }
+            to   { stroke-dashoffset: 0; }
+        }
+
+        @keyframes sig-node-in {
+            from { opacity: 0; transform: scale(.4); }
+            70%  { opacity: 1; transform: scale(1.12); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        /* `filter: saturate()` a nie výmena farby: zlatá je v markupe (`var(--gold)`)
+           a CSS ju nesmie duplikovať. `saturate(.08)` z nej urobí svetlú šedú
+           v ľubovoľnej téme — teda uzol, ktorý ešte nie je jadrom. */
+        @keyframes sig-core-in {
+            0%   { opacity: 0; transform: scale(.4);  filter: saturate(.08); }
+            21%  { opacity: 1; transform: scale(1);   filter: saturate(.08); }
+            62%  { opacity: 1; transform: scale(1);   filter: saturate(.08); }
+            84%  { opacity: 1; transform: scale(1.16); filter: saturate(1); }
+            to   { opacity: 1; transform: scale(1);   filter: saturate(1); }
         }
 
         @keyframes core-pulse {
@@ -219,10 +298,22 @@
 </head>
 <body>
     <main class="card">
-        <!-- ZNAK: generuje tools/brand/build-mark.py — needituj ručne -->
+        <!-- ZNAK: generuje tools/brand/build-mark.py — needituj ručne.
+             SIEŤ v DISKOVOM stupni (`.sigil` je 84 px). Súradnice sú kánon
+             z hades-sigil-mini.svg + NET_* konštánt generátora, nie ručná kresba.
+             Hrany idú od stredu k stredu a konce im zakryjú disky — žiadne pahýle.
+             `.nodes` musí obsahovať PRESNE tri uzly: zrod ide cez :nth-child(2)/(3). -->
         <svg class="sigil" viewBox="0 0 100 100" aria-hidden="true">
-            <circle class="ring" cx="50" cy="50" r="36"></circle>
-            <circle class="core" cx="50" cy="50" r="15"></circle>
+            <path class="edge" pathLength="100" d="M 50 50 L 63.49 16.62"></path>
+            <path class="edge" pathLength="100" d="M 50 50 L 11.85 39.78"></path>
+            <path class="edge" pathLength="100" d="M 50 50 L 71.73 84.77"></path>
+            <path class="edge edge--lat" pathLength="100" d="M 63.49 16.62 L 11.85 39.78"></path>
+            <g class="nodes">
+                <circle class="node" cx="63.49" cy="16.62" r="8.91"></circle>
+                <circle class="node" cx="11.85" cy="39.78" r="7.29"></circle>
+                <circle class="node" cx="71.73" cy="84.77" r="6.07"></circle>
+            </g>
+            <circle class="core" cx="50" cy="50" r="13.68"></circle>
         </svg>
         <!-- /ZNAK -->
 

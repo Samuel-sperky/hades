@@ -56,12 +56,22 @@ class ConsoleProjectsBranchesTest extends TestCase
             ->assertJsonPath('name', 'Charón')
             ->assertJsonPath('pinned', true);
 
-        $pinnedAt = ConsoleProject::where('uuid', $uuid)->value('pinned_at');
+        $this->assertNotNull(ConsoleProject::where('uuid', $uuid)->value('pinned_at'));
 
         // Opakované pripnutie čas NEPREPISUJE — poradie pripnutých je poradie
         // pripnutia, nie poradie posledného kliku.
+        //
+        // Čas sa posúva do minulosti RUČNE: do 2. 9. 2026 tu stálo porovnanie
+        // hodnoty pred a po druhom `PATCH`i, a keďže oba padli do tej istej
+        // sekundy, `now()` dal to isté a asercia prešla aj kódu, ktorý čas
+        // prepisuje. Zmerané na mutantovi `? now() : null` v oboch kontroléroch.
+        ConsoleProject::where('uuid', $uuid)->update(['pinned_at' => '2026-01-01 00:00:00']);
+
         $this->patchJson("/api/console/projects/{$uuid}", ['pinned' => true])->assertOk();
-        $this->assertEquals($pinnedAt, ConsoleProject::where('uuid', $uuid)->value('pinned_at'));
+        $this->assertSame(
+            '2026-01-01 00:00:00',
+            ConsoleProject::where('uuid', $uuid)->value('pinned_at')->toDateTimeString(),
+        );
 
         $this->patchJson("/api/console/projects/{$uuid}", ['archived' => true])
             ->assertOk()

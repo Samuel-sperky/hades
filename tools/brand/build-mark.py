@@ -19,17 +19,28 @@ jedného tvaru; zlieva to do jedného ZDROJA a rozdiely medzi výskytmi robí
 vypočítanými, nie ručnými.
 
 ZDROJE (jediné miesta, kde sa geometria a farby znaku píšu rukou):
-  * public/brand/hades-sigil-mini.svg  — KÁNON: prstenec r36/hrúbka 9, jadro r15
+  * public/brand/hades-sigil-mini.svg  — KÁNON JEDNÉHO UZLA: prstenec r36/hrúbka 9,
+    zlatý stred r15
   * public/css/mind.css                — tmavý papier (`--bg-rgb`) pod faviconom
+
+ZNAK JE OD 1. 9. 2026 SIEŤ (rozhodnutie používateľa): jadrový uzol a tri vedľajšie,
+viazané štyrmi hranami. Prstencový znak „Jedno oko" (nosný prstenec, prerušenie,
+satelit, obežnica, delenia po 30°) je retirovaný a jeho slovník sa NEPREKLÁDA.
 
 Master (hades-sigil.svg) sa od 28. 8. 2026 GENERUJE z mini a ručným zdrojom už NIE
 JE. Dovtedy to boli dva nezávislé výkresy a rozišli sa: master mal nosný prstenec
-0,46 boxu, mini 0,36 — znak vedľa znaku teda nesúhlasil. Master pridáva nad mini
-len dej (hranica, delenia, prerušenie, hrana, satelit, obežnica) a robí to
-z konštánt MASTER_* nižšie.
+0,46 boxu, mini 0,36 — znak vedľa znaku teda nesúhlasil. Master si z mini berie
+POMERY (0,36 / 0,09 / 0,30 boxu) a stavia z nich jadrový uzol siete; v sieti sa
+absolútna identita udržať nedá, pretože prstenec r 36 v strede nenechá vedľajším
+uzlom miesto. Konštanty siete sú NET_* nižšie.
+
+REBRÍK REDUKCIE je súčasť znaku, nie jeho dokumentácia: pod NET_MIN_PX (128) padnú
+obrysy vedľajších uzlov a hrany pod 1,5 px, takže sa kreslí MINI — jeden uzol.
+`ladder()` to prepočítava z geometrie a vypisuje do DERIVED.md aj s kalibráciou
+opačným smerom (koľko by sieť merala, keby sa na tom stupni kreslila).
 
 VÝSTUPY:
-  1. public/brand/hades-sigil.svg           (master = mini + dej)
+  1. public/brand/hades-sigil.svg           (master = sieť)
   1b. public/brand/hades-sigil-mono.svg     (master jednofarebne)
   1c. public/brand/hades-lockup-h/-v.svg    (znak + wordmark; wordmark sa nehýbe)
   2. public/brand/hades-favicon.svg         (mini na atramentovom disku — zdroj data-URI)
@@ -40,7 +51,8 @@ VÝSTUPY:
      bit-identické kópie v troch `<head>`och a generátor patchoval každú zvlášť)
   6. znak v electron/chrome/topbar.html a electron/states/offline.html (medzi ZNAK markermi)
   7. tools/brand/DERIVED.md — odvodené čísla pre CSS a Blade, ktoré tento generátor
-     nevlastní (`stroke-dasharray`, tri čísla `.load-mark`, inline blok viewBox 24)
+     nevlastní (`stroke-dasharray`, tri čísla `.load-mark`, inline blok viewBox 24,
+     rebrík redukcie a inline SIEŤ s dĺžkami hrán pre `stroke-dasharray`)
 
 Kánon akcentu (BRAND-HADES §6): ZLATÁ je značková a patrí jadru — na plátne aj
 v znaku je jadro jediný sýty plný prvok. AMETHYST je interaktívny. Znak je značkový,
@@ -368,23 +380,75 @@ def assert_partial_is_only_truth() -> None:
 # --------------------------------------------------------------------------- #
 
 def raster(mini: Mini, ink: str, px: int) -> Image.Image:
-    """Znak ako raster. Prstenec sa kreslí ako ANULUS (plný disk r+w/2 a do neho
-    atramentový disk r-w/2), nie ako `ellipse(width=)`: PIL kreslí obrys s
-    celočíselnou šírkou a na 16 px by 9/100 hrúbky spadlo na 1 px alebo 2 px
-    podľa zaokrúhlenia, teda znak by na každej veľkosti vážil inak."""
+    """Znak ako raster, na správnom stupni redukcie pre danú veľkosť.
+
+    Prstenec (uzol) sa kreslí ako ANULUS (plný disk r+w/2 a do neho atramentový
+    disk r-w/2), nie ako `ellipse(width=)`: PIL kreslí obrys s celočíselnou
+    šírkou a na 16 px by 9/100 hrúbky spadlo na 1 px alebo 2 px podľa
+    zaokrúhlenia, teda znak by na každej veľkosti vážil inak.
+
+    STUPEŇ ROZHODUJE `NET_MIN_PX`, nie volajúci: pod ním sa kreslí mini (jeden
+    uzol), nad ním celá sieť. Preto `.ico` obsahuje DVA rôzne výkresy — a je to
+    presne to, na čo multi-size `.ico` je. Keby sa sieť kreslila aj na 16 px,
+    hrany aj obrysy vedľajších uzlov by mali pod 0,4 px (viď `ladder()`).
+    """
     n = px * SUPERSAMPLE
     img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     s = n / mini.box
-    cx, cy = mini.cx * s, mini.cy * s
 
-    def disc(r: float, color: str) -> None:
-        d.ellipse([cx - r * s, cy - r * s, cx + r * s, cy + r * s], fill=color)
+    def disc(x: float, y: float, r: float, color: str) -> None:
+        d.ellipse([x * s - r * s, y * s - r * s, x * s + r * s, y * s + r * s], fill=color)
 
-    disc(mini.disk_r, ink)
-    disc(mini.ring_r + mini.ring_w / 2, mini.acc_dark)
-    disc(mini.ring_r - mini.ring_w / 2, ink)
-    disc(mini.core_r, mini.gold_dark)
+    disc(mini.cx, mini.cy, mini.disk_r, ink)
+
+    if px < NET_DISC_MIN_PX:
+        disc(mini.cx, mini.cy, mini.ring_r + mini.ring_w / 2, mini.acc_dark)
+        disc(mini.cx, mini.cy, mini.ring_r - mini.ring_w / 2, ink)
+        disc(mini.cx, mini.cy, mini.core_r, mini.gold_dark)
+        return img.resize((px, px), Image.LANCZOS)
+
+    geo = net_geometry(mini)
+    if px < NET_MIN_PX:
+        # DISKOVÝ stupeň: hrany od stredu k stredu (disky im zakryjú konce),
+        # uzly plné. To isté, čo generátor vkladá do offline stavu Electronu.
+        layer = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        ld = ImageDraw.Draw(layer)
+        rgb = tuple(int(mini.acc_dark[i:i + 2], 16) for i in (1, 3, 5))
+        nodes = geo["nodes"]
+        for a, b, lat in NET_EDGES:
+            na, nb = nodes[a], nodes[b]
+            ld.line([na.x * s, na.y * s, nb.x * s, nb.y * s],
+                    fill=rgb + (round(255 * (0.5 if lat else 0.8)),),
+                    width=max(1, round(NET_DISC_EDGE_W * s)))
+        img = Image.alpha_composite(img, layer)
+        d = ImageDraw.Draw(img)
+        for node in nodes[1:]:
+            disc(node.x, node.y, node.outer, mini.acc_dark)
+        core = nodes[0]
+        disc(core.x, core.y, core.r, mini.gold_dark)
+        return img.resize((px, px), Image.LANCZOS)
+
+    # Hrany pred uzlami — to isté poradie ako v SVG. Zárez hrán je TÁ ISTÁ
+    # geometria (`net_geometry`), nie „nechám to prekryť atramentom": prekrytie by
+    # dalo iný tvar spoja než SVG a dva výstupy jedného znaku by sa rozišli.
+    # Priehľadnosť hrán (.8 / .5) ide cez samostatnú vrstvu a alpha kompozíciu,
+    # nie cez `fill` s alfou priamo do obrázka: `ImageDraw` alfu NEMIEŠA, len ju
+    # zapíše, takže hrana by na atramentovom disku vyrezala poloprehľadnú dieru.
+    layer = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    rgb = tuple(int(mini.acc_dark[i:i + 2], 16) for i in (1, 3, 5))
+    for e in geo["edges"]:
+        ld.line([e["x1"] * s, e["y1"] * s, e["x2"] * s, e["y2"] * s],
+                fill=rgb + (round(255 * (0.5 if e["lat"] else 0.8)),),
+                width=max(1, round(NET_EDGE_W * s)))
+    img = Image.alpha_composite(img, layer)
+    d = ImageDraw.Draw(img)
+    for node in geo["nodes"]:
+        disc(node.x, node.y, node.outer, mini.acc_dark)
+        disc(node.x, node.y, node.r - node.w / 2, ink)
+    core = geo["nodes"][0]
+    disc(core.x, core.y, core.gold, mini.gold_dark)
     return img.resize((px, px), Image.LANCZOS)
 
 
@@ -418,6 +482,30 @@ def patch_between(path: Path, start: str, end: str, block: str) -> None:
 
 
 def build_electron_html(mini: Mini) -> None:
+    """Znak v Electron chrome (16 px) a v offline stave (84 px).
+
+    DVA RÔZNE STUPNE REBRÍKA v jednom behu, a to je celý dôvod, prečo tu tá funkcia
+    je namiesto jedného bloku:
+      * topbar má `.sigil` 16 px  -> JEDEN UZOL (mini kánon, prstenec + zlatý stred),
+      * offline stav má 84 px     -> SIEŤ v diskovom stupni (obrys by pri 84 px mal
+        1,13 px, teda pod podlahou 1,5 px — preto disky, nie prstence).
+
+    Kontrakt tried NEVYMÝŠĽAM: `.edge` / `.nodes` > `.node` / `.core` už v offline
+    dokumente sú a visí na nich jeho pohyb, ktorý stojí ZÁMERNE MIMO markerov.
+    Generátor preto dodáva len geometriu a základnú kresbu — presne tú deľbu, akú
+    ten dokument sám opisuje. `.nodes` musí mať PRESNE tri deti: stupňovanie zrodu
+    ide cez `:nth-child(2)` / `(3)`.
+
+    `pathLength="100"` na každej hrane je povinné: hrany sú rôzne dlhé, takže jedna
+    konštanta `stroke-dasharray: 100` bez normalizácie dokreslí jednu a ostatné
+    zastaví v polovici.
+
+    POZOR (zapísané 1. 9. 2026): tento región je generátorov, ale plocha appky
+    (`.bc-mark` v mind.css a Blade) má od tej istej vlny VLASTNÚ sieť s inými
+    súradnicami, ktorú vydal niekto iný. Kým sa to nezjednotí, electron a plocha
+    kreslia dva rôzne výseky tej istej siete — je to zapísané v DERIVED.md ako
+    otvorený bod, nie zamlčané.
+    """
     c = num(mini.cx)
     topbar = (
         "\n"
@@ -430,33 +518,70 @@ def build_electron_html(mini: Mini) -> None:
     patch_between(ROOT / "electron" / "chrome" / "topbar.html",
                   "<!-- ZNAK: generuje", "<!-- /ZNAK -->",
                   " tools/brand/build-mark.py zo hades-sigil-mini.svg.\n"
-                  "           Needituj ručne. Znak tu nesie rolu „desktop okno\" (identita appky v ráme,\n"
-                  "           ktorý nie je prehliadač), preto sa NEANIMUJE — pulz behu patrí #brand-core. -->"
+                  "           Needituj ručne. JEDEN UZOL, nie sieť: `.sigil` je tu 16 px, teda hlboko pod\n"
+                  f"           NET_DISC_MIN_PX ({NET_DISC_MIN_PX}) — hrany by sa zliali. Znak tu nesie rolu „desktop okno\"\n"
+                  "           (identita appky v ráme, ktorý nie je prehliadač), preto sa NEANIMUJE —\n"
+                  "           pulz behu patrí #brand-core. -->"
                   + topbar)
 
-    off = ROOT / "electron" / "states" / "offline.html"
-    markup = (
-        "\n"
-        f'        <svg class="sigil" viewBox="0 0 {num(mini.box)} {num(mini.box)}" aria-hidden="true">\n'
-        f'            <circle class="ring" cx="{c}" cy="{c}" r="{num(mini.ring_r)}"></circle>\n'
-        f'            <circle class="core" cx="{c}" cy="{c}" r="{num(mini.core_r)}"></circle>\n'
-        "        </svg>\n        "
-    )
-    patch_between(off, "<!-- ZNAK: generuje", "<!-- /ZNAK -->",
-                  " tools/brand/build-mark.py — needituj ručne -->" + markup)
+    geo = net_geometry(mini)
+    nodes = geo["nodes"]
+    core = nodes[0]
+    # Diskový stupeň: hrany sa kreslia od STREDU k STREDU a konce im zakryjú disky.
+    # Zárez by tu nechal viditeľnú medzeru (1,5 jednotky = 1,26 px na 84 px), takže
+    # by vznikli presne tie pahýle, ktorým sa zárez v prstencovom stupni vyhýba.
+    edge_lines = []
+    for a, b, lat in NET_EDGES:
+        na, nb = nodes[a], nodes[b]
+        cls = "edge edge--lat" if lat else "edge"
+        edge_lines.append(
+            f'            <path class="{cls}" pathLength="100" '
+            f'd="M {num(na.x)} {num(na.y)} L {num(nb.x)} {num(nb.y)}"></path>')
+    node_lines = [
+        f'                <circle class="node" cx="{num(n.x)}" cy="{num(n.y)}" '
+        f'r="{num(n.outer)}"></circle>'
+        for n in nodes[1:]
+    ]
 
-    style = (
-        "\n"
-        f"        .sigil .ring {{ fill: none; stroke: var(--accent); "
-        f"stroke-width: {num(mini.ring_w)}; }}\n"
-        f"        .sigil .core {{ fill: var(--gold); "
-        f"transform-origin: {num(mini.cx)}px {num(mini.cy)}px; }}\n        "
-    )
+    off = ROOT / "electron" / "states" / "offline.html"
+    markup = "\n".join([
+        "",
+        f'        <svg class="sigil" viewBox="0 0 {num(mini.box)} {num(mini.box)}" aria-hidden="true">',
+        *edge_lines,
+        '            <g class="nodes">',
+        *node_lines,
+        "            </g>",
+        f'            <circle class="core" cx="{num(core.x)}" cy="{num(core.y)}" '
+        f'r="{num(core.r)}"></circle>',
+        "        </svg>",
+        "        ",
+    ])
+    patch_between(off, "<!-- ZNAK: generuje", "<!-- /ZNAK -->",
+                  " tools/brand/build-mark.py — needituj ručne.\n"
+                  "             SIEŤ v DISKOVOM stupni (`.sigil` je 84 px). Súradnice sú kánon\n"
+                  "             z hades-sigil-mini.svg + NET_* konštánt generátora, nie ručná kresba.\n"
+                  "             Hrany idú od stredu k stredu a konce im zakryjú disky — žiadne pahýle.\n"
+                  "             `.nodes` musí obsahovať PRESNE tri uzly: zrod ide cez :nth-child(2)/(3). -->"
+                  + markup)
+
+    style = "\n".join([
+        "",
+        "        .sigil .edge { fill: none; stroke: var(--accent); "
+        f"stroke-width: {num(NET_DISC_EDGE_W)}; stroke-linecap: round; opacity: .8; }}",
+        "        .sigil .edge--lat { opacity: .5; }",
+        "        .sigil .node { fill: var(--accent); }",
+        f"        .sigil .core {{ fill: var(--gold); transform-origin: {num(mini.cx)}px {num(mini.cy)}px; }}",
+        "        ",
+    ])
     patch_between(off, "/* ZNAK-STYLE: generuje", "/* /ZNAK-STYLE */",
                   " tools/brand/build-mark.py zo hades-sigil-mini.svg.\n"
                   "           Needituj ručne — pri najbližšom behu generátora sa zmena stratí.\n"
                   "           Dôvod, prečo je geometria aj tu: tento dokument sa zobrazuje, KEĎ SERVER\n"
-                  "           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/. */"
+                  "           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/.\n"
+                  "           ZNAK JE SIEŤ (1. 9. 2026): prstenec (`.ring`) je retirovaný — v sieti nie je\n"
+                  "           zavretá krivka, ktorú by pomenoval. Uzly sú tu PLNÉ DISKY, nie prstence:\n"
+                  f"           pri 84 px by obrys uzla mal {min(n.w for n in nodes) * 0.84:.2f} px, "
+                  f"teda pod podlahou {num(RING_LW_FLOOR_PX)} px. */"
                   + style)
 
 
@@ -500,6 +625,42 @@ def blade_inline_svg(mini: Mini, d: dict[str, object]) -> str:
         f'fill="var(--brand-gold)"/>\n'
         "</svg>"
     )
+
+
+def net_inline_svg(geo: dict[str, object], mini: Mini) -> str:
+    """Inline sieťový znak pre plochy, ktoré ho majú NIESŤ V DOM (nie ako obrázok).
+
+    Existuje preto, že `.load-mark` v mind.css je CSS `border` — a rámom sa dá
+    nakresliť kruh, nie zhluk uzlov. Sieť teda potrebuje iný nosič a jediný, ktorý
+    vie animovať jednotlivé uzly a hrany, je inline SVG.
+
+    Triedy sú `bn-*` (brand net), NIE `bc-*`: `bc-ring` / `bc-core` nesie inline
+    znak v Blade, ktorý zostáva JEDNÝM UZLOM, a mind.css naň už vešia `bc-draw`.
+    Rovnaké meno pre dva rôzne výkresy je presne ten drift, kvôli ktorému tento
+    generátor vznikol.
+    """
+    box = num(mini.box)
+    out = [f'<svg viewBox="0 0 {box} {box}" class="bn" aria-hidden="true">',
+           '  <g class="bn-edges">']
+    for i, e in enumerate(geo["edges"], 1):
+        cls = "bn-edge bn-edge--lat" if e["lat"] else "bn-edge"
+        out.append(
+            f'    <line class="{cls}" data-len="{e["len"]:.2f}" '
+            f'x1="{num(e["x1"])}" y1="{num(e["y1"])}" '
+            f'x2="{num(e["x2"])}" y2="{num(e["y2"])}" '
+            f'stroke-width="{num(NET_EDGE_W)}" style="--bn-len: {e["len"]:.2f}; '
+            f'--bn-i: {i}"/>')
+    out.append("  </g>")
+    for i, n in enumerate(geo["nodes"][1:], 1):
+        out.append(f'  <circle class="bn-node" cx="{num(n.x)}" cy="{num(n.y)}" '
+                   f'r="{num(n.r)}" stroke-width="{num(n.w)}" style="--bn-i: {i}"/>')
+    core = geo["nodes"][0]
+    out.append(f'  <circle class="bn-node bn-node--core" cx="{num(core.x)}" '
+               f'cy="{num(core.y)}" r="{num(core.r)}" stroke-width="{num(core.w)}"/>')
+    out.append(f'  <circle class="bn-core" cx="{num(core.x)}" cy="{num(core.y)}" '
+               f'r="{num(core.gold)}"/>')
+    out.append("</svg>")
+    return "\n".join(out)
 
 
 def build_derived_md(mini: Mini, ink: str, uri: str, d: dict[str, object]) -> None:
@@ -553,13 +714,17 @@ Stredný polomer prstenca vyjde {d["lm_ring_ratio"]:.4f} boxu, nie
 dovnútra boxu, takže polomer je funkcia boxu a obrysu, nie voľné číslo. Prepísať
 ho na 1 : 1 s kánonom by znamenalo zmenšiť box a stratiť kontrast.
 
-## Pre Blade markup (vlastní F1 pre `mind`, F2 pre `chat`)
+## Pre Blade markup — RETIROVANÉ (jeden uzol vo viewBoxe {BLADE_VIEWBOX})
+
+Tento blok bol kánonom, kým bol znak prstenec. Od 1. 9. 2026 je znak **sieť** a
+inline znak v Blade nesie sieť z diskov s triedami `bc-node` / `bc-edge` / `bc-core`
+(vlastní `mind.css` a Blade, nie tento generátor). Blok tu zostáva pre **jeden uzol**,
+lebo to je stále kresba pod {NET_DISC_MIN_PX} px — a `.load-mark`, favicon aj
+Electron topbar ju používajú.
 
 Na **jadre** je `fill="var(--brand-gold)"` kánon; `currentColor` sa opúšťa — sú to
-dva mechanizmy a jeden zanikne pri prvej zmene farby (`mind.blade.php:131` ho ešte
-má). **Prstenec** zostáva `var(--accent)`: amethyst je interaktívny nosič, zlatá je
-vyhradená jadru. Triedy `bc-ring` / `bc-core` sú povinné, bez nich sa znak nikdy
-nezrodí — animáciu na ne vešia `mind.css` (`chat.blade.php:86` a `:182` ich nemajú).
+dva mechanizmy a jeden zanikne pri prvej zmene farby. **Prstenec** je
+`var(--accent)`: amethyst je interaktívny nosič, zlatá je vyhradená jadru.
 
 ```html
 {blade_inline_svg(mini, d)}
@@ -601,34 +766,273 @@ python tools/brand/build-mark.py     # SVG kánon
 node   tools/brand/build-raster.js   # PNG z neho
 ```
 """
+    geo = net_geometry(mini)
+    rows = ladder(mini, geo)
+    core = geo["nodes"][0]
+    sats = geo["nodes"][1:]
+    angs = [math.degrees(math.atan2(n.y - core.y, n.x - core.x)) % 360 for n in sats]
+    srt = sorted(angs)
+    gaps = [(srt[(i + 1) % 3] - srt[i]) % 360 for i in range(3)]
+
+    lad = "\n".join(
+        f'| {r["px"]} px | {r["stage"]} | {r["thinnest"]:.2f} px | '
+        f'{r["ring_thinnest"]:.2f} px | {r["disc_thinnest"]:.2f} px | {r["shapes"]} | '
+        f'{"drží" if r["ok"] else "PADÁ"} |'
+        for r in rows)
+
+    md += f"""
+## Nový znak: SIEŤ (1. 9. 2026)
+
+Znak je **výsek siete**: jadrový uzol a tri vedľajšie uzly, viazané štyrmi hranami
+(tri od jadra + jedna bočná). Prstencový znak „Jedno oko" je retirovaný a jeho
+slovník sa neprekladá — v sieti nemá čo pomenovať.
+
+| Uzol | stred | prstenec | obrys | vlastný box |
+|---|---|---|---|---|
+| jadro | {num(core.x)}, {num(core.y)} | r {num(core.r)} | {num(core.w)} | {num(NET_CORE_BOX)} |
+""" + "".join(
+        f"| vedľajší {i} | {num(n.x)}, {num(n.y)} | r {num(n.r)} | {num(n.w)} | "
+        f"{num(NET_SATS[i - 1][2])} |\n"
+        for i, n in enumerate(sats, 1)) + f"""
+Zlatý stred jadra: r {num(core.gold)}. Hrany: šírka {num(NET_EDGE_W)}, zárez
+{num(NET_EDGE_GAP)} pred obrubou uzla, bočná hrana na {int(0.5 * 100)} % krytia proti
+{int(0.8 * 100)} % u hrán od jadra.
+
+**Kompozícia je optická, nie mriežková, a generátor si to VYNUCUJE**
+(`assert_optical()`): rozstupy uhlov vedľajších uzlov vyšli
+{gaps[0]:.0f}° / {gaps[1]:.0f}° / {gaps[2]:.0f}° — teda ani rovnostranný trojuholník
+(3 × 120°), ani úsečka. Tri rôzne veľkosti uzlov nesú hĺbku susedstva. Keby niekto
+zmenil jedno číslo v `NET_SATS` tak, že kompozícia sadne do mriežky, **generátor
+padne** namiesto toho, aby vydal mriežkový znak.
+
+## Stupne redukcie — namerané, nie odhadnuté
+
+Podlaha kontrastu obrysu je **{RING_LW_FLOOR_PX} px** (CLAUDE.md, „Vizuálna sémantika":
+pri 1,1 px zoberie antialiasing viac než polovicu kontrastu). Rebrík má **tri**
+stupne, nie dva, a ten tretí som pri prvom návrhu vynechal: podlaha platí na
+**obrys**, a uzol nakreslený ako plný disk obrys nemá. Sieť z diskov preto drží
+hlboko pod {NET_MIN_PX} px — v diskovom stupni rozhoduje najtenší prvok, ktorý tam
+zostal, teda **hrana**.
+
+Stĺpce „prstence by mali" a „disky by mali" sú kalibrácia opačným smerom: koľko by
+meral najtenší prvok toho stupňa, keby sa kreslil aj na tejto veľkosti. Bez tej
+polovice sa nedá poznať, či sú {NET_MIN_PX} a {NET_DISC_MIN_PX} namerané hranice,
+alebo len prvé vyskúšané čísla.
+
+| px | čo sa kreslí | najtenší prvok | prstence by mali | disky by mali | tvarov | podlaha |
+|---|---|---|---|---|---|---|
+{lad}
+
+Čo presne na ktorom stupni **zmizne**:
+
+* **16 px, 24 px, 32 px** — jeden uzol: amethystový prstenec, zlatý stred. Hrany aj
+  vedľajšie uzly sú zatvorené. Toto je stupeň faviconu (`hades-favicon.svg`,
+  data-URI, rámce `.ico` 16–32) a Electron topbaru (`.sigil` 16 px). Pri 32 px by
+  hrana v diskovom stupni mala {rows[2]["disc_thinnest"]:.2f} px, teda pod podlahou —
+  preto ani tu ešte nie je sieť.
+* **48 px, 64 px** — **sieť z plných diskov**. Prstence tu nejdú: najtenší obrys uzla
+  by mal {rows[3]["ring_thinnest"]:.2f}–{rows[4]["ring_thinnest"]:.2f} px. Disk stratí
+  „priehľadnosť nesie diera", a je to správny ústupok: diera tejto veľkosti by aj tak
+  zanikla. Zmizne obruba uzla a amethystový prstenec okolo jadra; zostanú štyri hrany,
+  tri amethystové disky a zlaté jadro.
+* **128 px a viac** — **sieť z prstencov**, plný kánon: hrany
+  {rows[5]["disc_thinnest"] / NET_DISC_EDGE_W * NET_EDGE_W:.2f} px, najtenší obrys uzla
+  {rows[5]["ring_thinnest"]:.2f} px, jadro ako prstenec so sýtym zlatým stredom.
+  Nezmizne nič.
+
+**Riadok 16 px hlási PADÁ a je to priznanie, nie chyba tabuľky.** Obrys jedného uzla
+má pri 16 px {mini.ring_w * 0.16:.2f} px, teda pod podlahou {RING_LW_FLOOR_PX} px.
+Vykreslený rámec je čitateľný (`.ico` sa rastruje {SUPERSAMPLE}× nadvzorkovane
+a LANCZOSom), takže to nie je porucha, ktorú by bolo vidieť — ale číslo je pod
+podlahou a zamlčať sa nemá. Oprava by bola hrúbka prstenca **10 namiesto 9**
+({0.10 * 16:.2f} px pri 16 px), a NEUROBILA SA zámerne: mini kánon nesie aj
+`.load-mark` (`border` {d["lm_border"]} px) a inline znak v Blade, teda súbory, ktoré
+tento generátor nevlastní. Je to zmena pomeru, nie kozmetika — patrí do jedného
+rozhodnutia so spodným bodom nižšie.
+
+Dôsledok pre `.ico`: multi-size ikona nesie **tri rôzne výkresy** (16–32 jeden uzol,
+48–64 sieť z diskov, 128–256 sieť z prstencov). Presne na to multi-size `.ico` je;
+jeden škálovaný výkres by buď na 16 px zamrzol do kaše, alebo na 256 px stratil sieť.
+
+## Nosiče znaku a `.load-mark` — čo kam patrí
+
+Načítavacia značka `.load-mark` je CSS `border` na boxe {LOAD_MARK_BOX_PX} px. Rámom
+sa dá nakresliť kruh, **zhluk uzlov nie** — sieť teda na tom nosiči vyjadriť nemožno
+a potrebuje inline SVG. Zároveň platí druhá vec: {LOAD_MARK_BOX_PX} px je pod
+{NET_DISC_MIN_PX} px, takže na tomto nosiči je **správna kresba jeden uzol**. Obe
+tvrdenia platia naraz a nie sú v spore — a preto tu `border` môže zostať.
+
+| nosič | veľkosť | stupeň | poznámka |
+|---|---|---|---|
+| `<link rel="icon">` data-URI | 16–32 px | jeden uzol | `hades-favicon.svg`, spravuje generátor |
+| Electron topbar `.sigil` | 16 px | jeden uzol | generátor, medzi ZNAK markermi |
+| `.load-mark` | {LOAD_MARK_BOX_PX} px | jeden uzol | CSS `border` stačí, čísla nižšie sú nezmenené |
+| inline znak v Blade | viewBox {BLADE_VIEWBOX} | **sieť z diskov** | vlastní `mind.css` / Blade, viď otvorený bod |
+| Electron offline `.sigil` | 84 px | sieť z diskov | generátor, medzi ZNAK markermi |
+| `apple-touch-icon.png` | 180 px | sieť z prstencov | generátor |
+| PNG znaku 128/256/512, OG, lockupy | ≥ 128 px | sieť z prstencov | generátor |
+
+## OTVORENÝ BOD (1. 9. 2026): dva výseky tej istej siete
+
+Vlna, ktorá znak prekresľovala, bežala **v dvoch rukách naraz** a každá nakreslila
+vlastný výsek. Nie je to zamlčané, pretože presne toto je drift, kvôli ktorému
+generátor existuje:
+
+* **Kánon značky** (tento generátor, `public/brand/**`): jadrový uzol v strede
+  + tri vedľajšie na {NET_SATS[0][0]:.0f}° / {NET_SATS[1][0]:.0f}° / {NET_SATS[2][0]:.0f}°
+  vo vzdialenostiach {NET_SATS[0][1]:.0f} / {NET_SATS[1][1]:.1f} / {NET_SATS[2][1]:.0f}.
+  Uzol je nad {NET_MIN_PX} px **prstenec**, jadro má amethystový prstenec so zlatým
+  stredom. Electron (oba dokumenty) je z tohto zdroja.
+* **Plocha appky** (`.bc-mark` v `mind.css`, markup v troch Blade, viewBox
+  {BLADE_VIEWBOX}): vlastné súradnice, uzly **plné disky**, jadro bez amethystového
+  prstenca, hrany 8,70 / 9,40 / 8,80 / 10,40 jednotky.
+
+Rozhodnúť treba **jednu** vec: či plocha appky prevezme súradnice z tohto generátora
+(potom sa `blade_inline_svg()` prepíše na sieťový výkres a Blade markup sa začne
+generovať, ako sa generuje Electron), alebo či generátor prevezme súradnice plochy
+(potom sa prekreslia `NET_SATS` a všetkých sedem výstupov). **Kým sa to nerozhodne,
+znak v karte prehliadača a znak v raile sú dva rôzne výseky** a `docs/BRAND-HADES.md`
+nemá jednu pravdu, ktorú by opísal.
+
+Čo tomu NEPREKÁŽA a netreba meniť: jeden uzol na malých nosičoch je v oboch rukách
+tá istá kresba (prstenec r {num(mini.ring_r)} / hrúbka {num(mini.ring_w)}, zlatý
+stred r {num(mini.core_r)}), takže favicon, `.ico` do 32 px, topbar a `.load-mark`
+sú konzistentné bez ohľadu na to, ako sa spor rozhodne.
+
+## Inline sieť z KÁNONU — PODMIENENÝ blok, implementuj len po rozhodnutí
+
+**Nezavádzaj tento blok, kým sa nerozhodne otvorený bod vyššie.** Plocha appky má
+dnes vlastnú živú sieť (`.bc-mark` / `.bc-node` / `.bc-edge` / `.bc-core`) a tretia
+rodina tried pre ten istý znak by bola presne ten drift, ktorý má tento generátor
+brániť. Blok je tu ako **hotová alternatíva pre variantu „plocha prevezme kánon
+značky"**: vtedy sa `bc-*` prekreslí na tieto súradnice a `bn-*` sa zahodí, alebo
+sa `bn-*` použije a `bc-*` zmizne — jedno z dvoch, nikdy oboje.
+
+`data-len` aj `--bn-len` na každej hrane je jej **dĺžka po záreze** — presne to
+číslo, ktoré potrebuje `stroke-dasharray` na dokreslenie hrany. Ručne sa nepočíta.
+
+```html
+{net_inline_svg(geo, mini)}
+```
+
+Pohyb (**CSS, nie SMIL** — SMIL nectí `prefers-color-scheme` ani
+`prefers-reduced-motion` a vo `<img>`/faviconoch ho prehliadače neanimujú):
+
+```css
+.bn .bn-node {{ fill: none; stroke: var(--accent); }}
+.bn .bn-edge {{ stroke: var(--accent); stroke-linecap: round; opacity: .8; }}
+.bn .bn-edge--lat {{ opacity: .5; }}
+.bn .bn-core {{ fill: var(--brand-gold); stroke: none; }}
+
+/* ZROD: uzly sa zjavia -> hrany sa DOKRESLIA -> jadro sa presýti.
+   Poradie je obsah, nie ozdoba: sieť vzniká tým, že sa uzly spoja. */
+.bn .bn-node {{ animation: bn-node-in 260ms var(--ease) both;
+               animation-delay: calc(60ms * var(--bn-i, 0)); }}
+.bn .bn-edge {{ stroke-dasharray: var(--bn-len); stroke-dashoffset: var(--bn-len);
+               animation: bn-edge-draw var(--dur-chart-draw) var(--ease) both;
+               animation-delay: calc(300ms + 80ms * var(--bn-i, 0)); }}
+.bn .bn-core {{ animation: bn-core-in 460ms var(--ease) 760ms both; }}
+
+@keyframes bn-node-in {{ from {{ opacity: 0; transform: scale(.86); }}
+                        to {{ opacity: 1; transform: scale(1); }} }}
+@keyframes bn-edge-draw {{ to {{ stroke-dashoffset: 0; }} }}
+@keyframes bn-core-in {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+
+/* Tichá verzia MUSÍ byť dosadnutý stav, nie zamrznutý polostav: hrany dokreslené
+   (dashoffset 0), uzly a jadro plné. `animation: none` samo by nechalo hranu
+   s dashoffset = dĺžka, teda NEVIDITEĽNÚ — sieť by vyzerala ako štyri samostatné
+   uzly bez spojení. To je iný znak, nie tichšia verzia toho istého. */
+@media (prefers-reduced-motion: reduce) {{
+  .bn .bn-node, .bn .bn-edge, .bn .bn-core {{ animation: none; }}
+  .bn .bn-edge {{ stroke-dashoffset: 0; }}
+  .bn .bn-node, .bn .bn-core {{ opacity: 1; transform: none; }}
+}}
+```
+
+**Dýchanie jadra (`core-pulse`) sem NEIDE** a nie je to opomenutie: rozhodnutie
+z 1. 9. 2026 hovorí, že pulz nesie stav vedomia bdie/spí a patrí **jedinému**
+selektoru `#brand-core` v raile (dôvod je zapísaný pri pravidle v `mind.css`).
+Sieť v prázdnom stave je ticho pred prácou, nie stav vedomia.
+"""
     emit(TOOLS / "DERIVED.md", md)
 
 
 # --------------------------------------------------------------------------- #
 
 # --------------------------------------------------------------------------- #
-# 6b. MASTER — obohatenie mini kánonu
+# 6b. MASTER — SIEŤ (nový znak, 1. 9. 2026)
 # --------------------------------------------------------------------------- #
 #
-# Master sa GENERUJE z mini, nie kreslí ručne. To je celý zmysel variantu
-# „Jedno oko" (kontrakt 28. 8. 2026, A1): nosný prstenec a jadro sú v oboch
-# výkresoch tie isté hodnoty, takže znak v 16 px a znak v 512 px je ten istý
-# objekt. Do 28. 8. 2026 boli master a mini dva nezávislé súbory a rozišli sa —
-# master mal prstenec 0,46 boxu, mini 0,36.
+# Znak je VÝSEK SIETE: jadrový uzol a tri vedľajšie uzly, viazané hranami.
+# Prstencový znak („Jedno oko": nosný prstenec + prerušenie + satelit + obežnica)
+# je retirovaný — jeho slovník (prerušenie, delenia po 30°, hranica vedomia)
+# sa NEPREKLÁDA, pretože v sieti nemá čo pomenovať.
 #
-# Tieto konštanty sú JEDINÉ, čo master pridáva nad mini. Menia sa tu a nikde inde.
-MASTER_GAP_DEG = 34.0        # šírka prerušenia nosného prstenca
-MASTER_GAP_AT = -38.0        # stred prerušenia v SVG stupňoch = 52° od vertikály
-MASTER_HAIR_R = 47.0         # vlásková hranica vedomia (neprerušená)
-MASTER_HAIR_W = 1.0
-MASTER_TICKS = 12            # delenia po 30°; v prerušení mlčia
-MASTER_TICK_R1 = 43.0
-MASTER_SAT_R = 5.5           # satelit: jeden uzol, prstenec nie disk
-MASTER_SAT_W = 2.5
-MASTER_ORBIT_R = 22.0        # obežnica jadra (zlatá)
-MASTER_EDGE_R1 = 30.0        # hrana: od satelitu k jadru
-MASTER_EDGE_R2 = 18.0
-MASTER_EDGE_W = 1.6
+# Čo z mini kánonu zostáva a čo sa zmenilo:
+#   * ZOSTÁVA vizuálna sémantika plátna: uzol je PRSTENEC (priehľadnosť nesie
+#     diera, nie nízka alfa), jadro je jediný sýty PLNÝ prvok a je zlaté;
+#     hrany a nesýte uzly sú amethyst (BRAND-HADES §6).
+#   * ZMENILA SA povaha identity mini <-> master: do 1. 9. 2026 to boli tie isté
+#     ABSOLÚTNE hodnoty (r 36 / 9 / 15 v oboch výkresoch). V sieti to nejde —
+#     jadrový uzol s prstencom r 36 nechá v boxe 100 na vedľajšie uzly 5 jednotiek.
+#     Identita je preto v POMERE: jadrový uzol si berie mini pomery (0,36 / 0,09
+#     / 0,30 boxu) a aplikuje ich na svoj vlastný box NET_CORE_BOX.
+#
+# Kompozícia je OPTICKÁ, nie mriežková, a je to overiteľná podmienka:
+# `assert_optical()` nižšie odmietne rovnostranný trojuholník aj úsečku a odmietne
+# bočnú hranu, ktorá by prešla cez jadrový uzol. Bez tej stráže by sa „vyzerá to
+# ako výsek siete" dalo pokaziť zmenou jedného čísla a nikto by si to nevšimol.
+# Vlastný box jadrového uzla. 38, nie 44, a je to ZAPLATENÉ číslo: pri 44 mal
+# jadrový uzol vonkajší okraj 17,82 a hrana k najbližšiemu susedovi vyšla po
+# záreze **1,24 jednotky** (zmerané na vydanom SVG) — teda čiarka, nie spojenie.
+# Sieť sa nesmie kresliť tak, že jej hrany nie sú vidieť; rozpočet na hranu je
+# `vzdialenosť − okraj jadra − okraj suseda − 2 × zárez` a musí zostať kladný
+# s rezervou. Kontroluje to `assert_edges_readable()`.
+NET_CORE_BOX = 38.0
+
+# Vedľajšie uzly: (uhol v SVG stupňoch, vzdialenosť od stredu, vlastný box).
+# Uhly -68° / 195° / 58° dávajú rozstupy 137° / 97° / 126° — teda ani jeden
+# rovnostranný trojuholník. Veľkosť KLESÁ so vzdialenosťou (22 → 18 → 15), takže
+# vzdialenejší uzol je menší: perspektíva, nie náhoda. Rozloženie po kvadrantoch
+# je vážený stred kompozície (49,3 / 47,8) — takmer v strede boxu, čo lockup
+# potrebuje, hoci je kresba zámerne nesymetrická.
+NET_SATS = (
+    (-68.0, 36.0, 22.0),
+    (195.0, 39.5, 18.0),
+    (58.0, 41.0, 15.0),
+)
+
+# Hrany: index 0 je jadro, 1..3 sú NET_SATS v poradí. Tri hrany od jadra a JEDNA
+# bočná (1–2) — bez bočnej hrany je to hviezda (rozbočovač), nie sieť. Bočná
+# hrana je slabšia: hierarchia „všetko sa viaže na jadro" musí zostať čitateľná.
+# Bočná hrana je zámerne najdlhšia: spojenie, ktoré ide okolo jadra, je to, čo
+# z výseku robí sieť. Musí ale jadro OBÍSŤ — stráži to `assert_optical()`.
+NET_EDGES = ((0, 1, False), (0, 2, False), (0, 3, False), (1, 2, True))
+NET_EDGE_W = 1.8
+NET_EDGE_GAP = 1.5           # hrana sa nedotýka obruby uzla, končí pred ňou
+
+# Rebrík redukcie: pod týmto počtom px sa NEKRESLÍ sieť, ale mini (jeden uzol).
+# Číslo nie je vkusové — pod ním padnú obrysy vedľajších uzlov a hrany pod 1,5 px,
+# čo je podlaha kontrastu obrysu v tomto projekte (CLAUDE.md, „Vizuálna sémantika").
+# `ladder()` to prepočítava a DERIVED.md to vypisuje ako namerané čísla.
+NET_MIN_PX = 128
+RING_LW_FLOOR_PX = 1.5
+
+# TRETÍ STUPEŇ, ktorý som pri prvom návrhu rebríka vynechal a musel dopísať:
+# podlaha 1,5 px platí na OBRYS. Uzol nakreslený ako PLNÝ DISK obrys nemá, takže
+# sieť z diskov drží hlboko pod 128 px — a práve preto ju plocha appky kreslí
+# diskami na 24 px. Rebrík má teda tri stupne, nie dva:
+#   px >= NET_MIN_PX          -> sieť, uzly PRSTENCE (kánon plátna)
+#   NET_DISC_MIN_PX .. 127    -> sieť, uzly PLNÉ DISKY (obrys by nedržal)
+#   pod NET_DISC_MIN_PX       -> jeden uzol
+# Disky sú ústupok, nie kánon: strácajú „priehľadnosť nesie diera" a na malých
+# veľkostiach je to správny ústupok, pretože diera by aj tak zanikla.
+NET_DISC_EDGE_W = 3.2        # hrana v diskovom stupni je hrubšia — nesie ju menej px
+# 48, nie 32: v diskovom stupni už obrys uzla nerozhoduje (disk ho nemá), ale HRANA
+# áno — a tá obrys je. Pri 32 px má hrana 3,2 × 0,32 = 1,02 px, teda pod podlahou;
+# pri 48 px 1,54 px, teda nad ňou. Prah teda určuje najtenší prvok, ktorý v stupni
+# zostal, nie veľkosť, ktorá sa niekomu zdala rozumná.
+NET_DISC_MIN_PX = 48
 
 
 def _pt(cx: float, cy: float, r: float, deg: float) -> tuple[float, float]:
@@ -636,32 +1040,161 @@ def _pt(cx: float, cy: float, r: float, deg: float) -> tuple[float, float]:
     return cx + r * math.cos(a), cy + r * math.sin(a)
 
 
-def build_master(mini: Mini) -> str:
-    """Master = mini (prstenec + jadro) + dej okolo neho."""
+class Node:
+    """Uzol siete v jednotkách boxu mastera.
+
+    `outer` je vonkajší okraj kresby (polomer + polovica obrysu) — hrany sa
+    zarezávajú o tento okraj, nie o polomer strednice, inak by hrana vyliezla
+    do obruby uzla a spoj by vyzeral zaseknutý.
+    """
+
+    def __init__(self, x: float, y: float, r: float, w: float, gold: float = 0.0):
+        self.x, self.y, self.r, self.w, self.gold = x, y, r, w, gold
+
+    @property
+    def outer(self) -> float:
+        return self.r + self.w / 2
+
+
+def net_geometry(mini: Mini) -> dict[str, object]:
+    """JEDEN zdroj geometrie siete pre SVG, PIL raster aj DERIVED.md.
+
+    Tri spotrebitelia jednej kresby by inak boli tri kresby. Presne tak sa raz
+    rozišli master a mini a raz lockupy s masterom.
+    """
     cx, cy = mini.cx, mini.cy
-    g0 = MASTER_GAP_AT + MASTER_GAP_DEG / 2
-    g1 = MASTER_GAP_AT - MASTER_GAP_DEG / 2
-    ax, ay = _pt(cx, cy, mini.ring_r, g0)
-    bx, by = _pt(cx, cy, mini.ring_r, g1)
-    span = (g1 - g0) % 360
-    large = 1 if span > 180 else 0
+    core = Node(cx, cy,
+                mini.ring_ratio * NET_CORE_BOX,
+                mini.stroke_ratio * NET_CORE_BOX,
+                gold=mini.core_diameter_ratio / 2 * NET_CORE_BOX)
+    nodes = [core]
+    for deg, dist, box in NET_SATS:
+        x, y = _pt(cx, cy, dist, deg)
+        nodes.append(Node(x, y, mini.ring_ratio * box, mini.stroke_ratio * box))
 
-    ticks = []
-    for i in range(MASTER_TICKS):
-        ang = -90.0 + i * (360.0 / MASTER_TICKS)
-        # mlčí v prerušení — porovnáva sa uhol RELATÍVNE k začiatku medzery
-        if (ang - (MASTER_GAP_AT - MASTER_GAP_DEG / 2)) % 360 < MASTER_GAP_DEG:
-            continue
-        x1, y1 = _pt(cx, cy, MASTER_TICK_R1, ang)
-        x2, y2 = _pt(cx, cy, MASTER_HAIR_R, ang)
-        ticks.append(f'    <line x1="{num(x1)}" y1="{num(y1)}" '
-                     f'x2="{num(x2)}" y2="{num(y2)}" stroke-width="1"/>')
+    edges = []
+    for a, b, lat in NET_EDGES:
+        na, nb = nodes[a], nodes[b]
+        dx, dy = nb.x - na.x, nb.y - na.y
+        length = math.hypot(dx, dy)
+        ux, uy = dx / length, dy / length
+        t0 = na.outer + NET_EDGE_GAP
+        t1 = length - nb.outer - NET_EDGE_GAP
+        edges.append({
+            "x1": na.x + ux * t0, "y1": na.y + uy * t0,
+            "x2": na.x + ux * t1, "y2": na.y + uy * t1,
+            "lat": lat, "len": t1 - t0,
+        })
+    return {"nodes": nodes, "edges": edges, "box": mini.box}
 
-    sx, sy = _pt(cx, cy, mini.ring_r, MASTER_GAP_AT)
-    e1x, e1y = _pt(cx, cy, MASTER_EDGE_R1, MASTER_GAP_AT)
-    e2x, e2y = _pt(cx, cy, MASTER_EDGE_R2, MASTER_GAP_AT)
+
+def assert_optical(geo: dict[str, object]) -> None:
+    """Kompozícia musí byť optická, nie mriežková — a musí sa dať zmerať.
+
+    Tri podmienky, každá kalibrovaná tým, že sa dá porušiť jedným číslom
+    v NET_SATS:
+      1. rozstupy uhlov sa nesmú rovnať (rovnostranný trojuholník),
+      2. tri vedľajšie uzly nesmú ležať takmer na priamke (úsečka),
+      3. bočná hrana nesmie prejsť cez jadrový uzol.
+    """
+    nodes = geo["nodes"]
+    core = nodes[0]
+    angs = sorted(math.degrees(math.atan2(n.y - core.y, n.x - core.x)) % 360
+                  for n in nodes[1:])
+    gaps = [(angs[(i + 1) % len(angs)] - angs[i]) % 360 for i in range(len(angs))]
+    if max(gaps) - min(gaps) < 12.0:
+        raise SystemExit(
+            f"siet: rozstupy uhlov {[round(g, 1) for g in gaps]} su takmer rovnake "
+            "— to je rovnostranny trojuholnik, nie vysek siete")
+
+    a, b, c = nodes[1], nodes[2], nodes[3]
+    area = abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2
+    if area < 120.0:
+        raise SystemExit(f"siet: vedlajsie uzly lezia takmer na priamke (plocha {area:.1f})")
+
+    for e in geo["edges"]:
+        dx, dy = e["x2"] - e["x1"], e["y2"] - e["y1"]
+        length = math.hypot(dx, dy)
+        ux, uy = dx / length, dy / length
+        vx, vy = core.x - e["x1"], core.y - e["y1"]
+        t = max(0.0, min(length, vx * ux + vy * uy))
+        d = math.hypot(core.x - (e["x1"] + ux * t), core.y - (e["y1"] + uy * t))
+        if e["lat"] and d < core.outer + 1.0:
+            raise SystemExit(
+                f"siet: bocna hrana prechadza cez jadrovy uzol (odstup {d:.2f} "
+                f"< {core.outer + 1.0:.2f})")
+
+
+def assert_edges_readable(geo: dict[str, object], mini: Mini) -> None:
+    """Každá hrana musí po záreze zostať SPOJENÍM, nie čiarkou.
+
+    Prah je 6 jednotiek boxu = 7,7 px na 128 px (prvý stupeň, kde sa sieť vôbec
+    kreslí). Kalibrácia: pôvodná geometria (NET_CORE_BOX 44, sused vo vzdialenosti
+    33) dávala 1,24 jednotky a túto stráž by neprešla — presne ten prípad, ktorý
+    som vydal a musel opraviť.
+    """
+    floor = 6.0
+    for i, e in enumerate(geo["edges"], 1):
+        if e["len"] < floor:
+            raise SystemExit(
+                f"siet: hrana {i} ma po zareze len {e['len']:.2f} jednotky "
+                f"(prah {floor}) — to nie je spojenie, ale ciarka; "
+                "zvac vzdialenost suseda alebo zmensi NET_CORE_BOX")
+
+
+def ladder(mini: Mini, geo: dict[str, object]) -> list[dict[str, object]]:
+    """Stupne redukcie s NAMERANÝMI šírkami v px.
+
+    Nie je to tabuľka podľa vkusu: pre každý stupeň sa spočíta najtenší obrys
+    v skutočných pixeloch a porovná s podlahou 1,5 px. Práve to rozhoduje, čo sa
+    na danom stupni kreslí — a práve preto je NET_MIN_PX 128 a nie 64.
+    """
+    rows = []
+    for px in (16, 24, 32, 48, 64, 128, 256):
+        k = px / mini.box
+        ring_thin = min([n.w * k for n in geo["nodes"]] + [NET_EDGE_W * k])
+        if px >= NET_MIN_PX:
+            row = {"px": px, "stage": "sieť · prstence", "thinnest": ring_thin,
+                   "shapes": len(geo["nodes"]) + 1 + len(geo["edges"])}
+        elif px >= NET_DISC_MIN_PX:
+            row = {"px": px, "stage": "sieť · disky", "thinnest": NET_DISC_EDGE_W * k,
+                   "shapes": len(geo["nodes"]) + len(geo["edges"])}
+        else:
+            row = {"px": px, "stage": "jeden uzol", "thinnest": mini.ring_w * k,
+                   "shapes": 2}
+        row["ok"] = row["thinnest"] >= RING_LW_FLOOR_PX
+        # Kalibrácia OPAČNÝM smerom: koľko by meral najtenší prvok siete
+        # v prstencovom stupni, keby sa kreslil aj tu. Bez tejto polovice sa nedá
+        # poznať, či je 128 nameraná hranica, alebo len prvá vyskúšaná veľkosť.
+        row["ring_thinnest"] = ring_thin
+        row["disc_thinnest"] = NET_DISC_EDGE_W * k
+        rows.append(row)
+    return rows
+
+
+def build_master(mini: Mini) -> str:
+    """Master = výsek siete. Jadrový uzol dedí POMERY mini kánonu."""
+    geo = net_geometry(mini)
+    assert_optical(geo)
+    assert_edges_readable(geo, mini)
+    nodes, edges = geo["nodes"], geo["edges"]
+    core = nodes[0]
     nl = newline_of(read(MINI_SRC))
     box = num(mini.box)
+
+    edge_lines = []
+    for e in edges:
+        cls = ' class="lat"' if e["lat"] else ""
+        edge_lines.append(
+            f'    <line x1="{num(e["x1"])}" y1="{num(e["y1"])}" '
+            f'x2="{num(e["x2"])}" y2="{num(e["y2"])}" '
+            f'stroke-width="{num(NET_EDGE_W)}"{cls}/>')
+
+    sat_lines = [
+        f'  <circle cx="{num(n.x)}" cy="{num(n.y)}" r="{num(n.r)}" '
+        f'stroke-width="{num(n.w)}"/>'
+        for n in nodes[1:]
+    ]
 
     lines = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {box} {box}" role="img" aria-label="Hades">',
@@ -670,33 +1203,25 @@ def build_master(mini: Mini) -> str:
         "  <style>",
         f"    svg {{ --acc: {mini.acc_light}; --gold: {mini.gold_light}; }}",
         f"    @media (prefers-color-scheme: dark) {{ svg {{ --acc: {mini.acc_dark}; --gold: {mini.gold_dark}; }} }}",
-        "    path, circle, line { stroke: var(--acc); stroke-linecap: round; fill: none; }",
-        "    .gold-stroke { stroke: var(--gold); }",
+        "    circle, line { stroke: var(--acc); stroke-linecap: round; fill: none; }",
+        "    .edges line { opacity: .8; }",
+        "    .edges .lat { opacity: .5; }",
         "    .gold-fill { fill: var(--gold); stroke: none; }",
-        "    .ticks line { opacity: .45; }",
-        "    .edge { opacity: .75; }",
         "  </style>",
-        f"  <!-- vlásková hranica vedomia (r {num(MASTER_HAIR_R)}): neprerušená, len rám deja -->",
-        f'  <circle cx="{num(cx)}" cy="{num(cy)}" r="{num(MASTER_HAIR_R)}" '
-        f'stroke-width="{num(MASTER_HAIR_W)}" opacity=".55"/>',
-        f"  <!-- {MASTER_TICKS} delení po {num(360 / MASTER_TICKS)}°, mlčia v prerušení -->",
-        '  <g class="ticks">',
-        *ticks,
+        "  <!-- HRANY sa kreslia PRVÉ, aby uzly stáli na nich, nie naopak. Sú zarezané",
+        f"       o vonkajší okraj uzla + {num(NET_EDGE_GAP)}, takže sa obruby nedotýkajú.",
+        "       Bočná hrana (.lat) je slabšia — jadro musí zostať tým, na čo sa sieť viaže. -->",
+        '  <g class="edges">',
+        *edge_lines,
         "  </g>",
-        f"  <!-- NOSNÝ PRSTENEC (r {num(mini.ring_r)}, hrúbka {num(mini.ring_w)}) — TOTOŽNÝ s mini",
-        f"       kánonom. Prerušený {num(MASTER_GAP_DEG)}° tam, kde vstupuje uzol. Pod 64 px sa",
-        "       prerušenie zatvára a kreslí sa mini: ten istý prstenec, to isté jadro. -->",
-        f'  <path d="M {num(ax)} {num(ay)} A {num(mini.ring_r)} {num(mini.ring_r)} 0 {large} 1 '
-        f'{num(bx)} {num(by)}" stroke-width="{num(mini.ring_w)}"/>',
-        "  <!-- hrana: uzol viazaný na jadro -->",
-        f'  <line x1="{num(e1x)}" y1="{num(e1y)}" x2="{num(e2x)}" y2="{num(e2y)}" '
-        f'stroke-width="{num(MASTER_EDGE_W)}" class="edge"/>',
-        "  <!-- satelit: jeden uzol, prstenec (nie disk), v prerušení NA prstenci -->",
-        f'  <circle cx="{num(sx)}" cy="{num(sy)}" r="{num(MASTER_SAT_R)}" '
-        f'stroke-width="{num(MASTER_SAT_W)}"/>',
-        f"  <!-- jadro: obežnica + jediný sýty PLNÝ prvok znaku. r {num(mini.core_r)} = mini kánon. -->",
-        f'  <circle cx="{num(cx)}" cy="{num(cy)}" r="{num(MASTER_ORBIT_R)}" stroke-width="1" class="gold-stroke"/>',
-        f'  <circle cx="{num(cx)}" cy="{num(cy)}" r="{num(mini.core_r)}" class="gold-fill"/>',
+        "  <!-- VEDĽAJŠIE UZLY: prstence bez výplne (priehľadnosť nesie diera, nie alfa).",
+        "       Tri rôzne veľkosti = hĺbka susedstva. Pod 128 px zmiznú spolu s hranami. -->",
+        *sat_lines,
+        f"  <!-- JADROVÝ UZOL: pomery mini kánonu ({mini.ring_ratio:.2f} / {mini.stroke_ratio:.2f} /",
+        f"       {mini.core_diameter_ratio:.2f} boxu) na vlastnom boxe {num(NET_CORE_BOX)}. Prstenec je AMETHYST,",
+        "       stred je jediný sýty PLNÝ prvok celého znaku a je ZLATÝ. -->",
+        f'  <circle cx="{num(core.x)}" cy="{num(core.y)}" r="{num(core.r)}" stroke-width="{num(core.w)}"/>',
+        f'  <circle cx="{num(core.x)}" cy="{num(core.y)}" r="{num(core.gold)}" class="gold-fill"/>',
         "</svg>",
         "",
     ]

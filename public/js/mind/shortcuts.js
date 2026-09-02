@@ -9,6 +9,7 @@ import { openNodeDetail, openNodeFromAnywhere, setScreen } from './screens.js';
 import { armKontrolaAction, disarmKontrolaBtn, kontrolaBtn, kontrolaMove, kontrolaNodeRef, kontrolaResolve, kontrolaState, kontrolaVerify } from './screens/kontrola.js';
 import { clearFilter, currentPath, go, goUp, largestAreaId, largestDeptId, setView } from './sim.js';
 import { S } from './state.js';
+import { moveTableCursor } from './table.js';
 import { showToast } from './toasts.js';
 import { $ } from './util.js';
 
@@ -17,6 +18,10 @@ export const SHORTCUTS = [
     // Šípky v palete existovali len ako Enter na prvej položke; odkedy posúvajú
     // fokus po výsledkoch, patrí to aj do pomocníka — inak je to skrytá funkcia.
     ['↑ / ↓ / Enter', 'Pohyb v palete a potvrdenie'],
+    // Kurzor v zoznamoch inzeruje pomocník, inak je to skrytá funkcia — a je to
+    // JEDEN riadok pre všetky zoznamy, pretože je to jedna klávesa s jedným
+    // významom (Kontrola a Denník ho majú len nad iným druhom položky).
+    ['j / k', 'Pohyb v zozname (tabuľky, fronta, Denník)'],
     ['1 / 2 / 3 / 4', 'Filter: celá sieť / oblasť / oddelenie / uzol'],
     ['V', 'Pohľad: Sieť ↔ Vrstvy (na Grafe)'],
     ['C', 'Charón — rozhovor nad grafom'],
@@ -66,6 +71,29 @@ function goLevel(level) {
     const d = S.nav.dept != null ? S.nav.dept : largestDeptId(area);
     if (d == null) return currentPath();
     return go({ level: 'dept', dept: d });
+}
+
+/* Kedy klávesy NEPATRIA zoznamu. Je to ten istý slovník, aký si napísal Denník
+   (`journalKeysBlocked()` v `dennik.js`) — vedome, nie z nevedomosti: presunúť
+   ho do `util.js` by bol zásah do súboru, ktorý nie je môj, a druhá kópia
+   PREDIKÁTU je menšie zlo než rozdielne pravidlá na dvoch zoznamoch. Návrh na
+   zlúčenie je v reporte.
+
+   Pole a `contenteditable` tu chýbajú zámerne: tie odfiltroval strážca
+   `INPUT|TEXTAREA|SELECT` v dispatchi ešte nad týmto miestom.
+
+   1. otvorený modál — paleta, pomocník aj čítačka markdownu majú vlastnú
+      klávesnicu; zmerané, že práve tie tri (a nič iné) nesú
+      `[role="dialog"][aria-modal="true"]`. Pravý panel medzi ne NEPATRÍ, takže
+      tabuľka sa dá prechádzať aj s otvoreným detailom — a detail sa prekresľuje
+      s kurzorom.
+   2. fokus vnútri panelu — panel si drží Esc a tab-cyklus, takže `j` v ňom
+      nesmie hýbať zoznamom za ním. */
+function listKeysBlocked() {
+    if (document.querySelector('[role="dialog"][aria-modal="true"]:not(.hidden)')) return true;
+    const a = document.activeElement;
+    if (!a || a === document.body) return false;
+    return !!(a.closest && a.closest('#node-panel, #rec-panel'));
 }
 
 export let helpReturnFocus = null;
@@ -156,6 +184,42 @@ export function setupShortcuts() {
             }
             if (handled) { e.preventDefault(); return; }
         }
+
+        /* KLÁVESOVÝ KURZOR TABULIEK — j/k a ↑/↓ nad Runami, Rozhodnutiami,
+           Knižnicou a Smernicou.
+
+           Stojí AŽ TU zámerne: Kontrola má vlastnú frontu s vlastnou sémantikou
+           (`v`/`r`/`Del` nad položkou pod kurzorom) a jej blok vyššie skončí
+           `return`-om, takže sem sa pri nej nikdy nedostaneme a jej kurzor
+           zostáva ten, čo bol. Denník má vlastný listener v `dennik.js`, ktorý
+           beží pred týmto a strieľa `stopImmediatePropagation()` — jeho karty
+           nie sú riadky tabuľky.
+
+           Kontejner sa hľadá ako `.screen.active .rec-table`, nie podľa id
+           obrazovky: mapovací stôl „obrazovka → id tabuľky" by bol piaty zoznam,
+           ktorý sa pri novej tabuľke zabudne doplniť, a chyba by bola tichá
+           (klávesa by nerobila nič). Zmerané: každá z tých obrazoviek má v
+           aktívnom `.screen` presne jednu `.rec-table`. */
+        if (!listKeysBlocked()) {
+            const t = document.querySelector('.screen.active .rec-table');
+            if (t && (e.key === 'j' || e.key === 'ArrowDown')) {
+                if (moveTableCursor(t, 1)) { e.preventDefault(); return; }
+            }
+            if (t && (e.key === 'k' || e.key === 'ArrowUp')) {
+                if (moveTableCursor(t, -1)) { e.preventDefault(); return; }
+            }
+        }
+
+        /* JEDEN ENTER = JEDNA AKCIA. Riadok tabuľky si Enter obsluhuje sám
+           (`renderTable()` mu vešia `onkeydown`, ktorý otvorí panel) a ten
+           handler propagáciu nezastavuje — takže bez tejto zábrany prešiel ten
+           istý stisk aj do `case 'Enter'` nižšie a zameral uzol v grafe.
+           Zmerané pred zmenou na Runách: jeden Enter na riadku otvoril panel
+           A prepol filter grafu na `level: 'node'`, čím dopísal `n=1` do
+           adresy. Doteraz sa na riadok dalo stáť len Tab-om, takže to bola
+           spiaca chyba; s kurzorom je fokus na riadku bežný stav. */
+        if (e.key === 'Enter' && e.target && typeof e.target.closest === 'function'
+            && e.target.closest('.rec-row[data-rec]')) return;
 
         // SK klávesnica: fyzické kódy číslic fungujú nezávisle od rozloženia
         switch (e.code) {

@@ -1,5 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Hades">
   <title>Hades</title>
+  <!-- KÁNON: JEDEN UZOL.
+       Znak Hadesa je od 1. 9. 2026 SIEŤ (výkres: hades-sigil.svg) a toto je jej
+       najhlbší stupeň redukcie — ten uzol, okolo ktorého sa sieť viaže:
+       amethystový prstenec so sýtym zlatým stredom. Pod 128 px sa hrany aj
+       vedľajšie uzly zatvárajú (namerané dôvody a celý rebrík redukcie sú
+       v tools/brand/DERIVED.md) a kreslí sa práve tento výkres.
+
+       Geometria je proti prstencovému znaku NEZMENENÁ (prstenec r 36 / hrúbka 9,
+       jadro r 15) a je to rozhodnutie, nie opomenutie: tie isté pomery nesie
+       `.load-mark` v mind.css (CSS `border`) aj inline znak v Blade (24 px), a obe
+       tie plochy kreslia UZOL — na sieť sú príliš malé. Master si z týchto POMEROV
+       (0,36 / 0,09 / 0,30 boxu) odvodí svoj jadrový uzol, takže identita medzi mini
+       a masterom je odteraz v pomere, nie v absolútnej hodnote. -->
   <style>
     svg { --acc: #6d3fb5; --gold: #b88a3a; }
     @media (prefers-color-scheme: dark) { svg { --acc: #c4a2f5; --gold: #d8b878; } }

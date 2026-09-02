@@ -2757,6 +2757,43 @@ select.ct-filter { flex: 1 1 46%; }
     .ct-find .ct-more,
     #chat-app select { min-height: 44px; }
 
+    /* POLE DÁTUMU („od / do" v hľadaní histórie). `select.ct-filter` cieľ dostal
+       cez `#chat-app select` vyššie; pole dátumu ho do 2. 9. 2026 NEMALO — a
+       deklarácia, ktorá tu predtým stála (`input.ct-filter { min-height: 44px }`),
+       bola INERTNÁ. Zmerané pri 375 px: pole 295 × 34 px a
+       `getComputedStyle().minHeight` = `34px`, teda `var(--field-h)` z mind.css,
+       nie 44 px z tohto bloku.
+       PRÍČINA je špecificita `:not()`, ktoré berie špecificitu svojho argumentu:
+       základ v mind.css je
+       `input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select`
+       (riadok 4705), teda TRI atribútové selektory + typ = (0,3,1), kým
+       `input.ct-filter` je (0,1,1). Pri rôznej špecificite je poradie v zdroji
+       bez významu, takže „je to nižšie v súbore" nič nezachránilo. Komentár,
+       ktorý tu predtým stál, tvrdil opak — a jeho „kalibrácia" merala rozdiel
+       medzi dvoma zápismi, z ktorých ANI JEDEN nevyhral.
+       Preto ID plochy: `#chat-app input.ct-filter` je (1,1,1) a je to ten istý
+       zápis, akým cieľ dostali selecty o dva pravidlá vyššie.
+       KALIBRÁCIA (zmerané po zmene): pole 156 × 44 aj 295 × 44 px pri 375 px;
+       bez `#chat-app` to isté pravidlo necháva 34 px; pri 1440 px je pole zase
+       34 px, takže hustota panela na desktope zostáva nedotknutá. */
+    #chat-app input.ct-filter { min-height: 44px; }
+
+    /* ULOŽENÉ FILTRE HĽADANIA (vlna 2. 9. 2026). Kresba je požičaná z mind.css
+       (`.rec-saved*`), teda zdieľaná s tabuľkami na `/`, a tá tam podlahu
+       vedome NEMÁ (`min-height: auto`, aby pilulka v riadku tabuľky nebola
+       vysoká ako tlačidlo). Zmerané pri 375 px: `.rec-saved-apply` 152,3 × 21,2,
+       `.rec-saved-del` 26 × 26 — nasadenie a zmazanie uloženého pohľadu boli po
+       tej vlne DVA najmenšie ciele celého panela.
+       Preto sa dvíhajú SCOPOVANE pod `#chat-threads`: rozhodnutie o dotykovej
+       podlahe pre tabuľky na `/` patrí vlastníkovi `mind.css`, nie chatu, a
+       `chat.css` sa načítava len na `/chat`, takže tento zdvih tam nedosiahne.
+       `min-height` samo stačí — `button` má v resete `inline-flex` +
+       `align-items: center`, takže text zostane na strede a pilulka
+       `.rec-saved-chip` (`align-items: center`) narastie s ním. Krížik dostáva
+       aj šírku: je 26 px a slovo v ňom nie je. */
+    #chat-threads :is(.rec-saved-apply, .rec-saved-del, .rec-saved-add) { min-height: 44px; }
+    #chat-threads .rec-saved-del { min-width: 44px; }
+
     /* Vrch panela vlákien: znak je odkaz na / a `+ Nové vlákno` je hlavná akcia
        plochy. Zmerané 31. 8. 2026 pri 375 px: `#chat-home` mal 46 × 38 px, teda
        pod dotykovým cieľom na výšku. Šírku nedvíham — znak je 46 px široký a to
