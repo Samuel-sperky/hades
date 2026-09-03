@@ -56,7 +56,10 @@ VÝSTUPY:
   1. public/brand/hades-sigil.svg           (master = sieť)
   1b. public/brand/hades-sigil-mono.svg     (master jednofarebne)
   1c. public/brand/hades-lockup-h/-v.svg    (znak + wordmark; wordmark sa nehýbe)
-  2. public/brand/hades-favicon.svg         (mini na atramentovom disku — zdroj data-URI)
+  2. tools/brand/hades-favicon.svg          (mini na atramentovom disku — kompozícia
+     data-URI ako čitateľný súbor; NIE v `public/`, nič ju nenačítava a vo web
+     roote by bola verejná bez čitateľa — do 3. 9. 2026 dávala `/brand/hades-favicon.svg`
+     200 cez ngrok. Žije vedľa DERIVED.md z tej istej príčiny.)
   3. public/brand/apple-touch-icon.png      (180 px, tá istá kompozícia)
   4. public/favicon.ico + electron/assets/hades.ico  (16/24/32/48/64/128/256)
   5. <link rel="icon"> data-URI v resources/views/partials/brand-icons.blade.php
@@ -309,6 +312,11 @@ def favicon_svg(mini: Mini, ink: str) -> str:
 
     Existuje preto, aby data-URI v Blade nebol jediným nositeľom tejto kompozície:
     data-URI sa nedá otvoriť v editore ani skontrolovať okom.
+
+    Vydáva sa do `tools/brand/`, NIE do `public/brand/`. Je to zdroj kompozície
+    pre editor, nie asset — nič ho nenačítava (jediná referencia v repe bol tento
+    riadok generátora), a vo web roote ho `auth.ui` nechráni, takže cez ngrok bol
+    verejný bez jediného čitateľa. Ten istý dôvod ako pri DERIVED.md.
     """
     c, vb = num(mini.cx), num(mini.box)
     return (
@@ -1497,7 +1505,7 @@ def main() -> int:
     d["emitted_n"], d["emitted_worst"] = assert_emitted_matches_app(master, net)
     emit(BRAND / "hades-sigil-mono.svg", build_mono(master))
     build_lockups(master)
-    emit(BRAND / "hades-favicon.svg", favicon_svg(mini, ink))
+    emit(TOOLS / "hades-favicon.svg", favicon_svg(mini, ink))
     uri = favicon_data_uri(mini, ink)
     # Stráž PRED zápisom: keď je pravda rozdvojená, generátor nemá čo prepisovať —
     # prepísaný partial pri stray kópii by bol práve ten tichý drift.

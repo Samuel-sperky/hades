@@ -268,8 +268,41 @@ v polovici), `.bc-core` nesie len zlaté jadro, jeden prvok bez `.bc-node`.
 | `.charon-sigil` (prázdny dok nad grafom) | `mind/charon.js` → `sigilNetSvg()` | 32 px | `'full'` | ✅ |
 | `.load-mark` (spinner, všetky tri plochy) | `shared/sigil.js` → `loadingHtml()` v `util.js` | 32 px | `'full'` | ❌ zámerne (viď nižšie) |
 | `.sigil` (401 zamknuté) | `errors/401.blade.php` | 44 px | `'full'` (ručná kópia) | ✅ vlastné `sig-*` keyframy |
+| `.sigil` (404 neexistuje) | `errors/404.blade.php` → `errors/layout.blade.php` | 44 px | `'full'` (ručná kópia) | ✅ vlastné `sig-*` keyframy |
+| `.sigil` (419 vypršala session) | `errors/419.blade.php` → `errors/layout.blade.php` | 44 px | `'full'` (ručná kópia) | ✅ vlastné `sig-*` keyframy |
+| `.sigil` (500 chyba servera) | `errors/500.blade.php` → `errors/layout.blade.php` | 44 px | `'full'` (ručná kópia) | ✅ vlastné `sig-*` keyframy |
+| `.sigil` (503 údržba) | `errors/503.blade.php` → `errors/layout.blade.php` | 44 px | `'full'` (ručná kópia) | ✅ vlastné `sig-*` keyframy |
 | `.sigil` (Electron offline) | `electron/states/offline.html` | 84 px | `'full'` (satelity ako prstence — do 2. 9. 2026 diskový medzistupeň, dnes retirovaný, viď „Pravidlo redukcie") | ✅ + vlastná kópia `core-pulse` |
 | `.sigil` (Electron topbar) | `electron/chrome/topbar.html` | 16 px | mini/`'core'` | ❌ zámerne — „desktop okno" sa neanimuje |
+
+**Sprint 3 (2. 9. 2026) doplnil 404/419/500/503 vedľa 401 — spoločný plášť,
+nie štyri nové dokumenty.** `errors/layout.blade.php` nesie kresbu znaku
+(výkres, tichá verzia, favicon, typografia — ~90 riadkov), štyri nové súbory
+aj refaktorovaný `401.blade.php` ju volajú cez `@extends('errors.layout')` a
+dopĺňajú len predmet, vysvetlenie a jednu akciu. **Tieto stránky nenačítavajú
+`mind.css`** — Laravel ich vydáva mimo bežnej cesty (`auth.ui` naň nedosiahne,
+404 z routera do skupiny `web` nikdy nevstúpi), takže si nesú **vlastnú**
+kresbu znaku aj **vlastnú** tichú `prefers-reduced-motion` verziu — a je to
+zámer, nie diera vedľa Nosiča: kánon (§2 vyššie) platí pre webové plochy nad
+`mind.css`, tieto dokumenty sú mimo neho z konštrukcie. **Serif je v CHYBE
+zakázaný** (§6, „Rola serifu") a platí to aj tu — všetkých päť má titulok
+v `sans-serif`, žiadny `var(--serif)` ani `Playfair`.
+
+Rozdiely medzi piatimi sú zámerné, nie nedopatrenie:
+
+- **419 nelinkuje na `url()->previous()`.** Pri vypršanej session je
+  predchádzajúca adresa už len hlavička `Referer` — vstup zvonka — a tá by sa
+  vypisovala do `href`. Odkaz vedie na `url('/')`. Rovnaká zásada ako pri
+  `ContextBlock`: kontext sa neskladá z toho, čo poslal prehliadač.
+- **500 neprezrádza príčinu.** Žiadny `getMessage()`, cesta k logu ani názov
+  triedy — appka je tunelovaná cez ngrok. Nemá ani „Skúsiť znova": ten istý
+  request skončí rovnako, takže stránka to nepredstiera; jediná akcia je
+  cesta von (`url('/')`).
+- **503 NEBOLO overené cez `artisan down`** (zhodilo by appku pre paralelné
+  session) — je to **NEZMERANÉ tou cestou**. Overená bola cesta cez skutočný
+  exception handler (`HttpException(503)` → `errors.503`, status 503), ktorou
+  appku vydá aj `PreventRequestsDuringMaintenance`, takže šablóna aj status
+  sú overené, len nie za živého `php artisan down`.
 
 **`.load-mark` prestal byť CSS `border` (1. 9. 2026).** Nosičom je inline
 `<svg>` v obale, ktorý drží rozmer (32×32 px) a dýchanie (`load-breathe`);
@@ -2063,6 +2096,42 @@ generuje z jedného zdroja" stihol vypísať pred pádom, takže veta tvrdila ú
 Dnes cesta ukazuje do `tools/brand/` a zástupca **overí existenciu súboru pred tým
 hlásením**: kontrola pred vetou, nie po nej.
 
+### `theme-color` a manifest (2. 9. 2026)
+
+Dva nové nosiče značky, oba v `partials/brand-icons.blade.php` vedľa favicon
+bloku (jeden zdroj, tri plochy dedia cez `@include`):
+
+```
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f4f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1413">
+<link rel="manifest" href="/manifest.json">
+```
+
+Hodnoty sú papier oboch tém (`--bg-rgb` z `mind.css`: `248 244 247` svetlá,
+`14 20 19` tmavá), nie ľubovoľná voľba. **`theme-color` sa vetví podľa
+`prefers-color-scheme` (systém), nie podľa `data-theme` (appka si tému
+pamätá, default tmavá)** — sú to dva rôzne signály a zámerne sa nezlievajú:
+`theme-color` je metadáta, ktorú prehliadač číta **pred** JS, takže default
+appky sa tam duplikovať nemá.
+
+`public/manifest.json` je nový verejný súbor (over ako každý nový súbor pod
+`public/` — dáva `200` bez tokenu, `/` bez tokenu dáva `401`, to je v
+poriadku). Šesť kľúčov, nič navyše: `name`, `short_name`, `display:
+standalone`, `theme_color`, `background_color` (obe `#0e1413`, appka je
+default tmavá), tri `icons` z existujúcich `hades-sigil-{128,256,512}.png`.
+Bez `start_url` — spec ho odvodí z dokumentu, ktorý manifest odkázal, takže
+sa nemusí písať a nič to neprezrádza. CSP nepotrebuje novú direktívu,
+`default-src 'self'` pokrýva aj `manifest-src`.
+
+**`errors/401.blade.php` `theme-color` nemá** — nevlastní ho `brand-icons`
+partial (401 nesie vlastný výkres, `@include('partials.brand-icons')` tam
+zámerne nie je). Rovnako ho nemajú 404/419/500/503 (§2, spoločný plášť
+`errors/layout.blade.php`). Ak sa to niekedy doplní, hodnoty idú natvrdo do
+markupu (`#f8f4f7` / `#0e1413`) rovnako ako farby znaku už idú — zapísaná
+výnimka „chybové stránky si nesú vlastné hodnoty" na to platí. **Stav k
+2. 9. 2026: NEDOPLNENÉ, nie zabudnuté** — bolo to vedomé rozhodnutie nechať
+mimo rozsahu vlny, ktorá zaviedla `theme-color` pre tri appkové plochy.
+
 ---
 
 ## 10. URL a zdieľateľnosť
@@ -2456,18 +2525,29 @@ okolo dvojfázovej brány — zakázané, aj v čítacej podobe.
 | `apple-touch-icon.png` | dlaždica iOS, 180 × 180 |
 
 Mimo tohto adresára: `public/favicon.ico` (z **mini** verzie, 16–256 px),
-`electron/assets/hades.ico` (desktop) a inline SVG favicon priamo v `<head>`
-všetkých troch stránok.
+`electron/assets/hades.ico` (desktop), inline SVG favicon priamo v `<head>`
+všetkých troch stránok a nový (2. 9. 2026) `public/manifest.json` (6 kľúčov,
+PWA — kánon v §2 „`theme-color` a manifest"); žiadny z týchto štyroch nie je
+v `public/brand/`.
 
-**Otvorený bod — `public/brand/hades-favicon.svg` v tabuľke ZÁMERNE nie je.**
-Generátor ho vydáva (`favicon_svg()`, výstup #2), súbor v adresári leží a `/brand/
-hades-favicon.svg` vracia 200, ale **nenačítava ho nič**: skutočný favicon je
-data-URI z `favicon_data_uri()` vpísaný priamo do `<head>`, a jediný výskyt mena
-`hades-favicon` v celom repe je riadok v generátore, ktorý ho zapisuje. Je to teda
-mŕtvy výstup vo verejnom web roote, čo je presne to, čo §11 zakazuje — a tabuľka ho
-nesmie legitimizovať tým, že si ho pripíše. Zrušiť ho znamená vymazať súbor **a**
-odobrať výstup #2 z `tools/brand/build-mark.py` (prípadne ho presunúť do
-`tools/brand/` ako referenčný náhľad); kým sa to nestane, platí tento odstavec.
+**Bod uzavretý 2. 9. 2026 — `hades-favicon.svg` je mimo `public/`, nie je v
+tabuľke, lebo tam už nepatrí.** Generátor ho vydával (`favicon_svg()`, výstup
+#2), súbor ležal vo verejnom web roote a `/brand/hades-favicon.svg` vracal
+`200`, ale **nenačítavalo ho nič**: skutočný favicon je data-URI z
+`favicon_data_uri()` vpísaný priamo do `<head>`, a jediný výskyt mena
+`hades-favicon` bol riadok v generátore, ktorý ho zapisoval — presne mŕtvy
+výstup vo verejnom web roote, ktorý §11 zakazuje. Riešenie bolo dvojkrokové,
+lebo jednokrokové sa vracia: súbor presunutý do `tools/brand/hades-favicon.svg`
+(zdroj kompozície pre editor — data-URI sa nedá otvoriť v editore ani
+skontrolovať okom, tak dôvod jeho existencie zostáva) **a** zapisovateľ v
+`build-mark.py` prepísaný na tento cieľ (`emit(TOOLS / "hades-favicon.svg", …)`,
+predtým `emit(BRAND / …)`). Overené z oboch strán behom generátora:
+`/brand/hades-favicon.svg` dáva `404` **pred aj po** `python
+tools/brand/build-mark.py` — teda nejde o to, že súbor niekto zmazal
+manuálne, generátor ho sám viac do `public/` nevracia. **Poučenie pre budúci
+mŕtvy generovaný výstup: zmazanie súboru bez prepísania zapisovateľa sa
+nevráti raz, ale pri každom ďalšom behu generátora — treba oboje v tom istom
+commite.**
 
 SVG assety sa prispôsobujú téme samy cez `prefers-color-scheme` — jeden súbor drží
 obe verzie, netreba `-dark` / `-light` dvojičky.

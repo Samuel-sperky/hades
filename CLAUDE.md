@@ -393,18 +393,24 @@ naučí uzly. Ten harness sa **musí kalibrovať A/B/A/B s dosadnutím** (dva r�
 + 250 ms po výmene) a počítať len to, čo je stabilné v oboch: jeho prvá verzia
 hlásila 96 110 „stabilných" rozdielov, ktoré boli len rozbehnuté prechody.
 
-**Podlaha zásahovej plochy je `--target-min: 24px`, nie 44px (Sprint 3, 1. 9. 2026).**
-44 px je WCAG 2.5.5 (AAA); tento súbor si sám deklaruje latku 2.5.8 (AA) = 24 px
-a Sprint 3 ju konečne aj vynútila (osem selektorov, `min-height: auto` nahradené
-tokenom **na mieste**, nie ako sedemnáste pravidlo nad tými istými selektormi —
-to by bola nová dvojica pre `w4dup.js`). Zdvih na 44 px bol Sprintu 3 navrhnutý
-štyrikrát a **odmietnutý**: rozbíja stĺpec akcií Kontroly na mobile (tri tlačidlá
-pri 44 px potrebujú 194 px, cela má 172), a bol by nepravdivo „len mobilný" —
-prvky majú menej než 24 px aj na desktope. **Jediná menovaná výnimka je 44 px**:
-lišta uložených filtrov (`.rec-saved-apply`/`.rec-saved-del`/pilulka) pod 768 px,
-rovnaká hodnota akú si `/chat` a `/console` dali samostatne o pár dní skôr.
-Ak niekedy príde tlak zdvihnúť viac než tento jeden riadok na 44 px, nie je to
-lokálna oprava jedného selektora, ale zmena tokenu — priznaj to ako také.
+**Podlaha zásahovej plochy je `--target-min: 24px`, nie 44px — ROZHODNUTIE
+POUŽÍVATEĽA 2. 9. 2026, UZAVRETÉ NATRVALO.** 44 px je WCAG 2.5.5 (AAA); tento
+súbor si sám deklaruje latku 2.5.8 (AA) = 24 px a Sprint 3 (1. 9. 2026) ju
+konečne aj vynútila (osem selektorov, `min-height: auto` nahradené tokenom
+**na mieste**, nie ako sedemnáste pravidlo nad tými istými selektormi — to by
+bola nová dvojica pre `w4dup.js`). Zdvih na 44 px bol **navrhnutý a odmietnutý
+päťkrát** (naposledy 2. 9. 2026) z toho istého dôvodu vždy: rozbíja stĺpec
+akcií Kontroly na mobile (tri ozbrojené tlačidlá pri 44 px potrebujú 194 px,
+cela má 172 px), a bol by nepravdivo „len mobilný" — prvky majú menej než
+24 px aj na desktope. **Jediná menovaná výnimka je 44 px**: lišta uložených
+filtrov (`.rec-saved-apply`/`.rec-saved-del`/pilulka) pod 768 px, rovnaká
+hodnota akú si `/chat` a `/console` dali samostatne o pár dní skôr.
+
+**Toto je posledné slovo — nenavrhuj zdvih na 44 px šiestykrát.** Ak niekedy
+príde skutočný tlak zdvihnúť viac než ten jeden menovaný riadok na 44 px, nie
+je to lokálna oprava jedného selektora, ale zmena tokenu `--target-min` samého
+— priznaj to ako také a nes to späť používateľovi ako novú otázku, nie ako
+opravu tejto.
 
 Tokeny tej istej osi (`--control-h` 32 / `--control-h-lg` 40 /
 `--control-h-dense` 26 / `--field-h` 34 / `--target-min` 24) žijú v `mind.css`
@@ -862,9 +868,27 @@ funkcia je `patch_icon_partial()`; `assert_partial_is_only_truth()` beží pred
 zápisom a odmietne stav, keď má niektorý page blade vlastný `<link rel="icon">`
 alebo partial chýba v `@include`. **`errors/401.blade.php` je zámerne mimo** —
 nesie od kánonu odlišný výkres (zlatý disk + prstenec na 40 % alfy), nie kópiu
-tejto pravdy. `public/brand/hades-favicon.svg` je mŕtvy generovaný výstup
-(len zdroj kompozície pre editor, nič ho nenačítava) a je **verejný** — over
-rovnako ako pri každom novom súbore pod `public/`.
+tejto pravdy.
+
+**`hades-favicon.svg` už nie je pod `public/` (uzavreté 2. 9. 2026).** Bol to
+mŕtvy generovaný výstup — len zdroj kompozície pre editor, nič ho nenačítavalo,
+a napriek tomu dával `200` bez tokenu. Presunutý do `tools/brand/
+hades-favicon.svg` (vedľa `DERIVED.md`), zapisovateľ v `build-mark.py` prepísaný
+na tento cieľ (`emit(TOOLS / "hades-favicon.svg", …)`, predtým `BRAND / …`) a
+overené **z oboch strán**: pred behom generátora aj po ňom dáva `/brand/
+hades-favicon.svg` `404`. **Poučenie, nech sa neopakuje: zmazať generovaný
+výstup nestačí** — bez prepísania zapisovateľa ho ďalší beh `python
+tools/brand/build-mark.py` do `public/` vráti späť. Rovnako `resources/views/
+welcome.blade.php` bolo zmazané (`grep welcome routes/` = 0, mŕtvy výstup bez
+zapisovateľa, takže tu stačilo zmazanie).
+
+**Nový verejný súbor: `public/manifest.json`** (PWA, 6 kľúčov — `name`,
+`short_name`, `display`, `theme_color`, `background_color`, tri `icons` z
+existujúcich `hades-sigil-{128,256,512}.png`) a `<meta name="theme-color">`
+(dva riadky, `prefers-color-scheme` light/dark, hodnoty `--bg-rgb` z
+`mind.css`) v `partials/brand-icons.blade.php`. Oboje je **verejné a v
+poriadku** — over rovnako ako pri každom novom súbore pod `public/`, kánon
+je v `docs/BRAND-HADES.md` §2 (Favicon) a §11 (Assety).
 
 ## Docker a opcache
 
@@ -957,11 +981,17 @@ falošný PÁD** (teda by ťa donútili „opravovať" funkčný kód):
    (`--field-h`) a deklarácia bola mŕtvy kód, nie zámer — over, ktoré pravidlo
    naozaj vyhráva, pred tokenizáciou akéhokoľvek čísla.
 
-Dve veci, ktoré merač rozmerov nahlási ako poruchu a **nie sú ňou**: `Times New
+Tri veci, ktoré merač rozmerov nahlási ako poruchu a **nie sú ňou**: `Times New
 Roman` na `<html>` je fallback koreňa bez vlastného `font-family`, nie rozbitý
-font — appka font deklaruje nižšie v strome, nie na koreni; a **18/20/22 px nie
+font — appka font deklaruje nižšie v strome, nie na koreni; **18/20/22 px nie
 sú textové veľkosti mimo škály** — sú to `--icon-sm/md/lg`. Merač, ktorý ich
-zaradí medzi porušenia typografickej škály, meria zle.
+zaradí medzi porušenia typografickej škály, meria zle; a **najčastejšia výška
+tlačidla na `/` (36 px) v CSS nikde nestojí** — je **emergentná** z ikony
+(`--icon-sm` 18 px) + paddingu (2×8 px) + rámu (2×1 px), nie nedisciplína.
+Dopísanie `height: 36px` by „zjednotilo" číslo, ale zmrazilo väzbu ikony
+a paddingu — zmena jednej z nich by tichým rozchodom hodnotu odtrhla od
+toho, čo ju skladá. Kánon aj ďalšie merané výšky sú v `docs/BRAND-HADES.md`
+§6 „Výšky ovládačov — rola, nie číslo".
 
 Onboarding karta sa vypína `localStorage.setItem('hades.hints2', 'done')` **pred**
 loadom (`evaluateOnNewDocument`) — klik na `#hint-skip` po loade ju nespoľahlivo skryje

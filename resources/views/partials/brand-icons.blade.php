@@ -23,3 +23,22 @@
      .ico je vyrobené z MINI verzie znaku — master by sa pri 16 px zlial. --}}
 <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+{{-- Lišta prehliadača na mobile. DVE deklarácie, nie jedna: `theme-color` nemá
+     nič ako CSS premennú, takže papier oboch tém musí stáť tu natvrdo —
+       #f8f4f7 = --bg-rgb svetlej témy (`mind.css` :root),
+       #0e1413 = --bg-rgb tmavej témy (`:root[data-theme="dark"]`).
+     Tu sa vetví podľa `prefers-color-scheme`, teda podľa systému, kým appka si
+     tému pamätá v `data-theme` (default TMAVÁ, `initialTheme()` v `theme.js`).
+     Sú to dva rôzne signály a zladiť ich sa nedá — `theme-color` je metadáta
+     dokumentu, ktoré prehliadač čítal už pred spustením JS. Preto nie je toto
+     miesto, kde by sa mal default témy appky duplikovať; ikony vedľa idú
+     zámerne tmavou vetvou (karta a dlaždica sú tmavé), lišta ide systémom. --}}
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f4f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1413">
+{{-- Manifest je pod `public/`, teda VEREJNÝ — `auth.ui` naň nedosiahne a appka
+     je tunelovaná cez ngrok. Preto nesie LEN názov, ikony a farby; žiadne
+     `start_url` (spec ho odvodí z dokumentu, ktorý manifest odkázal), žiadny
+     `scope`, žiadny popis. Každý kľúč navyše je verejná informácia o štruktúre
+     appky. `manifest-src` v CSP nie je a nemá byť: `default-src 'self'` ho
+     pokrýva (viď docblock `ContentSecurityPolicy`). --}}
+<link rel="manifest" href="/manifest.json">
