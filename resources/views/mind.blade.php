@@ -126,7 +126,7 @@
                  STUPEŇ `core` = JEDEN UZOL: prstenec r 8,64 / obrys 2,16 (amethyst) so
                  zlatým stredom r 3,6. Zmizli tri satelitné uzly a všetky štyri hrany.
                  Kresba je bajt na bajt to, čo vydá `sigilNetMarkup(cls, {step:'core'})`
-                 z public/js/mind/util.js — tam je JEDINÝ zdroj výkresu znaku pre celú
+                 z public/js/shared/sigil.js — tam je JEDINÝ zdroj výkresu znaku pre celú
                  rodinu `bc-*` (tabuľka `SIGIL_NET`) a tento markup je jeho ručná kópia,
                  pretože statická stránka nesmie čakať na JS. Keď sa `SIGIL_NET` zmení,
                  prepíš tieto tri riadky podľa nej, nie naopak.
@@ -156,25 +156,33 @@
                  nesie `color: var(--brand-gold)` a stav `.asleep` sa vešia na tlačidlo.
                  Zmerané: `fill` sa počíta na rgb(216, 184, 120) = `--brand-gold` tmavej témy.
 
-                 KDE SIEŤ REÁLNE VIDNO (aby bolo jasné, že nikde nezmizla):
-                   44 px  `.ce-mark` — prázdny stav `/chat`, plná sieť (nižšie v tomto repe
-                          v chat.blade.php) a `errors/401.blade.php`
+                 KDE SIEŤ REÁLNE VIDNO (zmerané 2. 9. 2026 na bežiacich plochách):
+                   44 px  `.ce-mark` — prázdny stav `/chat` (chat.blade.php)
+                   44 px  `.empty-sigil` — prázdny stav `/console` (kreslí console/render.js)
+                   44 px  `errors/401.blade.php` — vlastné lokálne triedy, viď tam prečo
                    32 px  `.charon-sigil` — prázdny dok nad grafom (kreslí mind/charon.js)
+                   32 px  `.load-mark` — dýchajúci spinner; NIE jeden uzol, hoci sedí presne
+                          na prahu: vyrástol z 26 na 32 px práve preto, aby sieťou zostať
+                          MOHOL (v prázdnom stave je jediným obsahom plochy a jeden zlatý
+                          bod by bol generický spinner). Odôvodnenie je pri jeho pravidle
+                          v mind.css.
                    84 px  electron/states/offline.html — diskový stupeň generátora značky
                    ≥128px public/brand/** — prstencový master
-                 A kde je naopak jeden uzol: tento rail, `#back-to-graph`, `#chat-home`,
-                 `.load-mark` (26 px), electron topbar (16 px), favicon a `.ico` do 32 px.
+                 A kde je naopak jeden uzol: tento rail, `#back-to-graph`, `#chat-home`
+                 (všetky 24 px), electron topbar (16 px), favicon a `.ico` do 32 px.
 
-                 ⚠ OTVORENÝ BOD, KTORÝ TENTO SÚBOR NEROZHODUJE: `SIGIL_NET` v util.js
-                 a `net_geometry()` v tools/brand/build-mark.py sú DVA rôzne výseky tej
-                 istej siete (iné uhly, iné vzdialenosti, uzol raz prstenec, raz disk).
-                 Je to zapísané aj v tools/brand/DERIVED.md ako otvorený bod. Markup ide
-                 s `SIGIL_NET`, pretože rodinu `bc-*` vlastní util.js; electron ide
-                 s generátorom, pretože jeho regióny generátor prepisuje. Zjednotiť sa to
-                 musí v jednom z tých dvoch, nie tu. Čomu to NEPREKÁŽA: jeden uzol je
-                 v oboch rukách tá istá kresba (36 / 9 / 15 z hades-sigil-mini.svg), takže
-                 favicon, `.ico`, topbar aj tento rail sú konzistentné bez ohľadu na to,
-                 ako sa spor rozhodne. --}}
+                 ROZCHOD DVOCH RÚK — ROZHODNUTÝ 2. 9. 2026 (dovtedy tu stál ako otvorený
+                 bod): `SIGIL_NET` (dnes v public/js/shared/sigil.js) a `net_geometry()`
+                 v tools/brand/build-mark.py boli DVA rôzne výseky tej istej siete — iné
+                 uhly, iné vzdialenosti, a kánonové jadro malo navyše amethystový prstenec
+                 so zlatým stredom. VYHRALA APPKA: jadro je plný zlatý kotúč BEZ prstenca,
+                 pretože prstenec okolo neho by z jadra urobil ŠTVRTÝ prstencový uzol
+                 a „jadro = jediný sýty plný prvok" by prestalo platiť. Kánon (public/brand/**,
+                 generátor, DERIVED.md) si má prevziať súradnice zo `SIGIL_NET`, nie naopak —
+                 je to NAHLÁSENÁ potreba v cudzom vlastníctve, nie niečo, čo rozhoduje tento
+                 súbor. Čomu to NEPREKÁŽA ani do tej chvíle: jeden uzol je v oboch rukách tá
+                 istá kresba (36 / 9 / 15 z hades-sigil-mini.svg), takže favicon, `.ico`,
+                 topbar aj tento rail sú konzistentné už dnes. --}}
             <svg class="bc-mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
                 <g class="bc-nodes">
                     <circle class="bc-node" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>

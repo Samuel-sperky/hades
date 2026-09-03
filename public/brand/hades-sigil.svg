@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Hades">
   <title>Hades</title>
-  <!-- GENEROVANÉ tools/brand/build-mark.py z hades-sigil-mini.svg — needituj ručne. -->
+  <!-- GENEROVANÉ tools/brand/build-mark.py — needituj ručne. Geometria siete je
+       prepočet SIGIL_NET z public/js/shared/sigil.js (viewBox 24) na tento box;
+       farby a stupeň redukcie sú z hades-sigil-mini.svg. -->
   <style>
     svg { --acc: #6d3fb5; --gold: #b88a3a; }
     @media (prefers-color-scheme: dark) { svg { --acc: #c4a2f5; --gold: #d8b878; } }
@@ -9,23 +11,23 @@
     .edges .lat { opacity: .5; }
     .gold-fill { fill: var(--gold); stroke: none; }
   </style>
-  <!-- HRANY sa kreslia PRVÉ, aby uzly stáli na nich, nie naopak. Sú zarezané
-       o vonkajší okraj uzla + 1.5, takže sa obruby nedotýkajú.
-       Bočná hrana (.lat) je slabšia — jadro musí zostať tým, na čo sa sieť viaže. -->
+  <!-- HRANY sa kreslia PRVÉ, aby uzly stáli na nich, nie naopak. Tri idú zo
+       STREDU jadra (tam sú skryté pod jeho plným kotúčom), štvrtá je chorda
+       medzi dvoma satelitmi a jadro OBCHÁDZA — bez nej je to hviezda, nie sieť.
+       Bočná hrana (.lat) je slabšia: jadro musí zostať tým, na čo sa sieť viaže. -->
   <g class="edges">
-    <line x1="56.33" y1="34.34" x2="59.59" y2="26.27" stroke-width="1.8"/>
-    <line x1="33.69" y1="45.63" x2="20.34" y2="42.05" stroke-width="1.8"/>
-    <line x1="58.95" y1="64.32" x2="67.71" y2="78.35" stroke-width="1.8"/>
-    <line x1="53.99" y1="20.88" x2="19.87" y2="36.18" stroke-width="1.8" class="lat"/>
+    <line x1="50" y1="50" x2="26.12" y2="37.25" stroke-width="4.58"/>
+    <line x1="50" y1="50" x2="73.92" y2="40.21" stroke-width="4.58"/>
+    <line x1="50" y1="50" x2="55.96" y2="74.71" stroke-width="4.58"/>
+    <line x1="78.75" y1="45.5" x2="63.21" y2="75.58" stroke-width="4.58" class="lat"/>
   </g>
-  <!-- VEDĽAJŠIE UZLY: prstence bez výplne (priehľadnosť nesie diera, nie alfa).
-       Tri rôzne veľkosti = hĺbka susedstva. Pod 128 px zmiznú spolu s hranami. -->
-  <circle cx="63.49" cy="16.62" r="7.92" stroke-width="1.98"/>
-  <circle cx="11.85" cy="39.78" r="6.48" stroke-width="1.62"/>
-  <circle cx="71.73" cy="84.77" r="5.4" stroke-width="1.35"/>
-  <!-- JADROVÝ UZOL: pomery mini kánonu (0.36 / 0.09 /
-       0.30 boxu) na vlastnom boxe 38. Prstenec je AMETHYST,
-       stred je jediný sýty PLNÝ prvok celého znaku a je ZLATÝ. -->
-  <circle cx="50" cy="50" r="13.68" stroke-width="3.42"/>
-  <circle cx="50" cy="50" r="5.7" class="gold-fill"/>
+  <!-- SATELITY: prstence bez výplne (priehľadnosť nesie diera, nie alfa).
+       Rovnako veľké, v nepravidelných uhloch. Pod 32 px zmiznú spolu s hranami. -->
+  <circle cx="16.92" cy="32.33" r="7.92" stroke-width="5"/>
+  <circle cx="83.54" cy="36.25" r="7.92" stroke-width="5"/>
+  <circle cx="58.42" cy="84.83" r="7.92" stroke-width="5"/>
+  <!-- JADRO: jediný sýty PLNÝ prvok celého znaku a je ZLATÝ. Amethystový prstenec
+       okolo neho tu do 2. 9. 2026 bol a je RETIROVANÝ (rozhodnutie: vyhráva appka):
+       štvrtý prstenec by z jadra urobil štvrtý uzol a „jediný sýty" by prestalo platiť. -->
+  <circle cx="50" cy="50" r="10.83" class="gold-fill"/>
 </svg>

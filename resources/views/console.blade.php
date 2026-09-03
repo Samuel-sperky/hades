@@ -48,7 +48,7 @@
                          redukcie aj to, kde sieť vidno v plnej kresbe, je pri `#brand-core`
                          v mind.blade.php — tu sa to nekopíruje druhýkrát.
                          Kresba je bajt na bajt výstup `sigilNetMarkup(cls, {step:'core'})`
-                         z public/js/mind/util.js (tabuľka `SIGIL_NET`). Jediný rozdiel proti
+                         z public/js/shared/sigil.js (tabuľka `SIGIL_NET`). Jediný rozdiel proti
                          railu: jadro je tu `var(--brand-gold)`, nie `currentColor` —
                          `#back-to-graph` nemá vlastný `color` a `.asleep` sem nedosiahne.
                          `class="bc-mark"` je SPÍNAČ zrodu, nie ozdoba. --}}

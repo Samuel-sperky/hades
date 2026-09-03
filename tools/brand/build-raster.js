@@ -6,9 +6,10 @@
  * lokálnu cestu k Chrome, teda prezrádzal OS aj používateľa.
  *
  * PREČO DRUHÝ GENERÁTOR VEDĽA build-mark.py: `build-mark.py` rastruje cez PIL,
- * ktoré vie kresliť kruhy — a presne preto zvládne favicon aj .ico, kde je znak
- * len prstenec a jadro. Lockup ale nesie WORDMARK, teda písmo prevedené do
- * kriviek, a tie PIL nakresliť nevie. V prostredí nie je žiadny SVG rasterizér
+ * ktoré vie kresliť kruhy a úsečky — a presne preto zvládne favicon aj .ico, kde je
+ * znak buď jeden uzol (16–24 px), alebo sieť z kruhov a úsečiek (32 px a viac; uzol
+ * je anulus, teda plný disk s vyrezaným menším). Lockup ale nesie WORDMARK, teda
+ * písmo prevedené do kriviek, a tie PIL nakresliť nevie. V prostredí nie je žiadny SVG rasterizér
  * (`cairosvg` chýba, `convert` je Windowsov konvertor diskov, nie ImageMagick),
  * takže rasterizuje Chrome — presne tá cesta, ktorú si projekt zapísal ako
  * funkčnú v CLAUDE.md („Overenie UI").

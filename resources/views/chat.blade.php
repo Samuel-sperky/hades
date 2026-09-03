@@ -244,7 +244,7 @@
                          od veľkosti aj od budúcej zmeny geometrie.
 
                          Kresba je bajt na bajt výstup `sigilNetMarkup(cls)` (default
-                         `step: 'full'`) z public/js/mind/util.js — tabuľka `SIGIL_NET` je
+                         `step: 'full'`) z public/js/shared/sigil.js — tabuľka `SIGIL_NET` je
                          jediný zdroj výkresu rodiny `bc-*`. Uzly sú tu PRSTENCE (r 1,9 /
                          obrys 1,2), presne ako uzly na plátne; jadro je jediný sýty plný
                          prvok. Chorda je z troch možných spojení satelitov jediná, ktorá

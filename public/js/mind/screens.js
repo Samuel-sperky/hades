@@ -165,8 +165,22 @@ function ensureMdDetailWiring() {
         if (e.key === 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
         const ov = $('md-overlay');
         if (!ov || ov.classList.contains('hidden')) return;
+        /* `t instanceof Node` nie je opatrnosť navyše. `Node.contains()` je vo
+           WebIDL `contains(Node? other)`, takže čokoľvek, čo Node NIE JE, z nej
+           vyhodí `TypeError` — a `window` Node nie je. Syntetický `keydown`
+           odoslaný na `window` (tak meria každý harness) má `e.target === window`,
+           takže `ov.contains(t)` spadne, handler skončí PRED `stopPropagation()`
+           a overlay tým ticho stratí svojho strážcu klávesnice. Zmerané pred
+           opravou: „Failed to execute 'contains' on 'Node': parameter 1 is not
+           of type 'Node'." — a propagácia zastavená nebola.
+
+           Non-Node cieľ patrí do TEJ ISTEJ škatule ako `!t` a `document.body`:
+           „fokus nie je nikde", teda klávesa patrí overlayu. Test preto `!t`
+           nahrádza (null nie je `instanceof Node`), nepribúda k nemu — inak by
+           to bola štvrtá podmienka pre ten istý jeden význam. */
         const t = e.target;
-        const own = !t || t === document.body || t === document.documentElement || ov.contains(t);
+        const own = !(t instanceof Node) || t === document.body
+            || t === document.documentElement || ov.contains(t);
         if (own) e.stopPropagation();
     }, true);
 }

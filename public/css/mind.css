@@ -1501,7 +1501,7 @@ button.close:active { background: var(--accent-soft); }
    naozaj mať — preto ju vynúť MERANÍM, nie prečítaním blade. A meraj `.bc-node`
    / `.bc-core`, NIE `.bc-edge`: do 2. 9. 2026 tu stálo „`animationName` na
    `.bc-edge` nesmie byť `none` na žiadnej z troch plôch" a to je dnes
-   NESPLNITEĽNÉ tvrdenie. Pravidlo redukcie v `mind/util.js` posiela 24 px nosiče
+   NESPLNITEĽNÉ tvrdenie. Pravidlo redukcie v `shared/sigil.js` posiela 24 px nosiče
    (`#brand-core`, `#back-to-graph`, `#chat-home`) na stupeň `'core'`, ktorý
    kreslí JEDEN uzol a NULA hrán — zmerané na `#brand-core`: `.bc-node` 1,
    `.bc-core` 1, `.bc-edge` 0. Fáza „hrany sa dokreslia" tam teda nemá čo kresliť
@@ -1523,9 +1523,20 @@ button.close:active { background: var(--accent-soft); }
      bez `pathLength`      → nakreslených 49 px                    ❌ (= 50 %)
    A `getTotalLength()` `pathLength` IGNORUJE (vracia geometrickú dĺžku), takže sa
    ním táto vlastnosť overiť NEDÁ — preto ten pixelový odpočet.
+   PREMERANÉ 2. 9. 2026 UŽ NA ŽIVOM NOSIČI, nie na syntetickej úsečke, a je to
+   silnejší dôkaz: na `.empty-sigil` (44 px, štyri hrany dĺžok 6,50 / 6,20 / 6,10
+   / 8,13) sa nastavil `stroke-dashoffset: 50` a hľadalo sa, kde má hrana ešte
+   farbu — `elementFromPoint` nad `getPointAtLength()`, teda hit-test nad
+   NAKRESLENÝM strokom, nie nad atribútmi. A/B/A:
+     s `pathLength="100"`  → zásah na 40 % dĺžky ✅✅✅✅, na 80 % ❌❌❌❌
+                             (každá hrana nakreslená presne na polovicu SVOJEJ dĺžky)
+     bez `pathLength`      → zásah na 80 % ✅✅✅✅ (dasharray 100 je dlhší než
+                             najdlhšia hrana, takže VŠETKY sú nakreslené celé
+                             a dash prestane niesť akýkoľvek pohyb)
+   Po vrátení atribútu je výsledok znova identický s prvým stavom.
    ČÍSLA SÚ Z REPA, nie z prototypu (prepísané 2. 9. 2026 — dovtedy tu stálo
    „7,3–10,4" a „8,161 pre hranu jadro–uzol 1", teda geometria, ktorú `SIGIL_NET`
-   v `public/js/mind/util.js` nikdy nemala). Zmerané `getTotalLength()` na živom
+   v `public/js/shared/sigil.js` nikdy nemala). Zmerané `getTotalLength()` na živom
    `.charon-sigil`: 6,496 / 6,202 / 6,100 (tri hrany jadro–satelit) a 8,127
    (chorda 2↔3). Tie hodnoty sú v JEDNOTKÁCH viewBoxu (24), nie v px, a preto sa
    s veľkosťou nosiča NEMENIA — na tom istom 32 px nosiči má prvá hrana
@@ -1562,7 +1573,8 @@ button.close:active { background: var(--accent-soft); }
    toho istého výkresu legitímne líšia farbou: značkové nosiče `--brand-gold`,
    spinner `--gold-text` (téme prispôsobená zlatá pre malé plné prvky — dôvod je
    pri pravidle `.load-mark`), rail `currentColor`. Rozhoduje o tom `opts.gold`
-   v `sigilMarkup()`, takže CSS tu farbu jadra NESMIE napísať ani prepísať —
+   v `sigilNetMarkup()` (`public/js/shared/sigil.js`), takže CSS tu farbu jadra
+   NESMIE napísať ani prepísať —
    prepisom by sa všetky tri nosiče zliali do jedného a spinner by na svetlej
    téme spadol pod prah kontrastu. */
 .bc-mark .bc-node {
@@ -1627,7 +1639,7 @@ button.close:active { background: var(--accent-soft); }
    nie pulz behu. (Manuál sám tú formuláciu ponúka; roly zostávajú štyri.)
 
    Dôvod je meraný, nie estetický. Dýchanie nie je dekorácia, ale JEDINÝ nosič
-   stavu `bdie / spí` — a stav prepína `updateStateUi()` v mind/util.js jedinou
+   stavu `bdie / spí` — a stav prepína `updateStateUi()` v shared/sigil.js jedinou
    cestou: `document.getElementById('brand-core').classList.toggle('asleep', …)`.
    Iný nosič v celom repe nie je (`grep -rn asleep public/` dá util.js, mind.css
    a komentár v mind.blade.php — nič na /chat ani /console). Na tých dvoch plochách
@@ -3204,6 +3216,15 @@ pre.code code {
    presunula na samotné `.bc-edge`, spinner by zostal bez hrán — over `strokeDasharray`
    na `.load-mark .bc-edge` (musí byť `none`).
 
+   ZNOVU PREVERENÉ 2. 9. 2026, keď sa zrod dopĺňal na všetky ostatné nosiče —
+   a tento JEDEN zostáva výnimkou zámerne. Zmerané tu: `animationName` na
+   `.bc-node`/`.bc-core`/`.bc-edge` je `none` (zrod naozaj nebeží), `strokeDasharray`
+   je `none` (hrany sú celé) a znak pritom NIE JE nehybný — pohyb nesie OBAL:
+   `animationName` na `.load-mark` je `load-breathe`, `transform` v zmrazenom
+   okamihu `matrix(0.84, …)`, teda 32 px layout × 0,84 = 26,88 px na obrazovke.
+   Kto sem zrod pridá, dostane dva pohyby nad tou istou kresbou pri každom
+   načítaní zoznamu — nie chýbajúci pohyb, ale druhý.
+
    KONTRAST: znak je JEDINÝ nositeľ informácie „pracujem", takže musí sám držať
    WCAG 1.4.11 (3:1) — preto markup farbí hrany a uzly PLNÝM `var(--accent)`,
    nie `--border-accent` (poloprehľadný dekoratívny okraj: na tmavej dával 2,7:1,
@@ -3215,7 +3236,7 @@ pre.code code {
     display: block;
     /* 32 px, nie 26 ako prstencová verzia — a je to PRAVIDLO REDUKCIE, nie kozmetika.
        Pod ~32 px sa hrany siete zlejú do kaše, preto tam znak spadá na jediný uzol
-       (stupeň `'core'` v `mind/util.js`). Spinner ale MUSÍ zostať sieťou: je to
+       (stupeň `'core'` v `shared/sigil.js`). Spinner ale MUSÍ zostať sieťou: je to
        značkový znak v prázdnom stave, kde je jediným obsahom plochy, a jeden zlatý
        bod by bol generický spinner — presne to, čomu sa tu vyhýbame. Zväčšenie
        o 6 px je lacnejšie než druhá, zjednodušená kresba znaku pre jeden nosič.

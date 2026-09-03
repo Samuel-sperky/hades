@@ -18,14 +18,37 @@ export const SHORTCUTS = [
     // Šípky v palete existovali len ako Enter na prvej položke; odkedy posúvajú
     // fokus po výsledkoch, patrí to aj do pomocníka — inak je to skrytá funkcia.
     ['↑ / ↓ / Enter', 'Pohyb v palete a potvrdenie'],
-    // Kurzor v zoznamoch inzeruje pomocník, inak je to skrytá funkcia — a je to
-    // JEDEN riadok pre všetky zoznamy, pretože je to jedna klávesa s jedným
-    // významom (Kontrola a Denník ho majú len nad iným druhom položky).
-    ['j / k', 'Pohyb v zozname (tabuľky, fronta, Denník)'],
+    /* Kurzor v zoznamoch inzeruje pomocník, inak je to skrytá funkcia — a je to
+       JEDEN riadok pre všetky zoznamy, pretože je to jedna klávesa s jedným
+       významom (Kontrola a Denník ho majú len nad iným druhom položky).
+
+       Riadok MENUJE obrazovky, nie druhy položiek. Dovtedy tu stálo „tabuľky,
+       fronta, Denník", čo nútilo čitateľa hádať, ktorá obrazovka tabuľku má —
+       teda pomocník na otázku „kde to funguje?" neodpovedal. Zoznam je zmeraný,
+       nie odvodený zo zadania: dispatch `j` s fokusom nikde (2. 9. 2026) pohol
+       kurzorom na Denníku, Knižnici, Kontrole, Runách, Rozhodnutiach a Smernici;
+       na Dnes a na Grafe sa nepohlo nič. Sú to štyri rôzne dispatchery
+       (`kontrolaMove` v bloku nižšie, `moveTableCursor` nad `.screen.active
+       .rec-table`, vlastný listener `dennik.js` a kurzor `kniznica.js` scope-nutý
+       na `#library-list`), takže nová obrazovka so zoznamom sa tu NEOBJAVÍ sama.
+       Nepridávaj sem obrazovku, kým na nej klávesu nezmeriaš: pomocník, ktorý
+       inzeruje klávesu nerobiacu nič, je horší než chýbajúci riadok.
+
+       Šípky sú v riadku preto, že ich berie všetky štyri dispatchery
+       (`case 'ArrowDown'` / `e.key === 'ArrowDown'`), nie preto, že by to bolo
+       pravdepodobné — bez nich by riadok o polovici klávesnice mlčal. */
+    ['j / k / ↑ / ↓', 'Pohyb v zozname (Denník, Knižnica, Kontrola, Runy, Rozhodnutia, Smernica)'],
     ['1 / 2 / 3 / 4', 'Filter: celá sieť / oblasť / oddelenie / uzol'],
     ['V', 'Pohľad: Sieť ↔ Vrstvy (na Grafe)'],
     ['C', 'Charón — rozhovor nad grafom'],
-    ['Enter', 'Zamerať zvolený uzol'],
+    /* Enter NEMÁ jeden význam a pomocník to musí priznať. Na šiestich
+       obrazovkách so zoznamom otvára detail položky pod kurzorom — Kontrola cez
+       `openNodeDetail()` vo svojom bloku nižšie, Denník vlastným listenerom,
+       tabuľky riadkovým `onkeydown` z `renderTable()` (ktorému tento súbor
+       zámerne zastavuje propagáciu, aby jeden stisk nezameral aj uzol v grafe).
+       Zameranie uzla je dnes to, čo z Enteru zostane až NA Grafe, takže je to
+       menovaná výnimka v zátvorke — rovnaký zápis, aký už nesie riadok `R`. */
+    ['Enter', 'Detail položky pod kurzorom (na Grafe: zamerať zvolený uzol)'],
     ['Esc', 'Zrušiť filter'],
     ['Backspace', 'O úroveň von'],
     ['D', 'Denník'],

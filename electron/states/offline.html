@@ -68,16 +68,22 @@
             display: block;
         }
 
-        /* ZNAK-STYLE: generuje tools/brand/build-mark.py zo hades-sigil-mini.svg.
+        /* ZNAK-STYLE: generuje tools/brand/build-mark.py z public/js/shared/sigil.js.
            Needituj ručne — pri najbližšom behu generátora sa zmena stratí.
            Dôvod, prečo je geometria aj tu: tento dokument sa zobrazuje, KEĎ SERVER
-           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/.
+           NEBEŽÍ, takže nemôže načítať mind.css ani nič z public/. Z toho istého
+           dôvodu si nesie aj vlastnú tichú verziu prefers-reduced-motion — je nižšie,
+           mimo týchto markerov, a je to dosadnutý znak, nie „vypnuté".
            ZNAK JE SIEŤ (1. 9. 2026): prstenec (`.ring`) je retirovaný — v sieti nie je
-           zavretá krivka, ktorú by pomenoval. Uzly sú tu PLNÉ DISKY, nie prstence:
-           pri 84 px by obrys uzla mal 1.13 px, teda pod podlahou 1.5 px. */
-        .sigil .edge { fill: none; stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; opacity: .8; }
+           zavretá krivka, ktorú by pomenoval. Uzly sú tu PRSTENCE (od 2. 9. 2026, keď
+           kánon prevzal geometriu appky): obrys satelitu má pri 84 px
+           4.20 px a hrana 3.85 px, teda nad podlahou 1.5 px.
+           Šírku obrysu nesie MARKUP (`stroke-width` na uzle), nie toto pravidlo:
+           je to geometria, a tá patrí do jedného zdroja. JADRO je len zlatý kotúč —
+           amethystový prstenec okolo neho je retirovaný. */
+        .sigil .edge { fill: none; stroke: var(--accent); stroke-width: 4.58; stroke-linecap: round; opacity: .8; }
         .sigil .edge--lat { opacity: .5; }
-        .sigil .node { fill: var(--accent); }
+        .sigil .node { fill: none; stroke: var(--accent); }
         .sigil .core { fill: var(--gold); transform-origin: 50px 50px; }
         /* /ZNAK-STYLE */
 
@@ -102,10 +108,12 @@
            geometrie rozíde.
 
            `pathLength="100"` na každej hrane je v markupe nižšie: hrany majú rôznu
-           dĺžku (36,00 / 39,50 / 41,00 / 56,60 jednotky — prvé tri sú `NET_SATS`
-           vzdialenosti, lebo hrana ide od stredu jadra do stredu uzla), takže bez neho
-           by jedna konštanta `stroke-dasharray` dokreslila jednu hranu a ostatné
-           zastavila v polovici. */
+           dĺžku (27,07 / 25,84 / 25,42 / 33,86 jednotky tohto boxu — tri idú zo stredu
+           jadra na okraj prstenca satelitu, štvrtá je chorda medzi dvoma satelitmi),
+           takže bez neho by jedna konštanta `stroke-dasharray` dokreslila jednu hranu
+           a ostatné zastavila v polovici. Do 2. 9. 2026 tu stáli dĺžky 36,00 / 39,50 /
+           41,00 / 56,60 a boli to vzdialenosti stredov starej geometrie `NET_SATS` —
+           tá už v repe nie je, znak sa počíta zo `SIGIL_NET` appky. */
         .sigil .node {
             transform-box: fill-box;
             transform-origin: center;
@@ -299,21 +307,23 @@
 <body>
     <main class="card">
         <!-- ZNAK: generuje tools/brand/build-mark.py — needituj ručne.
-             SIEŤ v DISKOVOM stupni (`.sigil` je 84 px). Súradnice sú kánon
-             z hades-sigil-mini.svg + NET_* konštánt generátora, nie ručná kresba.
-             Hrany idú od stredu k stredu a konce im zakryjú disky — žiadne pahýle.
+             SIEŤ v PRSTENCOVOM stupni (`.sigil` je 84 px, prah siete je
+             32 px). Súradnice sú kánon appky (`public/js/shared/sigil.js`,
+             tabuľka SIGIL_NET) prepočítaný na tento box — nie ručná kresba.
+             Hrany od jadra idú z jeho STREDU (skryté pod zlatým kotúčom) na okraj
+             prstenca satelitu; štvrtá je chorda medzi dvoma satelitmi.
              `.nodes` musí obsahovať PRESNE tri uzly: zrod ide cez :nth-child(2)/(3). -->
         <svg class="sigil" viewBox="0 0 100 100" aria-hidden="true">
-            <path class="edge" pathLength="100" d="M 50 50 L 63.49 16.62"></path>
-            <path class="edge" pathLength="100" d="M 50 50 L 11.85 39.78"></path>
-            <path class="edge" pathLength="100" d="M 50 50 L 71.73 84.77"></path>
-            <path class="edge edge--lat" pathLength="100" d="M 63.49 16.62 L 11.85 39.78"></path>
+            <path class="edge" pathLength="100" d="M 50 50 L 26.12 37.25"></path>
+            <path class="edge" pathLength="100" d="M 50 50 L 73.92 40.21"></path>
+            <path class="edge" pathLength="100" d="M 50 50 L 55.96 74.71"></path>
+            <path class="edge edge--lat" pathLength="100" d="M 78.75 45.5 L 63.21 75.58"></path>
             <g class="nodes">
-                <circle class="node" cx="63.49" cy="16.62" r="8.91"></circle>
-                <circle class="node" cx="11.85" cy="39.78" r="7.29"></circle>
-                <circle class="node" cx="71.73" cy="84.77" r="6.07"></circle>
+                <circle class="node" cx="16.92" cy="32.33" r="7.92" stroke-width="5"></circle>
+                <circle class="node" cx="83.54" cy="36.25" r="7.92" stroke-width="5"></circle>
+                <circle class="node" cx="58.42" cy="84.83" r="7.92" stroke-width="5"></circle>
             </g>
-            <circle class="core" cx="50" cy="50" r="13.68"></circle>
+            <circle class="core" cx="50" cy="50" r="10.83"></circle>
         </svg>
         <!-- /ZNAK -->
 

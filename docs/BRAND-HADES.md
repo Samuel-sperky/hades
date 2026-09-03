@@ -147,51 +147,76 @@ k uzlu, nie len domov.
 Zmerané `getTotalLength()` (líšia sa, čo je dôvod, prečo dash matematika nižšie
 používa `pathLength`): **6,496 / 6,202 / 6,100 / 8,127** jednotiek.
 
-Geometria je zdrojovaná v **troch nezávislých miestach** — `SIGIL_NET` v
-`public/js/mind/util.js` (web), `net_geometry()` v `tools/brand/build-mark.py`
-(statické assety), a kontrakt tried `.bc-mark` v `mind.css` (spína zrod,
-nekreslí súradnice). Do 1. 9. 2026 sa presne tento rozchod stal kruhovému
-znaku (master a mini boli dva rôzne výkresy) — dnes tri cesty súhlasia
-(overené: rovnaké pomery `NET_CORE_BOX`, rovnaké dĺžky hrán), ale nič v kóde
-to nevynucuje. **Zmenu geometrie treba urobiť na oboch miestach naraz a
-overiť meraním na bežiacej appke**, nie čítaním jedného zdroja — presne to
-zaplatil starý znak.
+**Prepísané 2. 9. 2026: geometria má odteraz JEDEN zdroj, nie tri.** Do 2. 9. 2026
+mal generátor (`tools/brand/build-mark.py`) vlastnú polárnu tabuľku `NET_SATS`
+— druhý, ručne udržiavaný výkres tej istej siete, ktorý sa presne tak, ako sa
+predtým rozišiel master a mini kruhového znaku, rozišiel aj od appky (iné
+uhly/vzdialenosti a iné jadro — kánon kreslil amethystový prstenec so zlatým
+stredom, appka plný zlatý kotúč). Rozhodnutie používateľa: **vyhráva appka**.
+`NET_SATS` je preto z generátora zmazaná a trieda `Net` v `build-mark.py` dnes
+tabuľku `SIGIL_NET` **parsuje** regexom priamo z `public/js/shared/sigil.js`
+(fail-loud na neočakávaný tvar — iný počet uzlov/hrán, chýbajúci `mini` stupeň
+— radšej spadne, než aby vydala iný znak, než aký appka kreslí). Vyparsovanie,
+nie kópia: zmena súradnice v `sigil.js` sa prejaví v každom výstupe jedným
+behom generátora.
 
-### Pravidlo redukcie — DVA rebríky, pretože dva rôzne výstupy
+Zostávajú **dve miesta**, kde sa dá driftnúť, nie tri: appka (`SIGIL_NET` v
+`public/js/shared/sigil.js`, jediný zdroj pravdy) a kontrakt tried `.bc-mark`
+v `mind.css` (spína zrod cez `stroke-dasharray`/`-dashoffset` s
+`pathLength="100"`, nekreslí súradnice — viď „Nosiče" nižšie). Nič v kóde
+nevynucuje, že dash matematika `.bc-mark` sedí s aktuálnym výkresom; zmenu
+geometrie treba preto overiť **meraním na bežiacej appke**, nie čítaním
+jedného zdroja — presne to zaplatil starý kruhový znak aj `NET_SATS`.
 
-Kruhový znak mal jednu hranicu (64 px). Sieť má **dve nezávislé**, pretože
-statické assety (favicon, PNG, `.ico`) a živé SVG nosiče v appke potrebujú
-inú jemnosť kroku:
+### Pravidlo redukcie — jeden prah, dva stupne (zjednotené 2. 9. 2026)
 
-**Webové nosiče (`SIGIL_NET`, `util.js`) — prah 32 px, dva stupne:**
+**Do 2. 9. 2026 mali web a statické assety dve NEZÁVISLÉ hranice** — web 32 px
+(dva stupne), statické assety 48 px a 128 px (tri stupne, s medzistupňom
+„satelity ako plné disky"). Rozdiel mal dôvod: kánon statických assetov vtedy
+kreslil hranu širokú 0,018 boxu, kým `SIGIL_NET` (appka) má 1,1 jednotky v
+boxe 24, teda 0,046 boxu — **2,5× hrubšiu**. Rovnaká podlaha obrysu 1,5 px
+preto v kánone padala o dva a pol stupňa nižšie a stredný „diskový" stupeň
+(zahoď obrys satelitu, kresli plný disk, aby aj tenká hrana ešte držala) bol
+ústupok presne tejto tenkosti.
+
+Keď appka prevzala geometriu (`SIGIL_NET` je dnes jediný zdroj, viď vyššie),
+ústupok stratil dôvod — hrubší obrys drží aj bez diskov. Generátor preto
+diskový stupeň **retiroval** (`NET_DISC_MIN_PX` je z `build-mark.py` preč) a
+zjednotil prah so sieťou appky: **32 px, dva stupne, tá istá hranica pre web
+aj statické assety.**
 
 | Veľkosť | Stupeň | Čo sa kreslí |
 |---|---|---|
-| ≥ 32 px | `'full'` | plná sieť: 4 hrany, 3 satelity, jadro |
-| < 32 px | `'core'` | JEDEN uzol — **nie** satelit siete zväčšený, ale bajt na bajt bývalý kruhový znak (prstenec r 8,64 / obrys 2,16 + zlaté jadro r 3,6, pomery 36/9/15 z `hades-sigil-mini.svg` prepočítané do viewBoxu 24) |
+| ≥ 32 px (`NET_MIN_PX`) | `'full'` (web) / bez medzistupňa (statické) | plná sieť: 4 hrany, 3 satelity **ako prstence**, jadro |
+| < 32 px | `'core'` (web) / mini (statické) | JEDEN uzol — **nie** satelit siete zväčšený, ale bajt na bajt bývalý kruhový znak (prstenec r 8,64 / obrys 2,16 + zlaté jadro r 3,6, pomery 36/9/15 z `hades-sigil-mini.svg` prepočítané do viewBoxu 24) |
 
-Prah je pri stubloch, nie pri holom antialiasingu: pri 24 px majú hrany ešte
-1,20/1,10 px obrys (nad plným pixelom), ale viditeľný úsek klesne na
-3,5–3,9 px — znak nezmizne, len prestane hovoriť „sieť". Preto 24 px hlavičkové
-nosiče (`#brand-core`, `#back-to-graph`, `#chat-home`) idú stupňom `'core'`,
-zatiaľ čo 32+ px nosiče (`.load-mark`, `.charon-sigil`, `.ce-mark`) plnou
-sieťou. Amethyst musí prežiť do najmenšieho stupňa — zlatý kotúč sám by
-značka nebol.
+Prah je pri stubloch, nie pri holom antialiasingu — namerané na oboch stranách
+(`DERIVED.md`, „Stupne redukcie"):
 
-**Statické assety (`build-mark.py`) — prah 48 px a 128 px, TRI stupne** (rebrík
-platí na obrys — uzol ako plný disk obrys nemá, takže sieť z diskov drží
-hlboko pod 128 px, čo je tretí stupeň, ktorý webová dvojica nepotrebuje):
+| px | Kreslí sa | Najtenší prvok | Najkratšia stubla | Podlaha 1,5 px |
+|---|---|---|---|---|
+| 16 | jeden uzol | 1,44 px | 2,33 px | PADÁ |
+| 24 | jeden uzol | 2,16 px | 3,50 px | drží |
+| 32 | sieť · prstence | 1,47 px | 4,67 px | PADÁ |
+| 48 | sieť · prstence | 2,20 px | 7,00 px | drží |
+| 64 | sieť · prstence | 2,93 px | 9,33 px | drží |
+| 128 | sieť · prstence | 5,87 px | 18,67 px | drží |
+| 256 | sieť · prstence | 11,73 px | 37,33 px | drží |
 
-| px | Kreslí sa | Najtenší prvok |
-|---|---|---|
-| < 48 (`NET_DISC_MIN_PX`) | mini — jeden uzol (rovnaký `'core'` výkres ako web) | — |
-| 48–127 | sieť, satelity ako **plné disky** (obrys by nedržal) | 1,54 px pri 48 px |
-| ≥ 128 (`NET_MIN_PX`) | sieť, satelity ako **prstence** (kánon plátna) | 1,73 px pri 128 px |
+Oba pády sú **priznané, nie odstránené**: pri 16 px má obrys jedného uzla
+1,44 px (0,06 px pod podlahou) — ikona sa napriek tomu číta, `.ico` sa
+rastruje 4× nadvzorkovane a Lanczosom, takže to nie je porucha, ktorú by bolo
+vidieť, len číslo, ktoré sa nemá zamlčať. Pri 32 px má stubla najkratšej hrany
+1,47 px, teda **0,03 px pod podlahou** — a to pri obryse satelitu 1,60 px,
+ktorý drží; prah je stublový, nie obrysový, a appka na tomto nosiči
+(`.load-mark`, `.charon-sigil`, oba 32 px) plnú sieť naozaj kreslí. Opraviť by
+znamenalo prekresliť `SIGIL_NET`, teda znak na všetkých plochách appky — nie
+opravu tabuľky.
 
-Hranice sú namerané, nie odhadnuté: pri 32 px má satelit-disk obrys 1,02 px
-(pod podlahou 1,5 px), pri 48 px 1,54 px (nad ňou); pri 64 px by satelit-prstenec
-mal len 0,86 px, teda `NET_MIN_PX = 128`. Dôsledok: `.ico` (16→256 px) nesie
-**tri rôzne výkresy súčasne** — presne na to je multi-size `.ico`.
+Dôsledok pre `.ico` (16→256 px): nesie **dva** výkresy (16–24 jeden uzol,
+32–256 plná sieť), nie tri ako pri starej geometrii — presne na to je
+multi-size `.ico`, aby jeden škálovaný výkres nezamrzol na malej ploche ani
+nestratil sieť na veľkej.
 
 ### Jeden zdroj geometrie — generátor a jeho zápisy
 
@@ -214,15 +239,18 @@ nekolidovali s kontraktom zrodu), takže vizuálne dnes sedí, len zdroj pravdy
 zostáva ručný, nie generovaný.
 
 **Webové nosiče generátor NEKRESLÍ** — kreslí ich `sigilNetMarkup()`/
-`sigilNetSvg()` v `util.js` a blade markup je ich **ručne prepísaný bajt-na-bajt
-výstup** (dôvod: statický blade musí niesť SVG priamo, JS výmena by ukázala
-stránku najprv bez znaku). Toto je druhé miesto driftu vedľa geometrie vyššie
-— zmenu `SIGIL_NET` treba premietnuť do všetkých blade markupov ručne.
+`sigilNetSvg()` v `public/js/shared/sigil.js` (presunuté sem z `mind/util.js`
+2. 9. 2026, aby na ne mal import aj `/console` a `/chat`; `mind/util.js` ich
+dnes len importuje a re-exportuje) a blade markup je ich **ručne prepísaný
+bajt-na-bajt výstup** (dôvod: statický blade musí niesť SVG priamo, JS výmena
+by ukázala stránku najprv bez znaku). Toto je druhé miesto driftu vedľa
+geometrie vyššie — zmenu `SIGIL_NET` treba premietnuť do všetkých blade
+markupov ručne.
 
 ### Nosiče — kde znak je a čo z neho zostáva
 
-Zdroj: `sigilNetMarkup(cls, opts)` / `sigilNetSvg(cls, opts)` v `util.js`,
-`opts.step` je `'full'` (default) alebo `'core'`, `opts.gold` prepíše zlatý
+Zdroj: `sigilNetMarkup(cls, opts)` / `sigilNetSvg(cls, opts)` v
+`public/js/shared/sigil.js`, `opts.step` je `'full'` (default) alebo `'core'`, `opts.gold` prepíše zlatý
 token. Kontrakt s kresbou (`mind.css`, blok ZROD ZNAKU): `class="bc-mark"` na
 `<svg>` je SPÍNAČ zrodu, `.bc-nodes` musí byť skupina s tromi satelitmi ako
 jedinými deťmi (stupňovanie `:nth-child`), `.bc-edge` je jeden `<path>` na
@@ -236,11 +264,11 @@ v polovici), `.bc-core` nesie len zlaté jadro, jeden prvok bez `.bc-node`.
 | `#back-to-graph` (hlavička `/console`) | `console.blade.php` | 24 px | `'core'` | ✅ len zrod |
 | `#chat-home` (hlavička `/chat`) | `chat.blade.php` | 24 px | `'core'` | ✅ len zrod |
 | `.ce-mark` (prázdny stav `/chat`) | `chat.blade.php` | 44 px | `'full'` | ✅ |
-| `.empty-sigil` (prázdny stav `/console`) | `console/render.js` | 24 px | `'core'` | ✅ |
+| `.empty-sigil` (prázdny stav `/console`) | `console/render.js` → `sigilNetSvg()` | 44 px | `'full'` | ✅ |
 | `.charon-sigil` (prázdny dok nad grafom) | `mind/charon.js` → `sigilNetSvg()` | 32 px | `'full'` | ✅ |
-| `.load-mark` (spinner, všetky tri plochy) | `util.js` → `loadingHtml()` | 32 px | `'full'` | ❌ zámerne (viď nižšie) |
+| `.load-mark` (spinner, všetky tri plochy) | `shared/sigil.js` → `loadingHtml()` v `util.js` | 32 px | `'full'` | ❌ zámerne (viď nižšie) |
 | `.sigil` (401 zamknuté) | `errors/401.blade.php` | 44 px | `'full'` (ručná kópia) | ✅ vlastné `sig-*` keyframy |
-| `.sigil` (Electron offline) | `electron/states/offline.html` | 84 px | diskový stupeň generátora | ✅ + vlastná kópia `core-pulse` |
+| `.sigil` (Electron offline) | `electron/states/offline.html` | 84 px | `'full'` (satelity ako prstence — do 2. 9. 2026 diskový medzistupeň, dnes retirovaný, viď „Pravidlo redukcie") | ✅ + vlastná kópia `core-pulse` |
 | `.sigil` (Electron topbar) | `electron/chrome/topbar.html` | 16 px | mini/`'core'` | ❌ zámerne — „desktop okno" sa neanimuje |
 
 **`.load-mark` prestal byť CSS `border` (1. 9. 2026).** Nosičom je inline
@@ -318,25 +346,25 @@ medzera v lockupe — tak sa nedá pomýliť).
 
 ### Dve verzie
 
-**Prepísané pre sieť (2. 9. 2026) — hranice sú dve, nie jedna, pretože statické
-assety majú tretí medzistupeň, ktorý master/mini dvojica nepokrýva** (viď
-„Pravidlo redukcie" vyššie).
+**Prepísané pre sieť (2. 9. 2026), hranica zjednotená s webom 2. 9. 2026** — do
+2. 9. 2026 mali statické assety tretí medzistupeň (satelity ako plné disky,
+48–127 px), ktorý master/mini dvojica nepokrývala; po retirovaní diskového
+stupňa (viď „Pravidlo redukcie" vyššie) stačia master a mini s tou istou
+hranicou ako web.
 
-- **Master** (`hades-sigil.svg`, plná sieť) — **od 128 px**: deck, hero, tlač,
-  OG, lockupy. Pod touto hranicou satelity ako prstence nedržia obrys
-  (`NET_MIN_PX`).
-- **Mini** (`hades-sigil-mini.svg`, jeden uzol) — **pod 48 px**: favicon, rail,
-  hlavičky Charóna (`NET_DISC_MIN_PX`). Dva prvky, nezmenené oproti kruhovému
-  znaku: prstenec r 36 / hrúbka 9 a zlaté jadro r 15.
-- **Medzistupeň 48–127 px** (sieť so satelitmi ako plné disky) je **len pre
-  raster** (`.ico` rámce 48/64/128 px) — pre návrhový nástroj alebo lockup v
-  tomto rozsahu nie je hotový hand-made súbor, použi master a priznaj, že
-  obrys satelitov je pod podlahou 1,5 px.
+- **Master** (`hades-sigil.svg`, plná sieť) — **od 32 px** (`NET_MIN_PX`):
+  favicon `.ico` rámce 32+, `apple-touch-icon`, PNG znaku, OG, lockupy, deck,
+  hero, tlač. Pod touto hranicou satelity ako prstence stratia dosť stubly na
+  to, aby znak ešte hovoril „sieť" (viď tabuľku vyššie).
+- **Mini** (`hades-sigil-mini.svg`, jeden uzol) — **pod 32 px**: favicon `.ico`
+  rámce 16/24, Electron topbar, rail a hlavičky appky (cez `sigilNetMarkup(...,
+  {step: 'core'})`). Dva prvky, nezmenené oproti kruhovému znaku: prstenec
+  r 36 / hrúbka 9 a zlaté jadro r 15.
 
 `.ico` (16→256 px) a `apple-touch-icon` (180 px) kreslí `raster()` **z oboch**
-zdrojov podľa vlastného rebríka (mini pod 48, disky 48–127, prstence od 128) —
-je to jediné miesto, kde sa hranica nerozhoduje ručne pri návrhu, ale
-programovo pri exporte.
+zdrojov podľa jedného prahu (mini pod 32 px, sieť od 32 px) — je to jediné
+miesto, kde sa hranica nerozhoduje ručne pri návrhu, ale programovo pri
+exporte.
 
 ### Čo sa so znakom nerobí
 
@@ -2447,11 +2475,13 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/<cesta>
 **Znak a ikony**
 - [ ] znak je sieť (jadro + tri nepravidelné satelity + štyri hrany), nie
       sústredné prstence — kruhový sigil je len História v §2
-- [ ] webové nosiče: `'full'` od 32 px, `'core'` (jeden uzol) pod 32 px;
-      statické assety: prstencové satelity od 128 px, disky 48–127 px, mini
-      pod 48 px — dva rebríky, nepliesť
-- [ ] geometria znaku je zdrojovaná na troch nezávislých miestach (`SIGIL_NET`,
-      `net_geometry()`, `.bc-mark` kontrakt) a musí sa meniť na všetkých naraz
+- [ ] jeden prah, dve strany: `'full'` (plná sieť, prstencové satelity) od
+      32 px, `'core'`/mini (jeden uzol) pod 32 px — platí rovnako pre webové
+      nosiče aj statické assety (diskový medzistupeň je od 2. 9. 2026 preč)
+- [ ] geometria znaku má jediný zdroj (`SIGIL_NET` v `public/js/shared/sigil.js`)
+      a generátor (`build-mark.py`) ho parsuje, nekopíruje; kontrakt tried
+      `.bc-mark` v `mind.css` (spína zrod) je druhé miesto, ktoré treba overiť
+      meraním pri zmene geometrie
 - [ ] jeden význam = jedna ikona; sada je obrysová a jediný plný prvok je jadro
 - [ ] názov ikony je zo `ICON_NAMES`; `window.HADES._iconMiss` je prázdne
 - [ ] žiadne `.textContent = '<ligatúra>'` a žiadne `classList.add('ms')` — výmena

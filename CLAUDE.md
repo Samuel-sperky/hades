@@ -812,21 +812,19 @@ verzia hľadala „nepodarilo" a minula ženské „nepodarila".
 d3 nemá sankey (to je samostatný balík), zvyšok sú škály a cesty, ktoré si súbor
 skládá sám, a bez závislosti sa dá načítať aj na `/console` a `/chat`.
 
-Spoločné helpery, ktoré nový typ MUSÍ použiť: `gridLines`, `axisRow`, `legendRow`,
-`bindTip`, `emptyChart`, `periodSwitch`. Tooltip je **jeden na dokument** (dva naraz
+Spoločné helpery, ktoré nový typ MUSÍ použiť: `axisRow`, `legendRow`, `bindTip`,
+`emptyChart`, `periodSwitch`. Tooltip je **jeden na dokument** (dva naraz
 sú vždy chyba) a nesie `pointer-events: none`, inak si berie `mouseleave` prvku pod
 sebou. **Dotyk tooltip nedostáva** — hover tam neexistuje a prst zakryje práve to,
 na čo sa človek pozerá.
 
-`sparkline`, `scatter` a `flows` sú nové. **`flows` dostalo domov 31. 8. 2026**:
+`sparkline` a `flows` sú novšie. **`flows` dostalo domov 31. 8. 2026**:
 karta „Istota v oblastiach" na Dnes (`renderCertaintyFlows()` v `dnes.js`), oblasť
 × istota, 20 stúh / 9 uzlov na živých dátach — pôvodné zadanie „oblasť → projekt"
-nahradené za jediný joint, ktorý server naozaj posiela (`per_area`). **`scatter`
-zostáva bez volajúceho a je to priznané, nie zamlčané** (`docs/BRAND-HADES.md`):
-navrhovaný domov „štatistiky Grafu" v `panels.js` **neexistuje** (ten súbor je
-panel uzla, legenda a ručné prepájanie hrán — sekciu štatistík nemá), dať mu tam
-domov by bola nová plocha, nie doťah. Jediný nevymyslený kandidát je sila × vek
-uzla nad Knižnicou alebo frontou Kontroly — patrí do zadania, nie do upratovania.
+nahradené za jediný joint, ktorý server naozaj posiela (`per_area`). `scatter`
+pribudlo v tej istej vlne, ale je **zmazané** (s ním aj `gridLines`) — dôvod,
+podmienka návratu a aktuálny zoznam exportov `window.HadesCharts` sú vyššie,
+pri „`charts.js` prišiel o `scatter()`".
 
 ### Generátory značky žijú MIMO `public/`
 

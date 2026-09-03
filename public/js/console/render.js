@@ -20,6 +20,7 @@ import { costLabel, runNote } from '../shared/runstate.js';
 import { historyCard, permissionCard } from './tools.js';
 import { equipReader } from './reader.js';
 import { iconSvg } from '../shared/icons.js';
+import { sigilNetSvg } from '../shared/sigil.js';
 
 /* Koľko pixelov nad spodkom sa ešte považuje za „stojím na spodku". Menej než
    riadok textu by follow vypínalo pri doskrolovaní o pol riadka. */
@@ -29,27 +30,17 @@ export function streamEl() {
     return $('#stream');
 }
 
-/** Znak Hadesa — tá istá geometria ako favicon a rail (public/brand/hades-sigil-mini.svg).
-    Prázdny stav je prvá plocha, ktorú človek v Charónovi vidí, a jediná, kde je
-    miesto na značku; hlavička ju nesie len ako 24 px odkaz do grafu. */
-function sigilMark() {
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.setAttribute('class', 'empty-sigil');
-    const ring = document.createElementNS(NS, 'circle');
-    ring.setAttribute('class', 'bc-ring');
-    ring.setAttribute('cx', '12'); ring.setAttribute('cy', '12'); ring.setAttribute('r', '8.64');
-    ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'var(--accent)');
-    ring.setAttribute('stroke-width', '2.16');
-    const core = document.createElementNS(NS, 'circle');
-    core.setAttribute('class', 'bc-core');
-    core.setAttribute('cx', '12'); core.setAttribute('cy', '12'); core.setAttribute('r', '3.6');
-    core.setAttribute('fill', 'var(--brand-gold)');
-    svg.append(ring, core);
-    return svg;
-}
+/* Znak Hadesa v prázdnom stave. Do 2. 9. 2026 tu stála LOKÁLNA kópia starého
+   prstenca (r 8,64 / obrys 2,16 / zlaté jadro r 3,6) s triedou `bc-ring` — a to
+   bola tichá chyba dvakrát: znak sa medzitým prekreslil na sieť pamäti, takže
+   `/console` hovorilo iným znakom než `/` a `/chat`, a `bc-ring` v `mind.css`
+   zaniklo bez prekladu (nové mená sú `bc-node`/`bc-edge`), takže zrod tu bol
+   MŔTVY — zmerané: `animationName` `none` na prstenci aj na jadre.
+
+   Výkres je odteraz jediný, v `public/js/shared/sigil.js` (dovtedy žil
+   v `mind/util.js`, kam `/console` import nemá). `.empty-sigil` je 44 px, teda
+   nad prahom redukcie 32 px → plná sieť. `bc-mark` je SPÍNAČ zrodu, nie ozdoba;
+   bez neho sa znak nezrodí vôbec. */
 
 /** Prázdny stav — hovorí, ČO konzola vie. Je to prvá vec, ktorú človek vidí. */
 export function renderEmpty() {
@@ -60,7 +51,7 @@ export function renderEmpty() {
     waitNode = null;
 
     const box = el('div', 'empty-state');
-    box.append(sigilMark());
+    box.append(sigilNetSvg('bc-mark empty-sigil'));
     box.append(el('h2', null, 'Charón'));
     box.append(el('p', null,
         'Napíš úlohu. Charón vidí celú pamäť Hadesa aj súbory projektu — '

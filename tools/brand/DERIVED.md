@@ -22,50 +22,41 @@ python tools/brand/build-mark.py
 | zlatá (tmavá / svetlá) | `#d8b878` / `#b88a3a` |
 | atramentový disk | r 50 · `#0e1413` (z `--bg-rgb` tmavej témy v mind.css) |
 
-## Pre `public/css/mind.css` (vlastní A3)
+## Pre `public/css/mind.css` a Blade — stupeň `'core'` vo viewBoxe 24
 
-```css
-/* Obvod prstenca = 2π × 8.64 = 54.29 — DERIVÁT POLOMERU
-   z tools/brand/build-mark.py, nie ručná konštanta. Keď sa zmení zdroj znaku,
-   prepočíta ho generátor a vypíše sem. */
-stroke-dasharray: 54.29;
-stroke-dashoffset: 54.29;
-```
+Mini kánon prepočítaný na mriežku appky. Sú to **živé** čísla: `sigilNetMarkup(cls,
+{step: 'core'})` v `public/js/shared/sigil.js` kreslí presne tento tvar a nesú ho
+24 px hlavičkové nosiče (`#brand-core`, `#back-to-graph`, `#chat-home`).
 
-`.load-mark` — tri čísla. Box 26 px je **vstup** (hodnota vybraná pre
-kontrast, komentár nad pravidlom to vysvetľuje pravdivo), ostatné dve sú z neho
-odvodené kánonickými pomermi:
+| Vec | viewBox 24 | pomer boxu |
+|---|---|---|
+| prstenec | r 8.64 · obrys 2.16 | 0.3600 / 0.0900 |
+| zlaté jadro | r 3.6 | 0.1500 |
 
-```css
-width: 26px; height: 26px;
-border: 2px solid var(--accent);
-/* jadro */
-width: 8px; height: 8px; margin: -4px 0 0 -4px;
-```
-
-Stredný polomer prstenca vyjde 0.4615 boxu, nie
-0.3600 ako v kánone. **Nie je to drift:** CSS `border` rastie
-dovnútra boxu, takže polomer je funkcia boxu a obrysu, nie voľné číslo. Prepísať
-ho na 1 : 1 s kánonom by znamenalo zmenšiť box a stratiť kontrast.
-
-## Pre Blade markup — RETIROVANÉ (jeden uzol vo viewBoxe 24)
-
-Tento blok bol kánonom, kým bol znak prstenec. Od 1. 9. 2026 je znak **sieť** a
-inline znak v Blade nesie sieť z diskov s triedami `bc-node` / `bc-edge` / `bc-core`
-(vlastní `mind.css` a Blade, nie tento generátor). Blok tu zostáva pre **jeden uzol**,
-lebo to je stále kresba pod 48 px — a `.load-mark`, favicon aj
-Electron topbar ju používajú.
-
-Na **jadre** je `fill="var(--brand-gold)"` kánon; `currentColor` sa opúšťa — sú to
-dva mechanizmy a jeden zanikne pri prvej zmene farby. **Prstenec** je
-`var(--accent)`: amethyst je interaktívny nosič, zlatá je vyhradená jadru.
+`SIGIL_NET.mini` v appke nesie `r 8.64 / sw 2.16 /
+gold 3.6` — tie isté tri čísla, a generátor to **vynucuje**
+(`assert_mini_matches_app()`). Keď niekto prekreslí `hades-sigil-mini.svg` a zabudne
+na appku, generátor padne namiesto toho, aby vydal favicon s iným redukovaným znakom,
+než aký nesie rail.
 
 ```html
-<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-    <circle class="bc-ring" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+<svg viewBox="0 0 24 24" aria-hidden="true">
+    <g class="bc-nodes">
+        <circle class="bc-node" cx="12" cy="12" r="8.64" fill="none" stroke="var(--accent)" stroke-width="2.16"/>
+    </g>
     <circle class="bc-core" cx="12" cy="12" r="3.6" fill="var(--brand-gold)"/>
 </svg>
 ```
+
+Blok je **kontrola, nie zadanie**: statický markup si appka nesie sama (v Blade musí
+SVG stáť priamo, inak stránka najprv ukáže prázdno) a generátor ho neprepisuje.
+
+**Čo z tejto sekcie ODIŠLO 2. 9. 2026 a prečo:** `stroke-dasharray` odvodený z obvodu
+prstenca (2π × 8.64) a tri čísla `.load-mark` (box 26, `border`,
+jadro). Ani jedno už nemá čitateľa — `mind.css` používa `stroke-dasharray: 100`, čo je
+`pathLength="100"` na hranách a nie obvod ničoho, a `.load-mark` prestal byť CSS
+`border`: je to inline `<svg>` v boxe 32 px. Vydávať odvodené číslo
+do prázdna je horšie než ho nevydať, pretože podľa neho niekto „opraví" funkčný súbor.
 
 ## data-URI faviconu (`resources/views/partials/brand-icons.blade.php`, spravuje generátor)
 
@@ -103,193 +94,164 @@ python tools/brand/build-mark.py     # SVG kánon
 node   tools/brand/build-raster.js   # PNG z neho
 ```
 
-## Nový znak: SIEŤ (1. 9. 2026)
+## Znak je SIEŤ a jej geometriu vlastní APPKA (rozhodnuté 2. 9. 2026)
 
-Znak je **výsek siete**: jadrový uzol a tri vedľajšie uzly, viazané štyrmi hranami
-(tri od jadra + jedna bočná). Prstencový znak „Jedno oko" je retirovaný a jeho
+Znak je **výsek siete**: jadro a tri satelity, viazané štyrmi hranami (tri z jadra
++ jedna chorda medzi satelitmi). Prstencový znak „Jedno oko" je retirovaný a jeho
 slovník sa neprekladá — v sieti nemá čo pomenovať.
 
-| Uzol | stred | prstenec | obrys | vlastný box |
-|---|---|---|---|---|
-| jadro | 50, 50 | r 13.68 | 3.42 | 38 |
-| vedľajší 1 | 63.49, 16.62 | r 7.92 | 1.98 | 22 |
-| vedľajší 2 | 11.85, 39.78 | r 6.48 | 1.62 | 18 |
-| vedľajší 3 | 71.73, 84.77 | r 5.4 | 1.35 | 15 |
+**Tabuľka geometrie žije v `public/js/shared/sigil.js` (`SIGIL_NET`, viewBox
+24) a tento generátor ju PARSUJE.** Do 2. 9. 2026 tu boli vlastné polárne
+`NET_SATS` a bol to druhý výkres tej istej siete: kánon mal satelity v troch rôznych
+veľkostiach na 195° / 58° / -68° vo vzdialenostiach 36 / 39,5 / 41 boxu 100, appka
+vlastné karteziánske súradnice v boxe 24 — a jadro mali RÔZNE (appka plný zlatý kotúč,
+kánon amethystový prstenec so zlatým stredom). Rozhodnutie: **vyhráva appka**, pretože
+prstenec okolo jadra by z jadra urobil štvrtý prstencový uzol a „jadro = jediný sýty
+plný prvok" by prestalo platiť.
 
-Zlatý stred jadra: r 5.7. Hrany: šírka 1.8, zárez
-1.5 pred obrubou uzla, bočná hrana na 50 % krytia proti
-80 % u hrán od jadra.
+| Prvok | stred (box 100) | polomer | obrys | pomer stredu k boxu |
+|---|---|---|---|---|
+| jadro (plné, zlaté) | 50, 50 | r 10.83 | — | 0.500000, 0.500000 |
+| satelit 1 (prstenec) | 16.92, 32.33 | r 7.92 | 5 | 0.169167, 0.323333 |
+| satelit 2 (prstenec) | 83.54, 36.25 | r 7.92 | 5 | 0.835417, 0.362500 |
+| satelit 3 (prstenec) | 58.42, 84.83 | r 7.92 | 5 | 0.584167, 0.848333 |
+
+Hrany (šírka 4.58, bočná na 50 % krytia proti 80 % u hrán od jadra).
+„Vidno" je dĺžka MIMO zlatého kotúča jadra — prvých 10.83 jednotiek každej
+hrany od jadra je pod ním skrytých:
+
+| hrana | dĺžka cesty | vidno | rola |
+|---|---|---|---|
+| 1 | 27.07 | 16.23 | jadro -> satelit |
+| 2 | 25.84 | 15.01 | jadro -> satelit |
+| 3 | 25.42 | 14.58 | jadro -> satelit |
+| 4 | 33.86 | 33.86 | chorda satelit-satelit |
+
+### DÔKAZ: kánon a appka kreslia ten istý výsek
+
+`assert_same_cutout()` porovnáva **normalizované pomery** — každú vydanú súradnicu
+delenú boxom mastera (100) proti tej istej súradnici delenej boxom appky
+(24). Zmerané pri tomto behu: **32 pomerov, všetky do 1e-9**, teda
+identické. A to isté meranie na **vydanom** `hades-sigil.svg`, nie na modeli v pamäti:
+28 pomerov, najhorší rozdiel **0.000050 boxu** proti stropu
+zaokrúhlenia 0,000050 (`num()` reže na dve desatiny, takže 6,27/24 = 0,261250 je v súbore
+zapísané ako 26,12/100 = 0,261200). Bez tej druhej polovice by sa dalo tvrdiť „pomery
+sedia" o čísle, ktoré v súbore nie je.
+
+Nie je to tautológia z toho, že generátor tabuľku appky číta: keby prepočet
+niesol offset, iný stred alebo zaokrúhlenie, stráž padne. Absolútne hodnoty sa
+NEZHODUJÚ a zhodovať sa nemajú (jadro r 10.83 v boxe 100 proti
+r 2.6 v boxe 24) — **identita je v pomeroch**.
 
 **Kompozícia je optická, nie mriežková, a generátor si to VYNUCUJE**
-(`assert_optical()`): rozstupy uhlov vedľajších uzlov vyšli
-137° / 97° / 126° — teda ani rovnostranný trojuholník
-(3 × 120°), ani úsečka. Tri rôzne veľkosti uzlov nesú hĺbku susedstva. Keby niekto
-zmenil jedno číslo v `NET_SATS` tak, že kompozícia sadne do mriežky, **generátor
-padne** namiesto toho, aby vydal mriežkový znak.
+(`assert_optical()`): rozstupy uhlov satelitov vyšli
+132° / 130° / 99° — teda ani rovnostranný trojuholník
+(3 × 120°), ani úsečka (plocha trojuholníka 1668 = 0.167
+boxu², prah 0,12 boxu²). Chorda jadro obchádza s odstupom 23.48 proti jeho
+okraju 10.83. Keby niekto v `sigil.js` zmenil jedno číslo tak, že
+kompozícia sadne do mriežky alebo že chorda prejde cez jadro, **generátor padne**
+namiesto toho, aby vydal iný znak.
 
 ## Stupne redukcie — namerané, nie odhadnuté
 
-Podlaha kontrastu obrysu je **1.5 px** (CLAUDE.md, „Vizuálna sémantika":
-pri 1,1 px zoberie antialiasing viac než polovicu kontrastu). Rebrík má **tri**
-stupne, nie dva, a ten tretí som pri prvom návrhu vynechal: podlaha platí na
-**obrys**, a uzol nakreslený ako plný disk obrys nemá. Sieť z diskov preto drží
-hlboko pod 128 px — v diskovom stupni rozhoduje najtenší prvok, ktorý tam
-zostal, teda **hrana**.
+Podlaha kontrastu obrysu je **1.5 px** (CLAUDE.md, „Vizuálna sémantika").
+Prah siete je **32 px** a je **STUBLOVÝ, nie obrysový**: rozhoduje, či
+z hrany vidno dosť na to, aby znak hovoril „sieť". Pri 32 px vidno
+4.67 px z najkratšej hrany, pri 24 px už len
+3.50 px — a to je stubla, nie spojenie. Prah nesie appka
+(`shared/sigil.js`) a kánon ho prevzal, pretože je to ten istý znak.
 
-Stĺpce „prstence by mali" a „disky by mali" sú kalibrácia opačným smerom: koľko by
-meral najtenší prvok toho stupňa, keby sa kreslil aj na tejto veľkosti. Bez tej
-polovice sa nedá poznať, či sú 128 a 48 namerané hranice,
-alebo len prvé vyskúšané čísla.
+Rebrík mal do 2. 9. 2026 **tri** stupne a stredný (sieť z plných diskov) je
+retirovaný. Nebol to zbytočný stupeň, ale dôsledok STAREJ geometrie: hrana široká
+1,8 v boxe 100 je 0,018 boxu, `SIGIL_NET` má 1.1 v boxe 24,
+teda 0.046 boxu — **2.5x
+hrubšie**. Rovnaká podlaha 1,5 px preto padne o dva a pol stupňa nižšie a ústupok
+„zahoď obrys, kresli disky" stratil dôvod.
 
-| px | čo sa kreslí | najtenší prvok | prstence by mali | disky by mali | tvarov | podlaha |
+Stĺpec „prstence by mali" je kalibrácia opačným smerom: koľko by meral najtenší prvok
+siete, keby sa kreslila aj na tejto veľkosti.
+
+| px | čo sa kreslí | najtenší prvok | prstence by mali | najkratšia stubla | tvarov | podlaha |
 |---|---|---|---|---|---|---|
-| 16 px | jeden uzol | 1.44 px | 0.22 px | 0.51 px | 2 | PADÁ |
-| 24 px | jeden uzol | 2.16 px | 0.32 px | 0.77 px | 2 | drží |
-| 32 px | jeden uzol | 2.88 px | 0.43 px | 1.02 px | 2 | drží |
-| 48 px | sieť · disky | 1.54 px | 0.65 px | 1.54 px | 8 | drží |
-| 64 px | sieť · disky | 2.05 px | 0.86 px | 2.05 px | 8 | drží |
-| 128 px | sieť · prstence | 1.73 px | 1.73 px | 4.10 px | 9 | drží |
-| 256 px | sieť · prstence | 3.46 px | 3.46 px | 8.19 px | 9 | drží |
+| 16 px | jeden uzol | 1.44 px | 0.73 px | 2.33 px | 2 | PADÁ |
+| 24 px | jeden uzol | 2.16 px | 1.10 px | 3.50 px | 2 | drží |
+| 32 px | sieť · prstence | 1.47 px | 1.47 px | 4.67 px | 8 | PADÁ |
+| 48 px | sieť · prstence | 2.20 px | 2.20 px | 7.00 px | 8 | drží |
+| 64 px | sieť · prstence | 2.93 px | 2.93 px | 9.33 px | 8 | drží |
+| 128 px | sieť · prstence | 5.87 px | 5.87 px | 18.67 px | 8 | drží |
+| 256 px | sieť · prstence | 11.73 px | 11.73 px | 37.33 px | 8 | drží |
 
 Čo presne na ktorom stupni **zmizne**:
 
-* **16 px, 24 px, 32 px** — jeden uzol: amethystový prstenec, zlatý stred. Hrany aj
-  vedľajšie uzly sú zatvorené. Toto je stupeň faviconu (`hades-favicon.svg`,
-  data-URI, rámce `.ico` 16–32) a Electron topbaru (`.sigil` 16 px). Pri 32 px by
-  hrana v diskovom stupni mala 1.02 px, teda pod podlahou —
-  preto ani tu ešte nie je sieť.
-* **48 px, 64 px** — **sieť z plných diskov**. Prstence tu nejdú: najtenší obrys uzla
-  by mal 0.65–0.86 px. Disk stratí
-  „priehľadnosť nesie diera", a je to správny ústupok: diera tejto veľkosti by aj tak
-  zanikla. Zmizne obruba uzla a amethystový prstenec okolo jadra; zostanú štyri hrany,
-  tri amethystové disky a zlaté jadro.
-* **128 px a viac** — **sieť z prstencov**, plný kánon: hrany
-  2.30 px, najtenší obrys uzla
-  1.73 px, jadro ako prstenec so sýtym zlatým stredom.
-  Nezmizne nič.
+* **16 px, 24 px** — jeden uzol: amethystový prstenec, zlatý stred. Hrany aj satelity
+  sú zatvorené. Toto je stupeň faviconu (`hades-favicon.svg`, data-URI, rámce `.ico`
+  16–24), Electron topbaru (`.sigil` 16 px) a 24 px hlavičkových nosičov appky
+  (`#brand-core`, `#back-to-graph`, `#chat-home`). Zmizne presne to, čo hovorí
+  `shared/sigil.js`: tri satelity a všetky štyri hrany. Amethyst prežije — zlatý kotúč
+  sám by značka nebol.
+* **32 px a viac** — **plná sieť z prstencov**, kánon bez ústupkov: štyri
+  hrany, tri prstencové satelity, plné zlaté jadro. Nezmizne nič.
 
 **Riadok 16 px hlási PADÁ a je to priznanie, nie chyba tabuľky.** Obrys jedného uzla
 má pri 16 px 1.44 px, teda pod podlahou 1.5 px.
-Vykreslený rámec je čitateľný (`.ico` sa rastruje 4× nadvzorkovane
+Vykreslený rámec je čitateľný (`.ico` sa rastruje 4x nadvzorkovane
 a LANCZOSom), takže to nie je porucha, ktorú by bolo vidieť — ale číslo je pod
-podlahou a zamlčať sa nemá. Oprava by bola hrúbka prstenca **10 namiesto 9**
-(1.60 px pri 16 px), a NEUROBILA SA zámerne: mini kánon nesie aj
-`.load-mark` (`border` 2 px) a inline znak v Blade, teda súbory, ktoré
-tento generátor nevlastní. Je to zmena pomeru, nie kozmetika — patrí do jedného
-rozhodnutia so spodným bodom nižšie.
+podlahou a zamlčať sa nemá.
 
-Dôsledok pre `.ico`: multi-size ikona nesie **tri rôzne výkresy** (16–32 jeden uzol,
-48–64 sieť z diskov, 128–256 sieť z prstencov). Presne na to multi-size `.ico` je;
-jeden škálovaný výkres by buď na 16 px zamrzol do kaše, alebo na 256 px stratil sieť.
+**A riadok 32 px hlási PADÁ rovnako priznane.** Hrana má pri 32 px
+1.47 px, teda **0.03 px
+pod podlahou** — pri obryse satelitu 1.60 px, ktorý
+drží. Nie je to omyl v prahu: prah je stublový a appka na tomto nosiči plnú sieť
+NAOZAJ kreslí (`.load-mark`, `.charon-sigil`, oba 32 px). Je to ten
+istý argument, aký si projekt zapísal o hranách plátna: jedna vláska prah nespĺňa,
+informáciu nesie hustota — a tu ju nesie stubla, ktorá má 4.67 px,
+teda 3.2x viac než svoju šírku.
+Zdvihnúť hranu na 1,5 px by znamenalo prekresliť `SIGIL_NET`, teda znak na všetkých
+troch plochách appky — to nie je oprava tabuľky, ale zmena znaku.
 
-## Nosiče znaku a `.load-mark` — čo kam patrí
+Dôsledok pre `.ico`: multi-size ikona nesie **dva rôzne výkresy** (16–24 jeden uzol,
+32–256 plná sieť). Presne na to multi-size `.ico` je; jeden škálovaný výkres
+by buď na 16 px zamrzol do kaše, alebo na 256 px stratil sieť.
 
-Načítavacia značka `.load-mark` je CSS `border` na boxe 26 px. Rámom
-sa dá nakresliť kruh, **zhluk uzlov nie** — sieť teda na tom nosiči vyjadriť nemožno
-a potrebuje inline SVG. Zároveň platí druhá vec: 26 px je pod
-48 px, takže na tomto nosiči je **správna kresba jeden uzol**. Obe
-tvrdenia platia naraz a nie sú v spore — a preto tu `border` môže zostať.
+## Nosiče znaku — čo kam patrí
 
 | nosič | veľkosť | stupeň | poznámka |
 |---|---|---|---|
-| `<link rel="icon">` data-URI | 16–32 px | jeden uzol | `hades-favicon.svg`, spravuje generátor |
+| `<link rel="icon">` data-URI | 16–24 px | jeden uzol | `hades-favicon.svg`, spravuje generátor |
 | Electron topbar `.sigil` | 16 px | jeden uzol | generátor, medzi ZNAK markermi |
-| `.load-mark` | 26 px | jeden uzol | CSS `border` stačí, čísla nižšie sú nezmenené |
-| inline znak v Blade | viewBox 24 | **sieť z diskov** | vlastní `mind.css` / Blade, viď otvorený bod |
-| Electron offline `.sigil` | 84 px | sieť z diskov | generátor, medzi ZNAK markermi |
-| `apple-touch-icon.png` | 180 px | sieť z prstencov | generátor |
-| PNG znaku 128/256/512, OG, lockupy | ≥ 128 px | sieť z prstencov | generátor |
+| `#brand-core`, `#back-to-graph`, `#chat-home` | 24 px | jeden uzol | appka, stupeň `'core'` |
+| `.load-mark`, `.charon-sigil` | 32 px | plná sieť | appka; `.load-mark` už nie je CSS `border` |
+| `.empty-sigil`, `.ce-mark` | 44 px | plná sieť | appka |
+| Electron offline `.sigil` | 84 px | plná sieť | generátor; do 2. 9. 2026 disky |
+| `apple-touch-icon.png` | 180 px | plná sieť | generátor |
+| PNG znaku 128/256/512, OG, lockupy | ≥ 128 px | plná sieť | generátor |
 
-## OTVORENÝ BOD (1. 9. 2026): dva výseky tej istej siete
+`errors/401.blade.php` je zámerne mimo tejto tabuľky aj mimo generátora: nesie tú istú
+geometriu vlastnými lokálnymi triedami, pretože `mind.css` sa tam nenačítava a appka
+ten dokument nevydáva cez router.
 
-Vlna, ktorá znak prekresľovala, bežala **v dvoch rukách naraz** a každá nakreslila
-vlastný výsek. Nie je to zamlčané, pretože presne toto je drift, kvôli ktorému
-generátor existuje:
+## Electron: dva dokumenty, ktoré si nesú znak SAMY
 
-* **Kánon značky** (tento generátor, `public/brand/**`): jadrový uzol v strede
-  + tri vedľajšie na -68° / 195° / 58°
-  vo vzdialenostiach 36 / 39.5 / 41.
-  Uzol je nad 128 px **prstenec**, jadro má amethystový prstenec so zlatým
-  stredom. Electron (oba dokumenty) je z tohto zdroja.
-* **Plocha appky** (`.bc-mark` v `mind.css`, markup v troch Blade, viewBox
-  24): vlastné súradnice, uzly **plné disky**, jadro bez amethystového
-  prstenca, hrany 8,70 / 9,40 / 8,80 / 10,40 jednotky.
+`electron/chrome/topbar.html` a `electron/states/offline.html` **nenačítavajú
+`mind.css`** — offline stav sa zobrazuje práve vtedy, keď server nebeží. Preto majú
+vlastnú kresbu (generátor, medzi markermi `ZNAK` a `ZNAK-STYLE`) **aj vlastnú tichú
+verziu `prefers-reduced-motion`** (dokument, zámerne MIMO markerov, inak by ju prvý
+beh generátora zmazal).
 
-Rozhodnúť treba **jednu** vec: či plocha appky prevezme súradnice z tohto generátora
-(potom sa `blade_inline_svg()` prepíše na sieťový výkres a Blade markup sa začne
-generovať, ako sa generuje Electron), alebo či generátor prevezme súradnice plochy
-(potom sa prekreslia `NET_SATS` a všetkých sedem výstupov). **Kým sa to nerozhodne,
-znak v karte prehliadača a znak v raile sú dva rôzne výseky** a `docs/BRAND-HADES.md`
-nemá jednu pravdu, ktorú by opísal.
+Tichá verzia je tam postavená správne a treba to tak nechať: základný stav je
+**dosadnutý znak** (hrany `stroke-dashoffset: 0`, uzly `scale(1)`, plná farba)
+a pohyb je zabalený v `@media (prefers-reduced-motion: no-preference)`. Nie
+`animation: none` nad rozbehnutým stavom — to by hranu nechalo s `dashoffset` = dĺžka,
+teda NEVIDITEĽNÚ, a znak by sa rozpadol na tri uzly bez spojení.
 
-Čo tomu NEPREKÁŽA a netreba meniť: jeden uzol na malých nosičoch je v oboch rukách
-tá istá kresba (prstenec r 36 / hrúbka 9, zlatý
-stred r 15), takže favicon, `.ico` do 32 px, topbar a `.load-mark`
-sú konzistentné bez ohľadu na to, ako sa spor rozhodne.
+`.core` má `transform-origin` v ZNAK-STYLE (view-box súradnice, stred boxu), uzly
+`transform-box: fill-box` + `center` v dokumente — uzly majú tri rôzne stredy, takže
+konštanta by musela byť v CSS trikrát.
 
-## Inline sieť z KÁNONU — PODMIENENÝ blok, implementuj len po rozhodnutí
+## Kde geometria siete NIE JE, hoci by tam patrila
 
-**Nezavádzaj tento blok, kým sa nerozhodne otvorený bod vyššie.** Plocha appky má
-dnes vlastnú živú sieť (`.bc-mark` / `.bc-node` / `.bc-edge` / `.bc-core`) a tretia
-rodina tried pre ten istý znak by bola presne ten drift, ktorý má tento generátor
-brániť. Blok je tu ako **hotová alternatíva pre variantu „plocha prevezme kánon
-značky"**: vtedy sa `bc-*` prekreslí na tieto súradnice a `bn-*` sa zahodí, alebo
-sa `bn-*` použije a `bc-*` zmizne — jedno z dvoch, nikdy oboje.
-
-`data-len` aj `--bn-len` na každej hrane je jej **dĺžka po záreze** — presne to
-číslo, ktoré potrebuje `stroke-dasharray` na dokreslenie hrany. Ručne sa nepočíta.
-
-```html
-<svg viewBox="0 0 100 100" class="bn" aria-hidden="true">
-  <g class="bn-edges">
-    <line class="bn-edge" data-len="8.70" x1="56.33" y1="34.34" x2="59.59" y2="26.27" stroke-width="1.8" style="--bn-len: 8.70; --bn-i: 1"/>
-    <line class="bn-edge" data-len="13.82" x1="33.69" y1="45.63" x2="20.34" y2="42.05" stroke-width="1.8" style="--bn-len: 13.82; --bn-i: 2"/>
-    <line class="bn-edge" data-len="16.53" x1="58.95" y1="64.32" x2="67.71" y2="78.35" stroke-width="1.8" style="--bn-len: 16.53; --bn-i: 3"/>
-    <line class="bn-edge bn-edge--lat" data-len="37.39" x1="53.99" y1="20.88" x2="19.87" y2="36.18" stroke-width="1.8" style="--bn-len: 37.39; --bn-i: 4"/>
-  </g>
-  <circle class="bn-node" cx="63.49" cy="16.62" r="7.92" stroke-width="1.98" style="--bn-i: 1"/>
-  <circle class="bn-node" cx="11.85" cy="39.78" r="6.48" stroke-width="1.62" style="--bn-i: 2"/>
-  <circle class="bn-node" cx="71.73" cy="84.77" r="5.4" stroke-width="1.35" style="--bn-i: 3"/>
-  <circle class="bn-node bn-node--core" cx="50" cy="50" r="13.68" stroke-width="3.42"/>
-  <circle class="bn-core" cx="50" cy="50" r="5.7"/>
-</svg>
-```
-
-Pohyb (**CSS, nie SMIL** — SMIL nectí `prefers-color-scheme` ani
-`prefers-reduced-motion` a vo `<img>`/faviconoch ho prehliadače neanimujú):
-
-```css
-.bn .bn-node { fill: none; stroke: var(--accent); }
-.bn .bn-edge { stroke: var(--accent); stroke-linecap: round; opacity: .8; }
-.bn .bn-edge--lat { opacity: .5; }
-.bn .bn-core { fill: var(--brand-gold); stroke: none; }
-
-/* ZROD: uzly sa zjavia -> hrany sa DOKRESLIA -> jadro sa presýti.
-   Poradie je obsah, nie ozdoba: sieť vzniká tým, že sa uzly spoja. */
-.bn .bn-node { animation: bn-node-in 260ms var(--ease) both;
-               animation-delay: calc(60ms * var(--bn-i, 0)); }
-.bn .bn-edge { stroke-dasharray: var(--bn-len); stroke-dashoffset: var(--bn-len);
-               animation: bn-edge-draw var(--dur-chart-draw) var(--ease) both;
-               animation-delay: calc(300ms + 80ms * var(--bn-i, 0)); }
-.bn .bn-core { animation: bn-core-in 460ms var(--ease) 760ms both; }
-
-@keyframes bn-node-in { from { opacity: 0; transform: scale(.86); }
-                        to { opacity: 1; transform: scale(1); } }
-@keyframes bn-edge-draw { to { stroke-dashoffset: 0; } }
-@keyframes bn-core-in { from { opacity: 0; } to { opacity: 1; } }
-
-/* Tichá verzia MUSÍ byť dosadnutý stav, nie zamrznutý polostav: hrany dokreslené
-   (dashoffset 0), uzly a jadro plné. `animation: none` samo by nechalo hranu
-   s dashoffset = dĺžka, teda NEVIDITEĽNÚ — sieť by vyzerala ako štyri samostatné
-   uzly bez spojení. To je iný znak, nie tichšia verzia toho istého. */
-@media (prefers-reduced-motion: reduce) {
-  .bn .bn-node, .bn .bn-edge, .bn .bn-core { animation: none; }
-  .bn .bn-edge { stroke-dashoffset: 0; }
-  .bn .bn-node, .bn .bn-core { opacity: 1; transform: none; }
-}
-```
-
-**Dýchanie jadra (`core-pulse`) sem NEIDE** a nie je to opomenutie: rozhodnutie
-z 1. 9. 2026 hovorí, že pulz nesie stav vedomia bdie/spí a patrí **jedinému**
-selektoru `#brand-core` v raile (dôvod je zapísaný pri pravidle v `mind.css`).
-Sieť v prázdnom stave je ticho pred prácou, nie stav vedomia.
+Kánon dnes vydáva jednu geometriu z jedného zdroja, ale **kontrakt tried `.bc-mark`
+v `mind.css` je stále vlastný zápis** — spína zrod, nekreslí tvar, a nič v kóde
+nevynucuje, že jeho `pathLength`/dash matematika sedí s výkresom. Zmena geometrie sa
+preto musí overiť **meraním na bežiacej appke**, nie čítaním jedného zdroja. Toto je
+posledné miesto, kde môže znak driftnúť tichom.

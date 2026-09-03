@@ -116,7 +116,7 @@
         {{-- SIEŤ V PLNEJ KRESBE. Nosič je 44 px, teda nad prahom redukcie: viditeľná
              stopa hrany od jadra má 7,2 px. (Pri 24 px by mala 3,9 px, a tam appka kreslí
              jeden uzol — pravidlo redukcie je pri `#brand-core` v mind.blade.php.)
-             Súradnice sú tabuľka `SIGIL_NET` z public/js/mind/util.js, jediný zdroj výkresu
+             Súradnice sú tabuľka `SIGIL_NET` z public/js/shared/sigil.js, jediný zdroj výkresu
              rodiny `bc-*`. Uzly sú PRSTENCE ako uzly na plátne, jadro je jediný sýty plný
              prvok, chorda 2↔3 je z troch možných spojení satelitov jediná, ktorá minie
              jadro (5,63 od stredu proti polomeru 2,60).

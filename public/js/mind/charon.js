@@ -25,7 +25,7 @@
 
 import { S } from './state.js';
 import { go } from './sim.js';
-import { sigilNetSvg } from './util.js';
+import { sigilNetSvg } from '../shared/sigil.js';
 import { iconMarkup, iconSvg } from '../shared/icons.js';
 import { createRunClient } from '../shared/runclient.js';
 import {
@@ -690,13 +690,15 @@ function pushError(text) {
    lokálna kópia starého prstenca (r 8,64 / hrúbka 2,16 / jadro r 3,6) — druhá
    z troch takých kópií v repe, a presne preto sa dnešná zmena znaku musela robiť
    na viacerých miestach naraz. Znak je odteraz sieť pamäti (štyri uzly, štyri
-   hrany, sýte jadro) a jeho jediná geometria žije v `sigilNetSvg()` v `util.js`
-   — dok si ju len vyžiada v triede `.charon-sigil` (rozmer 32 px drží charon.css).
+   hrany, sýte jadro) a jeho jediná geometria žije v `sigilNetSvg()` v
+   `public/js/shared/sigil.js` — dok si ju len vyžiada v triede `.charon-sigil`
+   (rozmer 32 px drží charon.css).
 
-   Dok je TRETÍ vstup k tomu istému behu modelu, takže jeho prázdny stav má
-   hovoriť tým istým znakom ako `/chat` (`.ce-mark`) a `/console` (`.empty-sigil`).
-   Tie dva nosiče na `util.js` import nemajú a kreslia stále starý prstenec:
-   spoločným domovom kresby má byť `public/js/shared/sigil.js` (nahlásená potreba).
+   Dok je TRETÍ vstup k tomu istému behu modelu, takže jeho prázdny stav hovorí
+   tým istým znakom ako `/chat` (`.ce-mark`) a `/console` (`.empty-sigil`).
+   Od 2. 9. 2026 je to naozaj tak: geometria sa presunula z `mind/util.js` do
+   `shared/sigil.js`, takže na ňu má import aj `/console` a `/chat` — dovtedy
+   `console/render.js` kreslil vlastnú kópiu starého prstenca.
 
    Zrod (`bc-node` → `bc-edge` → `bc-core`, spínač `bc-mark`) aj podlahu `prefers-reduced-motion`
    nesie mind.css; dýchanie (`core-pulse`) sem NEIDE — prázdny stav je ticho pred
