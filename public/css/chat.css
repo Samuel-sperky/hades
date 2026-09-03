@@ -777,7 +777,9 @@ body.cp-dragging {
 
 .ca-dl {
     flex: none;
-    min-height: 24px;
+    /* Podlaha zásahovej plochy, nie číslo — `--target-min` je tá istá latka
+       2.5.8 (AA), akú si mind.css deklaruje. */
+    min-height: var(--target-min);
     padding: 2px 8px;
     font-size: var(--fs-micro);
 }
@@ -1171,7 +1173,8 @@ body.cp-dragging {
     display: flex;
     align-items: center;
     gap: var(--sp-1);
-    min-height: 24px;
+    /* Podlaha zásahu: riadok nesie akciu `.ct-sec-act`, takže mu ju drží token. */
+    min-height: var(--target-min);
     padding: 0 var(--sp-0) var(--sp-0);
 }
 
@@ -1185,17 +1188,6 @@ body.cp-dragging {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-
-/* Akcia v hlavičke sekcie („Nový projekt", „Zrušiť hľadanie"). Kresbu nesie
-   `.ct-act` nižšie — tu sa mení len rozmer: je to chróm vedľa eyebrow, nie
-   ovládač v riadku. Na dotyku sa vracia na 44 px v mediálnom bloku. */
-.ct-sec-act {
-    flex: none;
-    width: 24px;
-    min-height: 24px;
-}
-
-.ct-sec-act .ic { font-size: var(--icon-2xs); }
 
 /* ---------------------------------------------------------------------------
    4 · PANEL VLÁKIEN — RIADOK
@@ -1331,7 +1323,26 @@ body.cp-dragging {
    tam hneď a celá, nie v polovici prechodu.
 
    Na dotyku hover neexistuje, takže `@media (hover: none)` akciu odkrýva
-   natrvalo — inak sa k premenovaniu a exportu nedá dostať vôbec. */
+   natrvalo — inak sa k premenovaniu a exportu nedá dostať vôbec.
+
+   `--field-h` NA TLAČIDLE je nesprávne pomenovaná rola a ZOSTÁVA (3. 9. 2026).
+   Rozobrané meraním, aby to nikto „neopravil" nasucho:
+
+   · `min-height` je tu INERTNÉ. `.ct-head` má `align-items: stretch`, takže
+     krížovú výšku diktuje sused `.ct-open` a akcia sa k nej natiahne. Zmerané
+     A/B/A nad tým istým DOM pri 1440 px: `min-height: 0` → 34 px,
+     `min-height: var(--control-h)` → 34 px, základ → 34 px. Tri hodnoty,
+     jedno číslo. Prepnutie na `--control-h` by teda nezmenilo NIČ okrem toho,
+     že by pravidlo tvrdilo dve rôzne roly v dvoch susedných riadkoch.
+   · `width` load-bearing JE (zmerané 34 px) a drží ŠTVOREC s výškou riadka.
+     Na `--control-h` (32) by z akcie bol 32×34 obdĺžnik so zaoblením, ktoré
+     na dvoch osiach nesedí — teda horší výsledok než nesprávny názov tokenu.
+
+   Čo `--field-h` v tomto bloku naozaj znamená, je „výška riadka zoznamu
+   vlákien", a taký token neexistuje. `.ct-open` nižšie ho berie z tej istej
+   dôvery, takže obe strany štvorca ostávajú v zákryte, kým je názov jeden.
+   Rozdeliť ho na dve rôzne mená je to, čo by tento blok rozišlo — preto sa
+   nechal tak a potreba tokenu je nahlásená vlastníkovi mind.css. */
 .ct-act {
     flex: none;
     display: inline-flex;
@@ -1353,6 +1364,33 @@ body.cp-dragging {
 }
 
 .ct-act .ic { font-size: var(--icon-xs); }
+
+/* Akcia v hlavičke sekcie („Nový projekt", „Zrušiť hľadanie"). Kresbu nesie
+   `.ct-act` vyššie — tu sa mení len rozmer: je to chróm vedľa eyebrow, nie
+   ovládač v riadku. Na dotyku sa vracia na 44 px v mediálnom bloku.
+
+   STOJÍ ZA `.ct-act` A MUSÍ, nie je to kozmetika poradia. Do 3. 9. 2026 stál
+   tento blok PRED svojím základom, a keďže `.ct-sec-act` aj `.ct-act` sú
+   0-1-0, rozhodovalo poradie v zdroji — základ vyhrával a modifikátor bol
+   CELÝ inertný. Zmerané pri 1440 px pred presunom: `.ct-sec-act` 34×34 px
+   (deklarovaných 24) a jeho ikona 16 px (deklarovaných `--icon-2xs` = 14),
+   teda malá ikona vo veľkej krabici — obe deklarácie prehrávali naraz
+   a ani jedna niekde nespadla, takže sa to nedalo nájsť ináč ako meraním.
+   Merací dopyt, ktorý to chytí z oboch strán: pri 1440 px musí byť
+   `.ct-sec-act` 24×24 s ikonou 14 px, pri 375 px 44×44 (dvíha ho `@media`
+   na konci súboru — rovnaká špecificita, ale je ZA týmto blokom).
+   Nesahaj na špecificitu: `.ct-sec-head .ct-sec-act` (0-2-0) by prebilo aj
+   ten dotykový cieľ a 44 px by zmizlo. Poradie je tu správny nástroj. */
+.ct-sec-act {
+    flex: none;
+    /* Štvorcový cieľ NA PODLAHE, obe osi z jedného tokenu — dva literály 24
+       by sa pri zmene latky rozišli od seba a od `@media` bloku na konci,
+       ktorý ich dvíha na 44 px. */
+    width: var(--target-min);
+    min-height: var(--target-min);
+}
+
+.ct-sec-act .ic { font-size: var(--icon-2xs); }
 
 .ct-more-act {
     opacity: 0;
@@ -2567,8 +2605,9 @@ select.ct-filter { flex: 1 1 46%; }
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    min-height: 24px;
+    /* Štvorcový cieľ na podlahe — ten istý dôvod ako u `.ct-sec-act`. */
+    width: var(--target-min);
+    min-height: var(--target-min);
     padding: 0;
     border: 1px solid transparent;
     border-radius: var(--r-sm);

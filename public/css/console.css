@@ -276,7 +276,21 @@ button:where(.tr-open, .tool-head, #send, #stop) {
        takže titulok a čas by si sadli vedľa seba namiesto pod seba. Presne preto
        ho mal aj pôvodný riadok, keď bol celý jedným tlačidlom. */
     display: block;
-    padding: var(--sp-1) 10px;
+    /* RIADOK ZOZNAMU, nie ovládač — a preto NIE `--control-h`. Zmerané
+       3. 9. 2026 pri 1440 px: 167 × 50,5 px, teda výška z obsahu (titulok
+       a čas POD sebou) plus tento padding; `min-height: 32px`, ktoré si ako
+       `<button>` berie z mind.css, sa nikdy neuplatní.
+
+       Do 3. 9. 2026 tu stál literál `var(--sp-1) 10px`. To je znak po znaku
+       pár, pre ktorý mind.css zaviedlo `--row-pad-y`/`--row-pad-x` („odčítané
+       z 9 výskytov `padding: var(--sp-1) 10px`" — `.stat-row`, `.legend-row`,
+       `.search-item`, `.pb-item`, `.tree-row`, `.tree-muted`). `.tr-open` bol
+       desiaty výskyt toho páru a jediný, ktorý rolu nemal pomenovanú —
+       dôsledok nebol kozmetický: tokeny sú DENZITNÉ (`comfortable` 8 → 12,
+       `compact` 8 → 4), takže riadok panela vlákien bol jediný riadok
+       v appke, ktorý prepínač hustoty ignoroval. Pri default hustote je
+       hodnota totožná (zmerané 50,5 px pred aj po zmene). */
+    padding: var(--row-pad-y) var(--row-pad-x);
     border-radius: var(--r-sm);
     font-size: var(--fs-body);
     text-align: left;
@@ -313,7 +327,25 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     justify-content: center;
     min-width: 26px;
     /* mind.css dáva každému <button> `min-height: 32px`; v 48 px riadku by dva
-       také gombíky vyzerali ako druhá lišta. */
+       také gombíky vyzerali ako druhá lišta.
+
+       26 px tu ZOSTÁVA literálom a je to rozhodnutie, nie dlh. Rola je
+       „ikonová akcia v riadku zoznamu vlákien" a `/chat` má tú istú rolu ako
+       `.ct-act` — ale v inom riadku, a to je celý dôvod dvoch čísel.
+       Zmerané 3. 9. 2026 pri 1440 px (95 vlákien na oboch plochách):
+
+         /console  .tr-open  50,5 px  (titulok a čas POD sebou, `display: block`)
+                   .tr-act   26 px ×2  →  akcia je 51 % výšky riadka
+         /chat     .ct-open  34 px    (titulok a čas VEDĽA seba, `display: flex`)
+                   .ct-act   34 px ×1  →  akcia je 100 % výšky riadka
+
+       Rozchodom je teda hustota RIADKA (dvojriadkový proti jednoriadkovému),
+       nie výška akcie — a tá hustota je zámer vlny 1, nie omyl. Zdvih na
+       `--control-h` (32) by dva gombíky v 50 px riadku spojil do lišty, čo je
+       presne to, čomu sa `min-height: 0` vyššie vyhýba. Podlahu 24 px
+       (`--target-min`) 26 px spĺňa, na dotyku sa dvíha na 44 px v media query
+       na konci súboru. Chýba spoločný token pre túto rolu; žije v mind.css
+       a potreba je nahlásená jeho vlastníkovi. */
     min-height: 0;
     height: 26px;
     padding: 0 var(--sp-0);
@@ -1385,11 +1417,13 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     transition: none;
     flex: 1;
     width: auto;
-    /* 24 px, nie 22: v pokoji je textarea jednoriadková a bola tým treťím
-       cieľom pod 24×24 v tomto súbore (klik do spodných 2 px riadku minul
-       pole). Na výšku composera to je +2 px raz, výška po napísaní textu si
-       ju ďalej počíta JS zo `scrollHeight`. */
-    min-height: 24px;
+    /* Podlaha zásahovej plochy, nie číslo: v pokoji je textarea jednoriadková
+       a bola tým treťím cieľom pod 24×24 v tomto súbore (klik do spodných 2 px
+       riadku minul pole). Preto `--target-min` a nie literál 24 — je to tá istá
+       podlaha, akú si mind.css deklaruje ako latku 2.5.8 (AA), a keď sa token
+       pohne, pohne sa s ním aj toto pole. Na výšku composera to je +2 px raz,
+       výška po napísaní textu si ju ďalej počíta JS zo `scrollHeight`. */
+    min-height: var(--target-min);
     max-height: 40vh;
     border: 0;
     background: transparent;
@@ -1405,17 +1439,22 @@ button:where(.tr-open, .tool-head, #send, #stop) {
 /* Tvar, nie chróm: `display`, `align-items`, `justify-content` dáva bare
    `button` z mind.css, preto tu nie sú.
 
-   `height: 30px` tu ZOSTÁVA a nie je to duplikát. Plán zlúčenia tvrdil, že je
-   inertné, pretože `min-height: 32px` z mind.css ho prebije — prebije ho len
-   NAHOR. Bez neho je výška `auto`, teda ikona 18 px + 2× 8 px padding z mind.css
-   = 34 px, a composer by narástol o 2 px. Skutočná výška prvku je teda 30×32
-   (nie 30×30); kto chce naozaj 30, musí zrušiť `min-height`, a to patrí
-   k `--control-h` a density prepínaču, nie sem. */
+   Deklarácia výšky tu ZOSTÁVA a nie je to duplikát: bez nej je výška `auto`,
+   teda ikona 18 px + 2× 8 px padding z mind.css = 34 px, a composer by narástol
+   o 2 px.
+
+   Do 3. 9. 2026 tu stálo `height: 30px` a bola to LOŽ o vykreslenom boxe:
+   `min-height: 32px` z mind.css prebíja výšku len NAHOR, takže prvok meral 32,
+   nie 30 — pod deklaráciou stál vlastný komentár, ktorý to priznával. Dnes
+   nesie výšku `--control-h` (32 px), teda ROLU „ovládač", a deklarácia je
+   znak po znaku to, čo sa naozaj vykreslí (zmerané 32 px pred aj po zmenou).
+   Šírka zostáva 30 px, pretože 32 by gombík rozšíril viditeľne: je to teda
+   priznane 30×32 pilulka, nie štvorec. */
 #send,
 #stop {
     flex: none;
     width: 30px;
-    height: 30px;
+    height: var(--control-h);
     border-radius: var(--r-sm);
     background: var(--accent);
     color: var(--on-accent);
@@ -1443,11 +1482,14 @@ button:where(.tr-open, .tool-head, #send, #stop) {
     top: -18px;
     left: 50%;
     transform: translateX(-50%);
-    /* `display`/`align`/`justify` a rám dáva bare `button` z mind.css. `height`
-       zostáva: `min-height: 32px` ho prebíja len nahor, bez neho by gombík
-       narástol na 34 px. Je to teda 30×32 pilulka, nie kruh. */
+    /* `display`/`align`/`justify` a rám dáva bare `button` z mind.css. Výška
+       zostáva: bez nej by gombík narástol na 34 px. Ten istý dôvod aj tá istá
+       oprava ako u `#send`/`#stop` vyššie — `min-height: 32px` z mind.css
+       prebíja výšku len nahor, takže literál 30 tu meral 32 a nesúhlasil so
+       sebou; rolu nesie odteraz `--control-h`. Je to teda 30×32 pilulka, nie
+       kruh, a to je zapísané nahlas, nie odvodené z rozdielu dvoch pravidiel. */
     width: 30px;
-    height: 30px;
+    height: var(--control-h);
     border-radius: var(--r-pill);
     background: var(--panel-solid);
     box-shadow: var(--elev-1);
@@ -1708,8 +1750,10 @@ button:where(.tr-open, .tool-head, #send, #stop) {
        s výnimkou samotného `<input type="checkbox">` `#auto-accept`, ktorý
        je 13 × 13 px kresba PREHLIADAČA; cieľom je jeho `<label>`
        `.auto-accept` a ten sa dvíha nižšie. A pri 1440 px musí `.tr-act`
-       zostať na 26 px a `#send` na 30 × 30 — ak sa zdvihnú aj tam,
-       pravidlo uteklo z media query a zriedilo hustotu konzoly.
+       zostať na 26 px a `#send` na 30 × 32 (nie 30 × 30, ako tu stálo do
+       3. 9. 2026 — `min-height: 32px` z mind.css prebíja výšku nahor, takže
+       zmerané to bolo 32 vždy) — ak sa zdvihnú aj tam, pravidlo uteklo
+       z media query a zriedilo hustotu konzoly.
        ------------------------------------------------------------------ */
 
     /* Prvky so slovom: rastie len výška. `#back-to-graph` a `#new-thread` majú

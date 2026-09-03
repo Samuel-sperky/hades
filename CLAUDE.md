@@ -406,6 +406,12 @@ rovnaká hodnota akú si `/chat` a `/console` dali samostatne o pár dní skôr.
 Ak niekedy príde tlak zdvihnúť viac než tento jeden riadok na 44 px, nie je to
 lokálna oprava jedného selektora, ale zmena tokenu — priznaj to ako také.
 
+Tokeny tej istej osi (`--control-h` 32 / `--control-h-lg` 40 /
+`--control-h-dense` 26 / `--field-h` 34 / `--target-min` 24) žijú v `mind.css`
+`:root`, každý s vlastným komentárom; rolový kánon a pomenované výnimky sú
+v `docs/BRAND-HADES.md` §6 — nekopíruj ich sem znova, len sem príde pasca pri
+overovaní (viď „Overenie UI" nižšie).
+
 **Klávesový kurzor tabuliek je JEDEN modul, nie štvrtá kópia (Sprint 3).**
 `public/js/mind/table.js` exportuje `tableRows()`/`tableCursorRow()`/
 `moveTableCursor(root, delta)` a `shortcuts.js` ich volá pre Runy, Rozhodnutia
@@ -933,6 +939,29 @@ by ma donútili „opravovať" funkčný kód:
 
 A vždy **kalibruj na známom stave**: zmeraj aj `body` (~16:1). Keď to nesedí,
 ostatným číslam sa nedá veriť.
+
+**Merač podlahy zásahovej plochy (`--target-min`) má dve pasce a obe dávajú
+falošný PÁD** (teda by ťa donútili „opravovať" funkčný kód):
+
+1. **`min-height` prebíja menší `height`.** Zoznam „prvkov bez dna" sa nedá
+   postaviť grepom na `min-height: auto` — prvok sa z podlahy odhlási aj
+   explicitným `height` menším než podlaha, a `min-height` z bare `button`u
+   (`var(--control-h)`) taký `height` prebíja. Taký prvok je teda v skutočnosti
+   vysoký ako podlaha, nie ako jeho `height` (zaplatené: `#local-chip .lc-depth`
+   malo `height: 22px` v zdroji, reálne 32 px). Grepuj oba tvary (`min-height` aj
+   `height`) a vždy over **computed** hodnotu, nikdy len zdrojový text.
+2. **Deklarovaná výška nemusí byť platná výška.** Rozhoduje špecificita, nie
+   poradie v zdroji: `.dir-task { min-height: 40px }` (0-1-0) prehrávalo so
+   spoločným pravidlom polí (`input:not(...):not(...):not(...), select`, 0-3-1)
+   bez ohľadu na to, kde v súbore stálo. Reálna výška bola vždy 34 px
+   (`--field-h`) a deklarácia bola mŕtvy kód, nie zámer — over, ktoré pravidlo
+   naozaj vyhráva, pred tokenizáciou akéhokoľvek čísla.
+
+Dve veci, ktoré merač rozmerov nahlási ako poruchu a **nie sú ňou**: `Times New
+Roman` na `<html>` je fallback koreňa bez vlastného `font-family`, nie rozbitý
+font — appka font deklaruje nižšie v strome, nie na koreni; a **18/20/22 px nie
+sú textové veľkosti mimo škály** — sú to `--icon-sm/md/lg`. Merač, ktorý ich
+zaradí medzi porušenia typografickej škály, meria zle.
 
 Onboarding karta sa vypína `localStorage.setItem('hades.hints2', 'done')` **pred**
 loadom (`evaluateOnNewDocument`) — klik na `#hint-skip` po loade ju nespoľahlivo skryje

@@ -1242,6 +1242,71 @@ veľkosť písma **nevyskytujú ani raz**.
 Kresba **bloku kódu a kopírovania je JEDNA** a je v `mind.css` — jediný stylesheet
 načítaný na všetkých troch plochách.
 
+### Výšky ovládačov — rola, nie číslo
+
+Rovnaká disciplína, akú tento oddiel vynucuje pri veľkosti písma, platí aj pri
+výške ovládačov: **číslo bez role je dlh** — surová výška v CSS znamená, že
+o mesiac ju niekto zjednotí alebo zdvihne bez toho, aby vedel, čo tým rozbil.
+
+| Token | Hodnota | Rola |
+|---|---|---|
+| `--control-h` | 32 px | ikonová akcia v paneli/toolbare — základ osi |
+| `--control-h-lg` | 40 px | štvorcová akcia s `--icon-md` (20 px), ktorá stojí SAMA, nie v riadku textu (mazanie uzla, prepojenie, dokument) |
+| `--control-h-dense` | 26 px | akcia V RIADKU TEXTU (prehrať na časovej osi, „von" pri breadcrumbe, inline akcie); 2 px rezervy nad podlahou |
+| `--field-h` | 34 px | textové pole a select — vlastný rytmus, aby text nesedel na ráme |
+| `--target-min` | 24 px | podlaha zásahovej plochy pre prvky, ktoré sa z `--control-h` vedome odhlásili (textová/chrómová kresba) — **WCAG 2.5.8 AA, nie 2.5.5 AAA (44 px)** |
+
+Všetkých päť žije v `mind.css` `:root`, s vlastným komentárom pri každom — tá
+CSS-komentárová vrstva je zdroj detailu, tento oddiel je jeho destilát. **Číslo
+v tokene je podlaha, nie výška**: na tlačidle s paddingom ho obsah prebije, takže
+skutočné rozloženie výšok je bohatšie než päť čísel. Zmerané pri 1440 px:
+najčastejšia výška tlačidla na `/` je **36 px** (`--icon-sm` 18 + 2×8 px padding +
+2×1 px rám) a **v CSS nikde nestojí** — je to emergentná hodnota, nie
+nedisciplína. `#charon-toggle` a `#sync-now` majú 38 px, lebo nesú `--icon-md`
+(20 px); rozdiel „36 vs 38" sa rieši v `--icon-*`, nikdy dopísaním `height`, ktoré
+by zmrazilo väzbu ikony a textu.
+
+**Pomenované výnimky** (rovnaká rola, číslo ponechané, dôvod pri kóde):
+- `.dest` (40 px) a `#rail-collapse` (28 px) — riadky nameraného rozpočtu výšky
+  railu (`scrollHeight` proti prahu, komentár pri `#rail`); token by tú väzbu
+  zavrel,
+- slim rail (52 px) — ikona nad mikro popiskom, dvojriadková kresba,
+- `#presets .preset` (46 px) — dvojriadková karta (reálne 50 px),
+- `.pack-btn` (34 px) — **zhoda čísla s `--field-h`, nie zhoda role**;
+  `min-height` je tam inertné, reálna výška je 36 px z obsahu,
+- `button.switch` (34×20) a `.ctx-x` (18 px) — obe už majú `::before` na 32 px
+  zásahovej plochy, samotný box nesie kresbu pilulky/krížika,
+- natívny checkbox (`#auto-accept` na `/console`, 13×13 px, `appearance: auto`)
+  — bez vlastnej kresby sa UA kontrolka zmenšiť/zväčšiť nedá; zásahovú plochu
+  nesie jeho `<label>` (144×32 px, 44 px pod 900 px).
+
+**Podlaha je 24 px na všetkých troch plochách, nikdy 44 px** mimo jednej
+menovanej výnimky (lišta uložených filtrov `.rec-saved-apply`/`.rec-saved-del`
+pod 768 px — `/chat` a `/console` si tú istú hodnotu dali samostatne, pár dní
+pred zjednotením). Dôvod odmietnutia 44 px ako plošnej podlahy je pasca
+v `CLAUDE.md`, nie tu, aby nežil na troch miestach naraz.
+
+**Zmerané PRED zjednotením naprieč plochami (dôvod, prečo vzniklo):** tá istá
+rola — ikonová akcia v riadku zoznamu — mala na troch plochách tri rôzne výšky,
+hoci `--control-h` existoval a `mind.css` ho už používal: `/` **36 px**
+(emergentné, ako vyššie), `/console` **26 px** (`.tr-act`, dvojriadkový otvárač
+vlákna), `/chat` **34 px** (`.ct-act`, jednoriadkový). Token teda existoval, ale
+ani jedna z troch plôch ho na túto rolu nepoužívala — nešlo o chýbajúci token,
+ale o disciplínu. Po zjednotení (2. 9. 2026, zmerané grepom `var(--…)` nad
+zdrojom): `mind.css` **`--control-h` 19× / `--control-h-lg` 6× /
+`--control-h-dense` 11× / `--target-min` 19×**, `console.css` **`--control-h` 4× /
+`--target-min` 1×**, `chat.css` **`--control-h` 19× / `--target-min` 6×**.
+
+**Otvorená potreba:** `.tr-open`/`.tr-act` (`console.css`) a `.ct-open`/`.ct-act`
+(`chat.css`) nesú rolu „výška riadka zoznamu vlákien", pre ktorú tu žiadny token
+nie je — `--control-h`/`--field-h` sú na tomto mieste požičané mená, nie správna
+rola. Kandidát je denzitný token analogický `--row-pad-y`/`--row-pad-x`
+(`:root[data-density="comfortable"|"compact"]`); zaviesť ho môže len `mind.css`,
+lebo `:root` je tam — dve nezávislé deklarácie v `console.css` a `chat.css` by
+boli dva zdroje pravdy pre jedno meno. Kalibrácia pre budúcu implementáciu: pri
+1440 px musí `.tr-open` zostať 50,5 px a `.tr-act` 26 px — zdvih by riedil
+hustotu konzoly.
+
 ---
 
 ## 7. Ikony

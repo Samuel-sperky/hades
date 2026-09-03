@@ -681,6 +681,42 @@
        rytmus (34px), aby text nesedel na ráme. */
     --control-h: 32px;
     --field-h: 34px;
+    /* Dva ďalšie stupne TEJ ISTEJ osi. Nie sú to „veľké" a „malé" tlačidlo, sú to
+       dve role, ktoré 32 px vedome nedodržia:
+
+       --control-h-lg    štvorcová akcia s ikonou --icon-md (20 px), ktorá stojí
+                         SAMA, nie v riadku s textom — mazanie uzla, prepojenie,
+                         dokument, Charón v paneli uzla. 20 px ikona v 32 px boxe
+                         nemá okolo seba dosť ticha, aby čítala ako cieľ.
+       --control-h-dense akcia, ktorá stojí V RIADKU TEXTU — prehrať na časovej
+                         osi, „von" pri breadcrumbe, inline akcie oddelenia
+                         a duplicít, pridanie návrhu. 32 px by riadok rozpichlo;
+                         tieto tlačidlá majú byť tichšie než text, pri ktorom
+                         stoja. 26 px je zároveň ich DOLNÁ hranica s rezervou
+                         2 px nad podlahou --target-min — nižšie už nemá kam ísť.
+
+       ZMERANÉ (1440 px, 3. 9. 2026): tieto dva stupne pokryli šesť pravidiel,
+       ktoré dovtedy niesli 40 px a 26 px surovo, plus `.sug-add`, ktoré malo
+       28 px BEZ DÔVODU (rovnaká rola, rovnaká ikona --icon-sm ako `#tl-play`
+       s 26 px) a prešlo na token. DRUHÉ 28 px v súbore je `#rail-collapse`
+       a to sa NEHÝBE: je to riadok v rozpočte výšky railu (komentár pri `#rail`,
+       scrollHeight 555 proti prahu 589 px, kalibrované z oboch strán), takže
+       jeho 28 px je nameraná hodnota, nie voľba rozmeru ovládača. Rovnako
+       zostáva surové 40 px na `.dest` — je to ďalší riadok toho istého rozpočtu
+       (11 × 40 = 440) a `var()` by nad ním schoval väzbu, ktorú treba vidieť.
+
+       ČÍSLO V TOKENE JE PODLAHA, NIE VÝŠKA. Všetky štyri sú `min-height` (alebo
+       `height` na štvorci), takže na tlačidle s paddingom ich obsah PREBIJE —
+       a preto rozdelenie výšok na `/` vyzerá neusporiadanejšie, než súbor je.
+       Zmerané pri 1440 px: najčastejšia výška tlačidla je 36 px (119×), druhá
+       32 px (70×), a 36 px v CSS NIKDE NESTOJÍ. Skladá sa z 18 px ikony
+       (--icon-sm) + 2×8 px paddingu + 2×1 px rámu = 36. `#charon-toggle`
+       a `#sync-now` majú 38 px, pretože nesú --icon-md (20 px) — teda rozdiel
+       „36 vs 38" NIE JE nedisciplína vo výškach, je to voľba ikony a mení sa
+       v --icon-*, nie tu. Kto to chce zjednotiť dopísaním `height` tlačidlám,
+       zmrazí presne tú väzbu, ktorá dnes drží ikonu a text pohromade. */
+    --control-h-lg: 40px;
+    --control-h-dense: 26px;
     /* PODLAHA ZÁSAHOVEJ PLOCHY (WCAG 2.5.8, AA) — tretie číslo tejto trojice
        a jediné, ktoré NIE JE rozmer ovládača. Je to DNO pre prvky, ktoré sa
        z `--control-h` vedome odhlásili, pretože ich kresba je textová alebo
@@ -1248,6 +1284,18 @@ body:not([data-screen="graf"]) #mind { visibility: hidden; }
     display: flex;
     gap: 2px;
 }
+/* 22×22 SA ČÍTA AKO ŠTVOREC A NIE JE NÍM — a preto tu 22 px zostáva surové.
+   `.lc-depth` aj `.lc-close` nižšie sú `<button>`, takže na nich platí
+   `min-height: var(--control-h)` z bare `button`u (0-0-1) — nič ho tu neprepisuje,
+   pretože tieto pravidlá deklarujú len `width`/`height`. A `min-height` PREBÍJA
+   `height`, takže z tejto dvojice čísel je použité iba to prvé: zmerané na živom
+   prvku 32 px na výšku × 22 px na šírku, computed `min-height: 32px`.
+   Dôsledok, na ktorý som naletel a preto to tu stojí: `height: 22px` NIE JE
+   porušenie podlahy 24 px, je INERTNÉ. Kto to bude prepisovať na --target-min
+   (ako som skúsil ja), zmenší len ŠÍRKU (24 px, resp. 26 px u `.lc-depth`, kde
+   automatické minimum flex prvku dotlačí obsah) a výška sa nepohne o pixel.
+   Keď má byť chip naozaj hustejší, musí sa písať `min-height` — a to je zdvih
+   POD deklarovanú podlahu, teda rozhodnutie, nie oprava. */
 #local-chip .lc-depth {
     width: 22px;
     height: 22px;
@@ -1354,10 +1402,14 @@ button.close {
     background: none;
     color: var(--muted);
     border-radius: var(--r-sm);
+    /* `auto` je tu INERTNÉ a je to zámer, nie zvyšok: explicitné `height` nižšie
+       podlahu z bare `button` aj tak prebíja (zmerané 32×32 px pri computed
+       `min-height: auto`). Stojí tu preto, aby sa štvorec neroztiahol, keby
+       niekto podlahu na bare `button` raz zdvihol nad --control-h. */
     min-height: auto;
     padding: var(--sp-0);
-    width: 32px;
-    height: 32px;
+    width: var(--control-h);
+    height: var(--control-h);
     font-size: var(--icon-sm);
 }
 button.close:hover { background: var(--hover-fill); color: var(--text); border-color: transparent; }
@@ -1444,6 +1496,11 @@ button.close:active { background: var(--accent-soft); }
     padding: var(--sp-0) var(--sp-1);
     margin-bottom: 0;
 }
+/* Váha JE 660 a je to TOKEN, nie preklep: computed style tu hlási jedinú váhu
+   mimo škály 400/500/600 v celej appke, ale číslo nestojí na `.bc-word` — nesie
+   ho --fw-heading (dôvod pri tokene) a manuál §6 ho vyslovene stavia proti
+   serifovým 600. Geist je variabilný, takže 660 je vykresliteľná os, nie
+   zaokrúhlenie. Kto to meria na wordmarku, nech mení token alebo nič. */
 #brand-core .bc-word {
     font-family: var(--font);
     font-size: var(--fs-micro);
@@ -1747,6 +1804,10 @@ body[data-rail="slim"] .rail-eyebrow { display: none; }
     position: relative;
     background: none; border: none;
     border-radius: var(--r-md);
+    /* SUROVÉ 40 px ZÁMERNE, bez --control-h-lg: toto číslo je riadok rozpočtu
+       výšky railu (komentár pri `#rail`: 11 × 40 = 440 z 555 nameraných).
+       `var()` by nad tou väzbou zavrel oči — kto by zdvihol token, rozbije prah
+       589 px a nedozvie sa to. Výška destinácie sa hýbe TU a rozpočet s ňou. */
     width: 40px; height: 40px;
     min-height: 40px;
     padding: 0;
@@ -1843,6 +1904,10 @@ body[data-rail="slim"] .rail-eyebrow { display: none; }
     align-self: flex-end;
     display: inline-flex; align-items: center; justify-content: center;
     flex: none;
+    /* JEDINÉ 28 px v súbore a NIE JE to --control-h-dense (26): aj toto číslo je
+       riadok rozpočtu výšky railu vyššie („#rail-collapse = 28"). Tie 2 px voči
+       dense stupňu teda nie sú voľba rozmeru, ale hodnota kalibrovaná z oboch
+       strán prahu 589 px. Nezjednocuj ju s tokenom. */
     width: 28px; height: 28px; min-height: 28px;
     padding: 0;
     background: none; border: none;
@@ -1889,6 +1954,10 @@ body[data-rail="slim"] #brand-core {
 }
 body[data-rail="slim"] #rail .rail-group :is(button, a).dest {
     width: var(--rail-item-w);
+    /* Vlastné číslo, nie stupeň osi ovládačov: v zbalenom raile stojí ikona NAD
+       micro labelom (`flex-direction: column`), takže výška je 20 px ikona
+       + 3 px gap + riadok --fs-micro + 2×8 px paddingu ~ 52. Je to výška DVOCH
+       vecí nad sebou, teda iná rola než 40 px jednoriadkovej destinácie. */
     min-height: 52px;
     flex-direction: column;
     justify-content: center;
@@ -1958,9 +2027,16 @@ body[data-rail="slim"] #rail #rail-collapse { align-self: center; }
     letter-spacing: var(--ls-mono);
     color: var(--muted);
 }
+/* PODLAHA, NIE `auto`. Crumb je živé navigačné tlačidlo (klik ide o úroveň von)
+   a do 3. 9. 2026 mal `min-height: auto`, teda ŽIADNE dno — zmerané 18,4 px pri
+   1440 px (fs 12 / lh 14,4 + 2×2 px padding). Je to presne ten istý nález, aký
+   Sprint 3 zaplatil na ôsmich prvkoch (`.focus-more` 13,2 px, `.focus-act`
+   a `.chart-period` 19,2 px, `.rec-sort` 21,2 px …), len breadcrumb vtedy nikto
+   nezmeral. Rast na 24 px sa do hlavičky zmestí: `--header-h` je 44 px a riadok
+   už nesie `#breadcrumb .current` s 23,5 px. Šírka sa nedopĺňa — tú dáva text. */
 #breadcrumb .crumb {
     background: none; border: none;
-    min-height: auto;
+    min-height: var(--target-min);
     padding: 2px var(--sp-0h);
     border-radius: var(--r-sm);
     font-family: var(--mono);
@@ -2349,6 +2425,10 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     background: none; border: none;
     border-radius: var(--r-md);
     padding: var(--row-pad-y) var(--row-pad-x);
+    /* RIADOK ZOZNAMU, nie ovládač: výšku dáva obsah (zmerané 35 px = lh 15,6
+       + 2×8 px --row-pad-y), takže podlaha --control-h by tu nič nedržala a pri
+       dvojriadkovej položke by len klamala. `auto` je odhlásenie z podlahy bare
+       `button`u, nie chýbajúce dno — 35 px je nad --target-min s rezervou 11 px. */
     min-height: auto;
     cursor: pointer;
     transition: background var(--dur-fast) var(--ease);
@@ -2422,7 +2502,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 #node-edit { flex: 1; }
 #node-delete {
     flex: 0 0 auto;
-    width: 40px; height: 40px; min-height: 40px;
+    width: var(--control-h-lg); height: var(--control-h-lg); min-height: var(--control-h-lg);
     padding: 0;
     font-size: var(--icon-md);
 }
@@ -2462,9 +2542,12 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     letter-spacing: var(--ls-mono);
     color: var(--muted);
 }
+/* 28 -> --control-h-dense (26 px) 3. 9. 2026: tá istá rola aj tá istá ikona
+   (--icon-sm) ako `#tl-play`, ktorý má 26 px, a nikde nestál dôvod pre tie 2 px.
+   Zmerané po zmene: 26×26 px, ikona 18 px, teda 2 px nad podlahou --target-min. */
 .sug-add {
     flex-shrink: 0;
-    width: 28px; height: 28px; min-height: 28px;
+    width: var(--control-h-dense); height: var(--control-h-dense); min-height: var(--control-h-dense);
     padding: 0;
     border-radius: var(--r-sm);
     color: var(--muted);
@@ -2486,7 +2569,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     border: 1px solid var(--accent);
     color: var(--on-accent);
     border-radius: var(--r-pill);
-    width: 26px; height: 26px; min-height: 26px;
+    width: var(--control-h-dense); height: var(--control-h-dense); min-height: var(--control-h-dense);
     padding: 0;
     font-size: var(--icon-sm);
     flex-shrink: 0;
@@ -2520,7 +2603,7 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
 #zoomctl button {
     background: none; border: none;
     border-radius: var(--r-md);
-    width: 32px; height: 32px; min-height: 32px;
+    width: var(--control-h); height: var(--control-h); min-height: var(--control-h);
     padding: 0;
     color: var(--muted);
     font-size: var(--icon-md);
@@ -2570,14 +2653,16 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     font-size: var(--icon-2xs);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-/* Zásahová plocha aspoň 24×24 px (WCAG 2.5.8): krížik ostáva 18 px vizuálne,
-   priehľadný ::before ho roztiahne na 24 px. */
+/* Zásahová plocha na podlahe (WCAG 2.5.8): krížik ostáva 18 px VIZUÁLNE,
+   priehľadný ::before ho roztiahne na --target-min. Rozmer ide cez token, aby sa
+   pri pohybe podlahy pohla aj táto plocha; `.ctx-x` samotný zostáva 18 px,
+   pretože jeho číslo je kresba, nie cieľ. */
 .ctx-x::before {
     content: "";
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    width: 24px; height: 24px;
+    width: var(--target-min); height: var(--target-min);
 }
 .ctx-x:hover { background: var(--accent-soft); color: var(--accent-ink); }   /* W3b: 2,58:1 → ink */
 .ctx-clear {
@@ -2607,6 +2692,10 @@ button.switch[aria-checked="true"]::after { transform: translateX(14px); }
     overflow: hidden;
     display: flex; align-items: center; justify-content: flex-start; gap: 10px;
     text-align: left;
+    /* Toast je OZNÁMENIE, nie ovládač — rozmer mu dáva text, ktorý nesie (zmerané
+       42 px pri jednom riadku). `width: auto` aj `min-height: auto` sú odhlásenie
+       z kresby bare `button`u; dno netreba, lebo jednoriadkový toast je 42 px,
+       teda 18 px nad --target-min. Zásahovú plochu má vnútri `.toast-undo`. */
     width: auto; min-height: auto;
     font-family: var(--font);
     font-weight: var(--fw-regular);
@@ -2889,7 +2978,10 @@ pre.code code {
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 24px;
+    /* Nie je to rozmer ovládača, ale ODVODENÁ hodnota: hlavička má byť vysoká
+       presne ako `.copy-btn` v nej (--target-min nižšie), aby sa blok kódu
+       nehýbal, keď tlačidlo chýba. Preto ten istý token, nie druhá 24. */
+    min-height: var(--target-min);
 }
 
 .code-lang {
@@ -2911,7 +3003,7 @@ pre.code code {
    varianta. `:is()` a nie `:where()`: oba argumenty sú jedna trieda, takže
    špecificita je v oboch prípadoch 0-1-0 a oslabovať tu netreba nič. */
 :is(.copy-btn, .read-btn) {
-    min-height: 24px;
+    min-height: var(--target-min);   /* dno zásahovej plochy — dôvod pri tokene */
     padding: 2px 8px;
     font-size: var(--fs-micro);
     text-transform: none;
@@ -3522,6 +3614,9 @@ body.ambient #toasts {
 
 .record {
     display: block; width: 100%;
+    /* KARTA, nie ovládač: `display: block` vypína inline-flex z bare `button`u
+       a výšku dáva obsah (zmerané 44,8–45,6 px na Denníku pri 1440 px). Podlaha
+       --control-h by na karte s dvoma riadkami nič nedržala. */
     min-height: auto;
 }
 .record:hover { border-left-color: var(--accent); background: var(--surface-2); }
@@ -3778,8 +3873,10 @@ body.ambient #toasts {
     border-radius: 2px;
     background: var(--accent);
 }
+/* Štvorec PRESNE na podlahe: ikonová akcia v riadku stromu je tichšia než
+   --control-h-dense, pretože riadok stromu je hustejší než inline lišta. */
 .tree-row .dept-more {
-    width: 24px; height: 24px; min-height: 24px;
+    width: var(--target-min); height: var(--target-min); min-height: var(--target-min);
     padding: 0;
     font-size: var(--icon-xs);
     flex-shrink: 0;
@@ -3810,7 +3907,7 @@ body.ambient #toasts {
     padding: var(--sp-0) 10px var(--sp-1) 28px;
 }
 .dept-actions button {
-    min-height: 26px;
+    min-height: var(--control-h-dense);
     padding: 2px 10px;
     font-size: var(--fs-small);
 }
@@ -3877,7 +3974,7 @@ body.ambient #toasts {
     color: var(--muted);
 }
 .dup-side button {
-    min-height: 26px;
+    min-height: var(--control-h-dense);
     padding: 2px var(--sp-2h);
     font-size: var(--fs-small);
 }
@@ -3948,6 +4045,9 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
    --------------------------------------------------------------------------- */
 #legend-areas .legend-area {
     width: 100%;
+    /* Riadok zoznamu na celú šírku panelu — výšku dáva padding (zmerané 31,6 px
+       = lh 15,6 + 2×8). `auto` teda podlahu --control-h ruší o 0,4 px a je to
+       zámer: prepínač oblasti je riadok legendy, nie tlačidlo v lište. */
     min-height: auto;
     justify-content: flex-start;
     text-align: left;
@@ -3993,7 +4093,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
     text-align: left;
 }
 .nb-row .nb-del {
-    width: 24px; height: 24px; min-height: 24px;
+    width: var(--target-min); height: var(--target-min); min-height: var(--target-min);
     padding: 0;
     flex-shrink: 0;
     font-size: var(--icon-2xs);
@@ -4011,7 +4111,7 @@ label.check input:focus-visible + .box { box-shadow: var(--focus-ring); }
 #node-md,
 #node-charon {
     flex: 0 0 auto;
-    width: 40px; height: 40px; min-height: 40px;
+    width: var(--control-h-lg); height: var(--control-h-lg); min-height: var(--control-h-lg);
     padding: 0;
     font-size: var(--icon-md);
 }
@@ -4232,7 +4332,7 @@ body[data-screen="graf"] #screens { display: none; }
 #graph-tools button {
     background: none; border: none;
     color: var(--muted);
-    width: 32px; height: 32px; min-height: 32px;
+    width: var(--control-h); height: var(--control-h); min-height: var(--control-h);
     border-radius: var(--r-sm);
     font-size: var(--icon-sm);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
@@ -4251,7 +4351,7 @@ body[data-screen="graf"] #screens { display: none; }
     border: 1px solid var(--border);
     color: var(--muted);
     border-radius: var(--r-md);
-    padding: 5px 10px; min-height: 32px;
+    padding: 5px 10px; min-height: var(--control-h);
     font-size: var(--fs-body);
     transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
                 border-color var(--dur-fast) var(--ease);
@@ -4500,6 +4600,11 @@ body[data-screen="graf"] #screens { display: none; }
 .li-wrap > .record,
 .li-wrap > .lib-skill { flex: 1 1 auto; min-width: 0; width: auto; }
 
+/* 34 px NIE JE --field-h a nesmie sa naň tokenizovať: je to zhoda čísla, nie
+   role — `.pack-btn` je ikonové tlačidlo pri riadku, nie textové pole. `min-height`
+   je tu navyše INERTNÉ: zmerané 36 px (18 px ikona + 2×8 px padding, tak ako
+   u ostatných padded tlačidiel), takže podlaha nikdy nezaberie a drží len dno,
+   keby tlačidlo stratilo ikonu. Preto ostáva surová a s týmto komentárom. */
 .pack-btn {
     flex: 0 0 auto; align-self: center;
     width: 34px; min-height: 34px;
@@ -4579,7 +4684,16 @@ body[data-screen="graf"] #screens { display: none; }
     background: var(--field-bg);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: var(--sp-1) var(--sp-2); min-height: 40px;
+    /* `min-height: 40px` tu stálo do 3. 9. 2026 a NIKDY NEPLATILO — preto je
+       zmazané, nie tokenizované. Pole je `<input>`, takže naň dosahuje spoločné
+       pravidlo polí nižšie (`input:not([type="range"]):not([type="checkbox"])
+       :not([type="radio"]), select`), a to má tri `:not()` s atribútom, teda
+       špecificitu 0-3-1 proti 0-1-0 tejto triedy — vyhrá bez ohľadu na poradie
+       v zdroji. Zmerané na živom prvku obrazovky Smernica: computed
+       `min-height: 34px` (= --field-h), reálna výška 34,8 px, a `.dir-task`
+       s 40 px sa v `matches()` síce nájde, ale prehrá. Bola to teda štvrtá
+       výška polí NA PAPIERI a žiadna na obrazovke; rytmus polí nesie --field-h. */
+    padding: var(--sp-1) var(--sp-2);
     font-size: var(--fs-base); font-family: var(--font);
     color: var(--text);
 }
@@ -4654,7 +4768,7 @@ label.check.dir-check.off { opacity: .5; }
 .dir-preview-head h2 { font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text); }
 .dir-actions { display: flex; gap: var(--sp-0); }
 .dir-actions .ic {
-    width: 32px; height: 32px; min-height: 32px;
+    width: var(--control-h); height: var(--control-h); min-height: var(--control-h);
     display: inline-flex; align-items: center; justify-content: center;
     font-size: var(--icon-sm); border-radius: var(--r-sm);
 }
@@ -4733,7 +4847,7 @@ label.check.dir-check.off { opacity: .5; }
 /* Undo affordance inside a toast (F3 delete/skip) */
 .toast .toast-undo {
     margin-left: var(--sp-1);
-    min-height: 24px; padding: 2px 10px;
+    min-height: var(--target-min); padding: 2px 10px;   /* jediná zásahová plocha toastu */
     font-size: var(--fs-small); font-weight: var(--fw-medium);
     border-radius: var(--r-sm);
     flex-shrink: 0;
@@ -5353,7 +5467,7 @@ button.hero-action:hover { border-color: var(--accent); }
 }
 .queue-actions { display: flex; align-items: center; gap: var(--sp-0); flex-shrink: 0; }
 .queue-actions button {
-    width: 32px; height: 32px; min-height: 32px;
+    width: var(--control-h); height: var(--control-h); min-height: var(--control-h);
     padding: 0; font-size: var(--icon-sm);
     color: var(--muted);
     background: none; border: 1px solid transparent;
@@ -5839,7 +5953,7 @@ button.danger.armed {
 #btn-up {
     flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center;
-    width: 26px; height: 26px; min-height: 26px;
+    width: var(--control-h-dense); height: var(--control-h-dense); min-height: var(--control-h-dense);
     padding: 0;
     background: var(--surface-2);
     border: 1px solid var(--border);
@@ -5861,6 +5975,10 @@ button.danger.armed {
 #presets .preset {
     display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
     padding: var(--sp-1) 10px;
+    /* DVOJRIADKOVÁ KARTA, nie ovládač: meno + popis nad sebou. Číslo drží mriežku
+       2×2 zarovnanú aj vtedy, keď má jedna predvoľba kratší popis — reálna výška
+       je 50 px (zmerané), takže podlaha je tu naschvál pod obsahom. Zjednotenie
+       na --control-h by z dvoch riadkov spravilo jeden a odseklo popis. */
     min-height: 46px;
     text-align: left;
     background: var(--surface-2);
@@ -6518,6 +6636,11 @@ button, input, select {
     background: var(--card-bg);
     color: var(--text-secondary);
     font-size: var(--fs-caption);
+    /* Jediný prvok skupiny `.focus-*`, ktorý pri Sprinte 3 dno NEDOSTAL, a je to
+       správne: `.focus-act` / `.focus-open` / `.focus-more` mali 13–21,6 px, tento
+       čip má z paddingu 30 px (zmerané), teda 6 px nad --target-min. Asercia, čo
+       hľadá `var(--target-min)` na `.focus-chip`, nič nenájde — nedopisuj ho, bola
+       by to podlaha pod už vyhovujúcim prvkom. */
     min-height: auto;
     text-decoration: none;
 }
@@ -6912,6 +7035,10 @@ button, input, select {
         align-items: center; justify-content: center;
         gap: 2px;
         flex: 1 1 0;
+        /* `auto` RUŠÍ DEDENÚ VÝŠKU, nie zásahovú plochu: desktopové pravidlo
+           `#rail .rail-group :is(button, a)` dáva `height: 40px`, čo by v spodnej
+           lište zabránilo `flex: 1 1 0` rozdeliť výšku bary. Zmerané pri 375 px:
+           päť destinácií po 55 px, teda dvojnásobok --target-min. */
         min-width: 0; min-height: auto;
         width: auto;
         padding: var(--sp-0) 2px;
